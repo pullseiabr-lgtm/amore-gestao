@@ -85,13 +85,13 @@ export default function App() {
         mobileOpen={sidebarOpen}
         onOverlayClick={() => setSidebarOpen(false)}
       />
-      <div className="main-wrap">
+      <div className="main-content">
         <Topbar
           title={PAGE_TITLES[page]}
           activePage={page}
           onHamburger={() => setSidebarOpen(o => !o)}
         />
-        <main className="content">
+        <main className="page-content">
           <PageContent page={page} />
         </main>
       </div>
