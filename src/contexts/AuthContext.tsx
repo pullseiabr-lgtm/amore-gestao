@@ -111,10 +111,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    // 1. Check for existing Supabase session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    // 1. Check for existing Supabase session (with timeout — SDK can hang)
+    const sessionTimeout = new Promise<null>(resolve => setTimeout(() => resolve(null), 5000))
+    Promise.race([supabase.auth.getSession(), sessionTimeout]).then(async (result) => {
+      const session = result && 'data' in result ? result.data.session : null
       if (session?.user) {
-        const profile = await fetchProfile(session.user.id)
+        const profile = await fetchProfile(session.user.id).catch(() => null)
         if (profile) {
           setUser(profile)
           setIsDemoMode(false)
@@ -151,8 +153,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string): Promise<string | null> => {
     const em = email.trim().toLowerCase()
 
-    // 1. Try real Supabase auth
-    const { data, error } = await supabase.auth.signInWithPassword({ email: em, password })
+    // 1. Try real Supabase auth (with timeout — SDK can hang when project is paused)
+    const timeout = <T,>(ms: number): Promise<T> =>
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))
+
+    let authResult: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>> | null = null
+    try {
+      authResult = await Promise.race([
+        supabase.auth.signInWithPassword({ email: em, password }),
+        timeout<never>(6000),
+      ])
+    } catch {
+      // Supabase timed out or network error — fall through to demo
+    }
+
+    const { data, error } = authResult ?? { data: { user: null, session: null }, error: new Error('timeout') }
     if (!error && data.user) {
       let profile = await fetchProfile(data.user.id)
       // Auto-create profile if missing (first login)
