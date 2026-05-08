@@ -63,6 +63,92 @@ export interface TenantSettings {
   updated_at: string
 }
 
+// ── Salão ────────────────────────────────────────────────────
+
+export type MesaStatus = 'livre' | 'ocupada' | 'reservada' | 'espera'
+export type AtendStatus = 'em_atendimento' | 'finalizado'
+export type CheckStatus = 'pendente' | 'ok' | 'nao_conforme'
+
+export interface SalaoMesa {
+  id: string
+  loja: string
+  numero: number
+  status: MesaStatus
+  garcom: string | null
+  pax: number
+  entrada: string | null
+  reserva_hora: string | null
+  consumo: number
+  created_at: string
+  updated_at: string
+}
+
+export interface SalaoAtendimento {
+  id: string
+  loja: string
+  mesa: number
+  garcom: string
+  entrada: string
+  saida: string | null
+  tempo_min: number | null
+  pax: number
+  consumo: number
+  avaliacao: number
+  status: AtendStatus
+  abordagem_min: number | null
+  pedido_min: number | null
+  entrega_min: number | null
+  apresent_prato: number
+  cordialidade: number
+  postura: number
+  erros: number
+  devolucoes: number
+  obs: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export interface SalaoAvaliacao {
+  id: string
+  loja: string
+  mesa: number | null
+  garcom: string | null
+  nota: number
+  canal: string
+  comentario: string | null
+  data_aval: string
+  created_at: string
+}
+
+export interface SalaoAvaliacaoEquipe {
+  id: string
+  loja: string
+  colaborador: string
+  data_aval: string
+  uniforme: number
+  higiene: number
+  postura: number
+  comunicacao: number
+  equipe: number
+  avaliado_por: string
+  created_at: string
+}
+
+export interface SalaoChecklistItem {
+  id: string
+  loja: string
+  data_reg: string
+  tipo: 'abertura' | 'fechamento'
+  categoria: string
+  item: string
+  status: CheckStatus
+  colaborador: string | null
+  responsavel: string | null
+  observacoes: string | null
+  criado_por: string | null
+  created_at: string
+}
+
 export interface AuditLog {
   id: string
   user_id: string

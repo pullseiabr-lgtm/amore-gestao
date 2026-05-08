@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, Trash2, ShoppingBag, Star, Clock, TrendingUp, Loader2, X } from 'lucide-react'
+import { Plus, Search, ShoppingBag, Star, Clock, TrendingUp, Loader2, X } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useToast } from '../../hooks/useToast'

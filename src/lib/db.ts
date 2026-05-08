@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
-import type { Pendencia, Colaborador, Profile, TenantSettings } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem } from '../types/database'
 
 const db = supabase as any
 
@@ -185,4 +185,173 @@ export async function fetchAuditLogs(): Promise<any[]> {
   const { data, error } = await db.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(100)
   if (error) throw error
   return data
+}
+
+// ── Salão — helper ──────────────────────────────────────────
+
+async function salaoFetch(table: string, params = ''): Promise<any[]> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 6000)
+  try {
+    const sessionResult = await Promise.race([
+      supabase.auth.getSession(),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+    ])
+    const session = sessionResult && 'data' in sessionResult ? sessionResult.data.session : null
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/${table}?${params}`,
+      {
+        signal: controller.signal,
+        headers: {
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+      },
+    )
+    if (!res.ok) throw new Error(res.statusText)
+    return res.json()
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function salaoPost(table: string, body: unknown): Promise<any> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/${table}`,
+    {
+      method: 'POST',
+      headers: {
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify(body),
+    },
+  )
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as any).message || res.statusText)
+  }
+  const rows = await res.json()
+  return Array.isArray(rows) ? rows[0] : rows
+}
+
+async function salaoPatch(table: string, id: string, body: unknown): Promise<any> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`,
+    {
+      method: 'PATCH',
+      headers: {
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify(body),
+    },
+  )
+  if (!res.ok) throw new Error(res.statusText)
+  const rows = await res.json()
+  return Array.isArray(rows) ? rows[0] : rows
+}
+
+async function salaoDelete(table: string, id: string): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`,
+    {
+      method: 'DELETE',
+      headers: {
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+    },
+  )
+  if (!res.ok) throw new Error(res.statusText)
+}
+
+// ── Salão — Mesas ───────────────────────────────────────────
+
+export async function fetchSalaoMesas(loja?: string): Promise<SalaoMesa[]> {
+  const q = loja && loja !== 'Todas as Lojas'
+    ? `loja=eq.${encodeURIComponent(loja)}&order=numero.asc`
+    : 'order=loja.asc,numero.asc'
+  return salaoFetch('salao_mesas', q)
+}
+
+export async function updateSalaoMesa(id: string, data: Partial<SalaoMesa>): Promise<SalaoMesa> {
+  return salaoPatch('salao_mesas', id, { ...data, updated_at: new Date().toISOString() })
+}
+
+// ── Salão — Atendimentos ────────────────────────────────────
+
+export async function fetchSalaoAtendimentos(loja?: string): Promise<SalaoAtendimento[]> {
+  const q = loja && loja !== 'Todas as Lojas'
+    ? `loja=eq.${encodeURIComponent(loja)}&order=created_at.desc`
+    : 'order=created_at.desc'
+  return salaoFetch('salao_atendimentos', q)
+}
+
+export async function insertSalaoAtendimento(a: Omit<SalaoAtendimento, 'id' | 'created_at'>): Promise<SalaoAtendimento> {
+  return salaoPost('salao_atendimentos', a)
+}
+
+export async function updateSalaoAtendimento(id: string, data: Partial<SalaoAtendimento>): Promise<SalaoAtendimento> {
+  return salaoPatch('salao_atendimentos', id, data)
+}
+
+// ── Salão — Avaliações ──────────────────────────────────────
+
+export async function fetchSalaoAvaliacoes(loja?: string): Promise<SalaoAvaliacao[]> {
+  const q = loja && loja !== 'Todas as Lojas'
+    ? `loja=eq.${encodeURIComponent(loja)}&order=data_aval.desc`
+    : 'order=data_aval.desc'
+  return salaoFetch('salao_avaliacoes', q)
+}
+
+export async function insertSalaoAvaliacao(a: Omit<SalaoAvaliacao, 'id' | 'created_at'>): Promise<SalaoAvaliacao> {
+  return salaoPost('salao_avaliacoes', a)
+}
+
+export async function deleteSalaoAvaliacao(id: string): Promise<void> {
+  return salaoDelete('salao_avaliacoes', id)
+}
+
+// ── Salão — Avaliação de Equipe ─────────────────────────────
+
+export async function fetchSalaoAvaliacaoEquipe(loja?: string): Promise<SalaoAvaliacaoEquipe[]> {
+  const q = loja && loja !== 'Todas as Lojas'
+    ? `loja=eq.${encodeURIComponent(loja)}&order=created_at.desc`
+    : 'order=created_at.desc'
+  return salaoFetch('salao_avaliacao_equipe', q)
+}
+
+export async function insertSalaoAvaliacaoEquipe(a: Omit<SalaoAvaliacaoEquipe, 'id' | 'created_at'>): Promise<SalaoAvaliacaoEquipe> {
+  return salaoPost('salao_avaliacao_equipe', a)
+}
+
+export async function deleteSalaoAvaliacaoEquipe(id: string): Promise<void> {
+  return salaoDelete('salao_avaliacao_equipe', id)
+}
+
+// ── Salão — Checklist ───────────────────────────────────────
+
+export async function fetchSalaoChecklist(loja: string, data: string): Promise<SalaoChecklistItem[]> {
+  const q = `loja=eq.${encodeURIComponent(loja)}&data_reg=eq.${data}&order=tipo.asc,categoria.asc,item.asc`
+  return salaoFetch('salao_checklist_itens', q)
+}
+
+export async function upsertSalaoChecklistItem(item: Omit<SalaoChecklistItem, 'id' | 'created_at'>): Promise<SalaoChecklistItem> {
+  return salaoPost('salao_checklist_itens', item)
+}
+
+export async function updateSalaoChecklistItem(id: string, data: Partial<SalaoChecklistItem>): Promise<SalaoChecklistItem> {
+  return salaoPatch('salao_checklist_itens', id, data)
+}
+
+export async function deleteSalaoChecklistItem(id: string): Promise<void> {
+  return salaoDelete('salao_checklist_itens', id)
 }
