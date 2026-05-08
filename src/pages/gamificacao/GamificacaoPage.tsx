@@ -1,17 +1,11 @@
-import { useState } from 'react'
-import { Plus, Edit2, Trash2, Search } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Plus, Edit2, Trash2, Search, Loader2 } from 'lucide-react'
 import Modal from '../../components/ui/Modal'
 import Confirm from '../../components/ui/Confirm'
 import { useToast } from '../../hooks/useToast'
 import { useAuth } from '../../contexts/AuthContext'
+import { fetchColaboradores, insertColaborador, updateColaborador, deleteColaborador } from '../../lib/db'
 import type { Colaborador } from '../../types/database'
-
-const INIT_COLABS: Colaborador[] = [
-  { id: 'j1', nome: 'João Ricardo', func: 'Garçom', setor: 'salao', loja: 'Amore Paiva', cor: '#F59E0B', meta_fat: 25000, meta_tick: 45, meta_aval: 4.5, meta_tempo: 15, fat: 28400, tick: 49.2, aval: 4.9, tempo: 14, erros: 1.2, pres: 22, obs: '', created_at: '' },
-  { id: 'j2', nome: 'Maria Clara', func: 'Garçonete', setor: 'salao', loja: 'Amore Paiva', cor: '#10B981', meta_fat: 22000, meta_tick: 44, meta_aval: 4.5, meta_tempo: 15, fat: 22000, tick: 46.5, aval: 4.7, tempo: 13, erros: 2.1, pres: 24, obs: '', created_at: '' },
-  { id: 'j3', nome: 'Felipe Santos', func: 'Balconista', setor: 'balcao', loja: 'Amore CD', cor: '#CD7C2F', meta_fat: 20000, meta_tick: 42, meta_aval: 4.3, meta_tempo: 12, fat: 18500, tick: 44.2, aval: 4.4, tempo: 9, erros: 1.8, pres: 21, obs: '', created_at: '' },
-  { id: 'j4', nome: 'Ana Oliveira', func: 'Cozinheira', setor: 'cozinha', loja: 'Flow CD', cor: '#6366F1', meta_fat: 0, meta_tick: 0, meta_aval: 4.5, meta_tempo: 15, fat: 0, tick: 0, aval: 4.6, tempo: 13, erros: 0, pres: 22, obs: '', created_at: '' },
-]
 
 const COLORS = ['#F59E0B', '#10B981', '#CD7C2F', '#6366F1', '#EF4444', '#6B1212', '#3B82F6', '#8B5CF6']
 
@@ -34,13 +28,22 @@ export default function GamificacaoPage() {
   const { can } = useAuth()
   const { toast } = useToast()
   const [tab, setTab] = useState<Tab>('colabs')
-  const [colabs, setColabs] = useState(INIT_COLABS)
+  const [colabs, setColabs] = useState<Colaborador[]>([])
+  const [loadingColabs, setLoadingColabs] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [filterSetor, setFilterSetor] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editColab, setEditColab] = useState<Colaborador | null>(null)
   const [form, setForm] = useState({ nome: '', func: '', setor: 'salao' as Colaborador['setor'], loja: 'Amore CD', cor: COLORS[0], fat: '', tick: '', aval: '', tempo: '', erros: '', pres: '', meta_fat: '', meta_tick: '', meta_aval: '', meta_tempo: '' })
   const [confirmDel, setConfirmDel] = useState<Colaborador | null>(null)
+
+  useEffect(() => {
+    fetchColaboradores()
+      .then(setColabs)
+      .catch(() => toast('Erro ao carregar colaboradores.', 'error'))
+      .finally(() => setLoadingColabs(false))
+  }, [])
 
   const filtered = colabs.filter(c => {
     const q = search.toLowerCase()
@@ -61,16 +64,37 @@ export default function GamificacaoPage() {
     setShowForm(true)
   }
 
-  const save = () => {
+  const save = async () => {
     if (!form.nome.trim()) { toast('Preencha o nome.', 'error'); return }
-    const n: Colaborador = { id: editColab?.id || 'c' + Date.now(), nome: form.nome, func: form.func, setor: form.setor, loja: form.loja, cor: form.cor, meta_fat: +form.meta_fat || 0, meta_tick: +form.meta_tick || 0, meta_aval: +form.meta_aval || 0, meta_tempo: +form.meta_tempo || 0, fat: +form.fat || 0, tick: +form.tick || 0, aval: +form.aval || 0, tempo: +form.tempo || 0, erros: +form.erros || 0, pres: +form.pres || 0, obs: '', created_at: '' }
-    if (editColab) setColabs(prev => prev.map(c => c.id === editColab.id ? n : c))
-    else setColabs(prev => [n, ...prev])
-    toast(editColab ? 'Colaborador atualizado!' : `${form.nome} cadastrado!`)
-    setShowForm(false)
+    setSaving(true)
+    const payload = { nome: form.nome, func: form.func, setor: form.setor, loja: form.loja, cor: form.cor, meta_fat: +form.meta_fat || 0, meta_tick: +form.meta_tick || 0, meta_aval: +form.meta_aval || 0, meta_tempo: +form.meta_tempo || 0, fat: +form.fat || 0, tick: +form.tick || 0, aval: +form.aval || 0, tempo: +form.tempo || 0, erros: +form.erros || 0, pres: +form.pres || 0, obs: '' }
+    try {
+      if (editColab) {
+        const updated = await updateColaborador(editColab.id, payload)
+        setColabs(prev => prev.map(c => c.id === editColab.id ? updated : c))
+        toast('Colaborador atualizado!')
+      } else {
+        const created = await insertColaborador(payload)
+        setColabs(prev => [created, ...prev])
+        toast(`${form.nome} cadastrado!`)
+      }
+      setShowForm(false)
+    } catch {
+      toast('Erro ao salvar. Tente novamente.', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const del = (c: Colaborador) => { setColabs(prev => prev.filter(x => x.id !== c.id)); toast(`${c.nome} removido.`, 'error') }
+  const del = async (c: Colaborador) => {
+    try {
+      await deleteColaborador(c.id)
+      setColabs(prev => prev.filter(x => x.id !== c.id))
+      toast(`${c.nome} removido.`, 'error')
+    } catch {
+      toast('Erro ao excluir.', 'error')
+    }
+  }
 
   const setorLabel = { salao: 'Salão', cozinha: 'Cozinha', balcao: 'Balcão' }
 
@@ -106,6 +130,7 @@ export default function GamificacaoPage() {
             </select>
             {can('gamificacao', 'create') && <button className="btn bp bsm" onClick={openNew}><Plus size={11} />Novo Colaborador</button>}
           </div>
+          {loadingColabs && <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><Loader2 size={22} className="spin" /></div>}
           <div className="cc-grid">
             {filtered.map(c => {
               const sc = calcScore(c)
@@ -195,7 +220,7 @@ export default function GamificacaoPage() {
       )}
 
       <Modal open={showForm} onClose={() => setShowForm(false)} title={editColab ? 'Editar Colaborador' : 'Novo Colaborador'} size="lg"
-        footer={<><button className="btn bo" onClick={() => setShowForm(false)}>Cancelar</button><button className="btn bp" onClick={save}>Salvar</button></>}>
+        footer={<><button className="btn bo" onClick={() => setShowForm(false)}>Cancelar</button><button className="btn bp" onClick={save} disabled={saving}>{saving && <Loader2 size={12} className="spin" />}Salvar</button></>}>
         <div className="g2">
           <div className="fg" style={{ gridColumn: '1/-1' }}>
             <label className="fl">Nome completo <span className="rq">*</span></label>

@@ -1,9 +1,11 @@
-import { useState } from 'react'
-import { Shield, Edit2, Trash2, Plus, Search, CheckCircle, XCircle, Clock, Users, Lock } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Shield, Edit2, Trash2, Plus, Search, CheckCircle, XCircle, Clock, Users, Lock, Loader2 } from 'lucide-react'
 import Modal from '../../components/ui/Modal'
 import Confirm from '../../components/ui/Confirm'
 import { useToast } from '../../hooks/useToast'
 import { useAuth, ROLE_PERMISSIONS } from '../../contexts/AuthContext'
+import { fetchProfiles, updateProfile, upsertProfile, fetchAuditLogs } from '../../lib/db'
+import { supabase } from '../../lib/supabase'
 import type { Profile, UserRole, UserStatus, PermissionsMap, ModulePermission } from '../../types/database'
 
 const MODULES = [
@@ -46,12 +48,6 @@ const INITIAL_USERS: Profile[] = [
   { id: 'u-felipe', email: 'felipe@amore.com.br', name: 'Felipe Santos', role: 'user', loja: 'Amore CD', status: 'inactive', avatar_color: '#CD7C2F', initials: 'FS', permissions_override: null, created_at: '2025-03-01T00:00:00Z', last_login: '2025-06-30T16:00:00Z', created_by: 'u-admin' },
 ]
 
-const AUDIT_MOCK = [
-  { id: '1', icon: 'success', msg: 'Login — Rodrigo Admin', detail: '22/07 15:42 · IP: 192.168.1.10 · Chrome', col: '#D1FAE5', icol: '#065F46' },
-  { id: '2', icon: 'error', msg: '3 tentativas falhas — IP bloqueado 30min', detail: '22/07 14:18 · IP: 187.94.12.55', col: '#FEE2E2', icol: '#991B1B' },
-  { id: '3', icon: 'edit', msg: 'Pendência #001 editada — Admin', detail: '22/07 10:30 · Status → Em Andamento', col: '#DBEAFE', icol: '#1E40AF' },
-  { id: '4', icon: 'user', msg: 'Usuário João Ricardo criado', detail: '21/07 09:00 · Por Admin', col: '#EDE9FE', icol: '#5B21B6' },
-]
 
 const PROV_MOCK = [
   { nome: 'Consultor Externo', login: 'consul_1722@amore.temp', expira: '25/07/25', modulos: 'Dashboard · Financeiro', status: 'Ativo' },
@@ -75,6 +71,8 @@ export default function UsersPage() {
 
   const [tab, setTab] = useState<Tab>('users')
   const [users, setUsers] = useState<Profile[]>(INITIAL_USERS)
+  const [saving, setSaving] = useState(false)
+  const [auditLogs, setAuditLogs] = useState<any[]>([])
   const [search, setSearch] = useState('')
   const [filterRole, setFilterRole] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
@@ -93,6 +91,18 @@ export default function UsersPage() {
   const [showProvForm, setShowProvForm] = useState(false)
   const [provForm, setProvForm] = useState({ nome: '', expira: '', modulos: '' })
   const [provGerado, setProvGerado] = useState('')
+
+  useEffect(() => {
+    fetchProfiles()
+      .then(data => { if (data.length > 0) setUsers(data) })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'audit') {
+      fetchAuditLogs().then(setAuditLogs).catch(() => {})
+    }
+  }, [tab])
 
   const filtered = users.filter(u => {
     const q = search.toLowerCase()
@@ -123,11 +133,16 @@ export default function UsersPage() {
     setShowPerm(true)
   }
 
-  const savePerm = () => {
+  const savePerm = async () => {
     if (!permTarget) return
-    setUsers(prev => prev.map(u => u.id === permTarget.id ? { ...u, permissions_override: permMap } : u))
-    setShowPerm(false)
-    toast(`Permissões de ${permTarget.name} atualizadas!`)
+    try {
+      await updateProfile(permTarget.id, { permissions_override: permMap })
+      setUsers(prev => prev.map(u => u.id === permTarget.id ? { ...u, permissions_override: permMap } : u))
+      setShowPerm(false)
+      toast(`Permissões de ${permTarget.name} atualizadas!`)
+    } catch {
+      toast('Erro ao salvar permissões.', 'error')
+    }
   }
 
   const resetPermToRole = () => {
@@ -146,41 +161,56 @@ export default function UsersPage() {
     }))
   }
 
-  const saveUser = () => {
+  const saveUser = async () => {
     if (!form.name.trim() || !form.email.trim()) { setFormErr('Nome e email são obrigatórios.'); return }
     if (!editingUser && form.password.length < 6) { setFormErr('Senha mínimo 6 caracteres.'); return }
     if (!editingUser && form.password !== form.password2) { setFormErr('Senhas não conferem.'); return }
-    if (!editingUser && users.some(u => u.email === form.email)) { setFormErr('Email já cadastrado.'); return }
-
-    if (editingUser) {
-      setUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, name: form.name, email: form.email, role: form.role, loja: form.loja || null, status: form.status } : u))
-      toast(`Usuário ${form.name} atualizado!`)
-    } else {
-      const ini = getInitials(form.name)
-      const col = AVATAR_COLORS[users.length % AVATAR_COLORS.length]
-      const newUser: Profile = {
-        id: 'u-' + Date.now(),
-        email: form.email,
-        name: form.name,
-        role: form.role,
-        loja: form.loja || null,
-        status: form.status,
-        avatar_color: col,
-        initials: ini,
-        permissions_override: null,
-        created_at: new Date().toISOString(),
-        last_login: null,
-        created_by: me?.id || null,
+    setSaving(true)
+    setFormErr('')
+    try {
+      if (editingUser) {
+        const updated = await updateProfile(editingUser.id, {
+          name: form.name, role: form.role,
+          loja: form.loja || null, status: form.status,
+        })
+        setUsers(prev => prev.map(u => u.id === editingUser.id ? updated : u))
+        toast(`Usuário ${form.name} atualizado!`)
+      } else {
+        // Create auth user via Supabase signUp
+        const { data, error } = await supabase.auth.signUp({ email: form.email, password: form.password })
+        if (error) { setFormErr(error.message); setSaving(false); return }
+        const uid = data.user?.id
+        if (!uid) { setFormErr('Erro ao criar usuário.'); setSaving(false); return }
+        const ini = getInitials(form.name)
+        const col = AVATAR_COLORS[users.length % AVATAR_COLORS.length]
+        const profile = await upsertProfile({
+          id: uid, email: form.email, name: form.name,
+          role: form.role, loja: form.loja || null, status: form.status,
+          avatar_color: col, initials: ini,
+          permissions_override: null,
+          created_at: new Date().toISOString(), last_login: null,
+          created_by: me?.id || null,
+        })
+        setUsers(prev => [profile, ...prev])
+        toast(`Usuário ${form.name} cadastrado!`)
       }
-      setUsers(prev => [newUser, ...prev])
-      toast(`Usuário ${form.name} cadastrado!`)
+      setShowForm(false)
+    } catch (err: any) {
+      setFormErr(err?.message || 'Erro ao salvar.')
+    } finally {
+      setSaving(false)
     }
-    setShowForm(false)
   }
 
-  const deleteUser = (u: Profile) => {
-    setUsers(prev => prev.filter(x => x.id !== u.id))
-    toast(`Usuário ${u.name} removido.`, 'error')
+  const deleteUser = async (u: Profile) => {
+    try {
+      // Soft delete: mark as inactive (auth user deletion requires admin API)
+      const updated = await updateProfile(u.id, { status: 'inactive' })
+      setUsers(prev => prev.map(x => x.id === u.id ? updated : x))
+      toast(`Usuário ${u.name} desativado.`, 'error')
+    } catch {
+      toast('Erro ao desativar usuário.', 'error')
+    }
   }
 
   const gerarProv = () => {
@@ -418,16 +448,19 @@ export default function UsersPage() {
             <span className="badge bg-gr">Últimas 24h</span>
           </div>
           <div className="card-bd">
-            {AUDIT_MOCK.map(a => (
+            {auditLogs.length === 0 && (
+              <div style={{ padding: 28, textAlign: 'center', color: 'var(--muted)', fontSize: 12 }}>
+                Nenhum registro encontrado — logs aparecem após ações reais no sistema.
+              </div>
+            )}
+            {auditLogs.map((a: any) => (
               <div className="sl-i" key={a.id}>
-                <div className="sl-ico" style={{ background: a.col }}>
-                  {a.icon === 'success' ? <CheckCircle size={11} color={a.icol} />
-                    : a.icon === 'error' ? <XCircle size={11} color={a.icol} />
-                    : <Edit2 size={11} color={a.icol} />}
+                <div className="sl-ico" style={{ background: '#DBEAFE' }}>
+                  <Edit2 size={11} color="#1E40AF" />
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 600 }}>{a.msg}</div>
-                  <div style={{ fontSize: 10, color: 'var(--muted)' }}>{a.detail}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600 }}>{a.action} — {a.user_name}</div>
+                  <div style={{ fontSize: 10, color: 'var(--muted)' }}>{new Date(a.created_at).toLocaleString('pt-BR')} · {a.module} {a.detail ? '· ' + a.detail : ''}</div>
                 </div>
               </div>
             ))}
@@ -443,7 +476,7 @@ export default function UsersPage() {
         footer={
           <>
             <button className="btn bo" onClick={() => setShowForm(false)}>Cancelar</button>
-            <button className="btn bp" onClick={saveUser}>Salvar</button>
+            <button className="btn bp" onClick={saveUser} disabled={saving}>{saving && <Loader2 size={12} className="spin" />}Salvar</button>
           </>
         }
       >
