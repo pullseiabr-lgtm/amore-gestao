@@ -1,4 +1,4 @@
-import { Menu, FileText, Plus } from 'lucide-react'
+import { Menu, FileText, Plus, FlaskConical } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -23,7 +23,7 @@ const ACT_MAP: Record<string, string> = {
 
 export default function Topbar({ title, activePage, onHamburger, onPrimary, primaryLabel }: TopbarProps) {
   const { theme } = useTheme()
-  const { user, can } = useAuth()
+  const { user, can, isDemoMode } = useAuth()
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
   const actLabel = primaryLabel || ACT_MAP[activePage]
   const showAct = actLabel && isAdmin && can(activePage, 'create')
@@ -34,6 +34,11 @@ export default function Topbar({ title, activePage, onHamburger, onPrimary, prim
         <Menu size={16} />
       </button>
       <div className="tb-title">{title}</div>
+      {isDemoMode && (
+        <span className="badge bg-y" style={{ fontSize: 10, gap: 4, display: 'flex', alignItems: 'center' }}>
+          <FlaskConical size={10} /> Demo
+        </span>
+      )}
 
       {user?.role === 'admin' || user?.role === 'super_admin' ? (
         <select className="tb-sel">

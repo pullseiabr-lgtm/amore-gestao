@@ -81,12 +81,20 @@ create table if not exists profiles (
   created_by          uuid references profiles(id)
 );
 
+-- Security-definer helper to check admin role without RLS recursion
+create or replace function is_admin()
+returns boolean
+language sql security definer stable
+as $$
+  select exists (select 1 from profiles where id = auth.uid() and role in ('super_admin','admin'))
+$$;
+
 -- RLS
 alter table profiles enable row level security;
-create policy "profiles_self_read" on profiles for select using (auth.uid() = id);
-create policy "profiles_admin_all" on profiles for all using (
-  exists (select 1 from profiles p where p.id = auth.uid() and p.role in ('super_admin','admin'))
-);
+create policy "profiles_select" on profiles for select using (auth.uid() is not null);
+create policy "profiles_insert" on profiles for insert with check (auth.uid() = id);
+create policy "profiles_update" on profiles for update using (auth.uid() = id or is_admin());
+create policy "profiles_delete" on profiles for delete using (is_admin());
 
 -- ── AUDIT LOGS ─────────────────────────────────────────────
 create table if not exists audit_logs (
@@ -102,9 +110,7 @@ create table if not exists audit_logs (
 );
 
 alter table audit_logs enable row level security;
-create policy "audit_admin_read" on audit_logs for select using (
-  exists (select 1 from profiles p where p.id = auth.uid() and p.role in ('super_admin','admin'))
-);
+create policy "audit_admin_read" on audit_logs for select using (is_admin());
 create policy "audit_insert_all" on audit_logs for insert with check (auth.uid() is not null);
 
 -- ── PENDENCIAS ─────────────────────────────────────────────

@@ -11,7 +11,15 @@ node_modules
 dist
 dist-ssr
 *.local
-*.env
+
+# Environment variables (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# Seed/migration scripts (contain credentials)
+seed.mjs
+supabase/
 
 # Editor directories and files
 .vscode/*
