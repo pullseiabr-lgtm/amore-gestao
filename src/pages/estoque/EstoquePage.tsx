@@ -236,23 +236,39 @@ function TabLista({ loja }: { loja: string }) {
 
 function TabCMV({ loja }: { loja: string }) {
   const [movs, setMovs] = useState<EstoqueMovimentacao[]>([])
+  const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
   const [loading, setLoading] = useState(true)
   const [faturamento, setFaturamento] = useState('')
   const [cmvResult, setCmvResult] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
-    fetchEstoqueMovimentacoes(loja).then(setMovs).catch(() => {}).finally(() => setLoading(false))
+    Promise.all([
+      fetchEstoqueMovimentacoes(loja),
+      fetchEstoqueProdutos(loja),
+    ]).then(([m, p]) => { setMovs(m); setProdutos(p) }).catch(() => {}).finally(() => setLoading(false))
   }, [loja])
 
-  const entradas = movs.filter(m => m.tipo === 'entrada').reduce((s, m) => s + m.quantidade, 0)
-  const saidas = movs.filter(m => m.tipo === 'saida').reduce((s, m) => s + m.quantidade, 0)
+  // Mapa produto_nome → preco_unitario para calcular valores monetários
+  const precoMap = Object.fromEntries(produtos.map(p => [p.nome, p.preco_unitario]))
+
+  const entradasVal = movs
+    .filter(m => m.tipo === 'entrada')
+    .reduce((s, m) => s + m.quantidade * (precoMap[m.produto_nome] ?? 0), 0)
+
+  const saidasVal = movs
+    .filter(m => m.tipo === 'saida')
+    .reduce((s, m) => s + m.quantidade * (precoMap[m.produto_nome] ?? 0), 0)
+
+  const estoqueAtual = produtos.reduce((s, p) => s + p.nivel_atual * p.preco_unitario, 0)
+
+  const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
   const calcular = () => {
     const fat = parseFloat(faturamento.replace(',', '.'))
-    if (!fat) return
-    const cmv = (saidas / fat * 100).toFixed(1)
-    setCmvResult(`${cmv}%`)
+    if (!fat || !saidasVal) return
+    const pct = (saidasVal / fat * 100).toFixed(1)
+    setCmvResult(`${pct}%`)
   }
 
   return (
@@ -260,26 +276,26 @@ function TabCMV({ loja }: { loja: string }) {
       <div className="kpi-grid" style={{ marginBottom: 14 }}>
         <div className="kpi">
           <div className="kpi-ac" style={{ background: 'var(--blue)' }} />
-          <div className="kpi-lbl">Estoque Inicial</div>
-          <div className="kpi-val">R$ 0,00</div>
-          <div className="kpi-sub">início do período</div>
+          <div className="kpi-lbl">Estoque Atual (R$)</div>
+          <div className="kpi-val" style={{ fontSize: 18 }}>{loading ? '—' : fmtBRL(estoqueAtual)}</div>
+          <div className="kpi-sub">valor total em estoque</div>
         </div>
         <div className="kpi">
           <div className="kpi-ac" style={{ background: 'var(--success)' }} />
-          <div className="kpi-lbl">Total em Compras (entradas)</div>
-          <div className="kpi-val">{entradas.toLocaleString('pt-BR')}</div>
-          <div className="kpi-sub">unidades adicionadas</div>
+          <div className="kpi-lbl">Entradas no Período (R$)</div>
+          <div className="kpi-val" style={{ fontSize: 18, color: 'var(--success)' }}>{loading ? '—' : fmtBRL(entradasVal)}</div>
+          <div className="kpi-sub">compras e reposições</div>
         </div>
         <div className="kpi">
           <div className="kpi-ac" style={{ background: 'var(--warning)' }} />
-          <div className="kpi-lbl">Estoque Final</div>
-          <div className="kpi-val">R$ 0,00</div>
-          <div className="kpi-sub">fim do período</div>
+          <div className="kpi-lbl">Saídas no Período (R$)</div>
+          <div className="kpi-val" style={{ fontSize: 18, color: 'var(--warning)' }}>{loading ? '—' : fmtBRL(saidasVal)}</div>
+          <div className="kpi-sub">consumo e perdas</div>
         </div>
         <div className="kpi">
           <div className="kpi-ac" style={{ background: 'var(--bordo)' }} />
-          <div className="kpi-lbl">Custo da Mercadoria Vendida</div>
-          <div className="kpi-val">{cmvResult ?? '—'}</div>
+          <div className="kpi-lbl">% CMV sobre Faturamento</div>
+          <div className="kpi-val" style={{ color: cmvResult ? 'var(--bordo)' : 'var(--muted)' }}>{cmvResult ?? '—'}</div>
           <div className="kpi-sub" style={{ display: 'flex', gap: 5, alignItems: 'center', marginTop: 6 }}>
             <input className="inp" style={{ flex: 1, padding: '4px 8px', fontSize: 11 }} placeholder="Faturamento (R$)" value={faturamento} onChange={e => setFaturamento(e.target.value)} />
             <button className="btn bp bsm" onClick={calcular}><Calculator size={10} /> Calcular</button>
@@ -296,22 +312,30 @@ function TabCMV({ loja }: { loja: string }) {
             <div className="empty"><Loader size={24} className="spin" /></div>
           ) : movs.length === 0 ? (
             <div className="empty"><ArrowLeftRight size={28} /><div>Nenhuma movimentação no período</div></div>
-          ) : movs.map((m, i) => (
-            <div key={i} className="sl-i">
-              <div className="sl-ico" style={{ background: m.tipo === 'entrada' ? '#D1FAE5' : '#FEE2E2' }}>
-                {m.tipo === 'entrada' ? <CheckCircle size={11} style={{ color: 'var(--success)' }} /> : <XCircle size={11} style={{ color: 'var(--danger)' }} />}
+          ) : movs.map((m, i) => {
+            const valor = m.quantidade * (precoMap[m.produto_nome] ?? 0)
+            return (
+              <div key={i} className="sl-i">
+                <div className="sl-ico" style={{ background: m.tipo === 'entrada' ? '#D1FAE5' : '#FEE2E2' }}>
+                  {m.tipo === 'entrada' ? <CheckCircle size={11} style={{ color: 'var(--success)' }} /> : <XCircle size={11} style={{ color: 'var(--danger)' }} />}
+                </div>
+                <div style={{ fontSize: 12, flex: 1 }}>
+                  No dia <strong>{fmtDate(m.created_at)}</strong>, foi{' '}
+                  <span style={{ color: m.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
+                    {m.tipo === 'entrada' ? 'adicionado' : 'removido'}
+                  </span>{' '}
+                  <strong>{m.quantidade} {m.unidade}</strong> de <strong>{m.produto_nome}</strong> na filial{' '}
+                  <span style={{ color: 'var(--blue)', fontWeight: 500 }}>{m.loja}</span>.
+                  {m.motivo && <span style={{ color: 'var(--muted)', fontSize: 10 }}> ({m.motivo})</span>}
+                </div>
+                {valor > 0 && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: m.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', whiteSpace: 'nowrap' }}>
+                    {m.tipo === 'entrada' ? '+' : '-'}{fmtBRL(valor)}
+                  </span>
+                )}
               </div>
-              <div style={{ fontSize: 12 }}>
-                No dia <strong>{fmtDate(m.created_at)}</strong>, foi{' '}
-                <span style={{ color: m.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
-                  {m.tipo === 'entrada' ? 'adicionado' : 'removido'}
-                </span>{' '}
-                <strong>{m.quantidade} {m.unidade}</strong> <strong>{m.produto_nome}</strong> na filial{' '}
-                <span style={{ color: 'var(--blue)', fontWeight: 500 }}>{m.loja}</span>.
-                {m.motivo && <span style={{ color: 'var(--muted)', fontSize: 10 }}> ({m.motivo})</span>}
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </div>
@@ -476,20 +500,28 @@ function TabMovimentacoes({ loja }: { loja: string }) {
     setSaving(true)
     try {
       const prod = produtos.find(p => p.id === form.produto_id)
+      const qtd = parseFloat(form.quantidade)
       await insertEstoqueMovimentacao({
         loja: loja === 'Todas as Lojas' ? 'AMORE COSTA DOURADA' : loja,
         produto_id: form.produto_id || null,
         produto_nome: form.produto_nome,
         tipo: form.tipo,
-        quantidade: parseFloat(form.quantidade),
+        quantidade: qtd,
         unidade: prod?.gramatura.replace('(s)', '') || 'un',
         motivo: form.motivo || null,
         created_by: user?.name || null,
       })
+      // Atualiza nivel_atual do produto no Supabase
+      if (prod && form.produto_id) {
+        const delta = form.tipo === 'entrada' ? qtd : -qtd
+        const novoNivel = Math.max(0, prod.nivel_atual + delta)
+        await updateEstoqueProduto(form.produto_id, { nivel_atual: novoNivel })
+      }
       setShowModal(false)
+      setForm({ produto_id: '', produto_nome: '', tipo: 'entrada', quantidade: '', motivo: '' })
       await load()
       if (diaSel) await selecionarDia(diaSel)
-    } catch {}
+    } catch (e) { console.error(e) }
     setSaving(false)
   }
 
@@ -621,7 +653,7 @@ function TabContagem({ loja }: { loja: string }) {
       const lojaReal = loja === 'Todas as Lojas' ? 'AMORE COSTA DOURADA' : loja
       const contagem = await insertEstoqueContagem({ loja: lojaReal, tipo, data_contagem: new Date().toISOString().slice(0, 10), created_by: user?.name || null })
       const itens: Omit<EstoqueContagemItem, 'id' | 'created_at'>[] = filtrados
-        .filter(p => (contagens[p.id] ?? 0) > 0)
+        .filter(p => (contagens[p.id] ?? 0) >= 0)
         .map(p => ({
           contagem_id: contagem.id,
           produto_id: p.id,
@@ -630,9 +662,15 @@ function TabContagem({ loja }: { loja: string }) {
           unidade: p.gramatura.replace('(s)', ''),
         }))
       if (itens.length) await upsertEstoqueContagemItens(itens)
+      // Atualiza nivel_atual de cada produto com a quantidade contada
+      await Promise.all(
+        filtrados.map(p =>
+          updateEstoqueProduto(p.id, { nivel_atual: contagens[p.id] ?? 0 })
+        )
+      )
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
-    } catch {}
+    } catch (e) { console.error(e) }
     setSaving(false)
   }
 
