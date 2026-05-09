@@ -238,16 +238,7 @@ function TabLista() {
 }
 
 function TabCMV() {
-  const [estoqueInicial, setEstoqueInicial] = useState('')
   const [faturamento, setFaturamento] = useState('')
-
-  const cmvCalc = () => {
-    const ei = parseFloat(estoqueInicial.replace(',', '.') || '0')
-    const fat = parseFloat(faturamento.replace(',', '.') || '0')
-    if (!fat) return '—'
-    const perc = ((ei / fat) * 100).toFixed(1)
-    return `${perc}%`
-  }
 
   const todasMovs = MOVIMENTACOES_DIAS.flatMap(d =>
     d.movs.map(m => ({ ...m, data: d.data }))
