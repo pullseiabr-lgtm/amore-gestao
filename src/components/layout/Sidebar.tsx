@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home } from 'lucide-react'
+import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 
@@ -18,6 +18,7 @@ const MENU: NavItem[] = [
   { id: 'marketing', label: 'Marketing 360°', icon: <Megaphone size={13} /> },
   { id: 'vendas', label: 'Vendas', icon: <TrendingUp size={13} /> },
   { id: 'compras', label: 'Compras & Estoque', icon: <ShoppingCart size={13} /> },
+  { id: 'estoque', label: 'Estoque', icon: <Package size={13} /> },
   { id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={13} /> },
   { id: 'cozinha', label: 'Cozinha', icon: <ChefHat size={13} /> },
   { id: 'salao', label: 'Salão', icon: <Coffee size={13} /> },
