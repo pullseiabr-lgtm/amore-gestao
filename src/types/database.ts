@@ -176,6 +176,59 @@ export interface Pendencia {
   updated_at: string
 }
 
+// ── Estoque ──────────────────────────────────────────────────
+
+export type NivelStatus = 'Crítico' | 'Repor' | 'Ok' | 'Ideal'
+export type MovTipo = 'entrada' | 'saida'
+export type ContagemTipo = 'regular' | 'fechamento' | 'abertura'
+
+export interface EstoqueProduto {
+  id: string
+  loja: string
+  nome: string
+  gramatura: string
+  categoria: string
+  nivel_atual: number
+  nivel_minimo: number
+  nivel_ideal: number
+  preco_unitario: number
+  ativo: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface EstoqueMovimentacao {
+  id: string
+  loja: string
+  produto_id: string | null
+  produto_nome: string
+  tipo: MovTipo
+  quantidade: number
+  unidade: string
+  motivo: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export interface EstoqueContagem {
+  id: string
+  loja: string
+  tipo: ContagemTipo
+  data_contagem: string
+  created_by: string | null
+  created_at: string
+}
+
+export interface EstoqueContagemItem {
+  id: string
+  contagem_id: string
+  produto_id: string | null
+  produto_nome: string
+  quantidade_contada: number
+  unidade: string
+  created_at: string
+}
+
 export interface Colaborador {
   id: string
   nome: string

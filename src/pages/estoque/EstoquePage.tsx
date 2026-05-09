@@ -1,117 +1,22 @@
-import { useState } from 'react'
-import { Search, Package, TrendingDown, History, ArrowLeftRight, ClipboardList, Download, Plus, ChevronRight, CheckCircle, XCircle, Calculator } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Search, Package, TrendingDown, History, ArrowLeftRight, ClipboardList, Download, Plus, ChevronRight, CheckCircle, XCircle, Calculator, Loader } from 'lucide-react'
+import { useAuth } from '../../contexts/AuthContext'
+import {
+  fetchEstoqueProdutos, insertEstoqueProduto, updateEstoqueProduto,
+  fetchEstoqueMovimentacoes, fetchEstoqueMovimentacoesDias, insertEstoqueMovimentacao,
+  fetchEstoqueContagens, insertEstoqueContagem,
+  fetchEstoqueContagemItens, upsertEstoqueContagemItens,
+} from '../../lib/db'
+import type { EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, NivelStatus } from '../../types/database'
 
-type NivelStatus = 'Crítico' | 'Repor' | 'Ok' | 'Ideal'
-type TipoContagem = 'Contagem regular' | 'Contagem de fechamento' | 'Contagem de abertura'
+// ── helpers ────────────────────────────────────────────────
 
-interface ProdutoEstoque {
-  nome: string
-  gramatura: string
-  filial: string
-  nivel: NivelStatus
-  minimo: number
-  ideal: number
+function nivelStatus(p: EstoqueProduto): NivelStatus {
+  if (p.nivel_atual <= 0 || p.nivel_atual < p.nivel_minimo) return 'Crítico'
+  if (p.nivel_atual < p.nivel_minimo * 1.5) return 'Repor'
+  if (p.nivel_atual >= p.nivel_ideal) return 'Ideal'
+  return 'Ok'
 }
-
-interface Movimentacao {
-  tipo: 'entrada' | 'saida'
-  produto: string
-  quantidade: string
-  filial: string
-  hora: string
-}
-
-interface DiaMovimentacao {
-  data: string
-  dataISO: string
-  movs: Movimentacao[]
-}
-
-interface ContHistorico {
-  data: string
-  tipo: string
-  filial: string
-  produtos: number
-}
-
-const PRODUTOS: ProdutoEstoque[] = [
-  { nome: 'ABOBRINHA 1 kg', gramatura: 'Quilograma(s)', filial: 'AMORE COSTA DOURADA', nivel: 'Crítico', minimo: 1.51, ideal: 3 },
-  { nome: 'ACELGA MOI', gramatura: 'Unidade(s)', filial: 'AMORE COSTA DOURADA', nivel: 'Crítico', minimo: 1, ideal: 2 },
-  { nome: 'ADOÇANTE 200 ML', gramatura: 'Unidade(s)', filial: 'AMORE COSTA DOURADA', nivel: 'Crítico', minimo: 2, ideal: 4 },
-  { nome: 'ADOÇANTE SACHÉ – UN CAIXINHA', gramatura: 'Unidade(s)', filial: 'AMORE COSTA DOURADA', nivel: 'Repor', minimo: 5, ideal: 10 },
-  { nome: 'AGUA COM GAS 500 ML', gramatura: 'Unidade(s)', filial: 'AMORE COSTA DOURADA', nivel: 'Ok', minimo: 10, ideal: 48 },
-  { nome: 'AGUA SANTIAGO 1LT', gramatura: 'Unidade(s)', filial: 'AMORE COSTA DOURADA', nivel: 'Ok', minimo: 10, ideal: 48 },
-  { nome: 'AGUA SEM GAS 500 ML', gramatura: 'Unidade(s)', filial: 'AMORE COSTA DOURADA', nivel: 'Ok', minimo: 10, ideal: 48 },
-  { nome: 'ALCOOL GEL 500 ML', gramatura: 'Unidade(s)', filial: 'AMORE COSTA DOURADA', nivel: 'Crítico', minimo: 2, ideal: 4 },
-  { nome: 'ALCOOL LIQUIDO 1LTR', gramatura: 'Unidade(s)', filial: 'AMORE COSTA DOURADA', nivel: 'Crítico', minimo: 2, ideal: 5 },
-  { nome: 'ALFACE AMERICANA MOI', gramatura: 'Unidade(s)', filial: 'AMORE COSTA DOURADA', nivel: 'Crítico', minimo: 3, ideal: 8 },
-  { nome: 'ALFACE CRESPA MOI', gramatura: 'Unidade(s)', filial: 'AMORE COSTA DOURADA', nivel: 'Crítico', minimo: 3, ideal: 8 },
-  { nome: 'ALFACE ROXA MOI', gramatura: 'Unidade(s)', filial: 'AMORE COSTA DOURADA', nivel: 'Crítico', minimo: 2, ideal: 4 },
-  { nome: 'ALHO NAIF (8 A 9 FOLHA)', gramatura: 'Unidade(s)', filial: 'AMORE COSTA DOURADA', nivel: 'Repor', minimo: 1, ideal: 3 },
-  { nome: 'ALHO 140', gramatura: 'Quilograma(s)', filial: 'AMORE COSTA DOURADA', nivel: 'Crítico', minimo: 1, ideal: 2 },
-  { nome: 'AMACANTE DE CARNES NO...', gramatura: 'Unidade(s)', filial: 'AMORE COSTA DOURADA', nivel: 'Crítico', minimo: 1, ideal: 2 },
-]
-
-const MOVIMENTACOES_DIAS: DiaMovimentacao[] = [
-  {
-    data: '09/05/2026',
-    dataISO: '2026-05-09',
-    movs: [
-      { tipo: 'entrada', produto: 'ARROZ INTEGRAL 1KG – PCT', quantidade: '1 un', filial: 'AMORE COSTA DOURADA', hora: '08:12' },
-      { tipo: 'saida', produto: 'AÇUCAR CRISTAL PCT 1 KG', quantidade: '2 un', filial: 'AMORE COSTA DOURADA', hora: '08:15' },
-      { tipo: 'entrada', produto: 'ARROZ BIRO 1KG', quantidade: '3 un', filial: 'AMORE COSTA DOURADA', hora: '09:00' },
-      { tipo: 'entrada', produto: 'BOBINA TERM STYXTEH ÉTCON', quantidade: '16 un', filial: 'AMORE COSTA DOURADA', hora: '09:30' },
-      { tipo: 'entrada', produto: 'BOBINA PORCINHA GRANDE 1 UNIDADE', quantidade: '5 un', filial: 'AMORE COSTA DOURADA', hora: '09:45' },
-      { tipo: 'saida', produto: 'ARROZ BRANCO TIRO – GRÃO DE OURO', quantidade: '8 un', filial: 'AMORE COSTA DOURADA', hora: '10:00' },
-      { tipo: 'entrada', produto: 'BOBINA BRANCO TIRO 1KG', quantidade: '8 un', filial: 'AMORE COSTA DOURADA', hora: '10:15' },
-      { tipo: 'saida', produto: 'BOBINA BRANCO MÉDIA 1 UNIDADE', quantidade: '19 un', filial: 'AMORE COSTA DOURADA', hora: '10:30' },
-      { tipo: 'saida', produto: '1 AMACANTE DE CARNES NO...', quantidade: '7 un', filial: 'AMORE COSTA DOURADA', hora: '11:00' },
-    ]
-  },
-  {
-    data: '06/05/2026',
-    dataISO: '2026-05-06',
-    movs: [
-      { tipo: 'entrada', produto: 'ALFACE AMERICANA MOI', quantidade: '5 un', filial: 'AMORE COSTA DOURADA', hora: '07:45' },
-      { tipo: 'saida', produto: 'ABOBRINHA 1 kg', quantidade: '2 un', filial: 'AMORE COSTA DOURADA', hora: '08:00' },
-      { tipo: 'entrada', produto: 'ALCOOL GEL 500 ML', quantidade: '4 un', filial: 'AMORE COSTA DOURADA', hora: '08:30' },
-    ]
-  },
-  {
-    data: '05/05/2026',
-    dataISO: '2026-05-05',
-    movs: [
-      { tipo: 'entrada', produto: 'AGUA SANTIAGO 1LT', quantidade: '48 un', filial: 'AMORE COSTA DOURADA', hora: '09:00' },
-      { tipo: 'saida', produto: 'ALCOOL LIQUIDO 1LTR', quantidade: '1 un', filial: 'AMORE COSTA DOURADA', hora: '13:00' },
-    ]
-  },
-  {
-    data: '04/05/2026',
-    dataISO: '2026-05-04',
-    movs: [
-      { tipo: 'saida', produto: 'ALFACE CRESPA MOI', quantidade: '8 un', filial: 'AMORE COSTA DOURADA', hora: '07:30' },
-      { tipo: 'entrada', produto: 'ADOÇANTE 200 ML', quantidade: '6 un', filial: 'AMORE COSTA DOURADA', hora: '08:00' },
-    ]
-  },
-  {
-    data: '30/04/2026',
-    dataISO: '2026-04-30',
-    movs: [
-      { tipo: 'entrada', produto: 'AGUA COM GAS 500 ML', quantidade: '24 un', filial: 'AMORE COSTA DOURADA', hora: '10:00' },
-      { tipo: 'saida', produto: 'ALHO 140', quantidade: '1 un', filial: 'AMORE COSTA DOURADA', hora: '11:30' },
-    ]
-  },
-  {
-    data: '28/04/2026',
-    dataISO: '2026-04-28',
-    movs: [
-      { tipo: 'entrada', produto: 'ALFACE ROXA MOI', quantidade: '4 un', filial: 'AMORE COSTA DOURADA', hora: '08:00' },
-      { tipo: 'saida', produto: 'ACELGA MOI', quantidade: '3 un', filial: 'AMORE COSTA DOURADA', hora: '12:00' },
-    ]
-  },
-]
-
-const HISTORICO_CONTAGENS: ContHistorico[] = []
 
 const NIVEL_BADGE: Record<NivelStatus, string> = {
   'Crítico': 'bg-r',
@@ -120,19 +25,79 @@ const NIVEL_BADGE: Record<NivelStatus, string> = {
   'Ideal': 'bg-b',
 }
 
-const CATEGORIAS = ['Açaí', 'Bebidas', 'Carnes', 'Condimentos', 'Frutas', 'Higiene', 'Laticínios', 'Legumes', 'Limpeza', 'Proteínas']
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString('pt-BR')
+}
 
-function TabLista() {
+const CATEGORIAS = ['Açaí', 'Bebidas', 'Carnes', 'Condimentos', 'Embalagens', 'Frutas', 'Graos', 'Higiene', 'Laticínios', 'Legumes', 'Limpeza', 'Proteínas']
+
+// ── Tab Lista ──────────────────────────────────────────────
+
+function TabLista({ loja }: { loja: string }) {
+  const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
+  const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
   const [ordenar, setOrdenar] = useState('Nome (A-Z)')
   const [categoria, setCategoria] = useState('')
+  const [showModal, setShowModal] = useState(false)
+  const [editProduto, setEditProduto] = useState<EstoqueProduto | null>(null)
+  const [form, setForm] = useState({ nome: '', gramatura: 'Unidade(s)', categoria: 'Geral', nivel_minimo: '', nivel_ideal: '', preco_unitario: '' })
+  const [saving, setSaving] = useState(false)
 
-  const filtrados = PRODUTOS.filter(p =>
-    p.nome.toLowerCase().includes(busca.toLowerCase())
-  )
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { setProdutos(await fetchEstoqueProdutos(loja)) } catch {}
+    setLoading(false)
+  }, [loja])
 
-  const criticos = PRODUTOS.filter(p => p.nivel === 'Crítico').length
-  const repor = PRODUTOS.filter(p => p.nivel === 'Repor').length
+  useEffect(() => { load() }, [load])
+
+  const filtrados = produtos
+    .filter(p => p.nome.toLowerCase().includes(busca.toLowerCase()))
+    .filter(p => !categoria || p.categoria === categoria)
+    .sort((a, b) => ordenar === 'Nome (Z-A)' ? b.nome.localeCompare(a.nome) : a.nome.localeCompare(b.nome))
+
+  const criticos = produtos.filter(p => nivelStatus(p) === 'Crítico').length
+  const repor = produtos.filter(p => nivelStatus(p) === 'Repor').length
+  const valorTotal = produtos.reduce((s, p) => s + p.nivel_atual * p.preco_unitario, 0)
+
+  const openNovo = () => {
+    setEditProduto(null)
+    setForm({ nome: '', gramatura: 'Unidade(s)', categoria: 'Geral', nivel_minimo: '', nivel_ideal: '', preco_unitario: '' })
+    setShowModal(true)
+  }
+
+  const openEdit = (p: EstoqueProduto) => {
+    setEditProduto(p)
+    setForm({ nome: p.nome, gramatura: p.gramatura, categoria: p.categoria, nivel_minimo: String(p.nivel_minimo), nivel_ideal: String(p.nivel_ideal), preco_unitario: String(p.preco_unitario) })
+    setShowModal(true)
+  }
+
+  const salvar = async () => {
+    if (!form.nome.trim()) return
+    setSaving(true)
+    try {
+      const payload = {
+        loja: loja === 'Todas as Lojas' ? 'AMORE COSTA DOURADA' : loja,
+        nome: form.nome.trim().toUpperCase(),
+        gramatura: form.gramatura,
+        categoria: form.categoria,
+        nivel_atual: editProduto?.nivel_atual ?? 0,
+        nivel_minimo: parseFloat(form.nivel_minimo) || 0,
+        nivel_ideal: parseFloat(form.nivel_ideal) || 0,
+        preco_unitario: parseFloat(form.preco_unitario) || 0,
+        ativo: true,
+      }
+      if (editProduto) {
+        await updateEstoqueProduto(editProduto.id, payload)
+      } else {
+        await insertEstoqueProduto(payload)
+      }
+      setShowModal(false)
+      await load()
+    } catch {}
+    setSaving(false)
+  }
 
   return (
     <div>
@@ -140,13 +105,13 @@ function TabLista() {
         <div className="kpi">
           <div className="kpi-ac" style={{ background: 'var(--bordo)' }} />
           <div className="kpi-lbl">Valor em Estoque (mês)</div>
-          <div className="kpi-val">R$ 0,00</div>
-          <div className="kpi-sub">AMORE COSTA DOURADA</div>
+          <div className="kpi-val">R$ {valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+          <div className="kpi-sub">{loja}</div>
         </div>
         <div className="kpi">
           <div className="kpi-ac" style={{ background: 'var(--blue)' }} />
           <div className="kpi-lbl">Total de Produtos</div>
-          <div className="kpi-val">273</div>
+          <div className="kpi-val">{produtos.length}</div>
           <div className="kpi-sub">cadastrados no estoque</div>
         </div>
         <div className="kpi">
@@ -166,83 +131,129 @@ function TabLista() {
       <div className="card">
         <div className="card-hd">
           <span className="card-tt">📦 Lista de Estoque</span>
-          <button className="btn bp bsm">
-            <Plus size={11} /> Configurar Estoque de Produto
-          </button>
+          <button className="btn bp bsm" onClick={openNovo}><Plus size={11} /> Adicionar Produto</button>
         </div>
 
         <div style={{ padding: '10px 15px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <div className="sw-wrap" style={{ flex: 1, minWidth: 200 }}>
             <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
-            <input
-              className="srch"
-              placeholder="Buscar por nome..."
-              value={busca}
-              onChange={e => setBusca(e.target.value)}
-            />
+            <input className="srch" placeholder="Buscar por nome..." value={busca} onChange={e => setBusca(e.target.value)} />
           </div>
           <select className="flt" value={ordenar} onChange={e => setOrdenar(e.target.value)}>
             <option>Nome (A-Z)</option>
             <option>Nome (Z-A)</option>
-            <option>Nível Crítico primeiro</option>
-            <option>Estoque Mínimo</option>
           </select>
           <select className="flt" value={categoria} onChange={e => setCategoria(e.target.value)}>
-            <option value="">Selecione as categorias</option>
+            <option value="">Todas as categorias</option>
             {CATEGORIAS.map(c => <option key={c}>{c}</option>)}
           </select>
-          {(busca || categoria) && (
-            <button className="btn bo bsm" onClick={() => { setBusca(''); setCategoria('') }}>
-              Limpar filtros
-            </button>
-          )}
+          {(busca || categoria) && <button className="btn bo bsm" onClick={() => { setBusca(''); setCategoria('') }}>Limpar filtros</button>}
         </div>
 
         <div className="tw">
-          <table>
-            <thead>
-              <tr>
-                <th><input type="checkbox" /></th>
-                <th>Produto</th>
-                <th>Gramatura</th>
-                <th>Filial</th>
-                <th>Nível de Estoque</th>
-                <th>Estoque Mínimo</th>
-                <th>Estoque Ideal</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtrados.map((p, i) => (
-                <tr key={i}>
-                  <td><input type="checkbox" /></td>
-                  <td><strong>{p.nome}</strong></td>
-                  <td style={{ color: 'var(--blue)', fontWeight: 500 }}>{p.gramatura}</td>
-                  <td>{p.filial}</td>
-                  <td><span className={`badge ${NIVEL_BADGE[p.nivel]}`}>{p.nivel}</span></td>
-                  <td>{p.minimo.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
-                  <td>{p.ideal}</td>
+          {loading ? (
+            <div className="empty"><Loader size={24} className="spin" /><div style={{ marginTop: 8 }}>Carregando...</div></div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th>Gramatura</th>
+                  <th>Filial</th>
+                  <th>Nível Atual</th>
+                  <th>Nível de Estoque</th>
+                  <th>Mínimo</th>
+                  <th>Ideal</th>
+                  <th>Preço Unit.</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {filtrados.length === 0 && (
-            <div className="empty">
-              <Package size={36} />
-              <div>Nenhum produto encontrado</div>
-            </div>
+              </thead>
+              <tbody>
+                {filtrados.map(p => {
+                  const nivel = nivelStatus(p)
+                  return (
+                    <tr key={p.id}>
+                      <td><strong>{p.nome}</strong><div style={{ fontSize: 10, color: 'var(--muted)' }}>{p.categoria}</div></td>
+                      <td style={{ color: 'var(--blue)', fontWeight: 500 }}>{p.gramatura}</td>
+                      <td>{p.loja}</td>
+                      <td style={{ fontWeight: 700, color: nivel === 'Crítico' ? 'var(--danger)' : nivel === 'Repor' ? 'var(--warning)' : 'var(--text)' }}>{p.nivel_atual}</td>
+                      <td><span className={`badge ${NIVEL_BADGE[nivel]}`}>{nivel}</span></td>
+                      <td>{p.nivel_minimo}</td>
+                      <td>{p.nivel_ideal}</td>
+                      <td>R$ {p.preco_unitario.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                      <td><div className="ab"><button className="ib" onClick={() => openEdit(p)} title="Editar">✏️</button></div></td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+          {!loading && filtrados.length === 0 && (
+            <div className="empty"><Package size={36} /><div>Nenhum produto encontrado</div></div>
           )}
         </div>
       </div>
+
+      {showModal && (
+        <div className="ov open" onClick={() => setShowModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="mhd">
+              <span className="mtt">{editProduto ? 'Editar Produto' : 'Novo Produto'}</span>
+              <button className="mx" onClick={() => setShowModal(false)}>✕</button>
+            </div>
+            <div className="mbd">
+              <div className="fg"><label className="fl">Nome <span className="rq">*</span></label><input className="inp" value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} /></div>
+              <div className="g2">
+                <div className="fg"><label className="fl">Gramatura</label>
+                  <select className="sel" value={form.gramatura} onChange={e => setForm(f => ({ ...f, gramatura: e.target.value }))}>
+                    <option>Unidade(s)</option><option>Quilograma(s)</option><option>Litro(s)</option><option>Pacote(s)</option><option>Caixa(s)</option><option>Grama(s)</option>
+                  </select>
+                </div>
+                <div className="fg"><label className="fl">Categoria</label>
+                  <select className="sel" value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}>
+                    {CATEGORIAS.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="g3">
+                <div className="fg"><label className="fl">Estoque Mínimo</label><input type="number" className="inp" value={form.nivel_minimo} onChange={e => setForm(f => ({ ...f, nivel_minimo: e.target.value }))} /></div>
+                <div className="fg"><label className="fl">Estoque Ideal</label><input type="number" className="inp" value={form.nivel_ideal} onChange={e => setForm(f => ({ ...f, nivel_ideal: e.target.value }))} /></div>
+                <div className="fg"><label className="fl">Preço Unit. (R$)</label><input type="number" className="inp" value={form.preco_unitario} onChange={e => setForm(f => ({ ...f, preco_unitario: e.target.value }))} /></div>
+              </div>
+            </div>
+            <div className="mft">
+              <button className="btn bo" onClick={() => setShowModal(false)}>Cancelar</button>
+              <button className="btn bp" onClick={salvar} disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function TabCMV() {
-  const [faturamento, setFaturamento] = useState('')
+// ── Tab CMV ────────────────────────────────────────────────
 
-  const todasMovs = MOVIMENTACOES_DIAS.flatMap(d =>
-    d.movs.map(m => ({ ...m, data: d.data }))
-  ).slice(0, 20)
+function TabCMV({ loja }: { loja: string }) {
+  const [movs, setMovs] = useState<EstoqueMovimentacao[]>([])
+  const [loading, setLoading] = useState(true)
+  const [faturamento, setFaturamento] = useState('')
+  const [cmvResult, setCmvResult] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    fetchEstoqueMovimentacoes(loja).then(setMovs).catch(() => {}).finally(() => setLoading(false))
+  }, [loja])
+
+  const entradas = movs.filter(m => m.tipo === 'entrada').reduce((s, m) => s + m.quantidade, 0)
+  const saidas = movs.filter(m => m.tipo === 'saida').reduce((s, m) => s + m.quantidade, 0)
+
+  const calcular = () => {
+    const fat = parseFloat(faturamento.replace(',', '.'))
+    if (!fat) return
+    const cmv = (saidas / fat * 100).toFixed(1)
+    setCmvResult(`${cmv}%`)
+  }
 
   return (
     <div>
@@ -255,9 +266,9 @@ function TabCMV() {
         </div>
         <div className="kpi">
           <div className="kpi-ac" style={{ background: 'var(--success)' }} />
-          <div className="kpi-lbl">Total em Compras</div>
-          <div className="kpi-val">R$ 0,00</div>
-          <div className="kpi-sub">compras do período</div>
+          <div className="kpi-lbl">Total em Compras (entradas)</div>
+          <div className="kpi-val">{entradas.toLocaleString('pt-BR')}</div>
+          <div className="kpi-sub">unidades adicionadas</div>
         </div>
         <div className="kpi">
           <div className="kpi-ac" style={{ background: 'var(--warning)' }} />
@@ -268,18 +279,10 @@ function TabCMV() {
         <div className="kpi">
           <div className="kpi-ac" style={{ background: 'var(--bordo)' }} />
           <div className="kpi-lbl">Custo da Mercadoria Vendida</div>
-          <div className="kpi-val">R$ 0,00</div>
+          <div className="kpi-val">{cmvResult ?? '—'}</div>
           <div className="kpi-sub" style={{ display: 'flex', gap: 5, alignItems: 'center', marginTop: 6 }}>
-            <input
-              className="inp"
-              style={{ flex: 1, padding: '4px 8px', fontSize: 11 }}
-              placeholder="Digite o faturamento"
-              value={faturamento}
-              onChange={e => setFaturamento(e.target.value)}
-            />
-            <button className="btn bp bsm" onClick={() => {}}>
-              <Calculator size={10} /> Calcular
-            </button>
+            <input className="inp" style={{ flex: 1, padding: '4px 8px', fontSize: 11 }} placeholder="Faturamento (R$)" value={faturamento} onChange={e => setFaturamento(e.target.value)} />
+            <button className="btn bp bsm" onClick={calcular}><Calculator size={10} /> Calcular</button>
           </div>
         </div>
       </div>
@@ -287,40 +290,77 @@ function TabCMV() {
       <div className="card">
         <div className="card-hd">
           <span className="card-tt">↕ Movimentações do Período</span>
-          <span style={{ fontSize: 11, color: 'var(--muted)' }}>1 de mai de 2026 – 31 de mai de 2026</span>
         </div>
         <div style={{ padding: '12px 15px' }}>
-          {todasMovs.map((m, i) => (
+          {loading ? (
+            <div className="empty"><Loader size={24} className="spin" /></div>
+          ) : movs.length === 0 ? (
+            <div className="empty"><ArrowLeftRight size={28} /><div>Nenhuma movimentação no período</div></div>
+          ) : movs.map((m, i) => (
             <div key={i} className="sl-i">
               <div className="sl-ico" style={{ background: m.tipo === 'entrada' ? '#D1FAE5' : '#FEE2E2' }}>
-                {m.tipo === 'entrada'
-                  ? <CheckCircle size={11} style={{ color: 'var(--success)' }} />
-                  : <XCircle size={11} style={{ color: 'var(--danger)' }} />
-                }
+                {m.tipo === 'entrada' ? <CheckCircle size={11} style={{ color: 'var(--success)' }} /> : <XCircle size={11} style={{ color: 'var(--danger)' }} />}
               </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12 }}>
-                  No dia <strong>{m.data}</strong>, foi{' '}
-                  <span style={{ color: m.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
-                    {m.tipo === 'entrada' ? 'adicionado' : 'removido'}
-                  </span>{' '}
-                  <strong>{m.quantidade}</strong> <strong>{m.produto}</strong> na filial{' '}
-                  <a style={{ color: 'var(--blue)', fontWeight: 500 }}>{m.filial}</a>.
-                </div>
+              <div style={{ fontSize: 12 }}>
+                No dia <strong>{fmtDate(m.created_at)}</strong>, foi{' '}
+                <span style={{ color: m.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
+                  {m.tipo === 'entrada' ? 'adicionado' : 'removido'}
+                </span>{' '}
+                <strong>{m.quantidade} {m.unidade}</strong> <strong>{m.produto_nome}</strong> na filial{' '}
+                <span style={{ color: 'var(--blue)', fontWeight: 500 }}>{m.loja}</span>.
+                {m.motivo && <span style={{ color: 'var(--muted)', fontSize: 10 }}> ({m.motivo})</span>}
               </div>
             </div>
           ))}
-          {todasMovs.length === 0 && (
-            <div className="empty"><ArrowLeftRight size={28} /><div>Nenhuma movimentação no período</div></div>
-          )}
         </div>
       </div>
     </div>
   )
 }
 
-function TabHistorico() {
+// ── Tab Histórico ──────────────────────────────────────────
+
+function TabHistorico({ loja }: { loja: string }) {
+  const { user } = useAuth()
+  const [contagens, setContagens] = useState<EstoqueContagem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selecionada, setSelecionada] = useState<EstoqueContagem | null>(null)
+  const [itens, setItens] = useState<EstoqueContagemItem[]>([])
+  const [loadingItens, setLoadingItens] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const [formTipo, setFormTipo] = useState<'regular' | 'fechamento' | 'abertura'>('regular')
+  const [formData, setFormData] = useState(new Date().toISOString().slice(0, 10))
+  const [saving, setSaving] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { setContagens(await fetchEstoqueContagens(loja)) } catch {}
+    setLoading(false)
+  }, [loja])
+
+  useEffect(() => { load() }, [load])
+
+  const selecionar = async (c: EstoqueContagem) => {
+    setSelecionada(c)
+    setLoadingItens(true)
+    try { setItens(await fetchEstoqueContagemItens(c.id)) } catch {}
+    setLoadingItens(false)
+  }
+
+  const criar = async () => {
+    setSaving(true)
+    try {
+      await insertEstoqueContagem({
+        loja: loja === 'Todas as Lojas' ? 'AMORE COSTA DOURADA' : loja,
+        tipo: formTipo,
+        data_contagem: formData,
+        created_by: user?.name || null,
+      })
+      setShowForm(false)
+      await load()
+    } catch {}
+    setSaving(false)
+  }
 
   return (
     <div>
@@ -330,60 +370,66 @@ function TabHistorico() {
       <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16 }}>
         <div className="card" style={{ padding: 15 }}>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>Seu histórico</div>
-          <button className="btn bp" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setShowForm(true)}>
+          <button className="btn bp" style={{ width: '100%', justifyContent: 'center', marginBottom: 12 }} onClick={() => setShowForm(true)}>
             <Plus size={11} /> Criar histórico
           </button>
-          {HISTORICO_CONTAGENS.length > 0 && (
-            <div style={{ marginTop: 10 }}>
-              {HISTORICO_CONTAGENS.map((h, i) => (
-                <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                  <div style={{ fontSize: 12, fontWeight: 600 }}>{h.data}</div>
-                  <div style={{ fontSize: 10, color: 'var(--muted)' }}>{h.tipo} · {h.produtos} produtos</div>
-                </div>
-              ))}
+          {loading ? <div className="empty"><Loader size={18} className="spin" /></div> : contagens.length === 0 ? (
+            <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', padding: '12px 0' }}>Nenhuma contagem ainda</div>
+          ) : contagens.map(c => (
+            <div key={c.id} onClick={() => selecionar(c)} style={{ padding: '8px 10px', borderRadius: 7, cursor: 'pointer', marginBottom: 4, background: selecionada?.id === c.id ? 'var(--bordo-bg)' : 'transparent', border: `1px solid ${selecionada?.id === c.id ? 'var(--bordo-l)' : 'var(--border)'}` }}>
+              <div style={{ fontSize: 12, fontWeight: 600 }}>{new Date(c.data_contagem + 'T12:00:00').toLocaleDateString('pt-BR')}</div>
+              <div style={{ fontSize: 10, color: 'var(--muted)' }}>{c.tipo} · por {c.created_by || 'sistema'}</div>
             </div>
-          )}
+          ))}
         </div>
 
-        <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200 }}>
-          <div className="empty">
-            <History size={36} />
-            <div style={{ marginTop: 8, fontWeight: 600 }}>Selecione uma data para ver o histórico</div>
-            <div style={{ fontSize: 11, marginTop: 4 }}>Crie um histórico para começar a registrar contagens</div>
-          </div>
+        <div className="card" style={{ padding: 15, minHeight: 200 }}>
+          {selecionada ? (
+            <>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>
+                Contagem de {new Date(selecionada.data_contagem + 'T12:00:00').toLocaleDateString('pt-BR')} — {selecionada.tipo}
+              </div>
+              {loadingItens ? <div className="empty"><Loader size={18} className="spin" /></div> : itens.length === 0 ? (
+                <div className="empty"><ClipboardList size={28} /><div>Sem itens nesta contagem</div></div>
+              ) : (
+                <div className="tw">
+                  <table>
+                    <thead><tr><th>Produto</th><th>Unidade</th><th>Qtd Contada</th></tr></thead>
+                    <tbody>
+                      {itens.map(it => (
+                        <tr key={it.id}><td><strong>{it.produto_nome}</strong></td><td>{it.unidade}</td><td style={{ fontWeight: 700 }}>{it.quantidade_contada}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="empty" style={{ padding: '60px 0' }}>
+              <History size={36} />
+              <div style={{ marginTop: 8, fontWeight: 600 }}>Selecione uma data para ver o histórico</div>
+            </div>
+          )}
         </div>
       </div>
 
       {showForm && (
         <div className="ov open" onClick={() => setShowForm(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhd">
-              <span className="mtt">Criar Histórico de Contagem</span>
-              <button className="mx" onClick={() => setShowForm(false)}>✕</button>
-            </div>
+            <div className="mhd"><span className="mtt">Criar Histórico de Contagem</span><button className="mx" onClick={() => setShowForm(false)}>✕</button></div>
             <div className="mbd">
-              <div className="fg">
-                <label className="fl">Data da Contagem</label>
-                <input type="date" className="inp" defaultValue={new Date().toISOString().split('T')[0]} />
-              </div>
-              <div className="fg">
-                <label className="fl">Filial</label>
-                <select className="sel">
-                  <option>AMORE COSTA DOURADA</option>
-                </select>
-              </div>
-              <div className="fg">
-                <label className="fl">Tipo</label>
-                <select className="sel">
-                  <option>Contagem regular</option>
-                  <option>Contagem de fechamento</option>
-                  <option>Contagem de abertura</option>
+              <div className="fg"><label className="fl">Data</label><input type="date" className="inp" value={formData} onChange={e => setFormData(e.target.value)} /></div>
+              <div className="fg"><label className="fl">Tipo</label>
+                <select className="sel" value={formTipo} onChange={e => setFormTipo(e.target.value as typeof formTipo)}>
+                  <option value="regular">Contagem regular</option>
+                  <option value="fechamento">Contagem de fechamento</option>
+                  <option value="abertura">Contagem de abertura</option>
                 </select>
               </div>
             </div>
             <div className="mft">
               <button className="btn bo" onClick={() => setShowForm(false)}>Cancelar</button>
-              <button className="btn bp" onClick={() => setShowForm(false)}>Criar histórico</button>
+              <button className="btn bp" onClick={criar} disabled={saving}>{saving ? 'Criando...' : 'Criar histórico'}</button>
             </div>
           </div>
         </div>
@@ -392,67 +438,111 @@ function TabHistorico() {
   )
 }
 
-function TabMovimentacoes() {
-  const [diaSelecionado, setDiaSelecionado] = useState<DiaMovimentacao | null>(null)
+// ── Tab Movimentações ──────────────────────────────────────
+
+function TabMovimentacoes({ loja }: { loja: string }) {
+  const { user } = useAuth()
+  const [dias, setDias] = useState<string[]>([])
+  const [diaSel, setDiaSel] = useState<string | null>(null)
+  const [movs, setMovs] = useState<EstoqueMovimentacao[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadingMovs, setLoadingMovs] = useState(false)
+  const [showModal, setShowModal] = useState(false)
+  const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
+  const [form, setForm] = useState({ produto_id: '', produto_nome: '', tipo: 'entrada' as 'entrada' | 'saida', quantidade: '', motivo: '' })
+  const [saving, setSaving] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [d, p] = await Promise.all([fetchEstoqueMovimentacoesDias(loja), fetchEstoqueProdutos(loja)])
+      setDias(d)
+      setProdutos(p)
+    } catch {}
+    setLoading(false)
+  }, [loja])
+
+  useEffect(() => { load() }, [load])
+
+  const selecionarDia = async (dia: string) => {
+    setDiaSel(dia)
+    setLoadingMovs(true)
+    try { setMovs(await fetchEstoqueMovimentacoes(loja, dia)) } catch {}
+    setLoadingMovs(false)
+  }
+
+  const registrar = async () => {
+    if (!form.produto_nome || !form.quantidade) return
+    setSaving(true)
+    try {
+      const prod = produtos.find(p => p.id === form.produto_id)
+      await insertEstoqueMovimentacao({
+        loja: loja === 'Todas as Lojas' ? 'AMORE COSTA DOURADA' : loja,
+        produto_id: form.produto_id || null,
+        produto_nome: form.produto_nome,
+        tipo: form.tipo,
+        quantidade: parseFloat(form.quantidade),
+        unidade: prod?.gramatura.replace('(s)', '') || 'un',
+        motivo: form.motivo || null,
+        created_by: user?.name || null,
+      })
+      setShowModal(false)
+      await load()
+      if (diaSel) await selecionarDia(diaSel)
+    } catch {}
+    setSaving(false)
+  }
 
   return (
     <div>
-      <div className="sec-tt">Suas movimentações</div>
-      <div className="sec-sub">Aqui você pode ver o histórico de todos os produtos que foram atualizados.</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+        <div>
+          <div className="sec-tt">Suas movimentações</div>
+          <div className="sec-sub">Histórico de todos os produtos que foram atualizados.</div>
+        </div>
+        <button className="btn bp bsm" onClick={() => setShowModal(true)}><Plus size={11} /> Registrar Movimentação</button>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16 }}>
         <div className="card" style={{ padding: 15 }}>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>Movimentações</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {MOVIMENTACOES_DIAS.map((d, i) => (
-              <button
-                key={i}
-                onClick={() => setDiaSelecionado(d)}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '9px 12px', borderRadius: 7, border: '1px solid var(--border)',
-                  background: diaSelecionado?.dataISO === d.dataISO ? 'var(--bordo-bg)' : '#fff',
-                  color: diaSelecionado?.dataISO === d.dataISO ? 'var(--bordo)' : 'var(--text)',
-                  fontWeight: 600, fontSize: 12.5, cursor: 'pointer', transition: '.15s',
-                  borderColor: diaSelecionado?.dataISO === d.dataISO ? 'var(--bordo-l)' : 'var(--border)',
-                }}
-              >
-                {d.data}
-                <ChevronRight size={13} />
-              </button>
-            ))}
-          </div>
+          {loading ? <div className="empty"><Loader size={18} className="spin" /></div> : dias.length === 0 ? (
+            <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>Nenhuma movimentação</div>
+          ) : dias.map(d => (
+            <button key={d} onClick={() => selecionarDia(d)} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              width: '100%', padding: '9px 12px', borderRadius: 7, border: `1px solid ${diaSel === d ? 'var(--bordo-l)' : 'var(--border)'}`,
+              background: diaSel === d ? 'var(--bordo-bg)' : '#fff', color: diaSel === d ? 'var(--bordo)' : 'var(--text)',
+              fontWeight: 600, fontSize: 12.5, cursor: 'pointer', marginBottom: 5,
+            }}>
+              {new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')} <ChevronRight size={13} />
+            </button>
+          ))}
         </div>
 
         <div className="card" style={{ padding: 15 }}>
-          {diaSelecionado ? (
+          {diaSel ? (
             <>
               <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>
-                Histórico de {diaSelecionado.data}
+                Histórico de {new Date(diaSel + 'T12:00:00').toLocaleDateString('pt-BR')}
               </div>
-              {diaSelecionado.movs.map((m, i) => (
+              {loadingMovs ? <div className="empty"><Loader size={18} className="spin" /></div> : movs.length === 0 ? (
+                <div className="empty"><ArrowLeftRight size={28} /><div>Nenhuma movimentação neste dia</div></div>
+              ) : movs.map((m, i) => (
                 <div key={i} className="sl-i">
                   <div className="sl-ico" style={{ background: m.tipo === 'entrada' ? '#D1FAE5' : '#FEE2E2' }}>
-                    {m.tipo === 'entrada'
-                      ? <CheckCircle size={11} style={{ color: 'var(--success)' }} />
-                      : <XCircle size={11} style={{ color: 'var(--danger)' }} />
-                    }
+                    {m.tipo === 'entrada' ? <CheckCircle size={11} style={{ color: 'var(--success)' }} /> : <XCircle size={11} style={{ color: 'var(--danger)' }} />}
                   </div>
-                  <div>
-                    <div style={{ fontSize: 12 }}>
-                      No dia <strong>{diaSelecionado.data}</strong>, foi{' '}
-                      <span style={{ color: m.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
-                        {m.tipo === 'entrada' ? 'adicionado' : 'removido'}
-                      </span>{' '}
-                      <strong>{m.quantidade}</strong> <strong>{m.produto}</strong> na filial{' '}
-                      <span style={{ color: 'var(--blue)', fontWeight: 500 }}>{m.filial}</span>.
-                    </div>
+                  <div style={{ fontSize: 12 }}>
+                    Foi <span style={{ color: m.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
+                      {m.tipo === 'entrada' ? 'adicionado' : 'removido'}
+                    </span>{' '}
+                    <strong>{m.quantidade} {m.unidade}</strong> de <strong>{m.produto_nome}</strong> na filial{' '}
+                    <span style={{ color: 'var(--blue)', fontWeight: 500 }}>{m.loja}</span>.
+                    {m.motivo && <span style={{ color: 'var(--muted)', fontSize: 10 }}> ({m.motivo})</span>}
                   </div>
                 </div>
               ))}
-              {diaSelecionado.movs.length === 0 && (
-                <div className="empty"><ArrowLeftRight size={28} /><div>Nenhuma movimentação neste dia</div></div>
-              )}
             </>
           ) : (
             <div className="empty" style={{ padding: '60px 0' }}>
@@ -462,25 +552,89 @@ function TabMovimentacoes() {
           )}
         </div>
       </div>
+
+      {showModal && (
+        <div className="ov open" onClick={() => setShowModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="mhd"><span className="mtt">Registrar Movimentação</span><button className="mx" onClick={() => setShowModal(false)}>✕</button></div>
+            <div className="mbd">
+              <div className="fg"><label className="fl">Produto <span className="rq">*</span></label>
+                <select className="sel" value={form.produto_id} onChange={e => {
+                  const p = produtos.find(x => x.id === e.target.value)
+                  setForm(f => ({ ...f, produto_id: e.target.value, produto_nome: p?.nome || '' }))
+                }}>
+                  <option value="">Selecione um produto</option>
+                  {produtos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                </select>
+              </div>
+              <div className="g2">
+                <div className="fg"><label className="fl">Tipo</label>
+                  <select className="sel" value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value as 'entrada' | 'saida' }))}>
+                    <option value="entrada">Entrada</option>
+                    <option value="saida">Saída</option>
+                  </select>
+                </div>
+                <div className="fg"><label className="fl">Quantidade <span className="rq">*</span></label>
+                  <input type="number" className="inp" value={form.quantidade} onChange={e => setForm(f => ({ ...f, quantidade: e.target.value }))} />
+                </div>
+              </div>
+              <div className="fg"><label className="fl">Motivo</label>
+                <input className="inp" placeholder="Ex: Compra, Uso produção, Perda..." value={form.motivo} onChange={e => setForm(f => ({ ...f, motivo: e.target.value }))} />
+              </div>
+            </div>
+            <div className="mft">
+              <button className="btn bo" onClick={() => setShowModal(false)}>Cancelar</button>
+              <button className="btn bp" onClick={registrar} disabled={saving}>{saving ? 'Salvando...' : 'Registrar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function TabContagem() {
-  const [tipoContagem, setTipoContagem] = useState<TipoContagem>('Contagem regular')
-  const [filial, setFilial] = useState('AMORE COSTA DOURADA')
+// ── Tab Contagem ───────────────────────────────────────────
+
+function TabContagem({ loja }: { loja: string }) {
+  const { user } = useAuth()
+  const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
+  const [loading, setLoading] = useState(true)
+  const [tipo, setTipo] = useState<'regular' | 'fechamento' | 'abertura'>('regular')
   const [categoria, setCategoria] = useState('')
-  const [ordenar, setOrdenar] = useState('Nome (A-Z)')
-  const [contagens, setContagens] = useState<Record<string, number>>(
-    Object.fromEntries(PRODUTOS.map(p => [p.nome, 0]))
-  )
+  const [contagens, setContagens] = useState<Record<string, number>>({})
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
 
-  const handleContagem = (nome: string, val: string) => {
-    const n = parseFloat(val)
-    setContagens(prev => ({ ...prev, [nome]: isNaN(n) ? 0 : n }))
+  useEffect(() => {
+    setLoading(true)
+    fetchEstoqueProdutos(loja).then(p => {
+      setProdutos(p)
+      setContagens(Object.fromEntries(p.map(x => [x.id, 0])))
+    }).catch(() => {}).finally(() => setLoading(false))
+  }, [loja])
+
+  const filtrados = produtos.filter(p => !categoria || p.categoria === categoria)
+
+  const salvar = async () => {
+    setSaving(true)
+    try {
+      const lojaReal = loja === 'Todas as Lojas' ? 'AMORE COSTA DOURADA' : loja
+      const contagem = await insertEstoqueContagem({ loja: lojaReal, tipo, data_contagem: new Date().toISOString().slice(0, 10), created_by: user?.name || null })
+      const itens: Omit<EstoqueContagemItem, 'id' | 'created_at'>[] = filtrados
+        .filter(p => (contagens[p.id] ?? 0) > 0)
+        .map(p => ({
+          contagem_id: contagem.id,
+          produto_id: p.id,
+          produto_nome: p.nome,
+          quantidade_contada: contagens[p.id] ?? 0,
+          unidade: p.gramatura.replace('(s)', ''),
+        }))
+      if (itens.length) await upsertEstoqueContagemItens(itens)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    } catch {}
+    setSaving(false)
   }
-
-  const handlePrint = () => window.print()
 
   return (
     <div>
@@ -489,91 +643,69 @@ function TabContagem() {
           <div className="sec-tt">Contagem de Estoque</div>
           <div className="sec-sub">Preencha os campos abaixo para fazer uma contagem de estoque</div>
         </div>
-        <button className="btn bo" onClick={handlePrint}>
-          <Download size={11} /> Baixar PDF
-        </button>
+        <button className="btn bo" onClick={() => window.print()}><Download size={11} /> Baixar PDF</button>
       </div>
 
       <div className="card" style={{ padding: 15, marginBottom: 14 }}>
         <div className="g2" style={{ marginBottom: 11 }}>
           <div className="fg" style={{ marginBottom: 0 }}>
             <label className="fl">Tipo de contagem</label>
-            <select className="sel" value={tipoContagem} onChange={e => setTipoContagem(e.target.value as TipoContagem)}>
-              <option>Contagem regular</option>
-              <option>Contagem de fechamento</option>
-              <option>Contagem de abertura</option>
-            </select>
-          </div>
-          <div className="fg" style={{ marginBottom: 0 }}>
-            <label className="fl">Ordenar por</label>
-            <select className="sel" value={ordenar} onChange={e => setOrdenar(e.target.value)}>
-              <option>Nome (A-Z)</option>
-              <option>Nome (Z-A)</option>
-              <option>Categoria</option>
-            </select>
-          </div>
-        </div>
-        <div className="g2">
-          <div className="fg" style={{ marginBottom: 0 }}>
-            <label className="fl">Filial</label>
-            <select className="sel" value={filial} onChange={e => setFilial(e.target.value)}>
-              <option>AMORE COSTA DOURADA</option>
+            <select className="sel" value={tipo} onChange={e => setTipo(e.target.value as typeof tipo)}>
+              <option value="regular">Contagem regular</option>
+              <option value="fechamento">Contagem de fechamento</option>
+              <option value="abertura">Contagem de abertura</option>
             </select>
           </div>
           <div className="fg" style={{ marginBottom: 0 }}>
             <label className="fl">Categoria</label>
             <div style={{ display: 'flex', gap: 6 }}>
               <select className="sel" value={categoria} onChange={e => setCategoria(e.target.value)} style={{ flex: 1 }}>
-                <option value="">Selecione uma categoria</option>
+                <option value="">Todas</option>
                 {CATEGORIAS.map(c => <option key={c}>{c}</option>)}
               </select>
-              {categoria && (
-                <button className="btn bo bsm" onClick={() => setCategoria('')}>Limpar</button>
-              )}
+              {categoria && <button className="btn bo bsm" onClick={() => setCategoria('')}>Limpar</button>}
             </div>
           </div>
         </div>
       </div>
 
+      {saved && <div className="al al-g" style={{ marginBottom: 12 }}><CheckCircle size={13} /> Contagem salva com sucesso!</div>}
+
       <div className="card">
-        <div className="tw">
-          <table>
-            <thead>
-              <tr>
-                <th>Produto</th>
-                <th>Unidade de Medida</th>
-                <th style={{ width: 160 }}>Contagem</th>
-              </tr>
-            </thead>
-            <tbody>
-              {PRODUTOS.map((p, i) => (
-                <tr key={i}>
-                  <td><strong>{p.nome}</strong></td>
-                  <td style={{ color: 'var(--muted)' }}>{p.gramatura.replace('(s)', '')}</td>
-                  <td>
-                    <input
-                      type="number"
-                      className="inp"
-                      style={{ padding: '4px 8px', fontSize: 12 }}
-                      min={0}
-                      value={contagens[p.nome] ?? 0}
-                      onChange={e => handleContagem(p.nome, e.target.value)}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {loading ? (
+          <div className="empty"><Loader size={24} className="spin" /></div>
+        ) : (
+          <div className="tw">
+            <table>
+              <thead><tr><th>Produto</th><th>Unidade de Medida</th><th style={{ width: 160 }}>Contagem</th></tr></thead>
+              <tbody>
+                {filtrados.map(p => (
+                  <tr key={p.id}>
+                    <td><strong>{p.nome}</strong><div style={{ fontSize: 10, color: 'var(--muted)' }}>{p.categoria}</div></td>
+                    <td style={{ color: 'var(--muted)' }}>{p.gramatura.replace('(s)', '')}</td>
+                    <td>
+                      <input type="number" className="inp" style={{ padding: '4px 8px', fontSize: 12 }} min={0}
+                        value={contagens[p.id] ?? 0}
+                        onChange={e => setContagens(prev => ({ ...prev, [p.id]: parseFloat(e.target.value) || 0 }))}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <div style={{ padding: '12px 15px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
-          <button className="btn bp">
-            <ClipboardList size={11} /> Salvar Contagem
+          <button className="btn bp" onClick={salvar} disabled={saving || loading}>
+            <ClipboardList size={11} /> {saving ? 'Salvando...' : 'Salvar Contagem'}
           </button>
         </div>
       </div>
     </div>
   )
 }
+
+// ── EstoquePage ────────────────────────────────────────────
 
 type EstoqueTab = 'lista' | 'cmv' | 'historico' | 'movimentacoes' | 'contagem'
 
@@ -586,28 +718,25 @@ const TABS: { id: EstoqueTab; label: string; icon: React.ReactNode }[] = [
 ]
 
 export default function EstoquePage() {
+  const { user } = useAuth()
   const [tab, setTab] = useState<EstoqueTab>('lista')
+  const loja = user?.loja && user.loja !== 'Todas' ? user.loja : 'AMORE COSTA DOURADA'
 
   return (
     <div>
       <div className="tabs" style={{ marginBottom: 16 }}>
         {TABS.map(t => (
-          <button
-            key={t.id}
-            className={`tab${tab === t.id ? ' active' : ''}`}
-            onClick={() => setTab(t.id)}
-            style={{ display: 'flex', alignItems: 'center', gap: 5 }}
-          >
+          <button key={t.id} className={`tab${tab === t.id ? ' active' : ''}`} onClick={() => setTab(t.id)} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             {t.icon} {t.label}
           </button>
         ))}
       </div>
 
-      {tab === 'lista' && <TabLista />}
-      {tab === 'cmv' && <TabCMV />}
-      {tab === 'historico' && <TabHistorico />}
-      {tab === 'movimentacoes' && <TabMovimentacoes />}
-      {tab === 'contagem' && <TabContagem />}
+      {tab === 'lista' && <TabLista loja={loja} />}
+      {tab === 'cmv' && <TabCMV loja={loja} />}
+      {tab === 'historico' && <TabHistorico loja={loja} />}
+      {tab === 'movimentacoes' && <TabMovimentacoes loja={loja} />}
+      {tab === 'contagem' && <TabContagem loja={loja} />}
     </div>
   )
 }

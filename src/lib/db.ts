@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem } from '../types/database'
 
 const db = supabase as any
 
@@ -354,4 +354,168 @@ export async function updateSalaoChecklistItem(id: string, data: Partial<SalaoCh
 
 export async function deleteSalaoChecklistItem(id: string): Promise<void> {
   return salaoDelete('salao_checklist_itens', id)
+}
+
+// ── Estoque — helper ────────────────────────────────────────
+
+async function estoqueFetch(table: string, params = ''): Promise<any[]> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 6000)
+  try {
+    const sessionResult = await Promise.race([
+      supabase.auth.getSession(),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+    ])
+    const session = sessionResult && 'data' in sessionResult ? sessionResult.data.session : null
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/${table}?${params}`,
+      {
+        signal: controller.signal,
+        headers: {
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+      },
+    )
+    if (!res.ok) throw new Error(res.statusText)
+    return res.json()
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function estoquePost(table: string, body: unknown): Promise<any> {
+  const sessionResult = await Promise.race([
+    supabase.auth.getSession(),
+    new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+  ])
+  const session = sessionResult && 'data' in sessionResult ? sessionResult.data.session : null
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/${table}`,
+    {
+      method: 'POST',
+      headers: {
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify(body),
+    },
+  )
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as any).message || res.statusText)
+  }
+  const rows = await res.json()
+  return Array.isArray(rows) ? rows[0] : rows
+}
+
+async function estoquePatch(table: string, id: string, body: unknown): Promise<any> {
+  const sessionResult = await Promise.race([
+    supabase.auth.getSession(),
+    new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+  ])
+  const session = sessionResult && 'data' in sessionResult ? sessionResult.data.session : null
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`,
+    {
+      method: 'PATCH',
+      headers: {
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify(body),
+    },
+  )
+  if (!res.ok) throw new Error(res.statusText)
+  const rows = await res.json()
+  return Array.isArray(rows) ? rows[0] : rows
+}
+
+// ── Estoque — Produtos ──────────────────────────────────────
+
+export async function fetchEstoqueProdutos(loja?: string): Promise<EstoqueProduto[]> {
+  const q = loja && loja !== 'Todas as Lojas'
+    ? `loja=eq.${encodeURIComponent(loja)}&ativo=eq.true&order=nome.asc`
+    : 'ativo=eq.true&order=nome.asc'
+  return estoqueFetch('estoque_produtos', q)
+}
+
+export async function insertEstoqueProduto(p: Omit<EstoqueProduto, 'id' | 'created_at' | 'updated_at'>): Promise<EstoqueProduto> {
+  return estoquePost('estoque_produtos', p)
+}
+
+export async function updateEstoqueProduto(id: string, p: Partial<EstoqueProduto>): Promise<EstoqueProduto> {
+  return estoquePatch('estoque_produtos', id, { ...p, updated_at: new Date().toISOString() })
+}
+
+// ── Estoque — Movimentações ─────────────────────────────────
+
+export async function fetchEstoqueMovimentacoes(loja?: string, dataISO?: string): Promise<EstoqueMovimentacao[]> {
+  let q = loja && loja !== 'Todas as Lojas'
+    ? `loja=eq.${encodeURIComponent(loja)}`
+    : ''
+  if (dataISO) {
+    const from = `${dataISO}T00:00:00Z`
+    const to = `${dataISO}T23:59:59Z`
+    q += `${q ? '&' : ''}created_at=gte.${from}&created_at=lte.${to}`
+  }
+  q += `${q ? '&' : ''}order=created_at.desc`
+  return estoqueFetch('estoque_movimentacoes', q)
+}
+
+export async function fetchEstoqueMovimentacoesDias(loja?: string): Promise<string[]> {
+  const q = loja && loja !== 'Todas as Lojas'
+    ? `loja=eq.${encodeURIComponent(loja)}&select=created_at&order=created_at.desc`
+    : 'select=created_at&order=created_at.desc'
+  const rows: { created_at: string }[] = await estoqueFetch('estoque_movimentacoes', q)
+  const dias = [...new Set(rows.map(r => r.created_at.slice(0, 10)))]
+  return dias
+}
+
+export async function insertEstoqueMovimentacao(m: Omit<EstoqueMovimentacao, 'id' | 'created_at'>): Promise<EstoqueMovimentacao> {
+  return estoquePost('estoque_movimentacoes', m)
+}
+
+// ── Estoque — Contagens ─────────────────────────────────────
+
+export async function fetchEstoqueContagens(loja?: string): Promise<EstoqueContagem[]> {
+  const q = loja && loja !== 'Todas as Lojas'
+    ? `loja=eq.${encodeURIComponent(loja)}&order=created_at.desc`
+    : 'order=created_at.desc'
+  return estoqueFetch('estoque_contagens', q)
+}
+
+export async function insertEstoqueContagem(c: Omit<EstoqueContagem, 'id' | 'created_at'>): Promise<EstoqueContagem> {
+  return estoquePost('estoque_contagens', c)
+}
+
+export async function fetchEstoqueContagemItens(contagemId: string): Promise<EstoqueContagemItem[]> {
+  return estoqueFetch('estoque_contagem_itens', `contagem_id=eq.${contagemId}&order=produto_nome.asc`)
+}
+
+export async function upsertEstoqueContagemItens(itens: Omit<EstoqueContagemItem, 'id' | 'created_at'>[]): Promise<EstoqueContagemItem[]> {
+  const sessionResult = await Promise.race([
+    supabase.auth.getSession(),
+    new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+  ])
+  const session = sessionResult && 'data' in sessionResult ? sessionResult.data.session : null
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/estoque_contagem_itens`,
+    {
+      method: 'POST',
+      headers: {
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation,resolution=merge-duplicates',
+      },
+      body: JSON.stringify(itens),
+    },
+  )
+  if (!res.ok) throw new Error(res.statusText)
+  return res.json()
 }
