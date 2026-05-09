@@ -31,7 +31,38 @@ function fmtDate(iso: string) {
 
 const CATEGORIAS = ['Açaí', 'Bebidas', 'Carnes', 'Condimentos', 'Embalagens', 'Frutas', 'Graos', 'Higiene', 'Laticínios', 'Legumes', 'Limpeza', 'Proteínas']
 
+// ── Inline number input para edição em massa ───────────────
+
+interface InlineInputProps {
+  value: number
+  onChange: (v: number) => void
+  step?: number
+  prefix?: string
+}
+function InlineInput({ value, onChange, step = 1, prefix }: InlineInputProps) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      {prefix && <span style={{ fontSize: 11, color: 'var(--muted)' }}>{prefix}</span>}
+      <input
+        type="number"
+        step={step}
+        min={0}
+        value={value}
+        onChange={e => onChange(parseFloat(e.target.value) || 0)}
+        style={{
+          width: 70, padding: '3px 6px', fontSize: 12, border: '1.5px solid var(--bordo-l)',
+          borderRadius: 5, background: 'var(--bordo-bg)', color: 'var(--text)',
+          outline: 'none', fontWeight: 600,
+        }}
+        onClick={e => (e.target as HTMLInputElement).select()}
+      />
+    </div>
+  )
+}
+
 // ── Tab Lista ──────────────────────────────────────────────
+
+type BulkRow = { nivel_atual: number; nivel_minimo: number; nivel_ideal: number; preco_unitario: number }
 
 function TabLista({ loja }: { loja: string }) {
   const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
@@ -43,6 +74,12 @@ function TabLista({ loja }: { loja: string }) {
   const [editProduto, setEditProduto] = useState<EstoqueProduto | null>(null)
   const [form, setForm] = useState({ nome: '', gramatura: 'Unidade(s)', categoria: 'Geral', nivel_minimo: '', nivel_ideal: '', preco_unitario: '' })
   const [saving, setSaving] = useState(false)
+
+  // ── Edição em massa
+  const [editMode, setEditMode] = useState(false)
+  const [bulkData, setBulkData] = useState<Record<string, BulkRow>>({})
+  const [bulkSaving, setBulkSaving] = useState(false)
+  const [bulkSaved, setBulkSaved] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -60,6 +97,56 @@ function TabLista({ loja }: { loja: string }) {
   const criticos = produtos.filter(p => nivelStatus(p) === 'Crítico').length
   const repor = produtos.filter(p => nivelStatus(p) === 'Repor').length
   const valorTotal = produtos.reduce((s, p) => s + p.nivel_atual * p.preco_unitario, 0)
+
+  // Inicializa bulkData com valores atuais de todos os produtos
+  const entrarEditMode = () => {
+    const initial: Record<string, BulkRow> = {}
+    produtos.forEach(p => {
+      initial[p.id] = { nivel_atual: p.nivel_atual, nivel_minimo: p.nivel_minimo, nivel_ideal: p.nivel_ideal, preco_unitario: p.preco_unitario }
+    })
+    setBulkData(initial)
+    setEditMode(true)
+  }
+
+  const cancelarEditMode = () => {
+    setEditMode(false)
+    setBulkData({})
+  }
+
+  const salvarEmMassa = async () => {
+    setBulkSaving(true)
+    try {
+      // Salva apenas produtos que foram modificados
+      const modificados = produtos.filter(p => {
+        const d = bulkData[p.id]
+        if (!d) return false
+        return d.nivel_atual !== p.nivel_atual || d.nivel_minimo !== p.nivel_minimo ||
+               d.nivel_ideal !== p.nivel_ideal || d.preco_unitario !== p.preco_unitario
+      })
+      await Promise.all(
+        modificados.map(p => updateEstoqueProduto(p.id, bulkData[p.id]))
+      )
+      setBulkSaved(true)
+      setTimeout(() => setBulkSaved(false), 2500)
+      setEditMode(false)
+      setBulkData({})
+      await load()
+    } catch (e) { console.error(e) }
+    setBulkSaving(false)
+  }
+
+  const setBulkField = (id: string, field: keyof BulkRow, val: number) => {
+    setBulkData(prev => ({ ...prev, [id]: { ...prev[id], [field]: val } }))
+  }
+
+  const isModified = (p: EstoqueProduto) => {
+    const d = bulkData[p.id]
+    if (!d) return false
+    return d.nivel_atual !== p.nivel_atual || d.nivel_minimo !== p.nivel_minimo ||
+           d.nivel_ideal !== p.nivel_ideal || d.preco_unitario !== p.preco_unitario
+  }
+
+  const numModificados = editMode ? filtrados.filter(isModified).length : 0
 
   const openNovo = () => {
     setEditProduto(null)
@@ -128,11 +215,49 @@ function TabLista({ loja }: { loja: string }) {
         </div>
       </div>
 
+      {bulkSaved && (
+        <div className="al al-g" style={{ marginBottom: 10 }}>
+          <CheckCircle size={13} /> Alterações salvas com sucesso!
+        </div>
+      )}
+
       <div className="card">
         <div className="card-hd">
           <span className="card-tt">📦 Lista de Estoque</span>
-          <button className="btn bp bsm" onClick={openNovo}><Plus size={11} /> Adicionar Produto</button>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {editMode ? (
+              <>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                  {numModificados > 0 ? `${numModificados} produto${numModificados > 1 ? 's' : ''} modificado${numModificados > 1 ? 's' : ''}` : 'Sem alterações'}
+                </span>
+                <button className="btn bo bsm" onClick={cancelarEditMode} disabled={bulkSaving}>Cancelar</button>
+                <button
+                  className="btn bp bsm"
+                  onClick={salvarEmMassa}
+                  disabled={bulkSaving || numModificados === 0}
+                  style={{ minWidth: 120 }}
+                >
+                  {bulkSaving ? <><Loader size={10} className="spin" /> Salvando...</> : `✓ Salvar ${numModificados > 0 ? `(${numModificados})` : 'Alterações'}`}
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="btn bo bsm" onClick={entrarEditMode} disabled={loading || produtos.length === 0}>
+                  ✏️ Edição em Massa
+                </button>
+                <button className="btn bp bsm" onClick={openNovo}><Plus size={11} /> Adicionar Produto</button>
+              </>
+            )}
+          </div>
         </div>
+
+        {editMode && (
+          <div style={{ padding: '8px 15px', background: 'var(--bordo-bg)', borderBottom: '1px solid var(--bordo-l)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, color: 'var(--bordo)', fontWeight: 600 }}>
+              ✏️ Modo de edição em massa ativo — edite os campos diretamente na tabela e clique em Salvar
+            </span>
+          </div>
+        )}
 
         <div style={{ padding: '10px 15px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <div className="sw-wrap" style={{ flex: 1, minWidth: 200 }}>
@@ -170,18 +295,50 @@ function TabLista({ loja }: { loja: string }) {
               </thead>
               <tbody>
                 {filtrados.map(p => {
-                  const nivel = nivelStatus(p)
+                  const row = editMode ? (bulkData[p.id] ?? { nivel_atual: p.nivel_atual, nivel_minimo: p.nivel_minimo, nivel_ideal: p.nivel_ideal, preco_unitario: p.preco_unitario }) : null
+                  const modified = editMode && isModified(p)
+                  // Usa valores do bulkData em editMode para calcular o badge
+                  const pView = row ? { ...p, ...row } : p
+                  const nivel = nivelStatus(pView)
                   return (
-                    <tr key={p.id}>
-                      <td><strong>{p.nome}</strong><div style={{ fontSize: 10, color: 'var(--muted)' }}>{p.categoria}</div></td>
+                    <tr key={p.id} style={modified ? { background: 'var(--bordo-bg)' } : undefined}>
+                      <td>
+                        <strong>{p.nome}</strong>
+                        {modified && <span style={{ fontSize: 9, background: 'var(--bordo)', color: '#fff', borderRadius: 4, padding: '1px 5px', marginLeft: 6, fontWeight: 700 }}>editado</span>}
+                        <div style={{ fontSize: 10, color: 'var(--muted)' }}>{p.categoria}</div>
+                      </td>
                       <td style={{ color: 'var(--blue)', fontWeight: 500 }}>{p.gramatura}</td>
                       <td>{p.loja}</td>
-                      <td style={{ fontWeight: 700, color: nivel === 'Crítico' ? 'var(--danger)' : nivel === 'Repor' ? 'var(--warning)' : 'var(--text)' }}>{p.nivel_atual}</td>
+                      <td>
+                        {editMode && row ? (
+                          <InlineInput value={row.nivel_atual} onChange={v => setBulkField(p.id, 'nivel_atual', v)} />
+                        ) : (
+                          <span style={{ fontWeight: 700, color: nivel === 'Crítico' ? 'var(--danger)' : nivel === 'Repor' ? 'var(--warning)' : 'var(--text)' }}>{p.nivel_atual}</span>
+                        )}
+                      </td>
                       <td><span className={`badge ${NIVEL_BADGE[nivel]}`}>{nivel}</span></td>
-                      <td>{p.nivel_minimo}</td>
-                      <td>{p.nivel_ideal}</td>
-                      <td>R$ {p.preco_unitario.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                      <td><div className="ab"><button className="ib" onClick={() => openEdit(p)} title="Editar">✏️</button></div></td>
+                      <td>
+                        {editMode && row ? (
+                          <InlineInput value={row.nivel_minimo} onChange={v => setBulkField(p.id, 'nivel_minimo', v)} />
+                        ) : p.nivel_minimo}
+                      </td>
+                      <td>
+                        {editMode && row ? (
+                          <InlineInput value={row.nivel_ideal} onChange={v => setBulkField(p.id, 'nivel_ideal', v)} />
+                        ) : p.nivel_ideal}
+                      </td>
+                      <td>
+                        {editMode && row ? (
+                          <InlineInput value={row.preco_unitario} onChange={v => setBulkField(p.id, 'preco_unitario', v)} step={0.01} prefix="R$" />
+                        ) : (
+                          `R$ ${p.preco_unitario.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                        )}
+                      </td>
+                      <td>
+                        {!editMode && (
+                          <div className="ab"><button className="ib" onClick={() => openEdit(p)} title="Editar">✏️</button></div>
+                        )}
+                      </td>
                     </tr>
                   )
                 })}
