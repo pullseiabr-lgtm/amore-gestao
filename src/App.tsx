@@ -16,12 +16,16 @@ import SalaoPage from './pages/salao/SalaoPage'
 import UsersPage from './pages/users/UsersPage'
 import SettingsPage from './pages/settings/SettingsPage'
 import EstoquePage from './pages/estoque/EstoquePage'
+import FornecedoresPage from './pages/fornecedores/FornecedoresPage'
+import RequisoesPage from './pages/requisicoes/RequisoesPage'
 
 export type PageId =
   | 'dashboard'
   | 'vendas'
   | 'compras'
+  | 'requisicoes'
   | 'estoque'
+  | 'fornecedores'
   | 'financeiro'
   | 'marketing'
   | 'gamificacao'
@@ -34,8 +38,10 @@ export type PageId =
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Dashboard',
   vendas: 'Vendas',
-  compras: 'Compras & Estoque',
+  compras: 'Compras',
+  requisicoes: 'Requisições de Compra',
   estoque: 'Estoque',
+  fornecedores: 'Fornecedores',
   financeiro: 'Financeiro',
   marketing: 'Marketing',
   gamificacao: 'Gamificação',
@@ -51,7 +57,9 @@ function PageContent({ page }: { page: PageId }) {
     case 'dashboard': return <DashboardPage />
     case 'vendas': return <VendasPage />
     case 'compras': return <ComprasPage />
+    case 'requisicoes': return <RequisoesPage />
     case 'estoque': return <EstoquePage />
+    case 'fornecedores': return <FornecedoresPage />
     case 'financeiro': return <FinanceiroPage />
     case 'marketing': return <MarketingPage />
     case 'gamificacao': return <GamificacaoPage />

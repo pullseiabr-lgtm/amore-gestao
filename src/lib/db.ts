@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem } from '../types/database'
 
 const db = supabase as any
 
@@ -505,6 +505,218 @@ export async function upsertEstoqueContagemItens(itens: Omit<EstoqueContagemItem
   const session = sessionResult && 'data' in sessionResult ? sessionResult.data.session : null
   const res = await fetch(
     `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/estoque_contagem_itens`,
+    {
+      method: 'POST',
+      headers: {
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation,resolution=merge-duplicates',
+      },
+      body: JSON.stringify(itens),
+    },
+  )
+  if (!res.ok) throw new Error(res.statusText)
+  return res.json()
+}
+
+// ── Fornecedores ────────────────────────────────────────────
+
+export async function fetchFornecedores(loja?: string): Promise<Fornecedor[]> {
+  const q = loja && loja !== 'Todas as Lojas'
+    ? `loja=eq.${encodeURIComponent(loja)}&order=nome.asc`
+    : 'order=nome.asc'
+  return estoqueFetch('fornecedores', q)
+}
+
+export async function insertFornecedor(f: Omit<Fornecedor, 'id' | 'created_at' | 'updated_at'>): Promise<Fornecedor> {
+  return estoquePost('fornecedores', f)
+}
+
+export async function updateFornecedor(id: string, f: Partial<Fornecedor>): Promise<Fornecedor> {
+  return estoquePatch('fornecedores', id, { ...f, updated_at: new Date().toISOString() })
+}
+
+export async function deleteFornecedor(id: string): Promise<void> {
+  const sessionResult = await Promise.race([
+    supabase.auth.getSession(),
+    new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+  ])
+  const session = sessionResult && 'data' in sessionResult ? sessionResult.data.session : null
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/fornecedores?id=eq.${id}`,
+    {
+      method: 'DELETE',
+      headers: {
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+    },
+  )
+  if (!res.ok) throw new Error(res.statusText)
+}
+
+// ── Lista de Compras ─────────────────────────────────────────
+
+export async function fetchComprasListas(loja?: string): Promise<ComprasLista[]> {
+  const q = loja && loja !== 'Todas as Lojas'
+    ? `loja=eq.${encodeURIComponent(loja)}&order=created_at.desc`
+    : 'order=created_at.desc'
+  return estoqueFetch('compras_lista', q)
+}
+
+export async function insertComprasLista(l: Omit<ComprasLista, 'id' | 'created_at' | 'updated_at'>): Promise<ComprasLista> {
+  return estoquePost('compras_lista', l)
+}
+
+export async function updateComprasLista(id: string, l: Partial<ComprasLista>): Promise<ComprasLista> {
+  return estoquePatch('compras_lista', id, { ...l, updated_at: new Date().toISOString() })
+}
+
+export async function deleteComprasLista(id: string): Promise<void> {
+  const sessionResult = await Promise.race([
+    supabase.auth.getSession(),
+    new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+  ])
+  const session = sessionResult && 'data' in sessionResult ? sessionResult.data.session : null
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/compras_lista?id=eq.${id}`,
+    {
+      method: 'DELETE',
+      headers: {
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+    },
+  )
+  if (!res.ok) throw new Error(res.statusText)
+}
+
+// ── Itens da Lista de Compras ────────────────────────────────
+
+export async function fetchComprasListaItens(listaId: string): Promise<ComprasListaItem[]> {
+  return estoqueFetch('compras_lista_item', `lista_id=eq.${listaId}&order=produto_nome.asc`)
+}
+
+export async function insertComprasListaItem(item: Omit<ComprasListaItem, 'id' | 'created_at'>): Promise<ComprasListaItem> {
+  return estoquePost('compras_lista_item', item)
+}
+
+export async function updateComprasListaItem(id: string, item: Partial<ComprasListaItem>): Promise<ComprasListaItem> {
+  return estoquePatch('compras_lista_item', id, item)
+}
+
+export async function deleteComprasListaItem(id: string): Promise<void> {
+  const sessionResult = await Promise.race([
+    supabase.auth.getSession(),
+    new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+  ])
+  const session = sessionResult && 'data' in sessionResult ? sessionResult.data.session : null
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/compras_lista_item?id=eq.${id}`,
+    {
+      method: 'DELETE',
+      headers: {
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+    },
+  )
+  if (!res.ok) throw new Error(res.statusText)
+}
+
+// ── Requisições ──────────────────────────────────────────────
+
+export async function fetchRequisicoes(loja?: string): Promise<Requisicao[]> {
+  const q = loja && loja !== 'Todas as Lojas'
+    ? `loja=eq.${encodeURIComponent(loja)}&order=created_at.desc`
+    : 'order=created_at.desc'
+  return estoqueFetch('requisicoes', q)
+}
+
+export async function insertRequisicao(r: Omit<Requisicao, 'id' | 'numero' | 'created_at' | 'updated_at'>): Promise<Requisicao> {
+  return estoquePost('requisicoes', r)
+}
+
+export async function updateRequisicao(id: string, r: Partial<Requisicao>): Promise<Requisicao> {
+  return estoquePatch('requisicoes', id, { ...r, updated_at: new Date().toISOString() })
+}
+
+export async function deleteRequisicao(id: string): Promise<void> {
+  const sessionResult = await Promise.race([
+    supabase.auth.getSession(),
+    new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+  ])
+  const session = sessionResult && 'data' in sessionResult ? sessionResult.data.session : null
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/requisicoes?id=eq.${id}`,
+    { method: 'DELETE', headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}` } },
+  )
+  if (!res.ok) throw new Error(res.statusText)
+}
+
+export async function fetchRequisicaoItens(requisicaoId: string): Promise<RequisicaoItem[]> {
+  return estoqueFetch('requisicao_itens', `requisicao_id=eq.${requisicaoId}&order=produto_nome.asc`)
+}
+
+export async function insertRequisicaoItem(item: Omit<RequisicaoItem, 'id' | 'created_at'>): Promise<RequisicaoItem> {
+  return estoquePost('requisicao_itens', item)
+}
+
+export async function updateRequisicaoItem(id: string, item: Partial<RequisicaoItem>): Promise<RequisicaoItem> {
+  return estoquePatch('requisicao_itens', id, item)
+}
+
+export async function deleteRequisicaoItem(id: string): Promise<void> {
+  const sessionResult = await Promise.race([
+    supabase.auth.getSession(),
+    new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+  ])
+  const session = sessionResult && 'data' in sessionResult ? sessionResult.data.session : null
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/requisicao_itens?id=eq.${id}`,
+    { method: 'DELETE', headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}` } },
+  )
+  if (!res.ok) throw new Error(res.statusText)
+}
+
+export async function fetchRequisicaoCotacoes(requisicaoId: string): Promise<RequisicaoCotacao[]> {
+  return estoqueFetch('requisicao_cotacoes', `requisicao_id=eq.${requisicaoId}&order=created_at.asc`)
+}
+
+export async function insertRequisicaoCotacao(c: Omit<RequisicaoCotacao, 'id' | 'created_at' | 'updated_at'>): Promise<RequisicaoCotacao> {
+  return estoquePost('requisicao_cotacoes', c)
+}
+
+export async function updateRequisicaoCotacao(id: string, c: Partial<RequisicaoCotacao>): Promise<RequisicaoCotacao> {
+  return estoquePatch('requisicao_cotacoes', id, { ...c, updated_at: new Date().toISOString() })
+}
+
+export async function deleteRequisicaoCotacao(id: string): Promise<void> {
+  const sessionResult = await Promise.race([
+    supabase.auth.getSession(),
+    new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+  ])
+  const session = sessionResult && 'data' in sessionResult ? sessionResult.data.session : null
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/requisicao_cotacoes?id=eq.${id}`,
+    { method: 'DELETE', headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY}` } },
+  )
+  if (!res.ok) throw new Error(res.statusText)
+}
+
+export async function fetchCotacaoItens(cotacaoId: string): Promise<RequisicaoCotacaoItem[]> {
+  return estoqueFetch('requisicao_cotacao_itens', `cotacao_id=eq.${cotacaoId}&order=created_at.asc`)
+}
+
+export async function upsertCotacaoItens(itens: Omit<RequisicaoCotacaoItem, 'id' | 'created_at'>[]): Promise<RequisicaoCotacaoItem[]> {
+  const sessionResult = await Promise.race([
+    supabase.auth.getSession(),
+    new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+  ])
+  const session = sessionResult && 'data' in sessionResult ? sessionResult.data.session : null
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/requisicao_cotacao_itens`,
     {
       method: 'POST',
       headers: {

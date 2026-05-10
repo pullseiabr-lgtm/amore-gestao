@@ -176,6 +176,139 @@ export interface Pendencia {
   updated_at: string
 }
 
+// ── Requisições de Compra ────────────────────────────────────
+
+export type ReqStatus = 'rascunho' | 'enviada' | 'em_cotacao' | 'aprovada' | 'concluida' | 'cancelada'
+export type ReqItemStatus = 'pendente' | 'cotado' | 'aprovado' | 'cancelado'
+export type CotacaoStatus = 'aguardando' | 'respondida' | 'aprovada' | 'rejeitada'
+
+export interface Requisicao {
+  id: string
+  loja: string
+  numero: number
+  titulo: string
+  data_necessidade: string | null
+  status: ReqStatus
+  total_estimado: number
+  total_final: number
+  observacoes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface RequisicaoItem {
+  id: string
+  requisicao_id: string
+  produto_nome: string
+  categoria: string | null
+  quantidade: number
+  unidade: string
+  preco_referencia: number | null
+  preco_cotado: number | null
+  preco_final: number | null
+  fornecedor_nome: string | null
+  status: ReqItemStatus
+  observacoes: string | null
+  created_at: string
+}
+
+export interface RequisicaoCotacao {
+  id: string
+  requisicao_id: string
+  fornecedor_nome: string
+  status: CotacaoStatus
+  total: number | null
+  prazo_entrega: number | null
+  observacoes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface RequisicaoCotacaoItem {
+  id: string
+  cotacao_id: string
+  item_id: string
+  preco_unitario: number | null
+  disponivel: boolean
+  observacoes: string | null
+  created_at: string
+}
+
+// ── Compras / Lista de Compras ───────────────────────────────
+
+export type ListaStatus = 'rascunho' | 'em_andamento' | 'concluido' | 'cancelado'
+export type ListaItemStatus = 'pendente' | 'comprado' | 'cancelado'
+
+export interface ComprasLista {
+  id: string
+  loja: string
+  titulo: string
+  data_compra: string | null
+  status: ListaStatus
+  total_estimado: number
+  total_real: number
+  observacoes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ComprasListaItem {
+  id: string
+  lista_id: string
+  produto_nome: string
+  categoria: string | null
+  quantidade: number
+  unidade: string
+  preco_estimado: number | null
+  preco_real: number | null
+  fornecedor_nome: string | null
+  status: ListaItemStatus
+  observacoes: string | null
+  created_at: string
+}
+
+// ── Fornecedores ─────────────────────────────────────────────
+
+export interface Fornecedor {
+  id: string
+  loja: string
+  nome: string
+  razao_social: string | null
+  cnpj: string | null
+  ie: string | null
+  email: string | null
+  telefone: string | null
+  whatsapp: string | null
+  logo_url: string | null
+  cep: string | null
+  logradouro: string | null
+  numero: string | null
+  complemento: string | null
+  bairro: string | null
+  cidade: string | null
+  estado: string | null
+  forma_pagamento: string
+  chave_pix: string | null
+  banco: string | null
+  agencia: string | null
+  conta: string | null
+  prazo_pagamento: number
+  categorias: string | null
+  prazo_entrega_dias: number | null
+  pedido_minimo: number | null
+  desconto_pct: number | null
+  contato_nome: string | null
+  contato_email: string | null
+  contato_telefone: string | null
+  observacoes: string | null
+  ativo: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 // ── Estoque ──────────────────────────────────────────────────
 
 export type NivelStatus = 'Crítico' | 'Repor' | 'Ok' | 'Ideal'
