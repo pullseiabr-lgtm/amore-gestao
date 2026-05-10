@@ -501,7 +501,6 @@ export default function FornecedoresPage() {
         </div>
         <FornecedorEditForm
           fornecedor={editando}
-          loja={loja}
           onSalvo={() => { setView('lista'); load() }}
           onCancelar={() => setView('lista')}
         />
