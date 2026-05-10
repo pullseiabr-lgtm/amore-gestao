@@ -9,7 +9,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import {
   fetchRequisicoes, insertRequisicao, updateRequisicao, deleteRequisicao,
   fetchRequisicaoItens, insertRequisicaoItem, updateRequisicaoItem, deleteRequisicaoItem,
-  fetchRequisicaoCotacoes, insertRequisicaoCotacao, updateRequisicaoCotacao, deleteRequisicaoCotacao,
+  fetchRequisicaoCotacoes, insertRequisicaoCotacao, updateRequisicaoCotacao,
   fetchCotacaoItens, upsertCotacaoItens,
   fetchFornecedores,
 } from '../../lib/db'
@@ -49,8 +49,6 @@ const fmtData = (d: string | null) => {
   const [y, m, dd] = d.split('-')
   return `${dd}/${m}/${y}`
 }
-
-const hoje = () => new Date().toISOString().slice(0, 10)
 
 // ── Badge ────────────────────────────────────────────────────
 

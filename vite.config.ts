@@ -10,6 +10,7 @@ function supabaseMigratePlugin(): Plugin {
       if (ran) return
       ran = true
       try {
+        // @ts-ignore
         const { runMigrations } = await import('./scripts/migrate.mjs')
         await runMigrations()
       } catch (err) {

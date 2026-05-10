@@ -419,87 +419,6 @@ function FornecedorForm({
 
 // ── Lista de Fornecedores ─────────────────────────────────────
 
-function FornecedorCard({ f, onEdit, onToggle, onDelete }: {
-  f: Fornecedor
-  onEdit: () => void
-  onToggle: () => void
-  onDelete: () => void
-}) {
-  const inicial = f.nome?.[0]?.toUpperCase() ?? '?'
-  return (
-    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{
-          width: 44, height: 44, borderRadius: 10, background: 'var(--bordo-bg)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'var(--bordo)', fontWeight: 800, fontSize: 18, flexShrink: 0,
-        }}>{inicial}</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.nome}</div>
-          {f.razao_social && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>{f.razao_social}</div>}
-        </div>
-        <StatusBadge ativo={f.ativo} />
-      </div>
-      {/* Info */}
-      <div style={{ padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {f.cnpj && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--muted)' }}>
-            <Building2 size={11} /> {f.cnpj}
-          </div>
-        )}
-        {f.telefone && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--muted)' }}>
-            <Phone size={11} /> {f.telefone}
-          </div>
-        )}
-        {f.email && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            <Mail size={11} /> {f.email}
-          </div>
-        )}
-        {(f.cidade || f.estado) && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--muted)' }}>
-            <MapPin size={11} /> {[f.cidade, f.estado].filter(Boolean).join(' — ')}
-          </div>
-        )}
-        {f.categorias && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
-            {f.categorias.split(',').map(c => c.trim()).filter(Boolean).slice(0, 3).map(c => (
-              <span key={c} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 12, background: 'var(--bordo-bg)', color: 'var(--bordo)', fontWeight: 600 }}>{c}</span>
-            ))}
-            {f.categorias.split(',').length > 3 && (
-              <span style={{ fontSize: 10, color: 'var(--muted)' }}>+{f.categorias.split(',').length - 3}</span>
-            )}
-          </div>
-        )}
-        {(f.prazo_pagamento || f.prazo_entrega_dias || f.desconto_pct) && (
-          <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 10, color: 'var(--muted)' }}>
-            {f.prazo_pagamento > 0 && <span>💳 {f.prazo_pagamento}d</span>}
-            {f.prazo_entrega_dias && <span>🚚 {f.prazo_entrega_dias}d</span>}
-            {f.desconto_pct && <span>🏷 {f.desconto_pct}%</span>}
-          </div>
-        )}
-      </div>
-      {/* Ações */}
-      <div style={{ display: 'flex', borderTop: '1px solid var(--border)' }}>
-        <button onClick={onEdit} style={{ flex: 1, padding: '8px 0', border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: 'var(--bordo)' }}>
-          ✏️ Editar
-        </button>
-        <div style={{ width: 1, background: 'var(--border)' }} />
-        <button onClick={onToggle} style={{ flex: 1, padding: '8px 0', border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: f.ativo ? 'var(--warning)' : 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-          {f.ativo ? <ToggleRight size={13} /> : <ToggleLeft size={13} />}
-          {f.ativo ? 'Desativar' : 'Ativar'}
-        </button>
-        <div style={{ width: 1, background: 'var(--border)' }} />
-        <button onClick={onDelete} style={{ flex: 1, padding: '8px 0', border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: 'var(--danger)' }}>
-          <Trash2 size={11} style={{ display: 'inline', marginRight: 4 }} />Excluir
-        </button>
-      </div>
-    </div>
-  )
-}
-
 // ── Página Principal ─────────────────────────────────────────
 
 export default function FornecedoresPage() {
@@ -782,8 +701,8 @@ export default function FornecedoresPage() {
 // ── Formulário de Edição (tem ID) ────────────────────────────
 
 function FornecedorEditForm({
-  fornecedor, loja, onSalvo, onCancelar,
-}: { fornecedor: Fornecedor; loja: string; onSalvo: () => void; onCancelar: () => void }) {
+  fornecedor, onSalvo, onCancelar,
+}: { fornecedor: Fornecedor; onSalvo: () => void; onCancelar: () => void }) {
   const [secao, setSecao] = useState<'dados' | 'pagamento' | 'comercial'>('dados')
   const [form, setForm] = useState<Partial<Fornecedor>>({ ...fornecedor })
   const [saving, setSaving] = useState(false)
