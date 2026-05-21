@@ -14,7 +14,7 @@ export interface NavItem {
 
 // Itens simples do menu
 const MENU_TOP: NavItem[] = [
-  { id: 'dashboard',   label: 'Dashboard',       icon: <LayoutDashboard size={13} /> },
+  { id: 'dashboard',   label: 'Painel',          icon: <LayoutDashboard size={13} /> },
   { id: 'pendencias',  label: 'Pendências & OS',  icon: <FileText size={13} />, badge: '7' },
   { id: 'gamificacao', label: 'Gamificação',       icon: <Trophy size={13} /> },
   { id: 'marketing',   label: 'Marketing 360°',   icon: <Megaphone size={13} /> },

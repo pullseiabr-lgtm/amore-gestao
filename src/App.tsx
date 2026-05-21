@@ -36,7 +36,7 @@ export type PageId =
   | 'configuracoes'
 
 const PAGE_TITLES: Record<PageId, string> = {
-  dashboard: 'Dashboard',
+  dashboard: 'Painel',
   vendas: 'Vendas',
   compras: 'Compras',
   requisicoes: 'Requisições de Compra',

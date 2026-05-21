@@ -21,7 +21,7 @@ const COLOR_FIELDS: { key: keyof TenantSettings; label: string }[] = [
 ]
 
 const FEATURE_LIST = [
-  { id: 'dashboard', label: 'Dashboard', desc: 'Painel principal com KPIs' },
+  { id: 'dashboard', label: 'Painel', desc: 'Painel principal com KPIs' },
   { id: 'pendencias', label: 'Pendências & OS', desc: 'Ordens de serviço e manutenção' },
   { id: 'gamificacao', label: 'Gamificação', desc: 'Score e ranking de colaboradores' },
   { id: 'marketing', label: 'Marketing 360°', desc: 'Ações e campanhas' },
@@ -198,7 +198,7 @@ export default function SettingsPage() {
                     <div style={{ width: 24, height: 24, background: form.primary_light, borderRadius: 5 }} />
                     <span style={{ color: '#E8D5D5', fontSize: 12, fontWeight: 700 }}>{form.company_name}</span>
                   </div>
-                  {['Dashboard', 'Vendas', 'Financeiro'].map((item, i) => (
+                  {['Painel', 'Vendas', 'Financeiro'].map((item, i) => (
                     <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', borderRadius: 5, marginBottom: 2, background: i === 0 ? form.primary_color + '33' : 'transparent', borderLeft: `3px solid ${i === 0 ? form.primary_light : 'transparent'}` }}>
                       <div style={{ width: 8, height: 8, borderRadius: 2, background: i === 0 ? form.primary_light : '#5A2828' }} />
                       <span style={{ color: i === 0 ? '#fff' : '#B08888', fontSize: 11 }}>{item}</span>
