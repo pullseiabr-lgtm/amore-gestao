@@ -1427,7 +1427,7 @@ export default function FinanceiroPage() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid var(--border)' }}>
+      <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid var(--border)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         {([
           ['dashboard', '📊 Dashboard'],
           ['creditos',  '💳 Créditos'],
@@ -1439,7 +1439,7 @@ export default function FinanceiroPage() {
               fontWeight: mainTab === id ? 800 : 500,
               color: mainTab === id ? 'var(--bordo)' : 'var(--muted)',
               borderBottom: mainTab === id ? '2px solid var(--bordo)' : '2px solid transparent',
-              marginBottom: -2,
+              marginBottom: -2, whiteSpace: 'nowrap', flexShrink: 0,
             }}>
             {label}
           </button>

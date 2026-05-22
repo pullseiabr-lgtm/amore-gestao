@@ -380,16 +380,16 @@ export default function RupturaPage() {
 
       {/* Filtro de período */}
       <div className="card" style={{ padding: '10px 14px', marginBottom: 14 }}>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Calendar size={13} color="var(--muted)" />
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input type="date" className="inp" style={{ width: 'auto', fontSize: 12 }}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: '1 1 260px', flexWrap: 'wrap' }}>
+            <Calendar size={13} color="var(--muted)" style={{ flexShrink: 0 }} />
+            <input type="date" className="inp" style={{ flex: '1 1 130px', minWidth: 120, fontSize: 12 }}
               value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>até</span>
-            <input type="date" className="inp" style={{ width: 'auto', fontSize: 12 }}
+            <span style={{ fontSize: 11, color: 'var(--muted)', flexShrink: 0 }}>até</span>
+            <input type="date" className="inp" style={{ flex: '1 1 130px', minWidth: 120, fontSize: 12 }}
               value={dataFim} onChange={e => setDataFim(e.target.value)} />
           </div>
-          <button className="btn bo bsm" onClick={load}>
+          <button className="btn bo bsm" style={{ flexShrink: 0 }} onClick={load}>
             <RefreshCw size={11} /> Atualizar
           </button>
         </div>

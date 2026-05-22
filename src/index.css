@@ -310,12 +310,16 @@ tr:hover td { background: #FAFAF8; }
   .sidebar { transform: translateX(-100%); }
   .sidebar.mobile-open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,.35); }
   .sidebar-overlay.visible { display: block; }
-  .main-content { margin-left: 0; }
+
+  /* CRÍTICO: impede que flex-item expanda além da viewport */
+  .main-content { margin-left: 0; min-width: 0; max-width: 100vw; overflow-x: hidden; }
+  .page-content { min-width: 0; max-width: 100%; overflow-x: hidden; }
+
   .hamburger-btn { display: flex !important; }
 
   /* topbar compacto */
-  .topbar { padding: 0 10px; gap: 6px; }
-  .tb-title { font-size: 13.5px; }
+  .topbar { padding: 0 10px; gap: 6px; min-width: 0; max-width: 100%; }
+  .tb-title { font-size: 13.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* grids para 1 coluna */
   .g2, .g3, .g4, .g12, .g11 { grid-template-columns: 1fr !important; }
@@ -331,6 +335,14 @@ tr:hover td { background: #FAFAF8; }
 
   /* barchart */
   .bc-lbl { width: 60px; }
+
+  /* tabs: scroll horizontal já em tablet */
+  .tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tab { white-space: nowrap; flex-shrink: 0; }
+
+  /* cabeçalhos de seção: wrappam antes de colidir */
+  .fb { flex-wrap: wrap; }
+  .sec-sub { overflow: hidden; }
 }
 
 /* Mobile (< 640px) */
