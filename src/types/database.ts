@@ -383,6 +383,53 @@ export interface Colaborador {
   created_at: string
 }
 
+// ── Módulo Financeiro ─────────────────────────────────────────
+
+export type FinCreditoStatus =
+  | 'aberto' | 'em_utilizacao' | 'prestacao_pendente' | 'prestacao_enviada'
+  | 'em_auditoria' | 'aprovado' | 'reprovado' | 'finalizado'
+
+export type FinPrestacaoStatus = 'rascunho' | 'enviada' | 'em_auditoria' | 'aprovada' | 'reprovada'
+export type FinFormaPagamento   = 'pix' | 'dinheiro' | 'cartao' | 'transferencia'
+export type FinAuditoriaStatus  = 'pendente' | 'aprovado' | 'reprovado' | 'correcao'
+
+export interface FinCredito {
+  id: string; loja: string; numero: number
+  responsavel_nome: string; responsavel_cargo: string | null
+  supervisor_nome: string | null; setor: string | null
+  valor_liberado: number; data_liberacao: string; objetivo: string
+  forma_pagamento: FinFormaPagamento; prazo_prestacao: string | null
+  observacoes: string | null; status: FinCreditoStatus
+  created_by: string | null; created_at: string; updated_at: string
+}
+
+export interface FinPrestacao {
+  id: string; loja: string; numero: number; credito_id: string | null
+  responsavel_nome: string; data_prestacao: string
+  valor_recebido: number; valor_utilizado: number; valor_devolvido: number; diferenca: number
+  status: FinPrestacaoStatus; observacoes: string | null
+  auditado_por: string | null; data_auditoria: string | null; obs_auditoria: string | null
+  created_by: string | null; created_at: string; updated_at: string
+}
+
+export interface FinLancamento {
+  id: string; prestacao_id: string; categoria: string; descricao: string
+  fornecedor: string | null; valor: number; data_compra: string
+  forma_pagamento: FinFormaPagamento; observacao: string | null
+  status_auditoria: FinAuditoriaStatus; obs_auditoria: string | null
+  created_at: string
+}
+
+export interface FinAnexo {
+  id: string; lancamento_id: string; nome_arquivo: string; tipo: string
+  url: string; tamanho_kb: number | null; created_by: string | null; created_at: string
+}
+
+export interface FinAuditoriaLog {
+  id: string; loja: string | null; entidade: string; entidade_id: string | null
+  acao: string; detalhe: string | null; usuario: string | null; created_at: string
+}
+
 // ── Produtos ─────────────────────────────────────────────────
 
 export interface CategoriaProduto {

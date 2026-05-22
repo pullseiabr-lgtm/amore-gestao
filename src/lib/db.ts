@@ -732,6 +732,93 @@ export async function upsertCotacaoItens(itens: Omit<RequisicaoCotacaoItem, 'id'
   return res.json()
 }
 
+// ── MÓDULO FINANCEIRO ───────────────────────────────────────────────────────
+import type { FinCredito, FinPrestacao, FinLancamento, FinAnexo, FinAuditoriaLog } from '../types/database'
+
+export async function fetchFinCreditos(loja: string): Promise<FinCredito[]> {
+  const { data, error } = await db.from('fin_creditos').select('*').eq('loja', loja).order('created_at', { ascending: false })
+  if (error) throw error; return data
+}
+export async function insertFinCredito(c: Omit<FinCredito, 'id' | 'numero' | 'created_at' | 'updated_at'>): Promise<FinCredito> {
+  const { data, error } = await db.from('fin_creditos').insert(c).select().single()
+  if (error) throw error; return data
+}
+export async function updateFinCredito(id: string, c: Partial<FinCredito>): Promise<FinCredito> {
+  const { data, error } = await db.from('fin_creditos').update({ ...c, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  if (error) throw error; return data
+}
+export async function deleteFinCredito(id: string): Promise<void> {
+  const { error } = await db.from('fin_creditos').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function fetchFinPrestacoes(loja: string): Promise<FinPrestacao[]> {
+  const { data, error } = await db.from('fin_prestacoes').select('*').eq('loja', loja).order('created_at', { ascending: false })
+  if (error) throw error; return data
+}
+export async function insertFinPrestacao(p: Omit<FinPrestacao, 'id' | 'numero' | 'diferenca' | 'created_at' | 'updated_at'>): Promise<FinPrestacao> {
+  const { data, error } = await db.from('fin_prestacoes').insert({ ...p, diferenca: 0 }).select().single()
+  if (error) throw error; return data
+}
+export async function updateFinPrestacao(id: string, p: Partial<FinPrestacao>): Promise<FinPrestacao> {
+  const { data, error } = await db.from('fin_prestacoes').update({ ...p, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  if (error) throw error; return data
+}
+export async function deleteFinPrestacao(id: string): Promise<void> {
+  const { error } = await db.from('fin_prestacoes').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function fetchFinLancamentos(prestacaoId: string): Promise<FinLancamento[]> {
+  const { data, error } = await db.from('fin_lancamentos').select('*').eq('prestacao_id', prestacaoId).order('data_compra', { ascending: true })
+  if (error) throw error; return data
+}
+export async function insertFinLancamento(l: Omit<FinLancamento, 'id' | 'created_at'>): Promise<FinLancamento> {
+  const { data, error } = await db.from('fin_lancamentos').insert(l).select().single()
+  if (error) throw error; return data
+}
+export async function updateFinLancamento(id: string, l: Partial<FinLancamento>): Promise<FinLancamento> {
+  const { data, error } = await db.from('fin_lancamentos').update(l).eq('id', id).select().single()
+  if (error) throw error; return data
+}
+export async function deleteFinLancamento(id: string): Promise<void> {
+  const { error } = await db.from('fin_lancamentos').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function fetchFinAnexos(lancamentoId: string): Promise<FinAnexo[]> {
+  const { data, error } = await db.from('fin_anexos').select('*').eq('lancamento_id', lancamentoId).order('created_at')
+  if (error) throw error; return data
+}
+export async function insertFinAnexo(a: Omit<FinAnexo, 'id' | 'created_at'>): Promise<FinAnexo> {
+  const { data, error } = await db.from('fin_anexos').insert(a).select().single()
+  if (error) throw error; return data
+}
+export async function deleteFinAnexo(id: string): Promise<void> {
+  const { error } = await db.from('fin_anexos').delete().eq('id', id)
+  if (error) throw error
+}
+export async function uploadFinComprovante(file: File, lancamentoId: string, prestacaoId: string, createdBy: string): Promise<FinAnexo> {
+  const ext  = file.name.split('.').pop() || 'bin'
+  const path = `${prestacaoId}/${lancamentoId}/${Date.now()}.${ext}`
+  const { error: upErr } = await db.storage.from('fin-comprovantes').upload(path, file)
+  if (upErr) throw upErr
+  const { data: { publicUrl } } = db.storage.from('fin-comprovantes').getPublicUrl(path)
+  return insertFinAnexo({
+    lancamento_id: lancamentoId, nome_arquivo: file.name,
+    tipo: file.type.startsWith('image/') ? 'foto' : file.type === 'application/pdf' ? 'pdf' : 'outro',
+    url: publicUrl, tamanho_kb: Math.round(file.size / 1024), created_by: createdBy,
+  })
+}
+
+export async function insertFinAuditoriaLog(log: Omit<FinAuditoriaLog, 'id' | 'created_at'>): Promise<void> {
+  await db.from('fin_auditoria_log').insert(log)
+}
+export async function fetchFinAuditoriaLog(entidadeId: string): Promise<FinAuditoriaLog[]> {
+  const { data, error } = await db.from('fin_auditoria_log').select('*').eq('entidade_id', entidadeId).order('created_at')
+  if (error) throw error; return data ?? []
+}
+
 // ── MÓDULO PRODUTOS ─────────────────────────────────────────────────────────
 import type { CategoriaProduto, MarcaProduto, Produto, ProdutoFornecedor } from '../types/database'
 
