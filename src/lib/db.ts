@@ -831,6 +831,28 @@ export async function deleteProdutoFornecedor(produtoId: string, fornecedorId: s
   if (error) throw error
 }
 
+// Dashboard de Compras — todos os itens comprados de uma loja
+export async function fetchItensComprasDashboard(loja: string): Promise<{
+  produto_nome: string
+  categoria: string | null
+  quantidade: number
+  preco_real: number | null
+  fornecedor_nome: string | null
+  status: string
+  unidade: string
+}[]> {
+  const { data: listaData, error: e1 } = await db.from('compras_lista').select('id').eq('loja', loja)
+  if (e1 || !listaData?.length) return []
+  const ids = (listaData as { id: string }[]).map(l => l.id)
+  const { data, error } = await db
+    .from('compras_lista_item')
+    .select('produto_nome,categoria,quantidade,preco_real,fornecedor_nome,status,unidade')
+    .in('lista_id', ids)
+    .eq('status', 'comprado')
+  if (error) throw error
+  return data ?? []
+}
+
 // Contagem por categoria
 export async function fetchContagemPorCategoria(loja: string): Promise<{ categoria_nome: string | null; total: number }[]> {
   const { data, error } = await db.from('produtos').select('categoria_nome').eq('loja', loja).eq('ativo', true)
