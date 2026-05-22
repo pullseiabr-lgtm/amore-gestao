@@ -2,6 +2,20 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ── MOBILE GLOBALS ─────────────────────────────────────────── */
+/* Remove 300ms tap delay e flash cinza em todos os dispositivos touch */
+button, a, [role="button"],
+.btn, .tab, .nav-item, .tb-btn, .ib, .bsm, .lo-btn,
+.card-hd, .kpi, .badge, .tw th, input[type="checkbox"],
+input[type="radio"], select, label {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Scroll suave em todos os containers scrolláveis */
+.sb-nav, .tw, .tabs, .page-content, .mbd, .modal {
+  -webkit-overflow-scrolling: touch;
+}
+
 :root {
   --bordo: #6B1212;
   --bordo-l: #8B1A1A;
@@ -424,6 +438,18 @@ tr:hover td { background: #FAFAF8; }
   .kpi-grid { grid-template-columns: 1fr; }
   .mkt-grid { grid-template-columns: 1fr; }
   .tb-sel { display: none; }
+}
+
+/* ── iOS SAFE AREA (notch / Dynamic Island / home indicator) ── */
+@supports (padding: env(safe-area-inset-bottom)) {
+  /* Sidebar: espaço abaixo do home indicator */
+  .sb-foot { padding-bottom: calc(11px + env(safe-area-inset-bottom)); }
+  /* Topbar: espaço acima do Dynamic Island/notch */
+  .topbar { padding-top: env(safe-area-inset-top); height: calc(54px + env(safe-area-inset-top)); }
+  /* Modals como bottom sheet: espaço abaixo */
+  .modal { padding-bottom: env(safe-area-inset-bottom); }
+  /* Page content: margem inferior para home indicator */
+  .page-content { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
 }
 
 /* ── PRINT ──────────────────────────────────────────────────── */

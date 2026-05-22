@@ -58,18 +58,26 @@ export default function DashboardPage() {
   useEffect(() => {
     setLoading(true)
     const lojaParam = loja === 'Todas as Lojas' ? undefined : loja
+
+    // Garantia de resolução em até 6s — evita skeleton infinito quando
+    // Supabase está pausado ou a rede é lenta
+    const safetyTimer = setTimeout(() => setLoading(false), 6000)
+
     Promise.allSettled([
       fetchRupturas(loja),
       fetchRelatoriosCVL(loja),
       fetchRequisicoes(loja),
       lojaParam ? fetchProdutos(lojaParam, { ativo: true }) : Promise.resolve([] as Produto[]),
     ]).then(([r, c, q, p]) => {
+      clearTimeout(safetyTimer)
       if (r.status === 'fulfilled') setRupturas(r.value)
       if (c.status === 'fulfilled') setCvlRels(c.value)
       if (q.status === 'fulfilled') setRequisicoes(q.value)
       if (p.status === 'fulfilled') setProdutos(p.value)
       setLoading(false)
     })
+
+    return () => clearTimeout(safetyTimer)
   }, [loja])
 
   // ── derived ────────────────────────────────────────────────────────────────
