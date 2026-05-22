@@ -20,6 +20,8 @@ import EstoquePage from './pages/estoque/EstoquePage'
 import FornecedoresPage from './pages/fornecedores/FornecedoresPage'
 import RequisoesPage from './pages/requisicoes/RequisoesPage'
 import ProdutosPage from './pages/produtos/ProdutosPage'
+import RelatorioCVLPage from './pages/relatorios/RelatorioCVLPage'
+import RupturaPage from './pages/relatorios/RupturaPage'
 
 export type PageId =
   | 'dashboard'
@@ -38,6 +40,8 @@ export type PageId =
   | 'configuracoes'
   | 'produtos'
   | 'produtos-categorias'
+  | 'relatorio-cvl'
+  | 'ruptura'
 
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Painel',
@@ -56,6 +60,8 @@ const PAGE_TITLES: Record<PageId, string> = {
   configuracoes: 'Configurações',
   produtos: 'Produtos',
   'produtos-categorias': 'Categorias de Produtos',
+  'relatorio-cvl': 'Compra vs Lista',
+  ruptura: 'Ruptura de Pedidos',
 }
 
 function PageContent({ page }: { page: PageId }) {
@@ -76,6 +82,8 @@ function PageContent({ page }: { page: PageId }) {
     case 'configuracoes': return <SettingsPage />
     case 'produtos':             return <ProdutosPage />
     case 'produtos-categorias':  return <ProdutosPage initialView="categorias" />
+    case 'relatorio-cvl':        return <RelatorioCVLPage />
+    case 'ruptura':              return <RupturaPage />
     default: return <DashboardPage />
   }
 }

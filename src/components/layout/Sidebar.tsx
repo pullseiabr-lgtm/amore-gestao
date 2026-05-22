@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, UtensilsCrossed, Tag } from 'lucide-react'
+import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, UtensilsCrossed, Tag, BarChart2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 
@@ -35,6 +35,12 @@ const COMPRAS_SUBMENU: NavItem[] = [
   { id: 'fornecedores', label: 'Fornecedores',      icon: <Building2 size={12} /> },
 ]
 
+// Sub-itens do grupo Relatórios
+const RELATORIOS_SUBMENU: NavItem[] = [
+  { id: 'relatorio-cvl', label: 'Compra vs Lista', icon: <BarChart2 size={12} /> },
+  { id: 'ruptura',       label: 'Ruptura de Pedidos', icon: <AlertTriangle size={12} /> },
+]
+
 const MENU_BOTTOM: NavItem[] = [
   { id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={13} /> },
   { id: 'cozinha',    label: 'Cozinha',    icon: <ChefHat size={13} /> },
@@ -64,13 +70,16 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
 
   // Abre o dropdown automaticamente se a página ativa for do grupo Compras
   const isComprasGroup = (p: string) => p === 'compras' || p === 'requisicoes' || p === 'estoque' || p === 'fornecedores'
+  const isRelatoriosGroup = (p: string) => p === 'relatorio-cvl' || p === 'ruptura'
 
   const [produtosOpen, setProdutosOpen] = useState(isProdutosGroup(activePage))
   const [comprasOpen, setComprasOpen] = useState(isComprasGroup(activePage))
+  const [relatoriosOpen, setRelatoriosOpen] = useState(isRelatoriosGroup(activePage))
 
   useEffect(() => {
-    if (isProdutosGroup(activePage)) setProdutosOpen(true)
-    if (isComprasGroup(activePage))  setComprasOpen(true)
+    if (isProdutosGroup(activePage))    setProdutosOpen(true)
+    if (isComprasGroup(activePage))     setComprasOpen(true)
+    if (isRelatoriosGroup(activePage))  setRelatoriosOpen(true)
   }, [activePage])
 
   const roleLabel = {
@@ -185,6 +194,38 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
                         marginLeft: 16,
                         borderRadius: '0 6px 6px 0',
                       }}
+                    >
+                      {m.icon}
+                      {m.label}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Grupo Relatórios (dropdown) ── */}
+          {(can('relatorio-cvl', 'view') || can('ruptura', 'view')) && (
+            <div>
+              <div
+                className={`nav-item${isRelatoriosGroup(activePage) ? ' active' : ''}`}
+                onClick={() => setRelatoriosOpen(o => !o)}
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+              >
+                <BarChart2 size={13} />
+                Relatórios
+                <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', opacity: 0.7 }}>
+                  {relatoriosOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                </span>
+              </div>
+              {relatoriosOpen && (
+                <div style={{ overflow: 'hidden' }}>
+                  {RELATORIOS_SUBMENU.filter(m => can(m.id, 'view')).map(m => (
+                    <div
+                      key={m.id}
+                      className={`nav-item${activePage === m.id ? ' active' : ''}`}
+                      onClick={() => onNav(m.id, m.label)}
+                      style={{ paddingLeft: 28, fontSize: 12, borderLeft: '2px solid var(--bordo-l)', marginLeft: 16, borderRadius: '0 6px 6px 0' }}
                     >
                       {m.icon}
                       {m.label}

@@ -582,7 +582,6 @@ function CategoriasView({ loja, onVoltar }: { loja: string; onVoltar: () => void
 // ── Lista de Produtos ────────────────────────────────────────
 
 export default function ProdutosPage({ initialView }: { initialView?: 'lista'|'categorias' }) {
-  const { user } = useAuth()
   const { loja } = useLoja()
   const { toast, ToastEl } = useToast()
 

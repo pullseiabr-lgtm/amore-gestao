@@ -963,3 +963,130 @@ export async function fetchContagemPorCategoria(loja: string): Promise<{ categor
   }
   return Object.entries(map).map(([categoria_nome, total]) => ({ categoria_nome, total })).sort((a, b) => b.total - a.total)
 }
+
+// ── Relatório Compra vs Lista ────────────────────────────────
+
+export interface RelatorioCVLItem {
+  id: string
+  relatorio_id: string
+  produto_nome: string
+  categoria: string | null
+  qtd_solicitada: number
+  unidade: string | null
+  valor_previsto: number
+  requisicao_id: string | null
+  responsavel_req: string | null
+  data_req: string | null
+  qtd_comprada: number
+  valor_realizado: number
+  compra_id: string | null
+  responsavel_comp: string | null
+  data_comp: string | null
+  diferenca_qtd: number
+  divergencia_pct: number
+  status: 'ok' | 'acima' | 'abaixo' | 'nao_comprado'
+  created_at: string
+}
+
+export interface RelatorioCVL {
+  id: string
+  loja: string
+  periodo_inicio: string
+  periodo_fim: string
+  gerado_por: string | null
+  gerado_em: string
+  total_itens_solicitados: number
+  total_itens_comprados: number
+  total_itens_nao_comprados: number
+  valor_previsto: number
+  valor_realizado: number
+  economia: number
+  excesso: number
+  assertividade: number
+  created_at: string
+  itens?: RelatorioCVLItem[]
+}
+
+export async function fetchRelatoriosCVL(loja: string): Promise<RelatorioCVL[]> {
+  let q = db.from('relatorio_compra_vs_lista').select('*').order('created_at', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
+  const { data, error } = await q
+  if (error) throw error
+  return data ?? []
+}
+
+export async function fetchRelatorioCVLItens(relatorioId: string): Promise<RelatorioCVLItem[]> {
+  const { data, error } = await db.from('relatorio_cvl_itens').select('*').eq('relatorio_id', relatorioId).order('produto_nome')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function insertRelatorioCVL(r: Omit<RelatorioCVL, 'id' | 'created_at' | 'gerado_em'>): Promise<RelatorioCVL> {
+  const { data, error } = await db.from('relatorio_compra_vs_lista').insert(r).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function insertRelatorioCVLItens(itens: Omit<RelatorioCVLItem, 'id' | 'created_at' | 'diferenca_qtd' | 'divergencia_pct'>[]): Promise<void> {
+  if (!itens.length) return
+  const { error } = await db.from('relatorio_cvl_itens').insert(itens)
+  if (error) throw error
+}
+
+export async function deleteRelatorioCVL(id: string): Promise<void> {
+  const { error } = await db.from('relatorio_compra_vs_lista').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ── Relatório de Ruptura ─────────────────────────────────────
+
+export interface Ruptura {
+  id: string
+  loja: string
+  numero_pedido: string | null
+  cliente: string | null
+  produto_nome: string
+  categoria: string | null
+  qtd_solicitada: number
+  qtd_atendida: number
+  qtd_ruptura: number
+  pct_ruptura: number
+  motivo: string | null
+  motivo_descricao: string | null
+  impacto_financeiro: number
+  unidade: string | null
+  fornecedor_nome: string | null
+  responsavel: string | null
+  data_ocorrencia: string
+  status: 'aberta' | 'resolvida' | 'parcial'
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export async function fetchRupturas(loja: string, inicio?: string, fim?: string): Promise<Ruptura[]> {
+  let q = db.from('rupturas').select('*').order('data_ocorrencia', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
+  if (inicio) q = q.gte('data_ocorrencia', inicio)
+  if (fim)    q = q.lte('data_ocorrencia', fim)
+  const { data, error } = await q
+  if (error) throw error
+  return data ?? []
+}
+
+export async function insertRuptura(r: Omit<Ruptura, 'id' | 'created_at' | 'updated_at' | 'qtd_ruptura' | 'pct_ruptura'>): Promise<Ruptura> {
+  const { data, error } = await db.from('rupturas').insert(r).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateRuptura(id: string, r: Partial<Ruptura>): Promise<Ruptura> {
+  const { data, error } = await db.from('rupturas').update({ ...r, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteRuptura(id: string): Promise<void> {
+  const { error } = await db.from('rupturas').delete().eq('id', id)
+  if (error) throw error
+}

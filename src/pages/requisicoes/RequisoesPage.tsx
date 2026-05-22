@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Plus, Search, Trash2, ChevronLeft, Loader, Check, X,
   DollarSign, FileText, Clock, AlertTriangle, CheckCircle2, XCircle,
-  Edit3, Download, RefreshCw, User, Calendar, Package, Send,
+  Edit3, Download, RefreshCw, Package, Send,
   ShoppingCart, BarChart2, Lock, Layers, Receipt,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
@@ -269,7 +269,7 @@ function ModalItem({ item, produtos, onSalvo, onFechar }: {
 
 type IS = { bloqueado: boolean; motivo: string; qtd: number }
 
-function ModalAprovacao({ req, itens, userName, onSalvo, onFechar }: {
+function ModalAprovacao({ req, itens, userName: _userName, onSalvo, onFechar }: {
   req: Requisicao; itens: RequisicaoItem[]; userName: string
   onSalvo: (acao: 'aprovada'|'parcialmente_aprovada'|'reprovada'|'rascunho', st: Record<string, IS>, obs: string) => void
   onFechar: () => void

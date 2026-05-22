@@ -1032,7 +1032,6 @@ function ListaRow({ lista, onClick, onDelete }: {
 // ── Página Principal ─────────────────────────────────────────
 
 export default function ComprasPage() {
-  const { user } = useAuth()
   const { loja } = useLoja()
 
   const [listas, setListas] = useState<ComprasLista[]>([])

@@ -423,7 +423,6 @@ function FornecedorForm({
 // ── Página Principal ─────────────────────────────────────────
 
 export default function FornecedoresPage() {
-  const { user } = useAuth()
   const { loja } = useLoja()
 
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
