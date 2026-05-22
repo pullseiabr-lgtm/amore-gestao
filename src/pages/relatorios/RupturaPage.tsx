@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLoja } from '../../contexts/LojaContext'
+import { useToast } from '../../hooks/useToast'
 import { fetchRupturas, insertRuptura, updateRuptura, deleteRuptura, type Ruptura } from '../../lib/db'
 
 function fmtBRL(v: number) {
@@ -330,6 +331,7 @@ function DashIndicadores({ rupturas }: { rupturas: Ruptura[] }) {
 export default function RupturaPage() {
   const { user } = useAuth()
   const { loja } = useLoja()
+  const { toast } = useToast()
   const [rupturas, setRupturas] = useState<Ruptura[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'lista' | 'dashboard'>('lista')
@@ -362,7 +364,13 @@ export default function RupturaPage() {
     .filter(r => filtroMotivo === 'todos' || r.motivo === filtroMotivo)
 
   const handleDelete = async (r: Ruptura) => {
-    try { await deleteRuptura(r.id); await load() } catch {}
+    try {
+      await deleteRuptura(r.id)
+      await load()
+      toast('Ruptura removida.')
+    } catch {
+      toast('Erro ao excluir. Tente novamente.', 'error')
+    }
     setConfirmDelete(null)
   }
 

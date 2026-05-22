@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Plus, Trash2, Star } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
+import { useToast } from '../../hooks/useToast'
 import Modal from '../../components/ui/Modal'
 import {
   fetchSalaoMesas, updateSalaoMesa,
@@ -281,6 +282,7 @@ function ChecklistPanel({ tipo, items, records, onStatusChange, onSave, onDelete
 export default function SalaoPage() {
   const { theme } = useTheme()
   const { user } = useAuth()
+  const { toast } = useToast()
 
   const [tab, setTab] = useState<Tab>('checklist')
   const [loja, setLoja] = useState('Todas as Lojas')
@@ -480,7 +482,10 @@ export default function SalaoPage() {
         }
       }
       await loadChecklist()
-    } catch { /* silent */ } finally {
+      toast('Checklist salvo!')
+    } catch {
+      toast('Erro ao salvar checklist. Verifique a conexão.', 'error')
+    } finally {
       setSaving(false)
     }
   }
@@ -524,6 +529,7 @@ export default function SalaoPage() {
     try {
       const saved = await insertSalaoAtendimento(novo)
       setAtendimentos(prev => [saved, ...prev])
+      toast('Atendimento registrado!')
       // update mesa status
       const mesa = mesas.find(m => m.numero === parseInt(atendForm.mesa))
       if (mesa && atendForm.status === 'em_atendimento') {
@@ -536,6 +542,7 @@ export default function SalaoPage() {
       }
     } catch {
       setAtendimentos(prev => [{ ...novo, id: String(Date.now()), created_at: new Date().toISOString() }, ...prev])
+      toast('Salvo localmente. Sincronize quando houver conexão.', 'warning')
     }
     setShowAtendModal(false)
     setAtendForm({ mesa:'', garcom:'', entrada:'', saida:'', pax:2, consumo:'', abordagem_min:'', pedido_min:'', entrega_min:'', apresent_prato:5, cordialidade:5, postura:5, erros:0, devolucoes:0, avaliacao:5, obs:'', status:'em_atendimento' })
@@ -556,8 +563,10 @@ export default function SalaoPage() {
     try {
       const saved = await insertSalaoAvaliacao(nova)
       setAvaliacoes(prev => [saved, ...prev])
+      toast('Avaliação registrada!')
     } catch {
       setAvaliacoes(prev => [{ ...nova, id: String(Date.now()), created_at: new Date().toISOString() }, ...prev])
+      toast('Salvo localmente. Sincronize quando houver conexão.', 'warning')
     }
     setShowAvalModal(false)
     setAvalForm({ mesa:'', garcom:'', nota:5, canal:'Presencial', comentario:'' })

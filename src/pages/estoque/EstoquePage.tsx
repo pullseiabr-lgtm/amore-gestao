@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Search, Package, TrendingDown, History, ArrowLeftRight, ClipboardList, Download, Plus, ChevronRight, CheckCircle, XCircle, Calculator, Loader } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLoja } from '../../contexts/LojaContext'
+import { useToast } from '../../hooks/useToast'
 import {
   fetchEstoqueProdutos, insertEstoqueProduto, updateEstoqueProduto,
   fetchEstoqueMovimentacoes, fetchEstoqueMovimentacoesDias, insertEstoqueMovimentacao,
@@ -67,6 +68,7 @@ type BulkRow = { nivel_atual: number; nivel_minimo: number; nivel_ideal: number;
 
 function TabLista({ loja }: { loja: string }) {
   const { lojas } = useLoja()
+  const { toast } = useToast()
   const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
@@ -129,11 +131,15 @@ function TabLista({ loja }: { loja: string }) {
         modificados.map(p => updateEstoqueProduto(p.id, bulkData[p.id]))
       )
       setBulkSaved(true)
+      toast('Estoque atualizado em massa!')
       setTimeout(() => setBulkSaved(false), 2500)
       setEditMode(false)
       setBulkData({})
       await load()
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      console.error(e)
+      toast('Erro ao salvar estoque. Tente novamente.', 'error')
+    }
     setBulkSaving(false)
   }
 
@@ -179,12 +185,16 @@ function TabLista({ loja }: { loja: string }) {
       }
       if (editProduto) {
         await updateEstoqueProduto(editProduto.id, payload)
+        toast('Produto atualizado!')
       } else {
         await insertEstoqueProduto(payload)
+        toast('Produto cadastrado!')
       }
       setShowModal(false)
       await load()
-    } catch {}
+    } catch {
+      toast('Erro ao salvar produto. Tente novamente.', 'error')
+    }
     setSaving(false)
   }
 
@@ -627,6 +637,7 @@ function TabHistorico({ loja }: { loja: string }) {
 function TabMovimentacoes({ loja }: { loja: string }) {
   const { user } = useAuth()
   const { lojas } = useLoja()
+  const { toast } = useToast()
   const [dias, setDias] = useState<string[]>([])
   const [diaSel, setDiaSel] = useState<string | null>(null)
   const [movs, setMovs] = useState<EstoqueMovimentacao[]>([])
@@ -680,9 +691,13 @@ function TabMovimentacoes({ loja }: { loja: string }) {
       }
       setShowModal(false)
       setForm({ produto_id: '', produto_nome: '', tipo: 'entrada', quantidade: '', motivo: '' })
+      toast('Movimentação registrada!')
       await load()
       if (diaSel) await selecionarDia(diaSel)
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      console.error(e)
+      toast('Erro ao registrar movimentação. Tente novamente.', 'error')
+    }
     setSaving(false)
   }
 
@@ -791,6 +806,7 @@ function TabMovimentacoes({ loja }: { loja: string }) {
 function TabContagem({ loja }: { loja: string }) {
   const { user } = useAuth()
   const { lojas } = useLoja()
+  const { toast } = useToast()
   const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
   const [loading, setLoading] = useState(true)
   const [tipo, setTipo] = useState<'regular' | 'fechamento' | 'abertura'>('regular')
@@ -831,8 +847,12 @@ function TabContagem({ loja }: { loja: string }) {
         )
       )
       setSaved(true)
+      toast('Contagem salva com sucesso!')
       setTimeout(() => setSaved(false), 3000)
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      console.error(e)
+      toast('Erro ao salvar contagem. Tente novamente.', 'error')
+    }
     setSaving(false)
   }
 

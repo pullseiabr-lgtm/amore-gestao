@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLoja } from '../../contexts/LojaContext'
+import { useToast } from '../../hooks/useToast'
 import { fetchFornecedores, insertFornecedor, updateFornecedor, deleteFornecedor } from '../../lib/db'
 import type { Fornecedor } from '../../types/database'
 
@@ -125,6 +126,7 @@ function FornecedorForm({
   onCancelar: () => void
 }) {
   const { user } = useAuth()
+  const { toast } = useToast()
   const [secao, setSecao] = useState<'dados' | 'pagamento' | 'comercial'>('dados')
   const [form, setForm] = useState<Omit<Fornecedor, 'id' | 'created_at' | 'updated_at'>>(
     inicial ?? { ...EMPTY_FORM, loja, created_by: user?.name || null }
@@ -147,8 +149,12 @@ function FornecedorForm({
     setSaving(true)
     try {
       await insertFornecedor({ ...form, nome: form.nome.trim().toUpperCase(), loja })
+      toast('Fornecedor salvo com sucesso!')
       onSalvo()
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      console.error(e)
+      toast('Erro ao salvar fornecedor. Tente novamente.', 'error')
+    }
     setSaving(false)
   }
 
@@ -424,6 +430,7 @@ function FornecedorForm({
 
 export default function FornecedoresPage() {
   const { loja } = useLoja()
+  const { toast } = useToast()
 
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
   const [loading, setLoading] = useState(true)
@@ -464,8 +471,12 @@ export default function FornecedoresPage() {
     try {
       await deleteFornecedor(confirmDelete.id)
       setConfirmDelete(null)
+      toast('Fornecedor removido.')
       await load()
-    } catch {}
+    } catch {
+      setConfirmDelete(null)
+      toast('Erro ao excluir fornecedor. Tente novamente.', 'error')
+    }
   }
 
   const abrirEditar = (f: Fornecedor) => {
@@ -702,6 +713,7 @@ export default function FornecedoresPage() {
 function FornecedorEditForm({
   fornecedor, onSalvo, onCancelar,
 }: { fornecedor: Fornecedor; onSalvo: () => void; onCancelar: () => void }) {
+  const { toast } = useToast()
   const [secao, setSecao] = useState<'dados' | 'pagamento' | 'comercial'>('dados')
   const [form, setForm] = useState<Partial<Fornecedor>>({ ...fornecedor })
   const [saving, setSaving] = useState(false)
@@ -714,8 +726,12 @@ function FornecedorEditForm({
     setSaving(true)
     try {
       await updateFornecedor(fornecedor.id, { ...form, nome: form.nome.trim().toUpperCase() })
+      toast('Fornecedor atualizado!')
       onSalvo()
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      console.error(e)
+      toast('Erro ao atualizar fornecedor. Tente novamente.', 'error')
+    }
     setSaving(false)
   }
 
