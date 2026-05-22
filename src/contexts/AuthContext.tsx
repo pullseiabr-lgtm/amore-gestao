@@ -52,12 +52,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
+    // Helper: rejeita após N ms — impede travamento quando Supabase está pausado
+    const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T | null> =>
+      Promise.race([promise, new Promise<null>(resolve => setTimeout(() => resolve(null), ms))])
+
     // 1. Check for existing Supabase session (with timeout — SDK can hang)
-    const sessionTimeout = new Promise<null>(resolve => setTimeout(() => resolve(null), 5000))
-    Promise.race([supabase.auth.getSession(), sessionTimeout]).then(async (result) => {
+    withTimeout(supabase.auth.getSession(), 5000).then(async (result) => {
       const session = result && 'data' in result ? result.data.session : null
       if (session?.user) {
-        const profile = await fetchProfile(session.user.id).catch(() => null)
+        // fetchProfile também tem timeout: se Supabase travar, cai no fallback em 4s
+        const profile = await withTimeout(fetchProfile(session.user.id), 4000).catch(() => null)
         if (profile) {
           setUser(profile)
           setIsDemoMode(false)
