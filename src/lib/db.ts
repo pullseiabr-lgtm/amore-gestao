@@ -731,3 +731,114 @@ export async function upsertCotacaoItens(itens: Omit<RequisicaoCotacaoItem, 'id'
   if (!res.ok) throw new Error(res.statusText)
   return res.json()
 }
+
+// ── MÓDULO PRODUTOS ─────────────────────────────────────────────────────────
+import type { CategoriaProduto, MarcaProduto, Produto, ProdutoFornecedor } from '../types/database'
+
+// Categorias
+export async function fetchCategoriasProduto(loja: string): Promise<CategoriaProduto[]> {
+  const { data, error } = await db.from('categorias_produto').select('*').eq('loja', loja).order('nome', { ascending: true })
+  if (error) throw error
+  return data
+}
+export async function insertCategoriaProduto(c: Omit<CategoriaProduto, 'id' | 'created_at' | 'updated_at'>): Promise<CategoriaProduto> {
+  const { data, error } = await db.from('categorias_produto').insert(c).select().single()
+  if (error) throw error
+  return data
+}
+export async function updateCategoriaProduto(id: string, c: Partial<CategoriaProduto>): Promise<CategoriaProduto> {
+  const { data, error } = await db.from('categorias_produto').update({ ...c, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+export async function deleteCategoriaProduto(id: string): Promise<void> {
+  const { error } = await db.from('categorias_produto').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Marcas
+export async function fetchMarcasProduto(loja: string): Promise<MarcaProduto[]> {
+  const { data, error } = await db.from('marcas_produto').select('*').eq('loja', loja).order('nome', { ascending: true })
+  if (error) throw error
+  return data
+}
+export async function insertMarcaProduto(m: Omit<MarcaProduto, 'id' | 'created_at'>): Promise<MarcaProduto> {
+  const { data, error } = await db.from('marcas_produto').insert(m).select().single()
+  if (error) throw error
+  return data
+}
+export async function updateMarcaProduto(id: string, m: Partial<MarcaProduto>): Promise<MarcaProduto> {
+  const { data, error } = await db.from('marcas_produto').update(m).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+export async function deleteMarcaProduto(id: string): Promise<void> {
+  const { error } = await db.from('marcas_produto').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Produtos
+export async function fetchProdutos(loja: string, opts?: { search?: string; categoriaId?: string; marcaId?: string; ativo?: boolean }): Promise<Produto[]> {
+  let q = db.from('produtos').select('*').eq('loja', loja)
+  if (opts?.ativo !== undefined) q = q.eq('ativo', opts.ativo)
+  if (opts?.categoriaId) q = q.eq('categoria_id', opts.categoriaId)
+  if (opts?.marcaId) q = q.eq('marca_id', opts.marcaId)
+  if (opts?.search) q = q.ilike('nome', `%${opts.search}%`)
+  const { data, error } = await q.order('nome', { ascending: true })
+  if (error) throw error
+  return data
+}
+export async function fetchProduto(id: string): Promise<Produto | null> {
+  const { data, error } = await db.from('produtos').select('*').eq('id', id).single()
+  if (error) return null
+  return data
+}
+export async function insertProduto(p: Omit<Produto, 'id' | 'created_at' | 'updated_at' | 'fornecedores'>): Promise<Produto> {
+  const { data, error } = await db.from('produtos').insert(p).select().single()
+  if (error) throw error
+  return data
+}
+export async function updateProduto(id: string, p: Partial<Omit<Produto, 'id' | 'created_at' | 'fornecedores'>>): Promise<Produto> {
+  const { data, error } = await db.from('produtos').update({ ...p, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+export async function deleteProduto(id: string): Promise<void> {
+  const { error } = await db.from('produtos').delete().eq('id', id)
+  if (error) throw error
+}
+export async function duplicarProduto(id: string, loja: string): Promise<Produto> {
+  const original = await fetchProduto(id)
+  if (!original) throw new Error('Produto nao encontrado')
+  const { id: _id, created_at, updated_at, fornecedores, ...rest } = original
+  const sufixo = Math.floor(Math.random() * 9000) + 1000
+  return insertProduto({ ...rest, codigo_interno: `${rest.codigo_interno}-${sufixo}`, nome: `${rest.nome} (copia)`, loja })
+}
+
+// Produto x Fornecedor
+export async function fetchProdutoFornecedores(produtoId: string): Promise<ProdutoFornecedor[]> {
+  const { data, error } = await db.from('produto_fornecedores').select('*, fornecedor:fornecedores(id,nome,telefone,email,cidade,prazo_entrega_dias)').eq('produto_id', produtoId)
+  if (error) throw error
+  return data
+}
+export async function upsertProdutoFornecedor(pf: Omit<ProdutoFornecedor, 'id' | 'created_at' | 'fornecedor'>): Promise<ProdutoFornecedor> {
+  const { data, error } = await db.from('produto_fornecedores').upsert(pf, { onConflict: 'produto_id,fornecedor_id' }).select().single()
+  if (error) throw error
+  return data
+}
+export async function deleteProdutoFornecedor(produtoId: string, fornecedorId: string): Promise<void> {
+  const { error } = await db.from('produto_fornecedores').delete().eq('produto_id', produtoId).eq('fornecedor_id', fornecedorId)
+  if (error) throw error
+}
+
+// Contagem por categoria
+export async function fetchContagemPorCategoria(loja: string): Promise<{ categoria_nome: string | null; total: number }[]> {
+  const { data, error } = await db.from('produtos').select('categoria_nome').eq('loja', loja).eq('ativo', true)
+  if (error) throw error
+  const map: Record<string, number> = {}
+  for (const r of (data ?? [])) {
+    const k = (r.categoria_nome as string | null) ?? 'Sem categoria'
+    map[k] = (map[k] ?? 0) + 1
+  }
+  return Object.entries(map).map(([categoria_nome, total]) => ({ categoria_nome, total })).sort((a, b) => b.total - a.total)
+}

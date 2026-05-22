@@ -18,6 +18,7 @@ import SettingsPage from './pages/settings/SettingsPage'
 import EstoquePage from './pages/estoque/EstoquePage'
 import FornecedoresPage from './pages/fornecedores/FornecedoresPage'
 import RequisoesPage from './pages/requisicoes/RequisoesPage'
+import ProdutosPage from './pages/produtos/ProdutosPage'
 
 export type PageId =
   | 'dashboard'
@@ -34,6 +35,8 @@ export type PageId =
   | 'salao'
   | 'usuarios'
   | 'configuracoes'
+  | 'produtos'
+  | 'produtos-categorias'
 
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Painel',
@@ -50,6 +53,8 @@ const PAGE_TITLES: Record<PageId, string> = {
   salao: 'Salão',
   usuarios: 'Usuários',
   configuracoes: 'Configurações',
+  produtos: 'Produtos',
+  'produtos-categorias': 'Categorias de Produtos',
 }
 
 function PageContent({ page }: { page: PageId }) {
@@ -68,6 +73,8 @@ function PageContent({ page }: { page: PageId }) {
     case 'salao': return <SalaoPage />
     case 'usuarios': return <UsersPage />
     case 'configuracoes': return <SettingsPage />
+    case 'produtos':             return <ProdutosPage />
+    case 'produtos-categorias':  return <ProdutosPage initialView="categorias" />
     default: return <DashboardPage />
   }
 }

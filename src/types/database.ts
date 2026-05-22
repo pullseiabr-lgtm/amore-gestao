@@ -383,6 +383,69 @@ export interface Colaborador {
   created_at: string
 }
 
+// ── Produtos ─────────────────────────────────────────────────
+
+export interface CategoriaProduto {
+  id: string
+  loja: string
+  nome: string
+  ativo: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface MarcaProduto {
+  id: string
+  loja: string
+  nome: string
+  ativo: boolean
+  created_at: string
+}
+
+export type ProdutoUnidade =
+  | 'Miligrama' | 'Grama' | 'Quilograma' | 'Tonelada'
+  | 'Mililitro'  | 'Litro'
+  | 'Unidade'    | 'Caixa'  | 'Peça'      | 'Dúzia'
+  | 'Garrafa'    | 'Frasco' | 'Galão'     | 'Pote'
+  | 'Rolo'       | 'Pacote' | 'Lata'      | 'Saco'
+  | 'Metro'      | 'Centímetro' | 'Par'
+  | 'Barrica'    | 'Tambor' | 'Fardo'     | 'Bisnaga'
+  | 'Maço'       | 'Bandeja'| 'Embalagem' | 'Display'
+  | 'Pente'      | 'Balde'  | 'Quilograma'
+
+export interface Produto {
+  id: string
+  loja: string
+  codigo_interno: string
+  nome: string
+  descricao: string | null
+  categoria_id: string | null
+  categoria_nome: string | null
+  gramatura: number | null
+  unidade: string
+  marca_id: string | null
+  marca_nome: string | null
+  imagem_url: string | null
+  ativo: boolean
+  estoque_atual: number
+  estoque_minimo: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  // join helpers
+  fornecedores?: ProdutoFornecedor[]
+}
+
+export interface ProdutoFornecedor {
+  id: string
+  produto_id: string
+  fornecedor_id: string
+  ultimo_preco: number | null
+  created_at: string
+  // join
+  fornecedor?: import('./database').Fornecedor
+}
+
 export interface Database {
   public: {
     Tables: {
