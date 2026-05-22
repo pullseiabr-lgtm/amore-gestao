@@ -315,18 +315,21 @@ function ModalCredito({ loja, credito, onSalvo, onFechar, user }: {
 
 // ── Modal: Nova Prestação ─────────────────────────────────────
 
-function ModalPrestacao({ loja, creditos, prestacao, onSalvo, onFechar, user }: {
+function ModalPrestacao({ loja, creditos, prestacao, defaultCreditoId, onSalvo, onFechar, user }: {
   loja: string; creditos: FinCredito[]
   prestacao: FinPrestacao | null
+  defaultCreditoId?: string
   onSalvo: (p: FinPrestacao) => void; onFechar: () => void
   user: { name?: string } | null
 }) {
   const hoje = new Date().toISOString().slice(0, 10)
+  const initCredId  = prestacao?.credito_id ?? defaultCreditoId ?? ''
+  const initCredito = initCredId ? creditos.find(c => c.id === initCredId) : null
   const [form, setForm] = useState({
-    credito_id:       prestacao?.credito_id       ?? '',
-    responsavel_nome: prestacao?.responsavel_nome ?? (user?.name ?? ''),
+    credito_id:       initCredId,
+    responsavel_nome: prestacao?.responsavel_nome ?? initCredito?.responsavel_nome ?? (user?.name ?? ''),
     data_prestacao:   prestacao?.data_prestacao   ?? hoje,
-    valor_recebido:   prestacao?.valor_recebido   ?? 0,
+    valor_recebido:   prestacao?.valor_recebido   ?? initCredito?.valor_liberado   ?? 0,
     valor_devolvido:  prestacao?.valor_devolvido  ?? 0,
     observacoes:      prestacao?.observacoes      ?? '',
     status:           prestacao?.status           ?? 'rascunho' as FinPrestacaoStatus,
@@ -1483,6 +1486,7 @@ export default function FinanceiroPage() {
         <ModalPrestacao
           loja={loja} creditos={creditos}
           prestacao={null}
+          defaultCreditoId={modalPrest.credito_id}
           onSalvo={handleSalvoPrestacao}
           onFechar={() => setModalPrest(null)}
           user={user} />

@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline } from '../types/database'
 
 const db = supabase as any
 
@@ -732,11 +732,23 @@ export async function upsertCotacaoItens(itens: Omit<RequisicaoCotacaoItem, 'id'
   return res.json()
 }
 
+// ── Timeline de Requisições ──────────────────────────────────────────────────
+
+export async function fetchReqTimeline(requisicaoId: string): Promise<ReqTimeline[]> {
+  return estoqueFetch('req_timeline', `requisicao_id=eq.${requisicaoId}&order=created_at.asc`)
+}
+
+export async function insertReqTimeline(entry: Omit<ReqTimeline, 'id' | 'created_at'>): Promise<ReqTimeline> {
+  return estoquePost('req_timeline', entry)
+}
+
 // ── MÓDULO FINANCEIRO ───────────────────────────────────────────────────────
 import type { FinCredito, FinPrestacao, FinLancamento, FinAnexo, FinAuditoriaLog } from '../types/database'
 
 export async function fetchFinCreditos(loja: string): Promise<FinCredito[]> {
-  const { data, error } = await db.from('fin_creditos').select('*').eq('loja', loja).order('created_at', { ascending: false })
+  let q = db.from('fin_creditos').select('*').order('created_at', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas' && loja !== 'all') q = q.eq('loja', loja)
+  const { data, error } = await q
   if (error) throw error; return data
 }
 export async function insertFinCredito(c: Omit<FinCredito, 'id' | 'numero' | 'created_at' | 'updated_at'>): Promise<FinCredito> {
