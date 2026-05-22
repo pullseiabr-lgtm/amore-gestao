@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from './contexts/AuthContext'
 import { useTheme } from './contexts/ThemeContext'
+import { LojaProvider } from './contexts/LojaContext'
 import LoginPage from './pages/auth/LoginPage'
 import Sidebar from './components/layout/Sidebar'
 import Topbar from './components/layout/Topbar'
@@ -97,23 +98,25 @@ export default function App() {
   if (!user) return <LoginPage />
 
   return (
-    <div className="app-wrap">
-      <Sidebar
-        activePage={page}
-        onNav={(id) => navigate(id as PageId)}
-        mobileOpen={sidebarOpen}
-        onOverlayClick={() => setSidebarOpen(false)}
-      />
-      <div className="main-content">
-        <Topbar
-          title={PAGE_TITLES[page]}
+    <LojaProvider stores={theme.stores || []}>
+      <div className="app-wrap">
+        <Sidebar
           activePage={page}
-          onHamburger={() => setSidebarOpen(o => !o)}
+          onNav={(id) => navigate(id as PageId)}
+          mobileOpen={sidebarOpen}
+          onOverlayClick={() => setSidebarOpen(false)}
         />
-        <main className="page-content">
-          <PageContent page={page} />
-        </main>
+        <div className="main-content">
+          <Topbar
+            title={PAGE_TITLES[page]}
+            activePage={page}
+            onHamburger={() => setSidebarOpen(o => !o)}
+          />
+          <main className="page-content">
+            <PageContent page={page} />
+          </main>
+        </div>
       </div>
-    </div>
+    </LojaProvider>
   )
 }

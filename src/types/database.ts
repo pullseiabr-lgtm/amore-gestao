@@ -178,9 +178,15 @@ export interface Pendencia {
 
 // ── Requisições de Compra ────────────────────────────────────
 
-export type ReqStatus = 'rascunho' | 'enviada' | 'em_cotacao' | 'aprovada' | 'concluida' | 'cancelada'
+export type ReqStatus =
+  | 'rascunho' | 'enviada' | 'em_analise' | 'em_cotacao'
+  | 'parcialmente_aprovada' | 'aprovada' | 'reprovada'
+  | 'compra_realizada' | 'prestacao_pendente' | 'em_auditoria'
+  | 'concluida' | 'cancelada'
+
 export type ReqItemStatus = 'pendente' | 'cotado' | 'aprovado' | 'cancelado'
 export type CotacaoStatus = 'aguardando' | 'respondida' | 'aprovada' | 'rejeitada'
+export type ReqPrioridade = 'baixa' | 'media' | 'alta' | 'urgente'
 
 export interface Requisicao {
   id: string
@@ -189,9 +195,17 @@ export interface Requisicao {
   titulo: string
   data_necessidade: string | null
   status: ReqStatus
+  prioridade: ReqPrioridade
+  setor: string | null
+  responsavel_nome: string
   total_estimado: number
   total_final: number
   observacoes: string | null
+  aprovador_nome: string | null
+  aprovador_at: string | null
+  obs_aprovacao: string | null
+  credito_id: string | null
+  centro_custo: string | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -210,6 +224,19 @@ export interface RequisicaoItem {
   fornecedor_nome: string | null
   status: ReqItemStatus
   observacoes: string | null
+  bloqueado: boolean
+  motivo_bloqueio: string | null
+  quantidade_aprovada: number | null
+  created_at: string
+}
+
+export interface ReqTimeline {
+  id: string
+  requisicao_id: string
+  tipo: string
+  descricao: string
+  usuario: string | null
+  dados: Record<string, unknown> | null
   created_at: string
 }
 

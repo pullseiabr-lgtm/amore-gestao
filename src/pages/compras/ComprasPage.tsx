@@ -6,6 +6,7 @@ import {
   AlertTriangle, Building2, TrendingUp, RefreshCw,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useLoja } from '../../contexts/LojaContext'
 import {
   fetchComprasListas, insertComprasLista, updateComprasLista, deleteComprasLista,
   fetchComprasListaItens, insertComprasListaItem, updateComprasListaItem, deleteComprasListaItem,
@@ -1032,7 +1033,7 @@ function ListaRow({ lista, onClick, onDelete }: {
 
 export default function ComprasPage() {
   const { user } = useAuth()
-  const loja = user?.loja && user.loja !== 'Todas' ? user.loja : 'AMORE COSTA DOURADA'
+  const { loja } = useLoja()
 
   const [listas, setListas] = useState<ComprasLista[]>([])
   const [loading, setLoading] = useState(true)

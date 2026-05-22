@@ -6,6 +6,7 @@ import {
   ShoppingCart, BarChart2, Lock, Layers, Receipt,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useLoja } from '../../contexts/LojaContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import {
   fetchRequisicoes, insertRequisicao, updateRequisicao, deleteRequisicao,
@@ -946,11 +947,11 @@ function ListaView({ reqs, loja, lojas, onNova, onDetalhe, onEditar, onDelete, l
 // ── Página Principal ──────────────────────────────────────────
 
 export default function RequisoesPage() {
-  const { user, profile } = useAuth()
+  const { user } = useAuth()
+  const { loja } = useLoja()
   const { theme } = useTheme()
   const { toast, ToastEl } = useToast()
-  const loja     = profile?.loja ?? 'Todas as Lojas'
-  const userName = profile?.name ?? user?.email ?? 'Usuário'
+  const userName = user?.name ?? user?.email ?? 'Usuário'
 
   const [tab, setTab] = useState<'lista'|'dashboard'>('lista')
   const [view, setView] = useState<'lista'|'form'|'detalhe'>('lista')

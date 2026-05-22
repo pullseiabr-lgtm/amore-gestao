@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Search, Package, TrendingDown, History, ArrowLeftRight, ClipboardList, Download, Plus, ChevronRight, CheckCircle, XCircle, Calculator, Loader } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useLoja } from '../../contexts/LojaContext'
 import {
   fetchEstoqueProdutos, insertEstoqueProduto, updateEstoqueProduto,
   fetchEstoqueMovimentacoes, fetchEstoqueMovimentacoesDias, insertEstoqueMovimentacao,
@@ -65,6 +66,7 @@ function InlineInput({ value, onChange, step = 1, prefix }: InlineInputProps) {
 type BulkRow = { nivel_atual: number; nivel_minimo: number; nivel_ideal: number; preco_unitario: number }
 
 function TabLista({ loja }: { loja: string }) {
+  const { lojas } = useLoja()
   const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
@@ -165,7 +167,7 @@ function TabLista({ loja }: { loja: string }) {
     setSaving(true)
     try {
       const payload = {
-        loja: loja === 'Todas as Lojas' ? 'AMORE COSTA DOURADA' : loja,
+        loja: loja === 'Todas as Lojas' ? (lojas[0] || loja) : loja,
         nome: form.nome.trim().toUpperCase(),
         gramatura: form.gramatura,
         categoria: form.categoria,
@@ -503,6 +505,7 @@ function TabCMV({ loja }: { loja: string }) {
 
 function TabHistorico({ loja }: { loja: string }) {
   const { user } = useAuth()
+  const { lojas } = useLoja()
   const [contagens, setContagens] = useState<EstoqueContagem[]>([])
   const [loading, setLoading] = useState(true)
   const [selecionada, setSelecionada] = useState<EstoqueContagem | null>(null)
@@ -532,7 +535,7 @@ function TabHistorico({ loja }: { loja: string }) {
     setSaving(true)
     try {
       await insertEstoqueContagem({
-        loja: loja === 'Todas as Lojas' ? 'AMORE COSTA DOURADA' : loja,
+        loja: loja === 'Todas as Lojas' ? (lojas[0] || loja) : loja,
         tipo: formTipo,
         data_contagem: formData,
         created_by: user?.name || null,
@@ -623,6 +626,7 @@ function TabHistorico({ loja }: { loja: string }) {
 
 function TabMovimentacoes({ loja }: { loja: string }) {
   const { user } = useAuth()
+  const { lojas } = useLoja()
   const [dias, setDias] = useState<string[]>([])
   const [diaSel, setDiaSel] = useState<string | null>(null)
   const [movs, setMovs] = useState<EstoqueMovimentacao[]>([])
@@ -659,7 +663,7 @@ function TabMovimentacoes({ loja }: { loja: string }) {
       const prod = produtos.find(p => p.id === form.produto_id)
       const qtd = parseFloat(form.quantidade)
       await insertEstoqueMovimentacao({
-        loja: loja === 'Todas as Lojas' ? 'AMORE COSTA DOURADA' : loja,
+        loja: loja === 'Todas as Lojas' ? (lojas[0] || loja) : loja,
         produto_id: form.produto_id || null,
         produto_nome: form.produto_nome,
         tipo: form.tipo,
@@ -786,6 +790,7 @@ function TabMovimentacoes({ loja }: { loja: string }) {
 
 function TabContagem({ loja }: { loja: string }) {
   const { user } = useAuth()
+  const { lojas } = useLoja()
   const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
   const [loading, setLoading] = useState(true)
   const [tipo, setTipo] = useState<'regular' | 'fechamento' | 'abertura'>('regular')
@@ -807,7 +812,7 @@ function TabContagem({ loja }: { loja: string }) {
   const salvar = async () => {
     setSaving(true)
     try {
-      const lojaReal = loja === 'Todas as Lojas' ? 'AMORE COSTA DOURADA' : loja
+      const lojaReal = loja === 'Todas as Lojas' ? (lojas[0] || loja) : loja
       const contagem = await insertEstoqueContagem({ loja: lojaReal, tipo, data_contagem: new Date().toISOString().slice(0, 10), created_by: user?.name || null })
       const itens: Omit<EstoqueContagemItem, 'id' | 'created_at'>[] = filtrados
         .filter(p => (contagens[p.id] ?? 0) >= 0)
@@ -913,9 +918,8 @@ const TABS: { id: EstoqueTab; label: string; icon: React.ReactNode }[] = [
 ]
 
 export default function EstoquePage() {
-  const { user } = useAuth()
+  const { loja } = useLoja()
   const [tab, setTab] = useState<EstoqueTab>('lista')
-  const loja = user?.loja && user.loja !== 'Todas' ? user.loja : 'AMORE COSTA DOURADA'
 
   return (
     <div>

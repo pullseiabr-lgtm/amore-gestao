@@ -5,6 +5,7 @@ import {
   ToggleLeft, ToggleRight, Building2, Filter, RefreshCw,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useLoja } from '../../contexts/LojaContext'
 import {
   fetchProdutos, insertProduto, updateProduto, deleteProduto, duplicarProduto,
   fetchCategoriasProduto, insertCategoriaProduto, updateCategoriaProduto, deleteCategoriaProduto,
@@ -582,7 +583,7 @@ function CategoriasView({ loja, onVoltar }: { loja: string; onVoltar: () => void
 
 export default function ProdutosPage({ initialView }: { initialView?: 'lista'|'categorias' }) {
   const { user } = useAuth()
-  const loja = user?.loja && user.loja !== 'Todas' ? user.loja : 'AMORE COSTA DOURADA'
+  const { loja } = useLoja()
   const { toast, ToastEl } = useToast()
 
   type View = 'lista' | 'novo' | 'editar' | 'categorias'

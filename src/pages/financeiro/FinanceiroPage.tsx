@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useLoja } from '../../contexts/LojaContext'
 import {
   fetchFinCreditos, insertFinCredito, updateFinCredito, deleteFinCredito,
   fetchFinPrestacoes, insertFinPrestacao, updateFinPrestacao, deleteFinPrestacao,
@@ -1337,7 +1338,7 @@ function PrestacoesView({ prestacoes, creditos, onAbrir, onNova, onDelete, toast
 export default function FinanceiroPage() {
   const { user } = useAuth()
   const { theme } = useTheme()
-  const loja = user?.loja && user.loja !== 'Todas' ? user.loja : 'AMORE COSTA DOURADA'
+  const { loja } = useLoja()
   const { toast, ToastEl } = useToast()
 
   const [creditos, setCreditos]     = useState<FinCredito[]>([])

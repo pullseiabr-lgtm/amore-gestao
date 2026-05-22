@@ -5,6 +5,7 @@ import {
   Loader, ToggleLeft, ToggleRight,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useLoja } from '../../contexts/LojaContext'
 import { fetchFornecedores, insertFornecedor, updateFornecedor, deleteFornecedor } from '../../lib/db'
 import type { Fornecedor } from '../../types/database'
 
@@ -423,7 +424,7 @@ function FornecedorForm({
 
 export default function FornecedoresPage() {
   const { user } = useAuth()
-  const loja = user?.loja && user.loja !== 'Todas' ? user.loja : 'AMORE COSTA DOURADA'
+  const { loja } = useLoja()
 
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
   const [loading, setLoading] = useState(true)

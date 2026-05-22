@@ -1,6 +1,7 @@
 import { Menu, FileText, Plus, FlaskConical } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
+import { useLoja } from '../../contexts/LojaContext'
 
 interface TopbarProps {
   title: string
@@ -24,6 +25,7 @@ const ACT_MAP: Record<string, string> = {
 export default function Topbar({ title, activePage, onHamburger, onPrimary, primaryLabel }: TopbarProps) {
   const { theme } = useTheme()
   const { user, can, isDemoMode } = useAuth()
+  const { loja, setLoja, lojas, multiLoja } = useLoja()
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
   const actLabel = primaryLabel || ACT_MAP[activePage]
   const showAct = actLabel && isAdmin && can(activePage, 'create')
@@ -40,11 +42,21 @@ export default function Topbar({ title, activePage, onHamburger, onPrimary, prim
         </span>
       )}
 
-      {user?.role === 'admin' || user?.role === 'super_admin' ? (
-        <select className="tb-sel">
-          <option value="todas">🏪 Todas as Lojas</option>
-          {theme.stores.map(s => <option key={s} value={s}>{s}</option>)}
+      {multiLoja ? (
+        <select
+          className="tb-sel"
+          value={loja}
+          onChange={e => setLoja(e.target.value)}
+        >
+          <option value="Todas as Lojas">🏪 Todas as Lojas</option>
+          {(lojas.length ? lojas : theme.stores).map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
         </select>
+      ) : user?.loja ? (
+        <span style={{ fontSize: 11, color: 'var(--muted)', padding: '4px 10px', background: 'var(--bg2)', borderRadius: 8 }}>
+          🏪 {user.loja}
+        </span>
       ) : null}
 
       <button className="tb-btn" onClick={() => window.print()}>
