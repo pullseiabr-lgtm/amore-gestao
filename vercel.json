@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "amore_gestao.html", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "/", "dest": "/amore_gestao.html" },
+    { "src": "/(.*)", "dest": "/amore_gestao.html" }
+  ]
+}
