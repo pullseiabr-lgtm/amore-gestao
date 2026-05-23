@@ -278,7 +278,42 @@ tr:hover td{background:#FAFAF8}
 .g12{display:grid;grid-template-columns:1fr 2fr;gap:16px}
 .g11{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 
-@media(max-width:800px){.sidebar{display:none}.main{margin-left:0}.g2,.g3,.g4,.kpi-grid,.mkt-grid,.os-meta,.cc-grid,.g12,.g11{grid-template-columns:1fr}}
+/* ─── HAMBURGER ─── */
+.hbg{display:none;width:38px;height:38px;border-radius:7px;border:none;background:none;color:var(--text);align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0}
+.hbg svg{width:20px;height:20px}
+.mob-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:98}
+@media(max-width:800px){
+  .hbg{display:flex}
+  .mob-ov{display:block;opacity:0;pointer-events:none;transition:opacity .25s}
+  .mob-ov.mob-open{opacity:1;pointer-events:auto}
+  .sidebar{transform:translateX(-248px);transition:transform .25s cubic-bezier(.4,0,.2,1)}
+  .sidebar.mob-open{transform:translateX(0);box-shadow:4px 0 24px rgba(0,0,0,.38)}
+  .main{margin-left:0}
+  .g2,.g3,.g4,.kpi-grid,.mkt-grid,.os-meta,.cc-grid,.g12,.g11{grid-template-columns:1fr}
+  .topbar{padding:0 12px;gap:6px;overflow:hidden}
+  .tb-title{font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* Esconder botão PDF e select de loja no mobile */
+  .topbar .tb-btn:not(#tbAct){display:none}
+  #lojaCtx{display:none!important}
+  /* Limitar title para o botão de ação caber na viewport */
+  .tb-title{max-width:220px}
+  /* Botão de ação — apenas ícone no mobile */
+  #tbActLbl{display:none}
+  #tbAct{padding:6px 9px;min-height:36px;gap:0}
+  /* Tabs horizontalmente roláveis em vez de multi-linha */
+  .tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:5px}
+  .tabs::-webkit-scrollbar{display:none}
+  .content{padding:12px 13px}
+  .btn{min-height:40px}
+  .inp,.sel,.txa{min-height:42px;font-size:14px}
+  .mkt-grid{grid-template-columns:1fr 1fr}
+  .lc{padding:28px 22px}
+  .bc-lbl{width:70px}
+  .tw{-webkit-overflow-scrolling:touch}
+  /* Modal usando visual viewport (dvw/dvh) no mobile */
+  .ov.open{display:flex;align-items:flex-start;padding:12px 10px 0}
+  .modal{position:fixed!important;top:12px;left:10px;width:calc(100dvw - 20px)!important;max-width:calc(100dvw - 20px)!important;max-height:calc(100dvh - 24px);overflow-y:auto;border-radius:12px}
+}
 @media print{.sidebar,.topbar,.modal,.ov,.tb-btn,.ab,.fb,.tabs,.btn{display:none!important}.main{margin-left:0}.page{display:block!important}body{background:#fff}.card{box-shadow:none;border:1px solid #ddd}}
 </style>
 </head>
@@ -303,6 +338,7 @@ tr:hover td{background:#FAFAF8}
 
 <!-- APP -->
 <div id="appMain" class="app" style="display:none">
+  <div id="mobOv" class="mob-ov" onclick="toggleSidebar()"></div>
   <aside class="sidebar">
     <div class="sb-logo">
       <div class="sb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" width="15" height="15"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
@@ -317,6 +353,9 @@ tr:hover td{background:#FAFAF8}
   </aside>
   <main class="main">
     <header class="topbar">
+      <button class="hbg" onclick="toggleSidebar()" aria-label="Menu" id="hbgBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
       <div class="tb-title" id="tbTitle">Dashboard</div>
       <select class="tb-sel" id="lojaCtx" onchange="setLoja(this.value)" style="display:none">
         <option value="todas">🏪 Todas as Lojas</option>
@@ -2099,6 +2138,7 @@ function nav(page,lbl,el){
   var ls=document.getElementById('lojaCtx');if(ls)ls.style.display=CU&&CU.role==='admin'?'':'none';
   if(page==='gamificacao'){renderColabs();renderRanking();renderInd();renderDashRanking();}
   if(page==='dashboard'){renderDashRanking();}
+  closeSidebarMob();
 }
 function handleAct(){
   var p=document.getElementById('tbAct').getAttribute('data-page');
@@ -2109,6 +2149,18 @@ function handleAct(){
   }
 }
 function setLoja(v){toast(v==='todas'?'Exibindo todas as lojas':'Filtro: '+v);}
+function toggleSidebar(){
+  var sb=document.querySelector('.sidebar');
+  var ov=document.getElementById('mobOv');
+  sb.classList.toggle('mob-open');
+  if(ov)ov.classList.toggle('mob-open');
+}
+function closeSidebarMob(){
+  var sb=document.querySelector('.sidebar');
+  var ov=document.getElementById('mobOv');
+  if(sb)sb.classList.remove('mob-open');
+  if(ov)ov.classList.remove('mob-open');
+}
 
 // ═══ MODAL ═══
 function openM(id){var el=document.getElementById(id);if(el)el.classList.add('open');}
