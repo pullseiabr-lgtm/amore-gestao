@@ -1,0 +1,28 @@
+name: Deploy para amorefood.com.br
+
+on:
+  push:
+    branches:
+      - html-live
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Upload via FTP para Umbler
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Deploy FTP para amorefood.com.br
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASS }}
+          local-dir: ./
+          server-dir: ${{ secrets.FTP_PATH }}
+          include: |
+            amore_gestao.html
+          log-level: verbose
