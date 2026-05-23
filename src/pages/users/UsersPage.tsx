@@ -10,7 +10,7 @@ import { supabase } from '../../lib/supabase'
 import type { Profile, UserRole, UserStatus, PermissionsMap, ModulePermission } from '../../types/database'
 
 const MODULES = [
-  { id: 'dashboard', label: 'Painel' },
+  { id: 'dashboard', label: 'Dashboard' },
   { id: 'pendencias', label: 'Pendências & OS' },
   { id: 'gamificacao', label: 'Gamificação' },
   { id: 'marketing', label: 'Marketing' },
@@ -51,7 +51,7 @@ const INITIAL_USERS: Profile[] = [
 
 
 const PROV_MOCK = [
-  { nome: 'Consultor Externo', login: 'consul_1722@amore.temp', expira: '25/07/25', modulos: 'Painel · Financeiro', status: 'Ativo' },
+  { nome: 'Consultor Externo', login: 'consul_1722@amore.temp', expira: '25/07/25', modulos: 'Dashboard · Financeiro', status: 'Ativo' },
 ]
 
 function getInitials(name: string) {
@@ -608,7 +608,7 @@ export default function UsersPage() {
         </div>
         <div className="fg">
           <label className="fl">Módulos liberados</label>
-          <input className="inp" value={provForm.modulos} onChange={e => setProvForm(p => ({ ...p, modulos: e.target.value }))} placeholder="Painel, Financeiro" />
+          <input className="inp" value={provForm.modulos} onChange={e => setProvForm(p => ({ ...p, modulos: e.target.value }))} placeholder="Dashboard, Financeiro" />
         </div>
         {provGerado && (
           <div className="al al-g">

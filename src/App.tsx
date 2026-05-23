@@ -44,7 +44,7 @@ export type PageId =
   | 'ruptura'
 
 const PAGE_TITLES: Record<PageId, string> = {
-  dashboard: 'Painel',
+  dashboard: 'Dashboard',
   vendas: 'Vendas',
   compras: 'Compras',
   requisicoes: 'Requisições de Compra',

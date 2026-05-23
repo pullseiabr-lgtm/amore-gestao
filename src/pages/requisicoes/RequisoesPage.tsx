@@ -1007,7 +1007,7 @@ export default function RequisoesPage() {
 
       {view==='lista'&&(
         <div style={{ display:'flex', gap:5, marginBottom:18 }}>
-          {[{ id:'lista', l:'📋 Requisições' },{ id:'dashboard', l:'📊 Painel' }].map(t=>(
+          {[{ id:'lista', l:'📋 Requisições' },{ id:'dashboard', l:'📊 Dashboard' }].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id as 'lista'|'dashboard')}
               style={{ padding:'7px 17px', fontSize:13, fontWeight:700, borderRadius:9, border:tab===t.id?'1px solid var(--bordo)':'1px solid var(--border)', background:tab===t.id?'var(--bordo)':'transparent', color:tab===t.id?'white':'var(--muted)', cursor:'pointer' }}>
               {t.l}
