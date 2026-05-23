@@ -22,7 +22,23 @@ function calcScore(c: Colaborador) {
   return { total, nivel }
 }
 
-type Tab = 'colabs' | 'ranking' | 'calculadora'
+type Tab = 'colabs' | 'ranking' | 'recompensas' | 'calculadora'
+
+interface Badge { id: string; emoji: string; label: string; desc: string; color: string }
+
+function calcBadges(c: Colaborador, rank: number): Badge[] {
+  const badges: Badge[] = []
+  const sc = calcScore(c)
+  if (sc.total >= 90) badges.push({ id: 'elite', emoji: '🏆', label: 'Elite Performance', desc: `Score ${sc.total}/100`, color: '#D97706' })
+  if (sc.total >= 75) badges.push({ id: 'ouro', emoji: '🥇', label: 'Nível Ouro', desc: 'Score ≥ 75 pts', color: '#F59E0B' })
+  if (c.meta_fat > 0 && c.fat >= c.meta_fat) badges.push({ id: 'fat', emoji: '💰', label: 'Meta Faturamento', desc: `R$ ${c.fat.toLocaleString('pt-BR')}`, color: '#10B981' })
+  if (c.meta_tick > 0 && c.tick >= c.meta_tick) badges.push({ id: 'tick', emoji: '🎯', label: 'Meta Ticket', desc: `R$ ${c.tick.toFixed(2)}`, color: '#6366F1' })
+  if (c.aval >= 4.8) badges.push({ id: 'aval', emoji: '⭐', label: 'Avaliação Máxima', desc: `${c.aval} estrelas`, color: '#F59E0B' })
+  if (c.pres >= 26) badges.push({ id: 'pres', emoji: '📅', label: 'Presença Total', desc: '26/26 dias', color: '#3B82F6' })
+  if (c.erros === 0) badges.push({ id: 'erros', emoji: '✅', label: 'Zero Erros', desc: 'Perfeição no mês', color: '#10B981' })
+  if (rank === 0) badges.push({ id: 'campeao', emoji: '👑', label: 'Campeão do Mês', desc: '1º lugar no ranking', color: '#7C3AED' })
+  return badges
+}
 
 export default function GamificacaoPage() {
   const { can } = useAuth()
@@ -67,7 +83,7 @@ export default function GamificacaoPage() {
   const save = async () => {
     if (!form.nome.trim()) { toast('Preencha o nome.', 'error'); return }
     setSaving(true)
-    const payload = { nome: form.nome, func: form.func, setor: form.setor, loja: form.loja, cor: form.cor, meta_fat: +form.meta_fat || 0, meta_tick: +form.meta_tick || 0, meta_aval: +form.meta_aval || 0, meta_tempo: +form.meta_tempo || 0, fat: +form.fat || 0, tick: +form.tick || 0, aval: +form.aval || 0, tempo: +form.tempo || 0, erros: +form.erros || 0, pres: +form.pres || 0, obs: '' }
+    const payload = { nome: form.nome, func: form.func, setor: form.setor, loja: form.loja, cor: form.cor, meta_fat: +form.meta_fat || 0, meta_tick: +form.meta_tick || 0, meta_aval: +form.meta_aval || 0, meta_tempo: +form.meta_tempo || 0, fat: +form.fat || 0, tick: +form.tick || 0, aval: +form.aval || 0, tempo: +form.tempo || 0, erros: +form.erros || 0, pres: +form.pres || 0, obs: '', periodo_ref: null, recompensas: null }
     try {
       if (editColab) {
         const updated = await updateColaborador(editColab.id, payload)
@@ -110,7 +126,7 @@ export default function GamificacaoPage() {
       </div>
 
       <div className="tabs">
-        {([['colabs', '👥 Colaboradores'], ['ranking', '🏆 Ranking'], ['calculadora', '🧮 Calculadora Score']] as [Tab, string][]).map(([id, lbl]) => (
+        {([['colabs', '👥 Colaboradores'], ['ranking', '🏆 Ranking'], ['recompensas', '🎁 Recompensas'], ['calculadora', '🧮 Calculadora']] as [Tab, string][]).map(([id, lbl]) => (
           <button key={id} className={`tab${tab === id ? ' active' : ''}`} onClick={() => setTab(id)}>{lbl}</button>
         ))}
       </div>
@@ -211,6 +227,83 @@ export default function GamificacaoPage() {
                 )
               })}
             </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'recompensas' && (
+        <div>
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div className="card-hd">
+              <span className="card-tt">🎁 Recompensas & Conquistas</span>
+              <span className="badge bg-b">{sorted.length} colaboradores</span>
+            </div>
+            <div className="card-bd" style={{ padding: '11px 14px', fontSize: 11, color: 'var(--muted)' }}>
+              Badges são calculados automaticamente com base nos indicadores do mês atual.
+              Um colaborador pode conquistar múltiplos badges ao mesmo tempo.
+            </div>
+          </div>
+
+          {/* Resumo de badges totais */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 16 }}>
+            {[
+              { emoji: '🏆', label: 'Elite', count: sorted.filter(c => calcScore(c).total >= 90).length, color: '#D97706' },
+              { emoji: '💰', label: 'Meta Fat.', count: sorted.filter(c => c.meta_fat > 0 && c.fat >= c.meta_fat).length, color: '#10B981' },
+              { emoji: '⭐', label: 'Aval. Máx', count: sorted.filter(c => c.aval >= 4.8).length, color: '#F59E0B' },
+              { emoji: '✅', label: 'Zero Erros', count: sorted.filter(c => c.erros === 0).length, color: '#6366F1' },
+            ].map(item => (
+              <div key={item.label} className="card" style={{ textAlign: 'center', padding: '12px 8px' }}>
+                <div style={{ fontSize: 22, marginBottom: 4 }}>{item.emoji}</div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: item.color }}>{item.count}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{item.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Cards de colaboradores com badges */}
+          <div className="cc-grid">
+            {sorted.map((c, rank) => {
+              const badges = calcBadges(c, rank)
+              const sc = calcScore(c)
+              return (
+                <div className="cc" key={c.id}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10 }}>
+                    <div className="cc-ring" style={{ background: c.cor, width: 40, height: 40, fontSize: 13, flexShrink: 0 }}>
+                      {c.nome.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.nome}</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{c.func} · {c.loja}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
+                        <span className={`lv ${sc.nivel.cls}`}>{sc.nivel.lbl}</span>
+                        <span style={{ fontWeight: 800, fontSize: 13, color: 'var(--bordo)' }}>{sc.total} pts</span>
+                      </div>
+                    </div>
+                  </div>
+                  {badges.length === 0 ? (
+                    <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', padding: '8px 0' }}>
+                      Sem conquistas este mês
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {badges.map(b => (
+                        <div key={b.id} style={{
+                          display: 'flex', alignItems: 'center', gap: 4,
+                          background: b.color + '18', border: `1px solid ${b.color}40`,
+                          borderRadius: 20, padding: '4px 8px', fontSize: 10.5,
+                        }}>
+                          <span style={{ fontSize: 13 }}>{b.emoji}</span>
+                          <div>
+                            <div style={{ fontWeight: 700, color: b.color, lineHeight: 1.1 }}>{b.label}</div>
+                            <div style={{ fontSize: 9.5, color: 'var(--muted)' }}>{b.desc}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

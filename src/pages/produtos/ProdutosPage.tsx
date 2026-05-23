@@ -11,8 +11,9 @@ import {
   fetchCategoriasProduto, insertCategoriaProduto, updateCategoriaProduto, deleteCategoriaProduto,
   fetchMarcasProduto, insertMarcaProduto, updateMarcaProduto,
   fetchContagemPorCategoria,
+  insertProdutoTeste, updateProdutoHomologacao,
 } from '../../lib/db'
-import type { Produto, CategoriaProduto, MarcaProduto } from '../../types/database'
+import type { Produto, CategoriaProduto, MarcaProduto, HomologacaoStatus } from '../../types/database'
 
 // ── Constantes (baseadas no scraping do Foozi) ───────────────
 
@@ -274,6 +275,11 @@ function FormProduto({ loja, produto, onSalvo, onVoltar }: {
         ativo: form.ativo,
         estoque_atual: parseFloat(form.estoque_atual) || 0,
         estoque_minimo: parseFloat(form.estoque_minimo) || 0,
+        status_homologacao: (produto?.status_homologacao ?? 'homologado') as 'homologado' | 'em_teste' | 'reprovado' | 'pendente',
+        feedback_teste: produto?.feedback_teste ?? null,
+        data_inicio_teste: produto?.data_inicio_teste ?? null,
+        aprovado_por: produto?.aprovado_por ?? null,
+        aprovacao_at: produto?.aprovacao_at ?? null,
         created_by: produto ? produto.created_by : (user?.name ?? null),
       }
       const saved = produto
@@ -585,7 +591,7 @@ export default function ProdutosPage({ initialView }: { initialView?: 'lista'|'c
   const { loja } = useLoja()
   const { toast, ToastEl } = useToast()
 
-  type View = 'lista' | 'novo' | 'editar' | 'categorias'
+  type View = 'lista' | 'novo' | 'editar' | 'categorias' | 'em_teste'
   const [view, setView] = useState<View>(initialView ?? 'lista')
   const [produtoAtivo, setProdutoAtivo] = useState<Produto | null>(null)
 
@@ -660,6 +666,9 @@ export default function ProdutosPage({ initialView }: { initialView?: 'lista'|'c
   if (view === 'categorias') {
     return <CategoriasView loja={loja} onVoltar={() => setView('lista')} />
   }
+  if (view === 'em_teste') {
+    return <EmTesteView loja={loja} produtos={produtos} onVoltar={() => setView('lista')} onRefresh={load} />
+  }
 
   // Filtrar e ordenar
   const filtrados = produtos
@@ -676,6 +685,7 @@ export default function ProdutosPage({ initialView }: { initialView?: 'lista'|'c
 
   const totalAtivos   = produtos.filter(p => p.ativo).length
   const totalCriticos = produtos.filter(p => p.estoque_atual <= p.estoque_minimo && p.estoque_minimo > 0).length
+  const totalEmTeste  = produtos.filter(p => p.status_homologacao === 'em_teste' || p.status_homologacao === 'pendente').length
 
   return (
     <div>
@@ -711,6 +721,14 @@ export default function ProdutosPage({ initialView }: { initialView?: 'lista'|'c
             </button>
           </div>
         </div>
+        <div className="kpi" style={{ cursor: 'pointer' }} onClick={() => setView('em_teste')}>
+          <div className="kpi-ac" style={{ background: totalEmTeste > 0 ? '#8B5CF6' : 'var(--muted)' }}/>
+          <div className="kpi-lbl">Em Teste</div>
+          <div className="kpi-val" style={{ color: totalEmTeste > 0 ? '#8B5CF6' : 'var(--muted)' }}>{totalEmTeste}</div>
+          <div className="kpi-sub">
+            <span style={{ fontSize:10, color:'#8B5CF6', fontWeight:700 }}>Ver avaliações →</span>
+          </div>
+        </div>
       </div>
 
       {/* Tabela */}
@@ -719,6 +737,7 @@ export default function ProdutosPage({ initialView }: { initialView?: 'lista'|'c
         <div className="card-hd">
           <span className="card-tt"><Package size={14} style={{ display:'inline', marginRight:4 }}/>Lista de Produtos</span>
           <div style={{ display:'flex', gap:8 }}>
+            <button className="btn bo bsm" onClick={() => setView('em_teste')} style={{ color: '#8B5CF6', borderColor: '#8B5CF6' }}><Award size={12}/> Em Teste{totalEmTeste > 0 && <span style={{ background:'#8B5CF6', color:'#fff', borderRadius:10, padding:'1px 5px', fontSize:9, marginLeft:3 }}>{totalEmTeste}</span>}</button>
             <button className="btn bo bsm" onClick={() => setView('categorias')}><Grid3X3 size={12}/> Categorias</button>
             <button className="btn bo bsm" onClick={load}><RefreshCw size={12}/></button>
             <button className="btn bp bsm" onClick={abrirNovo}><Plus size={12}/> Criar Produto</button>
@@ -895,6 +914,172 @@ export default function ProdutosPage({ initialView }: { initialView?: 'lista'|'c
 
       {/* Modal confirm delete + filter icon placeholder */}
       <div style={{ display:'none' }}><Filter/><Award/><Building2/></div>
+    </div>
+  )
+}
+
+// ── Em Teste View ─────────────────────────────────────────────
+
+function EmTesteView({ produtos, onVoltar, onRefresh }: {
+  loja: string; produtos: Produto[];
+  onVoltar: () => void; onRefresh: () => Promise<void>
+}) {
+  const { toast } = useToast()
+  const [atualizando, setAtualizando] = useState<string | null>(null)
+  const [modalProduto, setModalProduto] = useState<Produto | null>(null)
+  const [feedback, setFeedback] = useState('')
+  const [novaStatus, setNovaStatus] = useState<HomologacaoStatus>('homologado')
+
+  const emTeste = produtos.filter(p =>
+    p.status_homologacao === 'em_teste' || p.status_homologacao === 'pendente' || p.status_homologacao === 'reprovado'
+  )
+
+  const aprovar = async (p: Produto, status: HomologacaoStatus, fb?: string) => {
+    setAtualizando(p.id)
+    try {
+      await updateProdutoHomologacao(p.id, status, {
+        feedback_teste: fb ?? p.feedback_teste ?? undefined,
+        aprovado_por: undefined,
+        aprovacao_at: status === 'homologado' ? new Date().toISOString() : undefined,
+      })
+      await insertProdutoTeste({
+        produto_id: p.id,
+        loja: p.loja,
+        resultado: status === 'homologado' ? 'aprovado' : status === 'reprovado' ? 'reprovado' : 'em_teste',
+        avaliador: null,
+        nota_sabor: null,
+        nota_custo: null,
+        nota_fornecimento: null,
+        comentario: fb ?? null,
+        substituiu_produto: null,
+      })
+      toast(status === 'homologado' ? `${p.nome} aprovado!` : status === 'reprovado' ? `${p.nome} reprovado.` : `${p.nome} em teste.`)
+      await onRefresh()
+      setModalProduto(null)
+    } catch {
+      toast('Erro ao atualizar status.', 'err')
+    }
+    setAtualizando(null)
+  }
+
+  const STATUS_MAP: Record<HomologacaoStatus, { label: string; color: string; bg: string }> = {
+    homologado: { label: 'Homologado', color: '#10B981', bg: '#D1FAE5' },
+    em_teste:   { label: 'Em Teste',   color: '#8B5CF6', bg: '#EDE9FE' },
+    pendente:   { label: 'Pendente',   color: '#F59E0B', bg: '#FEF3C7' },
+    reprovado:  { label: 'Reprovado',  color: '#EF4444', bg: '#FEE2E2' },
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+        <button className="btn bo bsm" onClick={onVoltar}><ChevronLeft size={12} /> Voltar</button>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>🧪 Produtos em Avaliação</h2>
+          <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--muted)' }}>
+            Produtos pendentes, em teste ou reprovados — gerencie o processo de homologação
+          </p>
+        </div>
+      </div>
+
+      {/* Resumo */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 16 }}>
+        {[
+          { status: 'em_teste', ...STATUS_MAP['em_teste'] },
+          { status: 'pendente', ...STATUS_MAP['pendente'] },
+          { status: 'reprovado', ...STATUS_MAP['reprovado'] },
+        ].map(s => (
+          <div key={s.status} className="card" style={{ padding: '12px 14px', borderLeft: `3px solid ${s.color}` }}>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>{s.label}</div>
+            <div style={{ fontWeight: 800, fontSize: 20, color: s.color }}>
+              {emTeste.filter(p => p.status_homologacao === s.status).length}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {emTeste.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
+          <Check size={32} style={{ opacity: .3, marginBottom: 8 }} />
+          <div>Todos os produtos estão homologados.</div>
+        </div>
+      ) : (
+        <div className="card">
+          <div className="card-hd"><span className="card-tt">Produtos para Avaliação</span><span className="badge bg-b">{emTeste.length} produtos</span></div>
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr><th>Produto</th><th>Categoria</th><th>Status</th><th>Feedback</th><th>Ações</th></tr></thead>
+              <tbody>
+                {emTeste.map(p => {
+                  const s = STATUS_MAP[p.status_homologacao]
+                  return (
+                    <tr key={p.id}>
+                      <td><strong style={{ fontSize: 12 }}>{p.nome}</strong><div style={{ fontSize: 10, color: 'var(--muted)' }}>{p.codigo_interno}</div></td>
+                      <td style={{ fontSize: 11 }}>{p.categoria_nome ?? '—'}</td>
+                      <td>
+                        <span style={{ background: s.bg, color: s.color, borderRadius: 12, padding: '2px 8px', fontSize: 10.5, fontWeight: 700 }}>
+                          {s.label}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: 11, color: 'var(--muted)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.feedback_teste ?? '—'}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 5 }}>
+                          <button className="btn bp bsm" style={{ fontSize: 10 }} onClick={() => { setModalProduto(p); setNovaStatus('homologado'); setFeedback(p.feedback_teste ?? '') }} disabled={!!atualizando}>
+                            <Check size={10} /> Aprovar
+                          </button>
+                          <button className="btn bo bsm" style={{ fontSize: 10, color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={() => { setModalProduto(p); setNovaStatus('reprovado'); setFeedback(p.feedback_teste ?? '') }} disabled={!!atualizando}>
+                            <X size={10} /> Reprovar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de decisão */}
+      {modalProduto && (
+        <div className="ov open" onClick={() => setModalProduto(null)}>
+          <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <div className="mhd">
+              <span className="mtt">{novaStatus === 'homologado' ? '✅ Aprovar Produto' : '❌ Reprovar Produto'}</span>
+              <button className="mx" onClick={() => setModalProduto(null)}>✕</button>
+            </div>
+            <div className="mbd" style={{ padding: '16px 18px' }}>
+              <div style={{ fontWeight: 700, marginBottom: 12 }}>{modalProduto.nome}</div>
+              <div className="fg">
+                <label className="fl">Status final</label>
+                <select className="sel" value={novaStatus} onChange={e => setNovaStatus(e.target.value as HomologacaoStatus)}>
+                  <option value="homologado">Homologado ✅</option>
+                  <option value="em_teste">Manter em Teste 🧪</option>
+                  <option value="reprovado">Reprovado ❌</option>
+                </select>
+              </div>
+              <div className="fg" style={{ marginTop: 12 }}>
+                <label className="fl">Feedback / Justificativa</label>
+                <textarea className="inp" rows={3} value={feedback} onChange={e => setFeedback(e.target.value)} style={{ resize: 'vertical' }} placeholder="Descreva o motivo da decisão..." />
+              </div>
+            </div>
+            <div className="mft">
+              <button className="btn bo" onClick={() => setModalProduto(null)}>Cancelar</button>
+              <button
+                className="btn bp"
+                onClick={() => aprovar(modalProduto, novaStatus, feedback)}
+                disabled={!!atualizando}
+                style={{ background: novaStatus === 'reprovado' ? 'var(--danger)' : undefined }}
+              >
+                {atualizando ? <Loader size={11} className="spin" /> : <Check size={11} />} Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

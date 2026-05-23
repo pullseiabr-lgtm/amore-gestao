@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Search, Plus, Trash2, Building2, Phone, Mail, MapPin,
   CreditCard, Briefcase, ChevronLeft, CheckCircle, XCircle,
-  Loader, ToggleLeft, ToggleRight,
+  Loader, ToggleLeft, ToggleRight, Star,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLoja } from '../../contexts/LojaContext'
 import { useToast } from '../../hooks/useToast'
-import { fetchFornecedores, insertFornecedor, updateFornecedor, deleteFornecedor } from '../../lib/db'
-import type { Fornecedor } from '../../types/database'
+import { fetchFornecedores, insertFornecedor, updateFornecedor, deleteFornecedor, insertFornecedorAvaliacao, fetchFornecedorAvaliacoes } from '../../lib/db'
+import type { Fornecedor, FornecedorAvaliacao } from '../../types/database'
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -76,6 +76,9 @@ const EMPTY_FORM: Omit<Fornecedor, 'id' | 'created_at' | 'updated_at'> = {
   contato_email: null,
   contato_telefone: null,
   observacoes: null,
+  nota_avaliacao: null,
+  total_pedidos: 0,
+  obs_avaliacao: null,
   ativo: true,
   created_by: null,
 }
@@ -440,6 +443,8 @@ export default function FornecedoresPage() {
   const [view, setView] = useState<'lista' | 'novo' | 'editar'>('lista')
   const [editando, setEditando] = useState<Fornecedor | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Fornecedor | null>(null)
+  const [subTab, setSubTab] = useState<'lista' | 'ranking'>('lista')
+  const [avaliarForn, setAvaliarForn] = useState<Fornecedor | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -550,8 +555,65 @@ export default function FornecedoresPage() {
         </div>
       </div>
 
+      {/* Sub-tabs */}
+      <div className="tabs" style={{ marginBottom: 14 }}>
+        <button className={`tab${subTab === 'lista' ? ' active' : ''}`} onClick={() => setSubTab('lista')}>
+          🏭 Fornecedores
+        </button>
+        <button className={`tab${subTab === 'ranking' ? ' active' : ''}`} onClick={() => setSubTab('ranking')}>
+          ⭐ Ranking por Avaliação
+        </button>
+      </div>
+
+      {/* Ranking view */}
+      {subTab === 'ranking' && (
+        <div>
+          <div className="card">
+            <div className="card-hd"><span className="card-tt">⭐ Ranking de Fornecedores</span><span className="badge bg-b">{fornecedores.length} fornecedores</span></div>
+            <div className="card-bd" style={{ padding: '8px 14px' }}>
+              {[...fornecedores]
+                .sort((a, b) => (b.nota_avaliacao ?? 0) - (a.nota_avaliacao ?? 0))
+                .map((f, i) => (
+                  <div key={f.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '10px 0', borderBottom: '1px solid var(--border)',
+                  }}>
+                    <span style={{ fontWeight: 800, fontSize: 15, minWidth: 24, color: ['var(--warning)', '#9CA3AF', '#CD7C2F'][i] ?? 'var(--muted)', textAlign: 'center' }}>
+                      {['🥇','🥈','🥉'][i] ?? i + 1}
+                    </span>
+                    <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--bordo-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--bordo)', fontWeight: 800, fontSize: 14, flexShrink: 0 }}>
+                      {f.nome[0]}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{f.nome}</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{f.categorias?.split(',')[0]?.trim() ?? '—'} · {f.total_pedidos} pedido(s)</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      {f.nota_avaliacao != null ? (
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end' }}>
+                            {[1,2,3,4,5].map(n => (
+                              <Star key={n} size={12} fill={n <= Math.round(f.nota_avaliacao!) ? 'var(--warning)' : 'none'} color={n <= Math.round(f.nota_avaliacao!) ? 'var(--warning)' : 'var(--muted)'} />
+                            ))}
+                            <span style={{ fontWeight: 800, fontSize: 13, marginLeft: 3, color: 'var(--bordo)' }}>{f.nota_avaliacao.toFixed(1)}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <span style={{ fontSize: 11, color: 'var(--muted)' }}>Sem avaliação</span>
+                      )}
+                      <button className="btn bo bsm" style={{ marginTop: 5, fontSize: 10 }} onClick={() => setAvaliarForn(f)}>
+                        <Star size={9} /> Avaliar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tabela / lista */}
-      <div className="card">
+      {subTab === 'lista' && <div className="card">
         <div className="card-hd">
           <span className="card-tt">🏭 Fornecedores</span>
           <button className="btn bp bsm" onClick={() => setView('novo')}><Plus size={11} /> Novo Fornecedor</button>
@@ -674,7 +736,21 @@ export default function FornecedoresPage() {
             </div>
           </>
         )}
-      </div>
+      </div>}
+
+      {/* Modal de avaliação */}
+      {avaliarForn && (
+        <AvaliacaoModal
+          fornecedor={avaliarForn}
+          loja={loja}
+          onClose={() => setAvaliarForn(null)}
+          onSalvo={async (nota) => {
+            await updateFornecedor(avaliarForn.id, { nota_avaliacao: nota, total_pedidos: (avaliarForn.total_pedidos ?? 0) + 1 })
+            await load()
+            setAvaliarForn(null)
+          }}
+        />
+      )}
 
       {/* Modal de confirmação de exclusão */}
       {confirmDelete && (
@@ -704,6 +780,138 @@ export default function FornecedoresPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Modal de Avaliação de Fornecedor ─────────────────────────
+
+function AvaliacaoModal({
+  fornecedor, loja, onClose, onSalvo,
+}: { fornecedor: Fornecedor; loja: string; onClose: () => void; onSalvo: (nota: number) => Promise<void> }) {
+  const { toast } = useToast()
+  const [saving, setSaving] = useState(false)
+  const [historico, setHistorico] = useState<FornecedorAvaliacao[]>([])
+  const [nota, setNota] = useState(5)
+  const [hoverNota, setHoverNota] = useState(0)
+  const [criterio_preco, setCriterioPreco] = useState(5)
+  const [criterio_prazo, setCriterioPrazo] = useState(5)
+  const [criterio_qualidade, setCriterioQualidade] = useState(5)
+  const [criterio_atendimento, setCriterioAtendimento] = useState(5)
+  const [comentario, setComentario] = useState('')
+
+  useEffect(() => {
+    fetchFornecedorAvaliacoes(fornecedor.id).then(setHistorico).catch(() => {})
+  }, [fornecedor.id])
+
+  const salvar = async () => {
+    setSaving(true)
+    try {
+      await insertFornecedorAvaliacao({
+        fornecedor_id: fornecedor.id,
+        loja: loja === 'Todas as Lojas' ? fornecedor.loja : loja,
+        nota,
+        criterio_preco,
+        criterio_prazo,
+        criterio_qualidade,
+        criterio_atendimento,
+        comentario: comentario.trim() || null,
+        avaliado_por: null,
+      })
+      toast('Avaliação registrada!')
+      await onSalvo(nota)
+    } catch {
+      toast('Erro ao salvar avaliação.', 'error')
+    }
+    setSaving(false)
+  }
+
+  const StarRow = ({ value, onChange }: { value: number; onChange: (n: number) => void }) => (
+    <div style={{ display: 'flex', gap: 4 }}>
+      {[1,2,3,4,5].map(n => (
+        <button key={n} type="button" onClick={() => onChange(n)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+          <Star size={16} fill={n <= value ? 'var(--warning)' : 'none'} color={n <= value ? 'var(--warning)' : 'var(--muted)'} />
+        </button>
+      ))}
+    </div>
+  )
+
+  return (
+    <div className="ov open" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+        <div className="mhd">
+          <div>
+            <span className="mtt">Avaliar Fornecedor</span>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{fornecedor.nome}</div>
+          </div>
+          <button className="mx" onClick={onClose}>✕</button>
+        </div>
+        <div className="mbd" style={{ padding: '16px 18px' }}>
+          {/* Nota geral */}
+          <div style={{ textAlign: 'center', marginBottom: 20 }}>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>Nota Geral</div>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+              {[1,2,3,4,5].map(n => (
+                <button key={n} type="button"
+                  onMouseEnter={() => setHoverNota(n)}
+                  onMouseLeave={() => setHoverNota(0)}
+                  onClick={() => setNota(n)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}
+                >
+                  <Star size={28} fill={n <= (hoverNota || nota) ? 'var(--warning)' : 'none'} color={n <= (hoverNota || nota) ? 'var(--warning)' : 'var(--muted)'} />
+                </button>
+              ))}
+            </div>
+            <div style={{ fontWeight: 800, fontSize: 18, color: 'var(--bordo)', marginTop: 6 }}>{nota}/5</div>
+          </div>
+
+          {/* Critérios */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+            {[
+              { label: 'Preço', value: criterio_preco, set: setCriterioPreco },
+              { label: 'Prazo de Entrega', value: criterio_prazo, set: setCriterioPrazo },
+              { label: 'Qualidade', value: criterio_qualidade, set: setCriterioQualidade },
+              { label: 'Atendimento', value: criterio_atendimento, set: setCriterioAtendimento },
+            ].map(c => (
+              <div key={c.label}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>{c.label}</div>
+                <StarRow value={c.value} onChange={c.set} />
+              </div>
+            ))}
+          </div>
+
+          {/* Comentário */}
+          <div className="fg">
+            <label className="fl">Comentário (opcional)</label>
+            <textarea className="inp" rows={2} value={comentario} onChange={e => setComentario(e.target.value)} style={{ resize: 'vertical' }} />
+          </div>
+
+          {/* Histórico */}
+          {historico.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>Avaliações Anteriores</div>
+              {historico.slice(0, 3).map(h => (
+                <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderTop: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', gap: 2 }}>
+                    {[1,2,3,4,5].map(n => (
+                      <Star key={n} size={10} fill={n <= Math.round(h.nota) ? 'var(--warning)' : 'none'} color={n <= Math.round(h.nota) ? 'var(--warning)' : 'var(--muted)'} />
+                    ))}
+                  </div>
+                  <span style={{ fontWeight: 700, fontSize: 11, color: 'var(--bordo)' }}>{h.nota.toFixed(1)}</span>
+                  <span style={{ fontSize: 10, color: 'var(--muted)', flex: 1 }}>{h.comentario ?? ''}</span>
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>{new Date(h.created_at).toLocaleDateString('pt-BR')}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="mft">
+          <button className="btn bo" onClick={onClose}>Cancelar</button>
+          <button className="btn bp" onClick={salvar} disabled={saving}>
+            {saving ? <Loader size={11} className="spin" /> : <CheckCircle size={11} />} Salvar Avaliação
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

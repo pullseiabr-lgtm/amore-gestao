@@ -706,6 +706,62 @@ export async function insertReqTimeline(entry: Omit<ReqTimeline, 'id' | 'created
   return estoquePost('req_timeline', entry)
 }
 
+// ── ESTOQUE — Perdas ────────────────────────────────────────────────────────
+import type { EstoquePerda, FornecedorAvaliacao, ProdutoTeste, HomologacaoStatus } from '../types/database'
+
+export async function fetchEstoquePerdas(loja?: string): Promise<EstoquePerda[]> {
+  const q = loja && loja !== 'Todas as Lojas'
+    ? `loja=eq.${encodeURIComponent(loja)}&order=created_at.desc`
+    : 'order=created_at.desc'
+  return estoqueFetch('estoque_perdas', q)
+}
+
+export async function insertEstoquePerda(p: Omit<EstoquePerda, 'id' | 'created_at'>): Promise<EstoquePerda> {
+  return estoquePost('estoque_perdas', p)
+}
+
+export async function deleteEstoquePerda(id: string): Promise<void> {
+  return restDelete('estoque_perdas', `id=eq.${id}`)
+}
+
+// ── FORNECEDORES — Avaliações ───────────────────────────────────────────────
+
+export async function fetchFornecedorAvaliacoes(fornecedorId: string): Promise<FornecedorAvaliacao[]> {
+  return sdkCall<FornecedorAvaliacao[]>(db.from('fornecedor_avaliacoes').select('*').eq('fornecedor_id', fornecedorId).order('created_at', { ascending: false }))
+}
+
+export async function insertFornecedorAvaliacao(a: Omit<FornecedorAvaliacao, 'id' | 'created_at'>): Promise<FornecedorAvaliacao> {
+  return sdkCall<FornecedorAvaliacao>(db.from('fornecedor_avaliacoes').insert(a).select().single())
+}
+
+export async function deleteFornecedorAvaliacao(id: string): Promise<void> {
+  return restDelete('fornecedor_avaliacoes', `id=eq.${id}`)
+}
+
+// ── PRODUTOS EM TESTE ───────────────────────────────────────────────────────
+
+export async function fetchProdutoTestes(produtoId: string): Promise<ProdutoTeste[]> {
+  return sdkCall<ProdutoTeste[]>(db.from('produto_testes').select('*').eq('produto_id', produtoId).order('created_at', { ascending: false }))
+}
+
+export async function insertProdutoTeste(t: Omit<ProdutoTeste, 'id' | 'created_at'>): Promise<ProdutoTeste> {
+  return sdkCall<ProdutoTeste>(db.from('produto_testes').insert(t).select().single())
+}
+
+export async function fetchProdutosEmTeste(loja: string): Promise<{ produto_id: string; resultado: string; created_at: string }[]> {
+  return sdkCall<any[]>(db.from('produto_testes').select('produto_id,resultado,created_at').eq('loja', loja).order('created_at', { ascending: false }))
+}
+
+export async function updateProdutoHomologacao(
+  id: string,
+  status: HomologacaoStatus,
+  dados: { feedback_teste?: string; aprovado_por?: string; data_inicio_teste?: string; aprovacao_at?: string }
+): Promise<import('../types/database').Produto> {
+  return sdkCall<import('../types/database').Produto>(
+    db.from('produtos').update({ status_homologacao: status, ...dados, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  )
+}
+
 // ── MÓDULO FINANCEIRO ───────────────────────────────────────────────────────
 import type { FinCredito, FinPrestacao, FinLancamento, FinAnexo, FinAuditoriaLog } from '../types/database'
 

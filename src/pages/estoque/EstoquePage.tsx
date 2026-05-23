@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Package, TrendingDown, History, ArrowLeftRight, ClipboardList, Download, Plus, ChevronRight, CheckCircle, XCircle, Calculator, Loader } from 'lucide-react'
+import { Search, Package, TrendingDown, History, ArrowLeftRight, ClipboardList, Download, Plus, ChevronRight, CheckCircle, XCircle, Calculator, Loader, Trash2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLoja } from '../../contexts/LojaContext'
 import { useToast } from '../../hooks/useToast'
@@ -8,8 +8,9 @@ import {
   fetchEstoqueMovimentacoes, fetchEstoqueMovimentacoesDias, insertEstoqueMovimentacao,
   fetchEstoqueContagens, insertEstoqueContagem,
   fetchEstoqueContagemItens, upsertEstoqueContagemItens,
+  fetchEstoquePerdas, insertEstoquePerda, deleteEstoquePerda,
 } from '../../lib/db'
-import type { EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, NivelStatus } from '../../types/database'
+import type { EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, NivelStatus, EstoquePerda, PerdaTipo } from '../../types/database'
 
 // ── helpers ────────────────────────────────────────────────
 
@@ -182,6 +183,10 @@ function TabLista({ loja }: { loja: string }) {
         nivel_ideal: parseFloat(form.nivel_ideal) || 0,
         preco_unitario: parseFloat(form.preco_unitario) || 0,
         ativo: true,
+        data_validade: null,
+        numero_lote: null,
+        dias_alerta: 30,
+        registrar_perdas: false,
       }
       if (editProduto) {
         await updateEstoqueProduto(editProduto.id, payload)
@@ -927,7 +932,7 @@ function TabContagem({ loja }: { loja: string }) {
 
 // ── EstoquePage ────────────────────────────────────────────
 
-type EstoqueTab = 'lista' | 'cmv' | 'historico' | 'movimentacoes' | 'contagem'
+type EstoqueTab = 'lista' | 'cmv' | 'historico' | 'movimentacoes' | 'contagem' | 'perdas'
 
 const TABS: { id: EstoqueTab; label: string; icon: React.ReactNode }[] = [
   { id: 'lista', label: 'Lista', icon: <Package size={12} /> },
@@ -935,6 +940,7 @@ const TABS: { id: EstoqueTab; label: string; icon: React.ReactNode }[] = [
   { id: 'historico', label: 'Histórico', icon: <History size={12} /> },
   { id: 'movimentacoes', label: 'Movimentações', icon: <ArrowLeftRight size={12} /> },
   { id: 'contagem', label: 'Contagem', icon: <ClipboardList size={12} /> },
+  { id: 'perdas', label: 'Perdas', icon: <AlertTriangle size={12} /> },
 ]
 
 export default function EstoquePage() {
@@ -956,6 +962,251 @@ export default function EstoquePage() {
       {tab === 'historico' && <TabHistorico loja={loja} />}
       {tab === 'movimentacoes' && <TabMovimentacoes loja={loja} />}
       {tab === 'contagem' && <TabContagem loja={loja} />}
+      {tab === 'perdas' && <TabPerdas loja={loja} />}
+    </div>
+  )
+}
+
+// ── TabPerdas ──────────────────────────────────────────────
+
+const PERDA_TIPOS: { value: PerdaTipo; label: string }[] = [
+  { value: 'perda', label: 'Perda' },
+  { value: 'desperdicio', label: 'Desperdício' },
+  { value: 'vencimento', label: 'Vencimento' },
+  { value: 'dano', label: 'Dano' },
+]
+
+const TIPO_COLOR: Record<PerdaTipo, string> = {
+  perda: '#EF4444',
+  desperdicio: '#F59E0B',
+  vencimento: '#8B5CF6',
+  dano: '#6B7280',
+}
+
+function TabPerdas({ loja }: { loja: string }) {
+  const { can } = useAuth()
+  const { toast } = useToast()
+  const [perdas, setPerdas] = useState<EstoquePerda[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showModal, setShowModal] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [confirmDel, setConfirmDel] = useState<EstoquePerda | null>(null)
+  const [form, setForm] = useState({
+    produto_nome: '',
+    tipo_perda: 'perda' as PerdaTipo,
+    quantidade: '',
+    unidade: 'kg',
+    numero_lote: '',
+    motivo: '',
+    valor_estimado: '',
+  })
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await fetchEstoquePerdas(loja)
+      setPerdas(data)
+    } catch {
+      toast('Erro ao carregar perdas.', 'error')
+    }
+    setLoading(false)
+  }, [loja])
+
+  useEffect(() => { load() }, [load])
+
+  const salvar = async () => {
+    if (!form.produto_nome.trim()) { toast('Preencha o nome do produto.', 'error'); return }
+    if (!form.quantidade || parseFloat(form.quantidade) <= 0) { toast('Informe a quantidade.', 'error'); return }
+    setSaving(true)
+    try {
+      await insertEstoquePerda({
+        loja: loja === 'Todas as Lojas' ? 'Amore CD' : loja,
+        produto_id: null,
+        produto_nome: form.produto_nome.trim().toUpperCase(),
+        tipo_perda: form.tipo_perda,
+        quantidade: parseFloat(form.quantidade),
+        unidade: form.unidade,
+        numero_lote: form.numero_lote.trim() || null,
+        data_validade: null,
+        motivo: form.motivo.trim() || null,
+        valor_estimado: form.valor_estimado ? parseFloat(form.valor_estimado) : null,
+        created_by: null,
+      })
+      toast('Perda registrada!')
+      setShowModal(false)
+      setForm({ produto_nome: '', tipo_perda: 'perda', quantidade: '', unidade: 'kg', numero_lote: '', motivo: '', valor_estimado: '' })
+      await load()
+    } catch {
+      toast('Erro ao registrar perda.', 'error')
+    }
+    setSaving(false)
+  }
+
+  const deletar = async (p: EstoquePerda) => {
+    try {
+      await deleteEstoquePerda(p.id)
+      setPerdas(prev => prev.filter(x => x.id !== p.id))
+      toast('Registro removido.')
+    } catch {
+      toast('Erro ao remover.', 'error')
+    }
+    setConfirmDel(null)
+  }
+
+  const totalValor = perdas.reduce((s, p) => s + (p.valor_estimado ?? 0), 0)
+  const byTipo = PERDA_TIPOS.map(t => ({
+    ...t,
+    count: perdas.filter(p => p.tipo_perda === t.value).length,
+    valor: perdas.filter(p => p.tipo_perda === t.value).reduce((s, p) => s + (p.valor_estimado ?? 0), 0),
+  }))
+
+  return (
+    <div>
+      {/* Resumo */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginBottom: 14 }}>
+        <div className="card" style={{ textAlign: 'center', padding: 14 }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>Total Registros</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--bordo)' }}>{perdas.length}</div>
+        </div>
+        <div className="card" style={{ textAlign: 'center', padding: 14 }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 3 }}>Valor Estimado Total</div>
+          <div style={{ fontSize: 20, fontWeight: 900, color: '#EF4444' }}>R$ {totalValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+        </div>
+      </div>
+
+      {/* Por tipo */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 9, marginBottom: 14 }}>
+        {byTipo.map(t => (
+          <div key={t.value} className="card" style={{ padding: '10px 12px', borderLeft: `3px solid ${TIPO_COLOR[t.value]}` }}>
+            <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{t.label}</div>
+            <div style={{ fontWeight: 800, fontSize: 16, color: TIPO_COLOR[t.value] }}>{t.count}</div>
+            {t.valor > 0 && <div style={{ fontSize: 10, color: 'var(--muted)' }}>R$ {t.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* Toolbar */}
+      <div className="fb" style={{ marginBottom: 11 }}>
+        <div style={{ fontWeight: 700, fontSize: 13 }}>Registro de Perdas</div>
+        {can('estoque', 'create') && (
+          <button className="btn bp bsm" onClick={() => setShowModal(true)}>
+            <Plus size={11} /> Registrar Perda
+          </button>
+        )}
+      </div>
+
+      {/* Lista */}
+      <div className="card">
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}><Loader size={20} className="spin" /></div>
+        ) : perdas.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 32, color: 'var(--muted)', fontSize: 13 }}>
+            Nenhuma perda registrada.
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Data</th><th>Produto</th><th>Tipo</th><th>Qtd</th><th>Valor Est.</th><th>Motivo</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {perdas.map(p => (
+                  <tr key={p.id}>
+                    <td style={{ whiteSpace: 'nowrap', fontSize: 11 }}>{fmtDate(p.created_at)}</td>
+                    <td style={{ fontWeight: 600 }}>{p.produto_nome}</td>
+                    <td>
+                      <span style={{
+                        background: TIPO_COLOR[p.tipo_perda] + '20',
+                        color: TIPO_COLOR[p.tipo_perda],
+                        borderRadius: 12, padding: '2px 8px', fontSize: 10.5, fontWeight: 700,
+                      }}>
+                        {PERDA_TIPOS.find(t => t.value === p.tipo_perda)?.label ?? p.tipo_perda}
+                      </span>
+                    </td>
+                    <td>{p.quantidade} {p.unidade}</td>
+                    <td>{p.valor_estimado != null ? `R$ ${p.valor_estimado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—'}</td>
+                    <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11, color: 'var(--muted)' }}>{p.motivo ?? '—'}</td>
+                    <td>
+                      {can('estoque', 'delete') && (
+                        <button className="ib rd" onClick={() => setConfirmDel(p)}><Trash2 size={11} /></button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Modal registro */}
+      {showModal && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd"><span className="modal-tt">Registrar Perda / Desperdício</span></div>
+            <div className="modal-bd">
+              <div className="g2">
+                <div className="fg" style={{ gridColumn: '1/-1' }}>
+                  <label className="fl">Produto <span className="rq">*</span></label>
+                  <input className="inp" placeholder="Nome do produto" value={form.produto_nome} onChange={e => setForm(p => ({ ...p, produto_nome: e.target.value }))} />
+                </div>
+                <div className="fg">
+                  <label className="fl">Tipo de Perda</label>
+                  <select className="sel" value={form.tipo_perda} onChange={e => setForm(p => ({ ...p, tipo_perda: e.target.value as PerdaTipo }))}>
+                    {PERDA_TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div className="fg">
+                  <label className="fl">Quantidade</label>
+                  <input className="inp" type="number" step="0.001" value={form.quantidade} onChange={e => setForm(p => ({ ...p, quantidade: e.target.value }))} />
+                </div>
+                <div className="fg">
+                  <label className="fl">Unidade</label>
+                  <select className="sel" value={form.unidade} onChange={e => setForm(p => ({ ...p, unidade: e.target.value }))}>
+                    {['kg', 'g', 'L', 'ml', 'un', 'cx', 'pct'].map(u => <option key={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div className="fg">
+                  <label className="fl">Valor Estimado (R$)</label>
+                  <input className="inp" type="number" step="0.01" value={form.valor_estimado} onChange={e => setForm(p => ({ ...p, valor_estimado: e.target.value }))} />
+                </div>
+                <div className="fg">
+                  <label className="fl">Nº Lote</label>
+                  <input className="inp" value={form.numero_lote} onChange={e => setForm(p => ({ ...p, numero_lote: e.target.value }))} />
+                </div>
+                <div className="fg" style={{ gridColumn: '1/-1' }}>
+                  <label className="fl">Motivo / Observação</label>
+                  <input className="inp" value={form.motivo} onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))} />
+                </div>
+              </div>
+            </div>
+            <div className="modal-ft">
+              <button className="btn bo" onClick={() => setShowModal(false)}>Cancelar</button>
+              <button className="btn bp" onClick={salvar} disabled={saving}>
+                {saving ? <Loader size={12} className="spin" /> : <CheckCircle size={12} />} Registrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm delete */}
+      {confirmDel && (
+        <div className="modal-overlay" onClick={() => setConfirmDel(null)}>
+          <div className="modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-hd"><span className="modal-tt">Remover Registro</span></div>
+            <div className="modal-bd" style={{ padding: 18, fontSize: 13 }}>
+              Remover o registro de perda de <strong>{confirmDel.produto_nome}</strong>?
+            </div>
+            <div className="modal-ft">
+              <button className="btn bo" onClick={() => setConfirmDel(null)}>Cancelar</button>
+              <button className="btn bd" onClick={() => deletar(confirmDel)}>Remover</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

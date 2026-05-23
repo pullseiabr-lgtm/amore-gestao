@@ -298,6 +298,20 @@ export interface ComprasListaItem {
 
 // ── Fornecedores ─────────────────────────────────────────────
 
+export interface FornecedorAvaliacao {
+  id: string
+  fornecedor_id: string
+  loja: string
+  nota: number
+  criterio_preco: number | null
+  criterio_prazo: number | null
+  criterio_qualidade: number | null
+  criterio_atendimento: number | null
+  comentario: string | null
+  avaliado_por: string | null
+  created_at: string
+}
+
 export interface Fornecedor {
   id: string
   loja: string
@@ -330,6 +344,9 @@ export interface Fornecedor {
   contato_email: string | null
   contato_telefone: string | null
   observacoes: string | null
+  nota_avaliacao: number | null
+  total_pedidos: number
+  obs_avaliacao: string | null
   ativo: boolean
   created_by: string | null
   created_at: string
@@ -339,8 +356,9 @@ export interface Fornecedor {
 // ── Estoque ──────────────────────────────────────────────────
 
 export type NivelStatus = 'Crítico' | 'Repor' | 'Ok' | 'Ideal'
-export type MovTipo = 'entrada' | 'saida'
+export type MovTipo = 'entrada' | 'saida' | 'perda' | 'desperdicio'
 export type ContagemTipo = 'regular' | 'fechamento' | 'abertura'
+export type PerdaTipo = 'perda' | 'desperdicio' | 'vencimento' | 'dano'
 
 export interface EstoqueProduto {
   id: string
@@ -353,8 +371,28 @@ export interface EstoqueProduto {
   nivel_ideal: number
   preco_unitario: number
   ativo: boolean
+  data_validade: string | null
+  numero_lote: string | null
+  dias_alerta: number
+  registrar_perdas: boolean
   created_at: string
   updated_at: string
+}
+
+export interface EstoquePerda {
+  id: string
+  loja: string
+  produto_id: string | null
+  produto_nome: string
+  tipo_perda: PerdaTipo
+  quantidade: number
+  unidade: string
+  numero_lote: string | null
+  data_validade: string | null
+  motivo: string | null
+  valor_estimado: number | null
+  created_by: string | null
+  created_at: string
 }
 
 export interface EstoqueMovimentacao {
@@ -407,6 +445,8 @@ export interface Colaborador {
   erros: number
   pres: number
   obs: string
+  periodo_ref: string | null
+  recompensas: string[] | null
   created_at: string
 }
 
@@ -487,6 +527,8 @@ export type ProdutoUnidade =
   | 'Maço'       | 'Bandeja'| 'Embalagem' | 'Display'
   | 'Pente'      | 'Balde'  | 'Quilograma'
 
+export type HomologacaoStatus = 'homologado' | 'em_teste' | 'reprovado' | 'pendente'
+
 export interface Produto {
   id: string
   loja: string
@@ -503,11 +545,30 @@ export interface Produto {
   ativo: boolean
   estoque_atual: number
   estoque_minimo: number
+  status_homologacao: HomologacaoStatus
+  feedback_teste: string | null
+  data_inicio_teste: string | null
+  aprovado_por: string | null
+  aprovacao_at: string | null
   created_by: string | null
   created_at: string
   updated_at: string
   // join helpers
   fornecedores?: ProdutoFornecedor[]
+}
+
+export interface ProdutoTeste {
+  id: string
+  produto_id: string
+  loja: string
+  resultado: 'em_teste' | 'aprovado' | 'reprovado'
+  avaliador: string | null
+  nota_sabor: number | null
+  nota_custo: number | null
+  nota_fornecimento: number | null
+  comentario: string | null
+  substituiu_produto: string | null
+  created_at: string
 }
 
 export interface ProdutoFornecedor {
