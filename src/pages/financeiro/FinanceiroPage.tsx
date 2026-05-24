@@ -665,7 +665,18 @@ function PainelAnexos({ lancamentoId, prestacaoId, userName, onFechar }: {
       const novo = await uploadFinComprovante(file, lancamentoId, prestacaoId, userName)
       setAnexos(prev => [...prev, novo])
     } catch (e: unknown) {
-      setErrMsg(`Erro no upload: ${e instanceof Error ? e.message : 'verifique se o bucket "fin-comprovantes" foi criado'}`)
+      const msg = e instanceof Error ? e.message : String(e)
+      const isRLS = msg.toLowerCase().includes('row-level security') ||
+                    msg.toLowerCase().includes('rls') ||
+                    msg.toLowerCase().includes('new row violates') ||
+                    msg.toLowerCase().includes('policy')
+      if (isRLS) {
+        setErrMsg('__RLS__')
+      } else if (msg.toLowerCase().includes('bucket') || msg.toLowerCase().includes('not found')) {
+        setErrMsg('__BUCKET__')
+      } else {
+        setErrMsg(`Erro no upload: ${msg}`)
+      }
     }
     setUploading(false)
   }
@@ -697,7 +708,36 @@ function PainelAnexos({ lancamentoId, prestacaoId, userName, onFechar }: {
                   <button className="ib rd" onClick={() => remover(a.id)} title="Remover"><Trash2 size={12} /></button>
                 </div>
               ))}
-              {errMsg && <div style={{ marginTop: 10, padding: '8px 12px', background: '#FEE2E2', borderRadius: 6, fontSize: 11, color: 'var(--danger)' }}>{errMsg}</div>}
+              {errMsg === '__RLS__' && (
+                <div style={{ marginTop: 12, padding: '12px 14px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, fontSize: 11.5, color: '#991B1B' }}>
+                  <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertTriangle size={13} /> Política de segurança bloqueou o upload (RLS)
+                  </div>
+                  <p style={{ marginBottom: 8, lineHeight: 1.6 }}>
+                    O Supabase recusou o arquivo com erro <code style={{ background: '#FEE2E2', padding: '1px 4px', borderRadius: 3 }}>new row violates row-level security policy</code>.
+                  </p>
+                  <p style={{ fontWeight: 700, marginBottom: 4 }}>Como corrigir no Supabase:</p>
+                  <ol style={{ paddingLeft: 16, lineHeight: 2 }}>
+                    <li>Acesse <strong>Storage → Buckets → fin-comprovantes → Policies</strong></li>
+                    <li>Crie uma política de INSERT com: <code style={{ background: '#FEE2E2', padding: '1px 4px', borderRadius: 3 }}>auth.role() = 'authenticated'</code></li>
+                    <li>Repita para SELECT, UPDATE e DELETE</li>
+                    <li>Alternativamente, marque o bucket como <strong>Public</strong> (apenas para ambientes de desenvolvimento)</li>
+                  </ol>
+                </div>
+              )}
+              {errMsg === '__BUCKET__' && (
+                <div style={{ marginTop: 12, padding: '12px 14px', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 8, fontSize: 11.5, color: '#92400E' }}>
+                  <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertTriangle size={13} /> Bucket de armazenamento não encontrado
+                  </div>
+                  <p style={{ lineHeight: 1.6 }}>
+                    Crie o bucket <strong>fin-comprovantes</strong> em <strong>Supabase → Storage → New bucket</strong> e configure as políticas de acesso.
+                  </p>
+                </div>
+              )}
+              {errMsg && errMsg !== '__RLS__' && errMsg !== '__BUCKET__' && (
+                <div style={{ marginTop: 10, padding: '8px 12px', background: '#FEE2E2', borderRadius: 6, fontSize: 11, color: 'var(--danger)' }}>{errMsg}</div>
+              )}
             </>
           )}
         </div>
@@ -732,6 +772,18 @@ function DetalheView({ prestacao: inicial, credito, user, companyName, onVoltar,
   const [modalAnexos, setModalAnexos] = useState<string | null>(null)
   const [logs, setLogs] = useState<FinAuditoriaLog[]>([])
   const [showLog, setShowLog] = useState(false)
+
+  // ── Reembolso (campos locais — saldo negativo) ────────────────
+  const [reembolso, setReembolso] = useState({
+    quem_pagou: '',
+    autorizado_por: '',
+    forma: 'pix' as 'pix' | 'dinheiro' | 'transferencia',
+    status: 'pendente' as 'pendente' | 'em_andamento' | 'concluido',
+    data: '',
+    obs: '',
+  })
+  const [reembolsoSalvo, setReembolsoSalvo] = useState(false)
+  const setR = (k: string, v: string) => { setReembolso(r => ({ ...r, [k]: v })); setReembolsoSalvo(false) }
 
   const isAuditor = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager'
   const userName = user?.name ?? 'Sistema'
@@ -861,6 +913,89 @@ function DetalheView({ prestacao: inicial, credito, user, companyName, onVoltar,
           </div>
         </div>
       </div>
+
+      {/* ── Painel de Reembolso (saldo negativo) ─────────────── */}
+      {prestacao.diferenca < 0 && (
+        <div className="card" style={{ marginBottom: 14, border: '1.5px solid #FECACA' }}>
+          <div className="card-hd" style={{ background: '#FEF2F2' }}>
+            <span className="card-tt" style={{ color: '#991B1B', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <AlertTriangle size={13} style={{ color: '#EF4444' }} />
+              Reembolso Pendente — Saldo Negativo ({fmtR$(Math.abs(prestacao.diferenca))})
+            </span>
+            {reembolsoSalvo && (
+              <span style={{ fontSize: 11, color: 'var(--success)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Check size={11} /> Salvo localmente
+              </span>
+            )}
+          </div>
+          <div className="mbd" style={{ paddingTop: 14 }}>
+            <div style={{ fontSize: 12, color: '#B91C1C', marginBottom: 14, padding: '8px 12px', background: '#FEF2F2', borderRadius: 7, lineHeight: 1.6 }}>
+              A prestação apresenta saldo negativo de <strong>{fmtR$(Math.abs(prestacao.diferenca))}</strong>, indicando que o responsável gastou além do valor recebido.
+              Preencha os dados de reembolso abaixo para registro e controle.
+            </div>
+            <div className="g2">
+              <div className="fg">
+                <label className="fl">Quem pagou o valor a mais <span className="rq">*</span></label>
+                <input className="inp" value={reembolso.quem_pagou}
+                  onChange={e => setR('quem_pagou', e.target.value)}
+                  placeholder="Nome do colaborador ou responsável" />
+              </div>
+              <div className="fg">
+                <label className="fl">Autorizado por <span className="rq">*</span></label>
+                <input className="inp" value={reembolso.autorizado_por}
+                  onChange={e => setR('autorizado_por', e.target.value)}
+                  placeholder="Gerente / Supervisor que autorizou" />
+              </div>
+              <div className="fg">
+                <label className="fl">Forma de reembolso</label>
+                <select className="sel" value={reembolso.forma} onChange={e => setR('forma', e.target.value)}>
+                  <option value="pix">PIX</option>
+                  <option value="dinheiro">Dinheiro</option>
+                  <option value="transferencia">Transferência Bancária</option>
+                </select>
+              </div>
+              <div className="fg">
+                <label className="fl">Data do reembolso</label>
+                <input className="inp" type="date" value={reembolso.data} onChange={e => setR('data', e.target.value)} />
+              </div>
+            </div>
+            <div className="fg">
+              <label className="fl">Status do reembolso</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {(['pendente', 'em_andamento', 'concluido'] as const).map(s => (
+                  <button key={s} className={`btn bsm ${reembolso.status === s ? 'bp' : 'bo'}`}
+                    onClick={() => setR('status', s)}>
+                    {s === 'pendente' ? '⏳ Pendente' : s === 'em_andamento' ? '🔄 Em andamento' : '✅ Concluído'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="fg">
+              <label className="fl">Observações</label>
+              <textarea className="txa" rows={2} value={reembolso.obs}
+                onChange={e => setR('obs', e.target.value)}
+                placeholder="Detalhes do reembolso, número de comprovante PIX, etc." />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+              <button className="btn bp bsm" onClick={() => {
+                if (!reembolso.quem_pagou.trim() || !reembolso.autorizado_por.trim()) {
+                  toast('Preencha "Quem pagou" e "Autorizado por"', 'err'); return
+                }
+                setReembolsoSalvo(true)
+                toast('Dados de reembolso registrados!')
+                insertFinAuditoriaLog({
+                  loja: null, entidade: 'prestacao', entidade_id: prestacao.id,
+                  acao: `Reembolso ${reembolso.status}`,
+                  detalhe: `${fmtR$(Math.abs(prestacao.diferenca))} · ${reembolso.forma.toUpperCase()} · Pago por: ${reembolso.quem_pagou} · Autorizado: ${reembolso.autorizado_por}`,
+                  usuario: userName,
+                }).catch(() => {})
+              }}>
+                <Check size={11} /> Registrar reembolso
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Progresso auditoria */}
       {lancamentos.length > 0 && (

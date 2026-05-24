@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, UtensilsCrossed, Tag, BarChart2, AlertTriangle } from 'lucide-react'
+import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 
@@ -42,9 +42,10 @@ const RELATORIOS_SUBMENU: NavItem[] = [
 ]
 
 const MENU_BOTTOM: NavItem[] = [
-  { id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={13} /> },
-  { id: 'cozinha',    label: 'Cozinha',    icon: <ChefHat size={13} /> },
-  { id: 'salao',      label: 'Salão',      icon: <Coffee size={13} /> },
+  { id: 'pdv',        label: 'PDV — Caixa',   icon: <Monitor size={13} /> },
+  { id: 'financeiro', label: 'Financeiro',    icon: <DollarSign size={13} /> },
+  { id: 'cozinha',    label: 'Cozinha',       icon: <ChefHat size={13} /> },
+  { id: 'salao',      label: 'Salão',         icon: <Coffee size={13} /> },
 ]
 
 const ADMIN_MENU: NavItem[] = [

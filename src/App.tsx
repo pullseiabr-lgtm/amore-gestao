@@ -22,6 +22,7 @@ import RequisoesPage from './pages/requisicoes/RequisoesPage'
 import ProdutosPage from './pages/produtos/ProdutosPage'
 import RelatorioCVLPage from './pages/relatorios/RelatorioCVLPage'
 import RupturaPage from './pages/relatorios/RupturaPage'
+import PdvPage from './pages/pdv/PdvPage'
 
 export type PageId =
   | 'dashboard'
@@ -42,6 +43,7 @@ export type PageId =
   | 'produtos-categorias'
   | 'relatorio-cvl'
   | 'ruptura'
+  | 'pdv'
 
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Dashboard',
@@ -62,6 +64,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'produtos-categorias': 'Categorias de Produtos',
   'relatorio-cvl': 'Compra vs Lista',
   ruptura: 'Ruptura de Pedidos',
+  pdv: 'PDV — Ponto de Venda',
 }
 
 function PageContent({ page }: { page: PageId }) {
@@ -84,6 +87,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'produtos-categorias':  return <ProdutosPage initialView="categorias" />
     case 'relatorio-cvl':        return <RelatorioCVLPage />
     case 'ruptura':              return <RupturaPage />
+    case 'pdv':                  return <PdvPage />
     default: return <DashboardPage />
   }
 }

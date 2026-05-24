@@ -452,6 +452,61 @@ tr:hover td { background: #FAFAF8; }
   .page-content { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
 }
 
+/* ── PDV PAGE ───────────────────────────────────────────────── */
+.pdv-grid { display: grid; grid-template-columns: 1fr 340px; gap: 14px; align-items: start; }
+.pdv-cart { position: sticky; top: 70px; }
+.pdv-prod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.pdv-prod-card { background: #fff; border: 1.5px solid var(--border); border-radius: 9px; padding: 12px 10px; text-align: center; cursor: pointer; transition: .15s; }
+.pdv-prod-card:hover, .pdv-prod-card:active { border-color: var(--bordo-l); background: var(--bordo-bg); }
+.pdv-prod-card.indisponivel { opacity: .45; pointer-events: none; }
+.pdv-cat-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.pdv-cat-btn { padding: 4px 11px; border-radius: 20px; border: 1.5px solid var(--border); background: #fff; font-size: 11px; font-weight: 600; cursor: pointer; transition: .15s; }
+.pdv-cat-btn.active { background: var(--bordo); color: #fff; border-color: var(--bordo); }
+.pdv-cart-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.pdv-cart-item:last-child { border-bottom: none; }
+
+@media (max-width: 900px) {
+  .pdv-grid { grid-template-columns: 1fr; }
+  .pdv-cart { position: static; }
+  .pdv-prod-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 6px; }
+}
+
+@media (max-width: 640px) {
+  .pdv-prod-grid { grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .pdv-prod-card { padding: 8px 6px; }
+  .pdv-cat-bar { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  .pdv-cat-bar::-webkit-scrollbar { height: 0; }
+  .pdv-cat-btn { white-space: nowrap; flex-shrink: 0; }
+}
+
+/* ── FICHA TÉCNICA / COZINHA CARDS ───────────────────────────── */
+.ficha-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+
+@media (max-width: 640px) {
+  .ficha-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+}
+
+/* ── EXTRA MOBILE FIXES (all pages) ─────────────────────────── */
+@media (max-width: 640px) {
+  /* prevent fixed-width inline styles from breaking layout */
+  .card-hd { flex-wrap: wrap; }
+  .card-hd > div { flex-wrap: wrap; }
+
+  /* table action columns: stack if only one or two buttons */
+  .ab { flex-wrap: wrap; justify-content: flex-end; }
+
+  /* deep form grids in modals */
+  .mbd .g3, .mbd .g4 { grid-template-columns: 1fr !important; }
+  .mbd .g2 { grid-template-columns: 1fr 1fr; }
+
+  /* kpi-grid always 2-col unless extra small */
+  .kpi-grid { grid-template-columns: 1fr 1fr; }
+
+  /* prevent button groups from overflowing */
+  .mft { flex-wrap: wrap; }
+  .mft .btn { flex: 1; min-width: 100px; justify-content: center; }
+}
+
 /* ── PRINT ──────────────────────────────────────────────────── */
 @media print {
   .sidebar, .topbar, .ov, .tb-btn, .ab, .fb, .tabs, .btn, .hamburger-btn, .toast-container { display: none !important; }
