@@ -526,6 +526,17 @@ export async function updateEstoqueProduto(id: string, p: Partial<EstoqueProduto
   return estoquePatch('estoque_produtos', id, { ...p, updated_at: new Date().toISOString() })
 }
 
+/** Atualiza preco_unitario de estoque_produtos pelo nome (busca case-insensitive) */
+export async function updateEstoqueProdutoPrecoPorNome(nome: string, loja: string, preco: number): Promise<void> {
+  try {
+    await db.from('estoque_produtos')
+      .update({ preco_unitario: preco, updated_at: new Date().toISOString() })
+      .ilike('nome', nome.trim())
+      .in('loja', [loja, 'Todas as Lojas'])
+      .eq('ativo', true)
+  } catch (e) { console.warn('updateEstoqueProdutoPrecoPorNome:', e) }
+}
+
 // ── Estoque — Movimentações ─────────────────────────────────
 
 export async function fetchEstoqueMovimentacoes(loja?: string, dataISO?: string): Promise<EstoqueMovimentacao[]> {

@@ -12,6 +12,7 @@ import {
   fetchComprasListas, insertComprasLista, updateComprasLista, deleteComprasLista,
   fetchComprasListaItens, insertComprasListaItem, updateComprasListaItem, deleteComprasListaItem,
   fetchItensComprasDashboard, fetchEstoqueProdutos, insertEstoqueMovimentacao,
+  updateEstoqueProdutoPrecoPorNome,
 } from '../../lib/db'
 import type { ComprasLista, ComprasListaItem, ListaStatus, ListaItemStatus, EstoqueProduto } from '../../types/database'
 
@@ -24,6 +25,15 @@ const CATEGORIAS = [
 ]
 
 const UNIDADES = ['un', 'kg', 'g', 'L', 'ml', 'cx', 'pct', 'fd', 'sc', 'lt', 'dz']
+
+// ── Cotação Formal — config empresa ──────────────────────────
+const EMPRESA_KEY = 'amore_empresa_cfg_v1'
+type EmpresaConfig = { nome: string; cnpj: string; telefone: string; responsavel: string; unidade: string }
+const EMPRESA_DEFAULT: EmpresaConfig = { nome: 'Amore Food', cnpj: '', telefone: '', responsavel: '', unidade: '' }
+type ItemCotFormal = {
+  produto_nome: string; marca: string; qtd: string; unidade: string
+  descricao: string; marcas_similares: string; preco_unit: string
+}
 
 const STATUS_LISTA: Record<ListaStatus, { label: string; color: string; bg: string }> = {
   rascunho:    { label: 'Rascunho',    color: '#92400E', bg: '#FEF3C7' },
@@ -461,6 +471,22 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
   const [recFaltantes, setRecFaltantes] = useState('')
   const [recNome, setRecNome] = useState('')
   const [recData, setRecData] = useState(new Date().toISOString().split('T')[0])
+  // Campos extras do recebimento
+  const [recNf, setRecNf] = useState('')
+  const [recQualidade, setRecQualidade] = useState<'ok' | 'com_ressalvas' | 'problema'>('ok')
+  const [recValidadeObs, setRecValidadeObs] = useState('')
+  const [recDivergencias, setRecDivergencias] = useState('')
+  const [recObsGeral, setRecObsGeral] = useState('')
+  const [recAtualizarPrecos, setRecAtualizarPrecos] = useState(true)
+
+  // Cotação Formal
+  const [showCotacaoFormal, setShowCotacaoFormal] = useState(false)
+  const [empresaCfg, setEmpresaCfg] = useState<EmpresaConfig>(() => {
+    try { return { ...EMPRESA_DEFAULT, ...JSON.parse(localStorage.getItem(EMPRESA_KEY) || '{}') } } catch { return EMPRESA_DEFAULT }
+  })
+  const [fornCotFormal, setFornCotFormal] = useState({ nome: '', cnpj: '', telefone: '', email: '', vendedor: '' })
+  const [itensCotFormal, setItensCotFormal] = useState<ItemCotFormal[]>([])
+  const [cotCondicoes, setCotCondicoes] = useState({ prazo_entrega: '', forma_pgto: '', validade: '', obs: '' })
 
   // Histórico de cotações enviadas (localStorage por lista)
   const histKey = `cotacao-hist-${lista.id}`
@@ -640,6 +666,24 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
     setEmailCotacao('')
   }
 
+  // Cotação Formal — abrir modal pré-preenchido
+  const abrirCotacaoFormal = () => {
+    setItensCotFormal(
+      itens.filter(i => i.status === 'pendente').map(it => ({
+        produto_nome: it.produto_nome,
+        marca: '',
+        qtd: String(it.quantidade),
+        unidade: it.unidade || 'un',
+        descricao: '',
+        marcas_similares: '',
+        preco_unit: it.preco_estimado ? it.preco_estimado.toFixed(2) : '',
+      }))
+    )
+    setFornCotFormal({ nome: '', cnpj: '', telefone: '', email: '', vendedor: '' })
+    setCotCondicoes({ prazo_entrega: '', forma_pgto: '', validade: '', obs: '' })
+    setShowCotacaoFormal(true)
+  }
+
   // Item 10 – Aprovação
   const aprovarCompra = async () => {
     try {
@@ -666,15 +710,23 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
   const confirmarRecebimento = async () => {
     try {
       const tipoLabel = recTipo === 'total' ? 'Total' : recTipo === 'parcial' ? 'Parcial' : 'Não recebido'
+      const qualidadeLabel = recQualidade === 'ok' ? 'OK' : recQualidade === 'com_ressalvas' ? 'Com ressalvas' : 'Problema'
       const faltantesStr = recTipo === 'parcial' && recFaltantes.trim() ? ' | Faltantes: ' + recFaltantes.trim() : ''
-      const obs = (lista.observacoes || '') +
-        '\n[RECEBIMENTO: ' + tipoLabel + ' | por: ' + recNome + ' | ' + recData + faltantesStr + ']'
+      const nfStr = recNf.trim() ? ' | NF: ' + recNf.trim() : ''
+      const qualStr = ' | Qualidade: ' + qualidadeLabel
+      const validStr = recValidadeObs.trim() ? ' | Validade: ' + recValidadeObs.trim() : ''
+      const divStr = recDivergencias.trim() ? ' | Divergências: ' + recDivergencias.trim() : ''
+      const obsStr = recObsGeral.trim() ? ' | Obs: ' + recObsGeral.trim() : ''
+      const obsAtual = (lista.observacoes || '') +
+        '\n[RECEBIMENTO: ' + tipoLabel + nfStr + qualStr + ' | por: ' + recNome + ' | ' + recData +
+        faltantesStr + validStr + divStr + obsStr + ']'
       if (lista.status !== 'concluido') await mudarStatus('concluido')
-      await updateComprasLista(lista.id, { observacoes: obs })
+      await updateComprasLista(lista.id, { observacoes: obsAtual })
 
       // ── Entrada automática no estoque para itens comprados ──────
       if (recTipo !== 'nao_recebido') {
         const itensComprados = itens.filter(i => i.status === 'comprado')
+        const nfMotivo = recNf.trim() ? ` | NF: ${recNf.trim()}` : ''
         const entradas = itensComprados.map(item =>
           insertEstoqueMovimentacao({
             loja: lista.loja || 'Todas as Lojas',
@@ -683,16 +735,33 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
             tipo: 'entrada',
             quantidade: item.quantidade,
             unidade: item.unidade || 'un',
-            motivo: `Entrada via Compras: ${lista.titulo} | Conf. por: ${recNome}`,
+            motivo: `Entrada via Compras: ${lista.titulo}${nfMotivo} | Conf. por: ${recNome}`,
             created_by: recNome,
           }).catch(() => null)
         )
         await Promise.all(entradas)
+
+        // ── Atualizar preço de custo no estoque ──────────────────
+        if (recAtualizarPrecos) {
+          await Promise.all(itensComprados.map(item => {
+            const preco = item.preco_real ?? item.preco_estimado
+            if (preco && preco > 0) {
+              return updateEstoqueProdutoPrecoPorNome(
+                item.produto_nome, lista.loja || 'Todas as Lojas', preco
+              ).catch(() => null)
+            }
+            return Promise.resolve()
+          }))
+        }
+
         setRecEstoqueQtd(itensComprados.length)
       }
 
       setShowRecebimento(false)
       setRecToast(true)
+      // reset extras
+      setRecNf(''); setRecQualidade('ok'); setRecValidadeObs(''); setRecDivergencias(''); setRecObsGeral('')
+      setRecTipo('total'); setRecFaltantes(''); setRecNome(''); setRecData(new Date().toISOString().split('T')[0])
       setTimeout(() => { setRecToast(false); setRecEstoqueQtd(0) }, 4500)
     } catch (e) { console.error(e) }
   }
@@ -827,6 +896,15 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
               title="Registrar resposta recebida do fornecedor"
               style={{ color: '#7C3AED', borderColor: '#7C3AED' }}>
               📥 Resposta Fornecedor
+            </button>
+          )}
+
+          {/* Cotação Formal */}
+          {pendentes > 0 && (
+            <button className="btn bo bsm" onClick={abrirCotacaoFormal}
+              title="Gerar pedido formal de cotação com dados da empresa e fornecedor"
+              style={{ color: '#9333EA', borderColor: '#9333EA' }}>
+              📄 Pedido Formal
             </button>
           )}
 
@@ -1036,56 +1114,119 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
         )}
       </div>
 
-      {/* Item 3 – Modal de Confirmação de Recebimento */}
+      {/* Item 3 – Modal de Confirmação de Recebimento (aprimorado) */}
       {showRecebimento && (
         <div className="ov open" onClick={e => e.target === e.currentTarget && setShowRecebimento(false)}>
-          <div className="modal" style={{ maxWidth: 440 }}>
+          <div className="modal" style={{ maxWidth: 520 }}>
             <div className="mhd">
               <span className="mtt">📦 Confirmar Recebimento</span>
               <button className="mx" onClick={() => setShowRecebimento(false)}><X size={14} /></button>
             </div>
-            <div className="mbd" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="mbd" style={{ display: 'flex', flexDirection: 'column', gap: 13, maxHeight: '72vh', overflowY: 'auto' }}>
+
               {/* Tipo de recebimento */}
               <div className="fg">
-                <label className="fl" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Recebimento Total?</label>
-                <div style={{ display: 'flex', gap: 12 }}>
+                <label className="fl" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Tipo de Recebimento <span className="rq">*</span></label>
+                <div style={{ display: 'flex', gap: 16 }}>
                   {(['total', 'parcial', 'nao_recebido'] as const).map(op => (
                     <label key={op} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
-                      <input type="radio" name="recTipo" value={op} checked={recTipo === op}
-                        onChange={() => setRecTipo(op)} />
-                      {op === 'total' ? 'Sim' : op === 'parcial' ? 'Parcial' : 'Não recebido'}
+                      <input type="radio" name="recTipo" value={op} checked={recTipo === op} onChange={() => setRecTipo(op)} />
+                      {op === 'total' ? '✅ Total' : op === 'parcial' ? '⚠️ Parcial' : '❌ Não recebido'}
                     </label>
                   ))}
                 </div>
               </div>
+
               {/* Itens faltantes (só se parcial) */}
               {recTipo === 'parcial' && (
                 <div className="fg">
-                  <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Descreva os itens faltantes</label>
-                  <textarea className="inp" rows={3} style={{ resize: 'vertical', fontSize: 12 }}
-                    placeholder="Ex: Produto X, Produto Y..."
-                    value={recFaltantes} onChange={e => setRecFaltantes(e.target.value)} />
+                  <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Itens faltantes / pendentes</label>
+                  <textarea className="inp" rows={2} style={{ resize: 'vertical', fontSize: 12 }}
+                    placeholder="Ex: Produto X, Produto Y..." value={recFaltantes} onChange={e => setRecFaltantes(e.target.value)} />
                 </div>
               )}
-              {/* Recebido por */}
-              <div className="fg">
-                <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Recebido por:</label>
-                <input className="inp" placeholder="Nome do responsável" style={{ fontSize: 12 }}
-                  value={recNome} onChange={e => setRecNome(e.target.value)} />
+
+              {/* Linha: Recebido por + Data */}
+              <div className="g2">
+                <div className="fg">
+                  <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Recebido por <span className="rq">*</span></label>
+                  <input className="inp" placeholder="Nome do responsável" style={{ fontSize: 12 }}
+                    value={recNome} onChange={e => setRecNome(e.target.value)} />
+                </div>
+                <div className="fg">
+                  <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Data de recebimento <span className="rq">*</span></label>
+                  <input className="inp" type="date" style={{ fontSize: 12 }}
+                    value={recData} onChange={e => setRecData(e.target.value)} />
+                </div>
               </div>
-              {/* Data de recebimento */}
+
+              {/* Número da NF */}
               <div className="fg">
-                <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Data de recebimento:</label>
-                <input className="inp" type="date" style={{ fontSize: 12 }}
-                  value={recData} onChange={e => setRecData(e.target.value)} />
+                <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Número da NF / Pedido</label>
+                <input className="inp" placeholder="Ex: NF-00123, PED-456..." style={{ fontSize: 12 }}
+                  value={recNf} onChange={e => setRecNf(e.target.value)} />
               </div>
+
+              {/* Qualidade */}
+              <div className="fg">
+                <label className="fl" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Qualidade dos produtos</label>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  {([
+                    ['ok', '✅ OK'],
+                    ['com_ressalvas', '⚠️ Com ressalvas'],
+                    ['problema', '❌ Problema'],
+                  ] as const).map(([val, lbl]) => (
+                    <label key={val} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
+                      <input type="radio" name="recQualidade" value={val} checked={recQualidade === val} onChange={() => setRecQualidade(val)} />
+                      {lbl}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Validade */}
+              <div className="fg">
+                <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Obs. de validade / prazo</label>
+                <input className="inp" placeholder="Ex: Todos dentro do prazo, produto X vence em 30/06..." style={{ fontSize: 12 }}
+                  value={recValidadeObs} onChange={e => setRecValidadeObs(e.target.value)} />
+              </div>
+
+              {/* Divergências */}
+              <div className="fg">
+                <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Divergências constatadas</label>
+                <textarea className="inp" rows={2} style={{ resize: 'vertical', fontSize: 12 }}
+                  placeholder="Ex: Qtd errada no produto X, embalagem danificada no Y..."
+                  value={recDivergencias} onChange={e => setRecDivergencias(e.target.value)} />
+              </div>
+
+              {/* Observações gerais */}
+              <div className="fg">
+                <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Observações gerais</label>
+                <textarea className="inp" rows={2} style={{ resize: 'vertical', fontSize: 12 }}
+                  placeholder="Outras informações relevantes sobre o recebimento..."
+                  value={recObsGeral} onChange={e => setRecObsGeral(e.target.value)} />
+              </div>
+
+              {/* Atualizar preço de custo */}
+              {recTipo !== 'nao_recebido' && (
+                <div style={{ padding: '10px 12px', background: 'var(--bordo-bg)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <input type="checkbox" id="recAtualizarPrecos" checked={recAtualizarPrecos}
+                    onChange={e => setRecAtualizarPrecos(e.target.checked)} style={{ width: 14, height: 14, cursor: 'pointer' }} />
+                  <label htmlFor="recAtualizarPrecos" style={{ fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                    Atualizar preço de custo dos produtos recebidos no estoque
+                    <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400, marginTop: 2 }}>
+                      Usa o preço real pago (ou estimado, se sem preço real) para atualizar o estoque.
+                    </div>
+                  </label>
+                </div>
+              )}
             </div>
             <div className="mft" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn bo bsm" onClick={() => setShowRecebimento(false)}>Cancelar</button>
               <button className="btn bsm" onClick={confirmarRecebimento}
                 disabled={!recNome.trim() || !recData}
                 style={{ background: 'var(--success)', color: '#fff', border: 'none' }}>
-                Confirmar
+                <CheckCircle2 size={13} /> Confirmar Recebimento
               </button>
             </div>
           </div>
@@ -1224,6 +1365,204 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
                 disabled={!formResposta.fornecedor.trim()}
                 style={{ background: '#7C3AED', color: '#fff', border: 'none' }}>
                 ✅ Salvar Resposta e Aplicar Preços
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Cotação Formal / Pedido de Compra ────────────── */}
+      {showCotacaoFormal && (
+        <div className="ov open" onClick={e => e.target === e.currentTarget && setShowCotacaoFormal(false)}>
+          <div className="modal" style={{ maxWidth: 820 }} onClick={e => e.stopPropagation()}>
+            <div className="mhd">
+              <span className="mtt">📄 Pedido Formal de Cotação — {lista.titulo}</span>
+              <button className="mx" onClick={() => setShowCotacaoFormal(false)}>✕</button>
+            </div>
+            <div className="mbd" style={{ maxHeight: '78vh', overflowY: 'auto' }}>
+
+              {/* Dados da Empresa */}
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontWeight: 800, fontSize: 12, color: 'var(--bordo)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  🏢 Dados da Empresa (Comprador)
+                  <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--muted)' }}>— salvo automaticamente</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  <div className="fg">
+                    <label className="fl" style={{ fontSize: 11 }}>Nome da empresa</label>
+                    <input className="inp" style={{ fontSize: 12 }} value={empresaCfg.nome}
+                      onChange={e => { const v = e.target.value; setEmpresaCfg(c => { const n = { ...c, nome: v }; localStorage.setItem(EMPRESA_KEY, JSON.stringify(n)); return n }) }} />
+                  </div>
+                  <div className="fg">
+                    <label className="fl" style={{ fontSize: 11 }}>CNPJ</label>
+                    <input className="inp" style={{ fontSize: 12 }} placeholder="00.000.000/0001-00" value={empresaCfg.cnpj}
+                      onChange={e => { const v = e.target.value; setEmpresaCfg(c => { const n = { ...c, cnpj: v }; localStorage.setItem(EMPRESA_KEY, JSON.stringify(n)); return n }) }} />
+                  </div>
+                  <div className="fg">
+                    <label className="fl" style={{ fontSize: 11 }}>Telefone</label>
+                    <input className="inp" style={{ fontSize: 12 }} placeholder="(00) 00000-0000" value={empresaCfg.telefone}
+                      onChange={e => { const v = e.target.value; setEmpresaCfg(c => { const n = { ...c, telefone: v }; localStorage.setItem(EMPRESA_KEY, JSON.stringify(n)); return n }) }} />
+                  </div>
+                  <div className="fg">
+                    <label className="fl" style={{ fontSize: 11 }}>Responsável</label>
+                    <input className="inp" style={{ fontSize: 12 }} placeholder="Nome do comprador" value={empresaCfg.responsavel}
+                      onChange={e => { const v = e.target.value; setEmpresaCfg(c => { const n = { ...c, responsavel: v }; localStorage.setItem(EMPRESA_KEY, JSON.stringify(n)); return n }) }} />
+                  </div>
+                  <div className="fg" style={{ gridColumn: '2/-1' }}>
+                    <label className="fl" style={{ fontSize: 11 }}>Endereço / Unidade</label>
+                    <input className="inp" style={{ fontSize: 12 }} placeholder="Endereço completo ou nome da unidade" value={empresaCfg.unidade}
+                      onChange={e => { const v = e.target.value; setEmpresaCfg(c => { const n = { ...c, unidade: v }; localStorage.setItem(EMPRESA_KEY, JSON.stringify(n)); return n }) }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Dados do Fornecedor */}
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontWeight: 800, fontSize: 12, color: 'var(--bordo)', marginBottom: 10 }}>🏭 Dados do Fornecedor</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  <div className="fg">
+                    <label className="fl" style={{ fontSize: 11 }}>Nome do fornecedor</label>
+                    <input className="inp" style={{ fontSize: 12 }} placeholder="Razão social ou fantasia" value={fornCotFormal.nome}
+                      onChange={e => setFornCotFormal(f => ({ ...f, nome: e.target.value }))} />
+                  </div>
+                  <div className="fg">
+                    <label className="fl" style={{ fontSize: 11 }}>CNPJ</label>
+                    <input className="inp" style={{ fontSize: 12 }} placeholder="00.000.000/0001-00" value={fornCotFormal.cnpj}
+                      onChange={e => setFornCotFormal(f => ({ ...f, cnpj: e.target.value }))} />
+                  </div>
+                  <div className="fg">
+                    <label className="fl" style={{ fontSize: 11 }}>Telefone / WhatsApp</label>
+                    <input className="inp" style={{ fontSize: 12 }} placeholder="(00) 00000-0000" value={fornCotFormal.telefone}
+                      onChange={e => setFornCotFormal(f => ({ ...f, telefone: e.target.value }))} />
+                  </div>
+                  <div className="fg">
+                    <label className="fl" style={{ fontSize: 11 }}>E-mail</label>
+                    <input className="inp" type="email" style={{ fontSize: 12 }} value={fornCotFormal.email}
+                      onChange={e => setFornCotFormal(f => ({ ...f, email: e.target.value }))} />
+                  </div>
+                  <div className="fg">
+                    <label className="fl" style={{ fontSize: 11 }}>Vendedor / Contato</label>
+                    <input className="inp" style={{ fontSize: 12 }} placeholder="Nome do representante" value={fornCotFormal.vendedor}
+                      onChange={e => setFornCotFormal(f => ({ ...f, vendedor: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Itens solicitados */}
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontWeight: 800, fontSize: 12, color: 'var(--bordo)', marginBottom: 8 }}>📋 Itens Solicitados</div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bordo)', color: '#fff' }}>
+                        <th style={{ padding: '6px 8px', textAlign: 'left' }}>Produto</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', width: 90 }}>Marca</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right', width: 60 }}>Qtd</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', width: 55 }}>Un</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left' }}>Descrição / Especificação</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'left' }}>Marcas similares aceitas</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right', width: 90 }}>Preço est.</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right', width: 90 }}>Total est.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itensCotFormal.length === 0 ? (
+                        <tr><td colSpan={8} style={{ padding: '20px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 12 }}>Nenhum item pendente na lista</td></tr>
+                      ) : itensCotFormal.map((it, idx) => {
+                        const total = it.preco_unit && it.qtd ? (parseFloat(it.preco_unit) * parseFloat(it.qtd)).toFixed(2) : ''
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'transparent' : '#fafafa' }}>
+                            <td style={{ padding: '4px 8px', fontWeight: 700 }}>{it.produto_nome}</td>
+                            <td style={{ padding: '4px 6px' }}>
+                              <input style={{ width: '100%', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 5px', background: 'var(--surface,#fff)', color: 'var(--text)' }}
+                                value={it.marca} placeholder="—"
+                                onChange={e => setItensCotFormal(prev => prev.map((x, i) => i === idx ? { ...x, marca: e.target.value } : x))} />
+                            </td>
+                            <td style={{ padding: '4px 6px' }}>
+                              <input type="number" min={0} style={{ width: '100%', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 5px', background: 'var(--surface,#fff)', color: 'var(--text)', textAlign: 'right' }}
+                                value={it.qtd}
+                                onChange={e => setItensCotFormal(prev => prev.map((x, i) => i === idx ? { ...x, qtd: e.target.value } : x))} />
+                            </td>
+                            <td style={{ padding: '4px 6px' }}>
+                              <select style={{ width: '100%', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 5px', background: 'var(--surface,#fff)', color: 'var(--text)' }}
+                                value={it.unidade}
+                                onChange={e => setItensCotFormal(prev => prev.map((x, i) => i === idx ? { ...x, unidade: e.target.value } : x))}>
+                                {UNIDADES.map(u => <option key={u}>{u}</option>)}
+                              </select>
+                            </td>
+                            <td style={{ padding: '4px 6px' }}>
+                              <input style={{ width: '100%', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 5px', background: 'var(--surface,#fff)', color: 'var(--text)' }}
+                                value={it.descricao} placeholder="Especificação técnica..."
+                                onChange={e => setItensCotFormal(prev => prev.map((x, i) => i === idx ? { ...x, descricao: e.target.value } : x))} />
+                            </td>
+                            <td style={{ padding: '4px 6px' }}>
+                              <input style={{ width: '100%', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 5px', background: 'var(--surface,#fff)', color: 'var(--text)' }}
+                                value={it.marcas_similares} placeholder="Ex: Marca A, Marca B"
+                                onChange={e => setItensCotFormal(prev => prev.map((x, i) => i === idx ? { ...x, marcas_similares: e.target.value } : x))} />
+                            </td>
+                            <td style={{ padding: '4px 6px' }}>
+                              <input type="number" min={0} step={0.01} style={{ width: '100%', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 5px', background: 'var(--surface,#fff)', color: 'var(--text)', textAlign: 'right' }}
+                                value={it.preco_unit} placeholder="0,00"
+                                onChange={e => setItensCotFormal(prev => prev.map((x, i) => i === idx ? { ...x, preco_unit: e.target.value } : x))} />
+                            </td>
+                            <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700, color: total ? 'var(--success)' : 'var(--muted)', fontSize: 11 }}>
+                              {total ? `R$ ${parseFloat(total).toFixed(2).replace('.', ',')}` : '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      {/* Total geral estimado */}
+                      {itensCotFormal.length > 0 && (
+                        <tr style={{ background: 'var(--bordo-bg)', fontWeight: 800 }}>
+                          <td colSpan={7} style={{ padding: '6px 8px', textAlign: 'right', fontSize: 12 }}>Total Estimado:</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: 13, color: 'var(--bordo)' }}>
+                            {(() => {
+                              const tot = itensCotFormal.reduce((s, it) => s + (parseFloat(it.preco_unit) * parseFloat(it.qtd) || 0), 0)
+                              return tot > 0 ? `R$ ${tot.toFixed(2).replace('.', ',')}` : '—'
+                            })()}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Condições Gerais */}
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 800, fontSize: 12, color: 'var(--bordo)', marginBottom: 10 }}>📝 Condições Gerais</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  <div className="fg">
+                    <label className="fl" style={{ fontSize: 11 }}>Prazo de entrega necessário</label>
+                    <input className="inp" style={{ fontSize: 12 }} placeholder="Ex: até 2 dias úteis" value={cotCondicoes.prazo_entrega}
+                      onChange={e => setCotCondicoes(c => ({ ...c, prazo_entrega: e.target.value }))} />
+                  </div>
+                  <div className="fg">
+                    <label className="fl" style={{ fontSize: 11 }}>Forma de pagamento</label>
+                    <input className="inp" style={{ fontSize: 12 }} placeholder="Ex: Boleto 28 dias, PIX" value={cotCondicoes.forma_pgto}
+                      onChange={e => setCotCondicoes(c => ({ ...c, forma_pgto: e.target.value }))} />
+                  </div>
+                  <div className="fg">
+                    <label className="fl" style={{ fontSize: 11 }}>Validade desta cotação</label>
+                    <input className="inp" type="date" style={{ fontSize: 12 }} value={cotCondicoes.validade}
+                      onChange={e => setCotCondicoes(c => ({ ...c, validade: e.target.value }))} />
+                  </div>
+                  <div className="fg" style={{ gridColumn: '1/-1' }}>
+                    <label className="fl" style={{ fontSize: 11 }}>Observações / Instruções ao fornecedor</label>
+                    <textarea className="inp" rows={2} style={{ resize: 'vertical', fontSize: 12 }} placeholder="Informações adicionais..."
+                      value={cotCondicoes.obs} onChange={e => setCotCondicoes(c => ({ ...c, obs: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+
+              <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>
+                💡 Os dados da empresa são salvos automaticamente para próximos pedidos. Use "Imprimir" para gerar PDF.
+              </p>
+            </div>
+            <div className="mft" style={{ justifyContent: 'space-between' }}>
+              <button className="btn bo bsm" onClick={() => setShowCotacaoFormal(false)}>Fechar</button>
+              <button className="btn bp" onClick={() => window.print()}>
+                🖨️ Imprimir / Salvar PDF
               </button>
             </div>
           </div>
