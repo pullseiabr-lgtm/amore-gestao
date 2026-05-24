@@ -97,7 +97,38 @@ const STATUS_PROD = {
   concluido:  { lbl: 'Concluído',  cls: 'bg-g' },
 }
 
-type Tab = 'checklist' | 'producao' | 'desperdicio' | 'ficha'
+type Tab = 'checklist' | 'producao' | 'desperdicio' | 'ficha' | 'solicitacoes'
+
+interface SolicitacaoItem {
+  id: string
+  tipo: 'produto' | 'equipamento' | 'utensilio' | 'manutencao' | 'compra_emergencial'
+  item: string
+  quantidade: string
+  urgencia: 'baixa' | 'media' | 'alta' | 'critica'
+  responsavel: string
+  setor: string
+  status: 'solicitado' | 'em_cotacao' | 'aprovado' | 'em_compra' | 'recebido' | 'cancelado'
+  obs: string
+  data: string
+}
+
+const INIT_SOLICITACOES: SolicitacaoItem[] = [
+  {
+    id: 's1', tipo: 'produto', item: 'Polpa de açaí extra', quantidade: '50 kg',
+    urgencia: 'alta', responsavel: 'Carlos', setor: 'Cozinha',
+    status: 'em_cotacao', obs: 'Estoque crítico previsto para sexta', data: '22/05',
+  },
+  {
+    id: 's2', tipo: 'equipamento', item: 'Liquidificador industrial', quantidade: '1 un',
+    urgencia: 'media', responsavel: 'Ana', setor: 'Cozinha',
+    status: 'aprovado', obs: 'Motor do atual queimou', data: '21/05',
+  },
+  {
+    id: 's3', tipo: 'manutencao', item: 'Câmara fria — revisão compressor', quantidade: '1 serviço',
+    urgencia: 'critica', responsavel: 'Pedro', setor: 'Estoque',
+    status: 'solicitado', obs: 'Temperatura subindo 2°C acima do esperado', data: '23/05',
+  },
+]
 
 // ── Componente Principal ─────────────────────────────────────
 
@@ -107,6 +138,7 @@ export default function CozinhaPage() {
   const [producao, setProducao] = useState<ProducaoItem[]>(INIT_PRODUCAO)
   const [desperdicio, setDesperdicio] = useState<DespItem[]>(INIT_DESPERDICIO)
   const [fichas, setFichas] = useState<FichaTecnica[]>(INIT_FICHAS)
+  const [solicitacoes, setSolicitacoes] = useState<SolicitacaoItem[]>(INIT_SOLICITACOES)
 
   // Toggle item checklist
   const toggle = (clId: string, itId: string) => {
@@ -148,6 +180,7 @@ export default function CozinhaPage() {
           ['producao', '🍧 Produção'],
           ['desperdicio', '🗑️ Desperdício'],
           ['ficha', '📋 Ficha Técnica'],
+          ['solicitacoes', '📋 Solicitações'],
         ] as [Tab, string][]).map(([t, lbl]) => (
           <button key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>{lbl}</button>
         ))}
@@ -164,6 +197,9 @@ export default function CozinhaPage() {
       )}
       {tab === 'ficha' && (
         <FichaTab fichas={fichas} onChange={setFichas} />
+      )}
+      {tab === 'solicitacoes' && (
+        <SolicitacoesTab solicitacoes={solicitacoes} setSolicitacoes={setSolicitacoes} />
       )}
     </div>
   )
@@ -963,6 +999,289 @@ function FichaTab({ fichas, onChange }: { fichas: FichaTecnica[]; onChange: (f: 
             <div className="mft">
               <button className="btn bo" onClick={() => setShowForm(false)}>Cancelar</button>
               <button className="btn bp" onClick={salvar}><Save size={12} /> Salvar Ficha</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Tab Solicitações ──────────────────────────────────────────
+
+const TIPO_SOL: Record<SolicitacaoItem['tipo'], string> = {
+  produto: 'Produto',
+  equipamento: 'Equipamento',
+  utensilio: 'Utensílio',
+  manutencao: 'Manutenção',
+  compra_emergencial: 'Compra Emergencial',
+}
+
+const URGENCIA_SOL: Record<SolicitacaoItem['urgencia'], { lbl: string; cls: string }> = {
+  baixa:   { lbl: 'Baixa',   cls: 'bg-g' },
+  media:   { lbl: 'Média',   cls: 'bg-y' },
+  alta:    { lbl: 'Alta',    cls: 'bg-o' },
+  critica: { lbl: 'Crítica', cls: 'bg-r' },
+}
+
+const STATUS_SOL: Record<SolicitacaoItem['status'], { lbl: string; cls: string }> = {
+  solicitado:  { lbl: 'Solicitado',  cls: 'bg-y' },
+  em_cotacao:  { lbl: 'Em Cotação',  cls: 'bg-b' },
+  aprovado:    { lbl: 'Aprovado',    cls: 'bg-g' },
+  em_compra:   { lbl: 'Em Compra',   cls: 'bg-p' },
+  recebido:    { lbl: 'Recebido',    cls: 'bg-gr' },
+  cancelado:   { lbl: 'Cancelado',   cls: 'bg-r' },
+}
+
+const STATUS_SOL_FLOW: SolicitacaoItem['status'][] = [
+  'solicitado', 'em_cotacao', 'aprovado', 'em_compra', 'recebido',
+]
+
+function SolicitacoesTab({
+  solicitacoes,
+  setSolicitacoes,
+}: {
+  solicitacoes: SolicitacaoItem[]
+  setSolicitacoes: (fn: SolicitacaoItem[] | ((prev: SolicitacaoItem[]) => SolicitacaoItem[])) => void
+}) {
+  const [showModal, setShowModal] = useState(false)
+  const [editItem, setEditItem] = useState<SolicitacaoItem | null>(null)
+  const [filtroTipo, setFiltroTipo] = useState<SolicitacaoItem['tipo'] | ''>('')
+  const [filtroUrgencia, setFiltroUrgencia] = useState<SolicitacaoItem['urgencia'] | ''>('')
+
+  const EMPTY_FORM = {
+    tipo: 'produto' as SolicitacaoItem['tipo'],
+    item: '',
+    quantidade: '',
+    urgencia: 'media' as SolicitacaoItem['urgencia'],
+    responsavel: '',
+    setor: '',
+    status: 'solicitado' as SolicitacaoItem['status'],
+    obs: '',
+  }
+  const [form, setForm] = useState(EMPTY_FORM)
+
+  const openNovo = () => {
+    setEditItem(null)
+    setForm(EMPTY_FORM)
+    setShowModal(true)
+  }
+
+  const openEdit = (s: SolicitacaoItem) => {
+    setEditItem(s)
+    setForm({ tipo: s.tipo, item: s.item, quantidade: s.quantidade, urgencia: s.urgencia, responsavel: s.responsavel, setor: s.setor, status: s.status, obs: s.obs })
+    setShowModal(true)
+  }
+
+  const salvar = () => {
+    if (!form.item.trim()) return
+    const now = new Date()
+    const data = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}`
+    if (editItem) {
+      setSolicitacoes(prev => prev.map(s => s.id === editItem.id ? { ...s, ...form } : s))
+    } else {
+      const nova: SolicitacaoItem = { id: `sol_${Date.now()}`, data, ...form }
+      setSolicitacoes(prev => [nova, ...prev])
+    }
+    setShowModal(false)
+  }
+
+  const deletar = (id: string) => setSolicitacoes(prev => prev.filter(s => s.id !== id))
+
+  const avancarStatus = (id: string) => {
+    setSolicitacoes(prev => prev.map(s => {
+      if (s.id !== id) return s
+      const idx = STATUS_SOL_FLOW.indexOf(s.status)
+      const proximo = idx >= 0 && idx < STATUS_SOL_FLOW.length - 1 ? STATUS_SOL_FLOW[idx + 1] : s.status
+      return { ...s, status: proximo }
+    }))
+  }
+
+  const lista = solicitacoes.filter(s =>
+    (filtroTipo === '' || s.tipo === filtroTipo) &&
+    (filtroUrgencia === '' || s.urgencia === filtroUrgencia)
+  )
+
+  const total = solicitacoes.length
+  const pendentes = solicitacoes.filter(s => s.status === 'solicitado' || s.status === 'em_cotacao').length
+  const aprovados = solicitacoes.filter(s => s.status === 'aprovado' || s.status === 'em_compra').length
+  const recebidos = solicitacoes.filter(s => s.status === 'recebido').length
+
+  return (
+    <div>
+      {/* KPI cards */}
+      <div className="kpi-grid" style={{ marginBottom: 14 }}>
+        {[
+          { lbl: 'Total de Solicitações', val: String(total), sub: 'registradas', col: 'var(--blue)' },
+          { lbl: 'Pendentes', val: String(pendentes), sub: 'solicitado / em cotação', col: 'var(--warning)' },
+          { lbl: 'Aprovadas', val: String(aprovados), sub: 'aprovado / em compra', col: 'var(--success)' },
+          { lbl: 'Recebidas', val: String(recebidos), sub: 'concluídas', col: 'var(--teal,#14B8A6)' },
+        ].map((k, i) => (
+          <div className="kpi" key={i}>
+            <div className="kpi-ac" style={{ background: k.col }} />
+            <div className="kpi-lbl">{k.lbl}</div>
+            <div className="kpi-val">{k.val}</div>
+            <div className="kpi-sub">{k.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="card">
+        <div className="card-hd">
+          <span className="card-tt">📋 Solicitações Internas da Cozinha</span>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select className="sel" style={{ fontSize: 11, padding: '4px 8px', minWidth: 130 }}
+              value={filtroTipo}
+              onChange={e => setFiltroTipo(e.target.value as SolicitacaoItem['tipo'] | '')}>
+              <option value="">Todos os tipos</option>
+              {(Object.keys(TIPO_SOL) as SolicitacaoItem['tipo'][]).map(t => (
+                <option key={t} value={t}>{TIPO_SOL[t]}</option>
+              ))}
+            </select>
+            <select className="sel" style={{ fontSize: 11, padding: '4px 8px', minWidth: 120 }}
+              value={filtroUrgencia}
+              onChange={e => setFiltroUrgencia(e.target.value as SolicitacaoItem['urgencia'] | '')}>
+              <option value="">Toda urgência</option>
+              {(Object.keys(URGENCIA_SOL) as SolicitacaoItem['urgencia'][]).map(u => (
+                <option key={u} value={u}>{URGENCIA_SOL[u].lbl}</option>
+              ))}
+            </select>
+            <button className="btn bp bsm" onClick={openNovo}><Plus size={11} /> Nova Solicitação</button>
+          </div>
+        </div>
+
+        {lista.length === 0 ? (
+          <div className="empty" style={{ padding: '40px 0' }}>
+            <ClipboardList size={36} style={{ opacity: 0.3 }} />
+            <div style={{ marginTop: 10, fontWeight: 600 }}>Nenhuma solicitação encontrada</div>
+            <button className="btn bp bsm" style={{ marginTop: 12 }} onClick={openNovo}><Plus size={11} /> Criar primeira</button>
+          </div>
+        ) : (
+          <div className="tw">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Tipo</th>
+                  <th>Item</th>
+                  <th>Qtd</th>
+                  <th>Urgência</th>
+                  <th>Status</th>
+                  <th>Responsável</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {lista.map(s => {
+                  const urg = URGENCIA_SOL[s.urgencia]
+                  const st = STATUS_SOL[s.status]
+                  return (
+                    <tr key={s.id}>
+                      <td style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{s.data}</td>
+                      <td style={{ fontSize: 11 }}>
+                        <span style={{ padding: '2px 7px', borderRadius: 12, background: 'var(--bordo-bg)', color: 'var(--bordo)', fontWeight: 600, fontSize: 10 }}>
+                          {TIPO_SOL[s.tipo]}
+                        </span>
+                      </td>
+                      <td>
+                        <strong style={{ fontSize: 12 }}>{s.item}</strong>
+                        {s.obs && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{s.obs}</div>}
+                      </td>
+                      <td style={{ fontSize: 12 }}>{s.quantidade || '—'}</td>
+                      <td>
+                        <span className={`badge ${urg.cls}`}>{urg.lbl}</span>
+                      </td>
+                      <td>
+                        <span
+                          className={`badge ${st.cls}`}
+                          style={{ cursor: s.status !== 'recebido' && s.status !== 'cancelado' ? 'pointer' : 'default' }}
+                          title={s.status !== 'recebido' && s.status !== 'cancelado' ? 'Clique para avançar status' : undefined}
+                          onClick={() => {
+                            if (s.status !== 'recebido' && s.status !== 'cancelado') avancarStatus(s.id)
+                          }}
+                        >
+                          {st.lbl}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: 11 }}>
+                        <div>
+                          <span style={{ fontWeight: 600 }}>{s.responsavel || '—'}</span>
+                          {s.setor && <div style={{ fontSize: 10, color: 'var(--muted)' }}>{s.setor}</div>}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="ab" style={{ gap: 4 }}>
+                          <button className="ib" onClick={() => openEdit(s)} title="Editar"><Edit3 size={12} /></button>
+                          <button className="ib rd" onClick={() => deletar(s.id)} title="Excluir"><Trash2 size={12} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showModal && (
+        <div className="ov open" onClick={() => setShowModal(false)}>
+          <div className="modal" style={{ maxWidth: 580 }} onClick={e => e.stopPropagation()}>
+            <div className="mhd">
+              <span className="mtt">{editItem ? 'Editar Solicitação' : 'Nova Solicitação'}</span>
+              <button className="mx" onClick={() => setShowModal(false)}>✕</button>
+            </div>
+            <div className="mbd">
+              <div className="g2">
+                <div className="fg">
+                  <label className="fl">Tipo <span className="rq">*</span></label>
+                  <select className="sel" value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value as SolicitacaoItem['tipo'] }))}>
+                    {(Object.keys(TIPO_SOL) as SolicitacaoItem['tipo'][]).map(t => (
+                      <option key={t} value={t}>{TIPO_SOL[t]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="fg">
+                  <label className="fl">Urgência</label>
+                  <select className="sel" value={form.urgencia} onChange={e => setForm(f => ({ ...f, urgencia: e.target.value as SolicitacaoItem['urgencia'] }))}>
+                    {(Object.keys(URGENCIA_SOL) as SolicitacaoItem['urgencia'][]).map(u => (
+                      <option key={u} value={u}>{URGENCIA_SOL[u].lbl}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="fg" style={{ gridColumn: '1/-1' }}>
+                  <label className="fl">Item / Descrição <span className="rq">*</span></label>
+                  <input className="inp" value={form.item} onChange={e => setForm(f => ({ ...f, item: e.target.value }))} placeholder="Ex: Polpa de açaí, Liquidificador industrial..." autoFocus />
+                </div>
+                <div className="fg">
+                  <label className="fl">Quantidade</label>
+                  <input className="inp" value={form.quantidade} onChange={e => setForm(f => ({ ...f, quantidade: e.target.value }))} placeholder="Ex: 50 kg, 2 un" />
+                </div>
+                <div className="fg">
+                  <label className="fl">Responsável</label>
+                  <input className="inp" value={form.responsavel} onChange={e => setForm(f => ({ ...f, responsavel: e.target.value }))} placeholder="Nome do solicitante" />
+                </div>
+                <div className="fg">
+                  <label className="fl">Setor</label>
+                  <input className="inp" value={form.setor} onChange={e => setForm(f => ({ ...f, setor: e.target.value }))} placeholder="Ex: Cozinha, Estoque..." />
+                </div>
+                <div className="fg">
+                  <label className="fl">Status</label>
+                  <select className="sel" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as SolicitacaoItem['status'] }))}>
+                    {(Object.keys(STATUS_SOL) as SolicitacaoItem['status'][]).map(s => (
+                      <option key={s} value={s}>{STATUS_SOL[s].lbl}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="fg" style={{ gridColumn: '1/-1' }}>
+                  <label className="fl">Observações</label>
+                  <textarea className="inp txa" rows={2} value={form.obs} onChange={e => setForm(f => ({ ...f, obs: e.target.value }))} placeholder="Justificativa ou detalhes adicionais..." />
+                </div>
+              </div>
+            </div>
+            <div className="mft">
+              <button className="btn bo" onClick={() => setShowModal(false)}>Cancelar</button>
+              <button className="btn bp" onClick={salvar}><Check size={12} /> Salvar</button>
             </div>
           </div>
         </div>

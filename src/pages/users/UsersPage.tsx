@@ -10,18 +10,28 @@ import { supabase } from '../../lib/supabase'
 import type { Profile, UserRole, UserStatus, PermissionsMap, ModulePermission } from '../../types/database'
 
 const MODULES = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'pendencias', label: 'Pendências & OS' },
-  { id: 'gamificacao', label: 'Gamificação' },
-  { id: 'marketing', label: 'Marketing' },
-  { id: 'vendas', label: 'Vendas' },
-  { id: 'compras', label: 'Compras & Estoque' },
-  { id: 'financeiro', label: 'Financeiro' },
-  { id: 'cozinha', label: 'Cozinha' },
-  { id: 'salao', label: 'Salão' },
-  { id: 'usuarios', label: 'Usuários' },
-  { id: 'configuracoes', label: 'White Label' },
+  { id: 'dashboard',        label: 'Dashboard',           grupo: 'Geral' },
+  { id: 'pendencias',       label: 'Pendências & OS',     grupo: 'Geral' },
+  { id: 'gamificacao',      label: 'Gamificação',         grupo: 'Geral' },
+  { id: 'marketing',        label: 'Marketing 360°',      grupo: 'Geral' },
+  { id: 'vendas',           label: 'Vendas',              grupo: 'Geral' },
+  { id: 'pdv',              label: 'PDV — Caixa',         grupo: 'Geral' },
+  { id: 'financeiro',       label: 'Financeiro',          grupo: 'Financeiro' },
+  { id: 'compras',          label: 'Lista de Compras',    grupo: 'Compras & Estoque' },
+  { id: 'requisicoes',      label: 'Requisições',         grupo: 'Compras & Estoque' },
+  { id: 'estoque',          label: 'Estoque',             grupo: 'Compras & Estoque' },
+  { id: 'fornecedores',     label: 'Fornecedores',        grupo: 'Compras & Estoque' },
+  { id: 'produtos',         label: 'Produtos',            grupo: 'Compras & Estoque' },
+  { id: 'relatorio-cvl',    label: 'Compra vs Lista',     grupo: 'Relatórios' },
+  { id: 'ruptura',          label: 'Ruptura de Pedidos',  grupo: 'Relatórios' },
+  { id: 'cozinha',          label: 'Cozinha',             grupo: 'Operacional' },
+  { id: 'salao',            label: 'Salão',               grupo: 'Operacional' },
+  { id: 'usuarios',         label: 'Usuários',            grupo: 'Administração' },
+  { id: 'configuracoes',    label: 'White Label',         grupo: 'Administração' },
 ]
+
+const LOJAS_DISPONIVEIS = ['Todas', 'Amore CD', 'Amore Paiva', 'Flow CD']
+const SETORES_DISPONIVEIS = ['Todos', 'Cozinha', 'Salão', 'Estoque', 'Financeiro', 'Compras', 'PDV']
 
 const ACTIONS: { key: keyof ModulePermission; label: string }[] = [
   { key: 'view', label: 'Ver' },
@@ -86,6 +96,7 @@ export default function UsersPage() {
   const [showPerm, setShowPerm] = useState(false)
   const [permTarget, setPermTarget] = useState<Profile | null>(null)
   const [permMap, setPermMap] = useState<PermissionsMap>({})
+  const [permRestricoes, setPermRestricoes] = useState<{ lojas: string[]; setores: string[] }>({ lojas: [], setores: [] })
 
   const [confirmDelete, setConfirmDelete] = useState<Profile | null>(null)
 
@@ -130,15 +141,21 @@ export default function UsersPage() {
   const openPerm = (u: Profile) => {
     setPermTarget(u)
     const base = ROLE_PERMISSIONS[u.role] || {}
-    setPermMap({ ...base, ...(u.permissions_override || {}) })
+    const override = (u.permissions_override || {}) as any
+    const restricoes = override.__restricoes__ || { lojas: [], setores: [] }
+    setPermRestricoes(restricoes)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { __restricoes__: _r, ...cleanOverride } = override
+    setPermMap({ ...base, ...cleanOverride })
     setShowPerm(true)
   }
 
   const savePerm = async () => {
     if (!permTarget) return
     try {
-      await updateProfile(permTarget.id, { permissions_override: permMap })
-      setUsers(prev => prev.map(u => u.id === permTarget.id ? { ...u, permissions_override: permMap } : u))
+      const overrideToSave: any = { ...permMap, __restricoes__: permRestricoes }
+      await updateProfile(permTarget.id, { permissions_override: overrideToSave })
+      setUsers(prev => prev.map(u => u.id === permTarget.id ? { ...u, permissions_override: overrideToSave } : u))
       setShowPerm(false)
       toast(`Permissões de ${permTarget.name} atualizadas!`)
     } catch {
@@ -149,7 +166,22 @@ export default function UsersPage() {
   const resetPermToRole = () => {
     if (!permTarget) return
     setPermMap({ ...ROLE_PERMISSIONS[permTarget.role] || {} })
+    setPermRestricoes({ lojas: [], setores: [] })
     toast('Permissões resetadas para o padrão do papel.')
+  }
+
+  const toggleRestricaoLoja = (loja: string) => {
+    setPermRestricoes(prev => ({
+      ...prev,
+      lojas: prev.lojas.includes(loja) ? prev.lojas.filter(l => l !== loja) : [...prev.lojas, loja],
+    }))
+  }
+
+  const toggleRestricaoSetor = (setor: string) => {
+    setPermRestricoes(prev => ({
+      ...prev,
+      setores: prev.setores.includes(setor) ? prev.setores.filter(s => s !== setor) : [...prev.setores, setor],
+    }))
   }
 
   const togglePerm = (mod: string, action: keyof ModulePermission) => {
@@ -548,39 +580,101 @@ export default function UsersPage() {
           <>
             <div className="al al-b" style={{ marginBottom: 12 }}>
               <Shield size={13} />
-              <span>Permissões sobrescritas aqui prevalecem sobre o papel <strong>{roleInfo(permTarget.role).label}</strong>.</span>
+              <span>Permissões sobrescritas aqui prevalecem sobre o papel <strong>{roleInfo(permTarget.role).label}</strong>. Restrições de loja e setor limitam o que o usuário pode visualizar.</span>
             </div>
-            <div className="tw">
+
+            {/* ── Módulos agrupados ── */}
+            <div className="tw" style={{ marginBottom: 18 }}>
               <table className="pt">
                 <thead>
                   <tr>
-                    <th style={{ minWidth: 140 }}>Módulo</th>
+                    <th style={{ minWidth: 160 }}>Módulo</th>
                     {ACTIONS.map(a => <th key={a.key}>{a.label}</th>)}
                   </tr>
                 </thead>
                 <tbody>
-                  {MODULES.map(m => {
-                    const p = permMap[m.id] || { view: false, create: false, edit: false, delete: false, export: false }
+                  {(() => {
+                    const grupos = [...new Set(MODULES.map(m => m.grupo))]
                     const isSuper = permTarget.role === 'super_admin'
-                    return (
-                      <tr key={m.id}>
-                        <td>{m.label}</td>
-                        {ACTIONS.map(a => (
-                          <td key={a.key}>
-                            <input
-                              type="checkbox"
-                              className="pck"
-                              checked={isSuper ? true : Boolean(p[a.key])}
-                              disabled={isSuper || (a.key !== 'view' && !permMap[m.id]?.view)}
-                              onChange={() => togglePerm(m.id, a.key)}
-                            />
-                          </td>
-                        ))}
-                      </tr>
-                    )
-                  })}
+                    return grupos.flatMap(grupo => [
+                      <tr key={`g-${grupo}`} style={{ background: '#F9FAFB' }}>
+                        <td colSpan={6} style={{ fontSize: 10, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', padding: '5px 8px' }}>
+                          {grupo}
+                        </td>
+                      </tr>,
+                      ...MODULES.filter(m => m.grupo === grupo).map(m => {
+                        const p = permMap[m.id] || { view: false, create: false, edit: false, delete: false, export: false }
+                        return (
+                          <tr key={m.id}>
+                            <td style={{ paddingLeft: 16 }}>{m.label}</td>
+                            {ACTIONS.map(a => (
+                              <td key={a.key}>
+                                <input
+                                  type="checkbox"
+                                  className="pck"
+                                  checked={isSuper ? true : Boolean(p[a.key])}
+                                  disabled={isSuper || (a.key !== 'view' && !permMap[m.id]?.view)}
+                                  onChange={() => togglePerm(m.id, a.key)}
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                        )
+                      }),
+                    ])
+                  })()}
                 </tbody>
               </table>
+            </div>
+
+            {/* ── Restrições por Loja ── */}
+            <div className="card" style={{ marginBottom: 14, borderColor: 'var(--border)' }}>
+              <div className="card-hd">
+                <span className="card-tt" style={{ fontSize: 12 }}>🏪 Restrição por Unidade (Loja)</span>
+                <span className="badge bg-b" style={{ fontSize: 10 }}>
+                  {permRestricoes.lojas.length === 0 ? 'Acesso a todas' : `${permRestricoes.lojas.length} loja(s)`}
+                </span>
+              </div>
+              <div style={{ padding: '10px 14px' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
+                  Deixe todos desmarcados para acesso a <strong>todas as lojas</strong>. Marque apenas as lojas que este usuário pode acessar.
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {LOJAS_DISPONIVEIS.filter(l => l !== 'Todas').map(loja => (
+                    <label key={loja} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                      <input type="checkbox" className="pck"
+                        checked={permRestricoes.lojas.includes(loja)}
+                        onChange={() => toggleRestricaoLoja(loja)} />
+                      {loja}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* ── Restrições por Setor ── */}
+            <div className="card" style={{ borderColor: 'var(--border)' }}>
+              <div className="card-hd">
+                <span className="card-tt" style={{ fontSize: 12 }}>🏢 Restrição por Setor</span>
+                <span className="badge bg-p" style={{ fontSize: 10 }}>
+                  {permRestricoes.setores.length === 0 ? 'Todos os setores' : `${permRestricoes.setores.length} setor(es)`}
+                </span>
+              </div>
+              <div style={{ padding: '10px 14px' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
+                  Restrinja o usuário a setores específicos. Deixe desmarcado para sem restrição de setor.
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {SETORES_DISPONIVEIS.filter(s => s !== 'Todos').map(setor => (
+                    <label key={setor} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                      <input type="checkbox" className="pck"
+                        checked={permRestricoes.setores.includes(setor)}
+                        onChange={() => toggleRestricaoSetor(setor)} />
+                      {setor}
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
           </>
         )}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Plus, Edit2, Trash2, Search, Loader2 } from 'lucide-react'
+import { useDebounce } from '../../hooks/useDebounce'
 import Modal from '../../components/ui/Modal'
 import Confirm from '../../components/ui/Confirm'
 import { useToast } from '../../hooks/useToast'
@@ -48,11 +49,13 @@ export default function GamificacaoPage() {
   const [loadingColabs, setLoadingColabs] = useState(true)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
+  const searchDebounced = useDebounce(search, 280)
   const [filterSetor, setFilterSetor] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editColab, setEditColab] = useState<Colaborador | null>(null)
   const [form, setForm] = useState({ nome: '', func: '', setor: 'salao' as Colaborador['setor'], loja: 'Amore CD', cor: COLORS[0], fat: '', tick: '', aval: '', tempo: '', erros: '', pres: '', meta_fat: '', meta_tick: '', meta_aval: '', meta_tempo: '' })
   const [confirmDel, setConfirmDel] = useState<Colaborador | null>(null)
+  const [rankingMode, setRankingMode] = useState<'individual' | 'setor'>('individual')
 
   useEffect(() => {
     fetchColaboradores()
@@ -62,7 +65,7 @@ export default function GamificacaoPage() {
   }, [])
 
   const filtered = colabs.filter(c => {
-    const q = search.toLowerCase()
+    const q = searchDebounced.toLowerCase()
     return (!q || c.nome.toLowerCase().includes(q)) && (!filterSetor || c.setor === filterSetor)
   })
 
@@ -187,47 +190,130 @@ export default function GamificacaoPage() {
 
       {tab === 'ranking' && (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 11, marginBottom: 14 }}>
-            {sorted.slice(0, 3).map((c, i) => {
-              const sc = calcScore(c)
-              const colors = ['var(--warning)', '#9CA3AF', '#CD7C2F']
-              const emojis = ['🥇', '🥈', '🥉']
-              return (
-                <div className="card" key={c.id} style={{ borderTop: `3px solid ${colors[i]}` }}>
-                  <div className="card-bd" style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 24, marginBottom: 5 }}>{emojis[i]}</div>
-                    <div style={{ fontSize: 13, fontWeight: 800 }}>{c.nome}</div>
-                    <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{c.loja} · {c.func}</div>
-                    <span className={`lv ${sc.nivel.cls}`} style={{ margin: '6px auto', display: 'inline-flex' }}>{sc.nivel.lbl}</span>
-                    <div style={{ fontSize: 19, fontWeight: 900, color: 'var(--bordo)', margin: '6px 0' }}>{sc.total} pts</div>
-                    <div className="prog"><div className="pb" style={{ width: `${sc.total}%`, background: colors[i] }} /></div>
+          {/* Toggle Individual / Por Setor */}
+          <div style={{ display: 'flex', gap: 7, marginBottom: 14 }}>
+            <button
+              className={`btn bsm${rankingMode === 'individual' ? ' bp' : ' bo'}`}
+              onClick={() => setRankingMode('individual')}
+            >👤 Individual</button>
+            <button
+              className={`btn bsm${rankingMode === 'setor' ? ' bp' : ' bo'}`}
+              onClick={() => setRankingMode('setor')}
+            >🏢 Por Setor</button>
+          </div>
+
+          {rankingMode === 'individual' && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 11, marginBottom: 14 }}>
+                {sorted.slice(0, 3).map((c, i) => {
+                  const sc = calcScore(c)
+                  const colors = ['var(--warning)', '#9CA3AF', '#CD7C2F']
+                  const emojis = ['🥇', '🥈', '🥉']
+                  return (
+                    <div className="card" key={c.id} style={{ borderTop: `3px solid ${colors[i]}` }}>
+                      <div className="card-bd" style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: 24, marginBottom: 5 }}>{emojis[i]}</div>
+                        <div style={{ fontSize: 13, fontWeight: 800 }}>{c.nome}</div>
+                        <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{c.loja} · {c.func}</div>
+                        <span className={`lv ${sc.nivel.cls}`} style={{ margin: '6px auto', display: 'inline-flex' }}>{sc.nivel.lbl}</span>
+                        <div style={{ fontSize: 19, fontWeight: 900, color: 'var(--bordo)', margin: '6px 0' }}>{sc.total} pts</div>
+                        <div className="prog"><div className="pb" style={{ width: `${sc.total}%`, background: colors[i] }} /></div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="card">
+                <div className="card-hd"><span className="card-tt">Ranking Completo</span><span className="badge bg-br">{sorted.length} colaboradores</span></div>
+                <div className="card-bd" style={{ padding: '7px 11px' }}>
+                  {sorted.map((c, i) => {
+                    const sc = calcScore(c)
+                    return (
+                      <div className="rk" key={c.id}>
+                        <span className="rk-n" style={{ color: ['var(--warning)', '#9CA3AF', '#CD7C2F'][i] || 'var(--muted)' }}>{['🥇','🥈','🥉'][i] || i + 1}</span>
+                        <div className="rk-av" style={{ background: c.cor }}>{c.nome.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</div>
+                        <div className="rk-info">
+                          <div className="rk-nm">{c.nome} <span className={`lv ${sc.nivel.cls}`}>{sc.nivel.lbl}</span></div>
+                          <div className="rk-rl">{c.loja} · {setorLabel[c.setor]}</div>
+                        </div>
+                        <div className="rk-pts">
+                          <div className="rk-pv">{sc.total} pts</div>
+                          <div className="rk-pl">score mensal</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
+          {rankingMode === 'setor' && (() => {
+            const setorNames: Record<string, string> = { salao: '🍽️ Salão', cozinha: '👨‍🍳 Cozinha', balcao: '☕ Balcão' }
+            const setorKeys = ['salao', 'cozinha', 'balcao'] as Colaborador['setor'][]
+            const grouped: Record<string, Colaborador[]> = { salao: [], cozinha: [], balcao: [] }
+            sorted.forEach(c => { if (grouped[c.setor]) grouped[c.setor].push(c) })
+            const setorAvg = (members: Colaborador[]) =>
+              members.length === 0 ? 0 : Math.round(members.reduce((sum, c) => sum + calcScore(c).total, 0) / members.length)
+            const maxAvg = Math.max(...setorKeys.map(s => setorAvg(grouped[s])), 1)
+            return (
+              <>
+                {setorKeys.filter(s => grouped[s].length > 0).map(s => {
+                  const members = grouped[s]
+                  const avg = setorAvg(members)
+                  return (
+                    <div className="card" key={s} style={{ marginBottom: 12 }}>
+                      <div className="card-hd">
+                        <span className="card-tt">{setorNames[s]}</span>
+                        <span className="badge bg-br">{members.length} membros · média {avg} pts</span>
+                      </div>
+                      <div className="card-bd" style={{ padding: '7px 11px' }}>
+                        {members.map((c, i) => {
+                          const sc = calcScore(c)
+                          return (
+                            <div className="rk" key={c.id}>
+                              <span className="rk-n" style={{ color: ['var(--warning)', '#9CA3AF', '#CD7C2F'][i] || 'var(--muted)' }}>{['🥇','🥈','🥉'][i] || i + 1}</span>
+                              <div className="rk-av" style={{ background: c.cor }}>{c.nome.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</div>
+                              <div className="rk-info">
+                                <div className="rk-nm">{c.nome} <span className={`lv ${sc.nivel.cls}`}>{sc.nivel.lbl}</span></div>
+                                <div className="rk-rl">{c.func} · {c.loja}</div>
+                              </div>
+                              <div className="rk-pts">
+                                <div className="rk-pv">{sc.total} pts</div>
+                                <div className="rk-pl">score mensal</div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {/* Resumo comparativo por setor */}
+                <div className="card">
+                  <div className="card-hd"><span className="card-tt">Resumo por Setor</span><span className="badge bg-br">Média comparativa</span></div>
+                  <div className="card-bd" style={{ padding: '11px 14px' }}>
+                    {setorKeys.filter(s => grouped[s].length > 0).map(s => {
+                      const avg = setorAvg(grouped[s])
+                      const pct = Math.round((avg / maxAvg) * 100)
+                      return (
+                        <div className="bc-row" key={s} style={{ marginBottom: 10 }}>
+                          <div className="bc-lbl" style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>{setorNames[s]} <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 400 }}>({grouped[s].length} membros)</span></div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div className="bc-out" style={{ flex: 1 }}>
+                              <div className="bc-in" style={{ width: `${pct}%` }} />
+                            </div>
+                            <div className="bc-val" style={{ fontSize: 12, fontWeight: 700, color: 'var(--bordo)', minWidth: 48 }}>{avg} pts</div>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
-              )
-            })}
-          </div>
-          <div className="card">
-            <div className="card-hd"><span className="card-tt">Ranking Completo</span><span className="badge bg-br">{sorted.length} colaboradores</span></div>
-            <div className="card-bd" style={{ padding: '7px 11px' }}>
-              {sorted.map((c, i) => {
-                const sc = calcScore(c)
-                return (
-                  <div className="rk" key={c.id}>
-                    <span className="rk-n" style={{ color: ['var(--warning)', '#9CA3AF', '#CD7C2F'][i] || 'var(--muted)' }}>{['🥇','🥈','🥉'][i] || i + 1}</span>
-                    <div className="rk-av" style={{ background: c.cor }}>{c.nome.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</div>
-                    <div className="rk-info">
-                      <div className="rk-nm">{c.nome} <span className={`lv ${sc.nivel.cls}`}>{sc.nivel.lbl}</span></div>
-                      <div className="rk-rl">{c.loja} · {setorLabel[c.setor]}</div>
-                    </div>
-                    <div className="rk-pts">
-                      <div className="rk-pv">{sc.total} pts</div>
-                      <div className="rk-pl">score mensal</div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
+              </>
+            )
+          })()}
         </div>
       )}
 

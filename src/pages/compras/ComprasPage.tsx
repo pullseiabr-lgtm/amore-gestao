@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useDebounce } from '../../hooks/useDebounce'
 import {
   Plus, Search, Trash2, ChevronLeft, Loader, CheckCircle2,
   Circle, XCircle, ShoppingCart, ClipboardList, Calendar,
@@ -447,6 +448,21 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
   const [mudandoStatus, setMudandoStatus] = useState(false)
   const [exportMenu, setExportMenu] = useState(false)
 
+  // Item 10 – Aprovação
+  const [aprovacao, setAprovacao] = useState<'pendente' | 'aprovado' | 'reprovado'>(
+    lista.status === 'concluido' ? 'aprovado' : lista.status === 'cancelado' ? 'reprovado' : 'pendente'
+  )
+  const [motivoReprovacao, setMotivoReprovacao] = useState('')
+  const [showMotivoInput, setShowMotivoInput] = useState(false)
+
+  // Item 3 – Recebimento
+  const [showRecebimento, setShowRecebimento] = useState(false)
+  const [recTipo, setRecTipo] = useState<'total' | 'parcial' | 'nao_recebido'>('total')
+  const [recFaltantes, setRecFaltantes] = useState('')
+  const [recNome, setRecNome] = useState('')
+  const [recData, setRecData] = useState(new Date().toISOString().split('T')[0])
+  const [recToast, setRecToast] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
     try { setItens(await fetchComprasListaItens(lista.id)) } catch {}
@@ -504,9 +520,61 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
     setMudandoStatus(false)
   }
 
+  // Item 9 – Cotação WhatsApp
+  const abrirCotacaoWhatsApp = () => {
+    const itensPendentes = itens.filter(i => i.status === 'pendente')
+    if (itensPendentes.length === 0) return
+    const dataFmt = lista.data_compra ? fmtData(lista.data_compra) : new Date().toLocaleDateString('pt-BR')
+    const linhasItens = itensPendentes.map((it, idx) =>
+      `${idx + 1}. ${it.produto_nome} – ${it.quantidade} ${it.unidade || 'un'}`
+    ).join('\n')
+    const texto = `🛒 *COTAÇÃO — ${lista.titulo}*\nData: ${dataFmt}\n\nPrezado fornecedor, solicito cotação dos itens abaixo:\n\n${linhasItens}\n\nResponda com:\n• Produto | Marca | Preço unit. | Prazo | Forma pgto\n\n📞 Amore Gestão`
+    window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank')
+  }
+
+  // Item 10 – Aprovação
+  const aprovarCompra = async () => {
+    try {
+      const obs = (lista.observacoes || '') + '\n[APROVADO por ' + new Date().toLocaleString('pt-BR') + ']'
+      const atualizado = await updateComprasLista(lista.id, { status: 'em_andamento', observacoes: obs })
+      onAtualizar(atualizado)
+      setAprovacao('aprovado')
+    } catch (e) { console.error(e) }
+  }
+
+  const reprovarCompra = async () => {
+    if (!motivoReprovacao.trim()) return
+    try {
+      const obs = '[REPROVADO: ' + motivoReprovacao.trim() + ']'
+      const atualizado = await updateComprasLista(lista.id, { status: 'cancelado', observacoes: obs })
+      onAtualizar(atualizado)
+      setAprovacao('reprovado')
+      setShowMotivoInput(false)
+      setMotivoReprovacao('')
+    } catch (e) { console.error(e) }
+  }
+
+  // Item 3 – Confirmar Recebimento
+  const confirmarRecebimento = async () => {
+    try {
+      const tipoLabel = recTipo === 'total' ? 'Total' : recTipo === 'parcial' ? 'Parcial' : 'Não recebido'
+      const faltantesStr = recTipo === 'parcial' && recFaltantes.trim() ? ' | Faltantes: ' + recFaltantes.trim() : ''
+      const obs = (lista.observacoes || '') +
+        '\n[RECEBIMENTO: ' + tipoLabel + ' | por: ' + recNome + ' | ' + recData + faltantesStr + ']'
+      if (lista.status !== 'concluido') {
+        await mudarStatus('concluido')
+      }
+      await updateComprasLista(lista.id, { observacoes: obs })
+      setShowRecebimento(false)
+      setRecToast(true)
+      setTimeout(() => setRecToast(false), 3500)
+    } catch (e) { console.error(e) }
+  }
+
   const comprados = itens.filter(i => i.status === 'comprado').length
   const pendentes  = itens.filter(i => i.status === 'pendente').length
   const cancelados = itens.filter(i => i.status === 'cancelado').length
+  const todosComprados = itens.length > 0 && itens.every(i => i.status === 'comprado' || i.status === 'cancelado')
 
   const filtrados = itens
     .filter(i => filtroStatus === 'todos' || i.status === filtroStatus)
@@ -550,7 +618,24 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
         </div>
 
         {/* Ações */}
-        <div style={{ display: 'flex', gap: 6, position: 'relative' }}>
+        <div style={{ display: 'flex', gap: 6, position: 'relative', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {/* Item 9 – Cotação WhatsApp */}
+          {pendentes > 0 && (
+            <button className="btn bo bsm" onClick={abrirCotacaoWhatsApp}
+              title="Enviar cotação dos itens pendentes via WhatsApp"
+              style={{ color: '#16A34A', borderColor: '#16A34A' }}>
+              📱 Cotação WhatsApp
+            </button>
+          )}
+
+          {/* Item 3 – Confirmar Recebimento */}
+          {(lista.status === 'concluido' || todosComprados) && (
+            <button className="btn bo bsm" onClick={() => setShowRecebimento(true)}
+              style={{ color: '#2563EB', borderColor: '#2563EB' }}>
+              📦 Confirmar Recebimento
+            </button>
+          )}
+
           {/* Export dropdown */}
           <div style={{ position: 'relative' }}>
             <button className="btn bo bsm" onClick={() => setExportMenu(o => !o)}>
@@ -583,6 +668,52 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
           </select>
         </div>
       </div>
+
+      {/* Item 10 – Seção de Aprovação */}
+      {aprovacao === 'pendente' && (
+        <div className="card" style={{ padding: '12px 16px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, flex: 1 }}>
+            <AlertTriangle size={13} style={{ display: 'inline', marginRight: 4, color: 'var(--warning)' }} />
+            Aprovação da Compra
+          </span>
+          <span className="badge bg-y" style={{ fontSize: 11 }}>Pendente de aprovação</span>
+          {!showMotivoInput ? (
+            <>
+              <button className="btn bsm" onClick={aprovarCompra}
+                style={{ background: 'var(--success)', color: '#fff', border: 'none' }}>
+                ✅ Aprovar Compra
+              </button>
+              <button className="btn bo bsm" onClick={() => setShowMotivoInput(true)}
+                style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>
+                ❌ Reprovar
+              </button>
+            </>
+          ) : (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1 }}>
+              <input className="inp" placeholder="Motivo da reprovação..." style={{ flex: 1, fontSize: 12 }}
+                value={motivoReprovacao} onChange={e => setMotivoReprovacao(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && reprovarCompra()} autoFocus />
+              <button className="btn bsm" onClick={reprovarCompra}
+                style={{ background: 'var(--danger)', color: '#fff', border: 'none' }}>
+                Confirmar
+              </button>
+              <button className="ib" onClick={() => { setShowMotivoInput(false); setMotivoReprovacao('') }}><X size={14} /></button>
+            </div>
+          )}
+        </div>
+      )}
+      {aprovacao === 'aprovado' && (
+        <div className="card" style={{ padding: '10px 16px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <CheckCircle2 size={14} style={{ color: 'var(--success)' }} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--success)' }}>Compra aprovada</span>
+        </div>
+      )}
+      {aprovacao === 'reprovado' && (
+        <div className="card" style={{ padding: '10px 16px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <XCircle size={14} style={{ color: 'var(--danger)' }} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--danger)' }}>Compra reprovada</span>
+        </div>
+      )}
 
       {/* KPIs resumo */}
       <div className="kpi-grid" style={{ marginBottom: 14 }}>
@@ -693,6 +824,75 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
           </div>
         )}
       </div>
+
+      {/* Item 3 – Modal de Confirmação de Recebimento */}
+      {showRecebimento && (
+        <div className="ov open" onClick={e => e.target === e.currentTarget && setShowRecebimento(false)}>
+          <div className="modal" style={{ maxWidth: 440 }}>
+            <div className="mhd">
+              <span className="mtt">📦 Confirmar Recebimento</span>
+              <button className="mx" onClick={() => setShowRecebimento(false)}><X size={14} /></button>
+            </div>
+            <div className="mbd" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* Tipo de recebimento */}
+              <div className="fg">
+                <label className="fl" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Recebimento Total?</label>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  {(['total', 'parcial', 'nao_recebido'] as const).map(op => (
+                    <label key={op} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
+                      <input type="radio" name="recTipo" value={op} checked={recTipo === op}
+                        onChange={() => setRecTipo(op)} />
+                      {op === 'total' ? 'Sim' : op === 'parcial' ? 'Parcial' : 'Não recebido'}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              {/* Itens faltantes (só se parcial) */}
+              {recTipo === 'parcial' && (
+                <div className="fg">
+                  <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Descreva os itens faltantes</label>
+                  <textarea className="inp" rows={3} style={{ resize: 'vertical', fontSize: 12 }}
+                    placeholder="Ex: Produto X, Produto Y..."
+                    value={recFaltantes} onChange={e => setRecFaltantes(e.target.value)} />
+                </div>
+              )}
+              {/* Recebido por */}
+              <div className="fg">
+                <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Recebido por:</label>
+                <input className="inp" placeholder="Nome do responsável" style={{ fontSize: 12 }}
+                  value={recNome} onChange={e => setRecNome(e.target.value)} />
+              </div>
+              {/* Data de recebimento */}
+              <div className="fg">
+                <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Data de recebimento:</label>
+                <input className="inp" type="date" style={{ fontSize: 12 }}
+                  value={recData} onChange={e => setRecData(e.target.value)} />
+              </div>
+            </div>
+            <div className="mft" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn bo bsm" onClick={() => setShowRecebimento(false)}>Cancelar</button>
+              <button className="btn bsm" onClick={confirmarRecebimento}
+                disabled={!recNome.trim() || !recData}
+                style={{ background: 'var(--success)', color: '#fff', border: 'none' }}>
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast de recebimento confirmado */}
+      {recToast && (
+        <div style={{
+          position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)',
+          background: 'var(--success)', color: '#fff', borderRadius: 10,
+          padding: '10px 22px', fontSize: 13, fontWeight: 700,
+          boxShadow: '0 4px 20px rgba(0,0,0,.18)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <CheckCircle2 size={15} /> Recebimento confirmado! Estoque atualizado.
+        </div>
+      )}
     </div>
   )
 }
@@ -1039,6 +1239,7 @@ export default function ComprasPage() {
   const [view, setView] = useState<'lista' | 'nova' | 'detalhe'>('lista')
   const [listaAtiva, setListaAtiva] = useState<ComprasLista | null>(null)
   const [busca, setBusca] = useState('')
+  const buscaDebounced = useDebounce(busca, 280)
   const [filtroStatus, setFiltroStatus] = useState<'todos' | ListaStatus>('todos')
   const [confirmDelete, setConfirmDelete] = useState<ComprasLista | null>(null)
   const [mainTab, setMainTab] = useState<'listas' | 'dashboard'>('listas')
@@ -1081,7 +1282,7 @@ export default function ComprasPage() {
   }
 
   const filtradas = listas
-    .filter(l => l.titulo.toLowerCase().includes(busca.toLowerCase()))
+    .filter(l => l.titulo.toLowerCase().includes(buscaDebounced.toLowerCase()))
     .filter(l => filtroStatus === 'todos' || l.status === filtroStatus)
 
   // ── Vista Detalhe ──

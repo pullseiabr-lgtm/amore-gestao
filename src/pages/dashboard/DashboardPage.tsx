@@ -123,8 +123,51 @@ export default function DashboardPage() {
     : assertividade >= 65 ? 'var(--warning)'
     : 'var(--danger)'
 
+  const gerarRelatorioWhatsApp = () => {
+    const hoje = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
+    const lojaStr = loja === 'Todas as Lojas' ? 'Todas as Lojas' : loja
+    const linhas = [
+      `📊 *RELATÓRIO DIÁRIO — AMORE GESTÃO*`,
+      `📅 ${hoje}`,
+      `🏪 ${lojaStr}`,
+      ``,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `📦 *ESTOQUE*`,
+      `• Produtos críticos (abaixo do mínimo): *${produtosCriticos.length}*`,
+      produtosCriticos.length > 0
+        ? produtosCriticos.slice(0, 3).map(p => `  ↳ ${p.nome}: ${p.estoque_atual ?? 0} ${p.unidade ?? 'un'}`).join('\n')
+        : `  ↳ Estoque em dia ✅`,
+      ``,
+      `🛒 *COMPRAS & REQUISIÇÕES*`,
+      `• Requisições pendentes: *${reqPendentes.length}*`,
+      `• Requisições aprovadas: *${reqAprovadas.length}*`,
+      ``,
+      `⚠️ *RUPTURAS*`,
+      `• Rupturas abertas: *${rupturasAbertas.length}*`,
+      `• Impacto financeiro estimado: *${fmt(impactoTotal)}*`,
+      ``,
+      `📈 *ASSERTIVIDADE DE COMPRAS*`,
+      assertividade != null
+        ? `• Índice: *${pct(assertividade)}* ${assertividade >= 85 ? '✅' : assertividade >= 65 ? '⚠️' : '❌'}`
+        : `• Sem dados disponíveis`,
+      ``,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `_Gerado automaticamente pelo Amore Gestão V5.0_`,
+    ].join('\n')
+    window.open('https://wa.me/?text=' + encodeURIComponent(linhas), '_blank')
+  }
+
   return (
     <div>
+      {/* ── Cabeçalho com ação de relatório ────────────────────── */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <button className="btn bo bsm" onClick={gerarRelatorioWhatsApp}
+          style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <Zap size={11} style={{ color: '#25D366' }} />
+          Relatório diário WhatsApp
+        </button>
+      </div>
+
       {/* ── KPI Grid ───────────────────────────────────────────── */}
       <div className="kpi-grid" style={{ marginBottom: 14 }}>
         <KpiCard

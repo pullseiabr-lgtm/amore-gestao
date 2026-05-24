@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useDebounce } from '../../hooks/useDebounce'
 import { Search, Package, TrendingDown, History, ArrowLeftRight, ClipboardList, Download, Plus, ChevronRight, CheckCircle, XCircle, Calculator, Loader, Trash2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLoja } from '../../contexts/LojaContext'
@@ -73,6 +74,7 @@ function TabLista({ loja }: { loja: string }) {
   const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
+  const buscaDebounced = useDebounce(busca, 280)
   const [ordenar, setOrdenar] = useState('Nome (A-Z)')
   const [categoria, setCategoria] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -95,7 +97,7 @@ function TabLista({ loja }: { loja: string }) {
   useEffect(() => { load() }, [load])
 
   const filtrados = produtos
-    .filter(p => p.nome.toLowerCase().includes(busca.toLowerCase()))
+    .filter(p => p.nome.toLowerCase().includes(buscaDebounced.toLowerCase()))
     .filter(p => !categoria || p.categoria === categoria)
     .sort((a, b) => ordenar === 'Nome (Z-A)' ? b.nome.localeCompare(a.nome) : a.nome.localeCompare(b.nome))
 

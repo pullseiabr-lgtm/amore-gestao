@@ -431,11 +431,22 @@ function ModalPrestacao({ loja, creditos, prestacao, defaultCreditoId, onSalvo, 
 
 // ── Modal: Novo Lançamento ────────────────────────────────────
 
+interface NfItem { id: string; desc: string; qtd: string; unidade: string; peso: string; valor_unit: string; valor_total: string }
+
+function _parseNfObs(obs: string): NfItem[] | null {
+  if (!obs.startsWith('[NF_ITENS]:')) return null
+  try { return JSON.parse(obs.slice('[NF_ITENS]:'.length)) } catch { return null }
+}
+
 function ModalLancamento({ prestacaoId, lancamento, onSalvo, onFechar }: {
   prestacaoId: string; lancamento: FinLancamento | null
   onSalvo: (l: FinLancamento) => void; onFechar: () => void
 }) {
   const hoje = new Date().toISOString().slice(0, 10)
+
+  const _parsedItens = lancamento?.observacao ? _parseNfObs(lancamento.observacao) : null
+  const _obsLimpa = _parsedItens ? '' : (lancamento?.observacao ?? '')
+
   const [form, setForm] = useState({
     categoria:       lancamento?.categoria       ?? '',
     descricao:       lancamento?.descricao       ?? '',
@@ -443,10 +454,52 @@ function ModalLancamento({ prestacaoId, lancamento, onSalvo, onFechar }: {
     valor:           lancamento?.valor           ?? 0,
     data_compra:     lancamento?.data_compra     ?? hoje,
     forma_pagamento: lancamento?.forma_pagamento ?? 'pix' as FinFormaPagamento,
-    observacao:      lancamento?.observacao      ?? '',
+    observacao:      _obsLimpa,
   })
   const [saving, setSaving] = useState(false)
   const [errs, setErrs] = useState<Record<string, string>>({})
+  const [modoItens, setModoItens] = useState(_parsedItens !== null)
+  const [nfItens, setNfItens] = useState<NfItem[]>(
+    _parsedItens ?? [{ id: '1', desc: '', qtd: '1', unidade: 'un', peso: '', valor_unit: '', valor_total: '' }]
+  )
+
+  const calcTotalNF = (itens: NfItem[]) => {
+    const soma = itens.reduce((acc, it) => acc + (parseFloat(it.valor_total) || 0), 0)
+    setForm(f => ({ ...f, valor: parseFloat(soma.toFixed(2)) }))
+    setErrs(x => ({ ...x, valor: '' }))
+  }
+
+  const addNfItem = () => {
+    setNfItens(prev => {
+      const next = [...prev, { id: Date.now().toString(), desc: '', qtd: '1', unidade: 'un', peso: '', valor_unit: '', valor_total: '' }]
+      return next
+    })
+  }
+
+  const removeNfItem = (id: string) => {
+    setNfItens(prev => {
+      const next = prev.filter(it => it.id !== id)
+      calcTotalNF(next)
+      return next
+    })
+  }
+
+  const updateNfItem = (id: string, field: keyof NfItem, value: string) => {
+    setNfItens(prev => {
+      const next = prev.map(it => {
+        if (it.id !== id) return it
+        const updated = { ...it, [field]: value }
+        if (field === 'qtd' || field === 'valor_unit') {
+          const q = parseFloat(field === 'qtd' ? value : it.qtd) || 0
+          const v = parseFloat(field === 'valor_unit' ? value : it.valor_unit) || 0
+          updated.valor_total = (q * v).toFixed(2)
+        }
+        return updated
+      })
+      calcTotalNF(next)
+      return next
+    })
+  }
 
   const salvar = async () => {
     const e: Record<string, string> = {}
@@ -457,12 +510,13 @@ function ModalLancamento({ prestacaoId, lancamento, onSalvo, onFechar }: {
     if (Object.keys(e).length) { setErrs(e); return }
     setSaving(true)
     try {
+      const obsFinal = modoItens ? '[NF_ITENS]:' + JSON.stringify(nfItens) : (form.observacao || null)
       const payload = {
         prestacao_id: prestacaoId,
         categoria: form.categoria, descricao: form.descricao.trim(),
         fornecedor: form.fornecedor || null, valor: Number(form.valor),
         data_compra: form.data_compra, forma_pagamento: form.forma_pagamento,
-        observacao: form.observacao || null,
+        observacao: obsFinal,
         status_auditoria: lancamento?.status_auditoria ?? 'pendente' as FinAuditoriaStatus,
         obs_auditoria: lancamento?.obs_auditoria ?? null,
       }
@@ -474,7 +528,7 @@ function ModalLancamento({ prestacaoId, lancamento, onSalvo, onFechar }: {
 
   return (
     <div className="ov open" onClick={onFechar}>
-      <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 700 }} onClick={e => e.stopPropagation()}>
         <div className="mhd">
           <span className="mtt">{lancamento ? 'Editar Lançamento' : 'Adicionar Lançamento'}</span>
           <button className="mx" onClick={onFechar}>✕</button>
@@ -500,10 +554,100 @@ function ModalLancamento({ prestacaoId, lancamento, onSalvo, onFechar }: {
               <label className="fl">Fornecedor</label>
               <input className="inp" value={form.fornecedor} onChange={e => setForm(f => ({ ...f, fornecedor: e.target.value }))} placeholder="Nome do fornecedor" />
             </div>
-            <div className="fg">
+            <div className="fg" style={{ gridColumn: modoItens ? '1 / -1' : undefined }}>
+              {/* Toggle modo itens NF */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <label style={{ fontSize: 12, color: 'var(--muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input type="checkbox" checked={modoItens} onChange={e => {
+                    setModoItens(e.target.checked)
+                    if (!e.target.checked) { setForm(f => ({ ...f, valor: 0 })) }
+                    else { calcTotalNF(nfItens) }
+                  }} style={{ accentColor: 'var(--primary)', width: 14, height: 14 }} />
+                  📋 Inserir por item (Nota Fiscal detalhada)
+                </label>
+              </div>
+
+              {/* Tabela de itens NF */}
+              {modoItens && (
+                <div style={{ gridColumn: '1 / -1', marginBottom: 4 }}>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ background: 'var(--surface2, #f5f5f5)' }}>
+                          <th style={{ padding: '4px 6px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>Descrição</th>
+                          <th style={{ padding: '4px 6px', textAlign: 'center', fontWeight: 600, width: 52 }}>Qtd</th>
+                          <th style={{ padding: '4px 6px', textAlign: 'center', fontWeight: 600, width: 60 }}>Unidade</th>
+                          <th style={{ padding: '4px 6px', textAlign: 'center', fontWeight: 600, width: 64 }}>Peso</th>
+                          <th style={{ padding: '4px 6px', textAlign: 'center', fontWeight: 600, width: 80 }}>Vlr. Unit.</th>
+                          <th style={{ padding: '4px 6px', textAlign: 'center', fontWeight: 600, width: 80 }}>Total</th>
+                          <th style={{ padding: '4px 6px', width: 24 }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {nfItens.map((it, idx) => (
+                          <tr key={it.id} style={{ borderBottom: '1px solid var(--border, #e5e5e5)' }}>
+                            <td style={{ padding: '3px 4px' }}>
+                              <input style={{ width: '100%', fontSize: 12, border: '1px solid var(--border,#ddd)', borderRadius: 4, padding: '2px 5px', background: 'var(--surface,#fff)', color: 'var(--text,#333)' }}
+                                value={it.desc} placeholder={`Item ${idx + 1}`}
+                                onChange={e => updateNfItem(it.id, 'desc', e.target.value)} />
+                            </td>
+                            <td style={{ padding: '3px 4px' }}>
+                              <input type="number" min={0} step={0.001} style={{ width: 52, fontSize: 12, border: '1px solid var(--border,#ddd)', borderRadius: 4, padding: '2px 5px', background: 'var(--surface,#fff)', color: 'var(--text,#333)', textAlign: 'center' }}
+                                value={it.qtd}
+                                onChange={e => updateNfItem(it.id, 'qtd', e.target.value)} />
+                            </td>
+                            <td style={{ padding: '3px 4px' }}>
+                              <select style={{ width: 60, fontSize: 12, border: '1px solid var(--border,#ddd)', borderRadius: 4, padding: '2px 3px', background: 'var(--surface,#fff)', color: 'var(--text,#333)' }}
+                                value={it.unidade} onChange={e => updateNfItem(it.id, 'unidade', e.target.value)}>
+                                {['un','kg','g','L','mL','cx','pc','m','m²','m³','pct','par','hr','svc'].map(u => <option key={u}>{u}</option>)}
+                              </select>
+                            </td>
+                            <td style={{ padding: '3px 4px' }}>
+                              <input style={{ width: 64, fontSize: 12, border: '1px solid var(--border,#ddd)', borderRadius: 4, padding: '2px 5px', background: 'var(--surface,#fff)', color: 'var(--text,#333)', textAlign: 'center' }}
+                                value={it.peso} placeholder="kg"
+                                onChange={e => updateNfItem(it.id, 'peso', e.target.value)} />
+                            </td>
+                            <td style={{ padding: '3px 4px' }}>
+                              <input type="number" min={0} step={0.01} style={{ width: 80, fontSize: 12, border: '1px solid var(--border,#ddd)', borderRadius: 4, padding: '2px 5px', background: 'var(--surface,#fff)', color: 'var(--text,#333)', textAlign: 'right' }}
+                                value={it.valor_unit} placeholder="0,00"
+                                onChange={e => updateNfItem(it.id, 'valor_unit', e.target.value)} />
+                            </td>
+                            <td style={{ padding: '3px 4px' }}>
+                              <input type="number" min={0} step={0.01} style={{ width: 80, fontSize: 12, border: '1px solid var(--border,#ddd)', borderRadius: 4, padding: '2px 5px', background: 'var(--surface2,#f5f5f5)', color: 'var(--text,#333)', textAlign: 'right', fontWeight: 600 }}
+                                value={it.valor_total} readOnly placeholder="0,00" />
+                            </td>
+                            <td style={{ padding: '3px 4px', textAlign: 'center' }}>
+                              {nfItens.length > 1 && (
+                                <button onClick={() => removeNfItem(it.id)} title="Remover item"
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger,#e33)', fontSize: 14, lineHeight: 1, padding: '1px 3px', borderRadius: 3 }}>×</button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td colSpan={7} style={{ padding: '4px 4px' }}>
+                            <button onClick={addNfItem}
+                              style={{ width: '100%', border: '1.5px dashed var(--primary,#0ea5e9)', borderRadius: 6, background: 'none', cursor: 'pointer', color: 'var(--primary,#0ea5e9)', fontSize: 12, padding: '4px 0', fontWeight: 500 }}>
+                              + Adicionar item
+                            </button>
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Campo Valor */}
               <label className="fl">Valor <span className="rq">*</span></label>
               <input className={`inp${errs.valor ? ' err' : ''}`} type="number" min={0} step={0.01}
-                value={form.valor} onChange={e => { setForm(f => ({ ...f, valor: Number(e.target.value) })); setErrs(x => ({ ...x, valor: '' })) }} />
+                value={form.valor}
+                readOnly={modoItens}
+                style={modoItens ? { background: 'var(--surface2,#f5f5f5)', fontWeight: 700 } : undefined}
+                onChange={modoItens ? undefined : e => { setForm(f => ({ ...f, valor: Number(e.target.value) })); setErrs(x => ({ ...x, valor: '' })) }} />
+              {modoItens && <span style={{ fontSize: 11, color: 'var(--muted)' }}>Calculado automaticamente pela soma dos itens</span>}
               {errs.valor && <span style={{ fontSize: 11, color: 'var(--danger)' }}>{errs.valor}</span>}
             </div>
             <div className="fg">
@@ -518,10 +662,12 @@ function ModalLancamento({ prestacaoId, lancamento, onSalvo, onFechar }: {
                 {FORMAS_PGTO.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
               </select>
             </div>
-            <div className="fg" style={{ gridColumn: '1 / -1' }}>
-              <label className="fl">Observação</label>
-              <input className="inp" value={form.observacao} onChange={e => setForm(f => ({ ...f, observacao: e.target.value }))} placeholder="Informações adicionais..." />
-            </div>
+            {!modoItens && (
+              <div className="fg" style={{ gridColumn: '1 / -1' }}>
+                <label className="fl">Observação</label>
+                <input className="inp" value={form.observacao} onChange={e => setForm(f => ({ ...f, observacao: e.target.value }))} placeholder="Informações adicionais..." />
+              </div>
+            )}
           </div>
         </div>
         <div className="mft">
