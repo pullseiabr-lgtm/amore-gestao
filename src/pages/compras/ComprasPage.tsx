@@ -11,7 +11,7 @@ import { useLoja } from '../../contexts/LojaContext'
 import {
   fetchComprasListas, insertComprasLista, updateComprasLista, deleteComprasLista,
   fetchComprasListaItens, insertComprasListaItem, updateComprasListaItem, deleteComprasListaItem,
-  fetchItensComprasDashboard, fetchEstoqueProdutos,
+  fetchItensComprasDashboard, fetchEstoqueProdutos, insertEstoqueMovimentacao,
 } from '../../lib/db'
 import type { ComprasLista, ComprasListaItem, ListaStatus, ListaItemStatus, EstoqueProduto } from '../../types/database'
 
@@ -492,7 +492,63 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
     setHistoricoCotacoes(atualizado)
     localStorage.setItem(histKey, JSON.stringify(atualizado))
   }
+
+  const abrirModalResposta = () => {
+    const itensPendentes = itens.filter(i => i.status === 'pendente')
+    setFormResposta({
+      fornecedor: '', prazo: '', rota: '', forma_pgto: '', obs: '',
+      itens: itensPendentes.map(it => ({
+        produto_nome: it.produto_nome, marca: '', preco_unit: '', preco_total: '',
+      })),
+    })
+    setShowResposta(true)
+  }
+
+  const salvarResposta = async () => {
+    if (!formResposta.fornecedor.trim()) return
+    const nova: RespostaFornecedor = {
+      id: Date.now().toString(),
+      data: new Date().toISOString(),
+      ...formResposta,
+    }
+    const atualizadas = [nova, ...respostas].slice(0, 10)
+    setRespostas(atualizadas)
+    localStorage.setItem(respostasKey, JSON.stringify(atualizadas))
+
+    // Aplicar preços do fornecedor nos itens da lista
+    const atualizacoes = formResposta.itens
+      .filter(ri => ri.preco_unit)
+      .map(ri => {
+        const item = itens.find(i => i.produto_nome === ri.produto_nome)
+        if (!item) return Promise.resolve()
+        return updateComprasListaItem(item.id, {
+          preco_real: parseFloat(ri.preco_unit) || null,
+          fornecedor_nome: formResposta.fornecedor,
+        }).then(updated => {
+          setItens(prev => prev.map(i => i.id === updated.id ? updated : i))
+        }).catch(() => {})
+      })
+    await Promise.all(atualizacoes)
+    setShowResposta(false)
+  }
   const [recToast, setRecToast] = useState(false)
+  const [recEstoqueQtd, setRecEstoqueQtd] = useState(0)
+
+  // ── Resposta do Fornecedor (Cotação Inteligente) ──────────────
+  type RespostaFornecedor = {
+    id: string; fornecedor: string; prazo: string; rota: string
+    forma_pgto: string; obs: string; data: string
+    itens: { produto_nome: string; marca: string; preco_unit: string; preco_total: string }[]
+  }
+  const respostasKey = `cotacao-respostas-${lista.id}`
+  const [respostas, setRespostas] = useState<RespostaFornecedor[]>(() => {
+    try { return JSON.parse(localStorage.getItem(respostasKey) || '[]') } catch { return [] }
+  })
+  const [showResposta, setShowResposta] = useState(false)
+  const [showComparativo, setShowComparativo] = useState(false)
+  const [formResposta, setFormResposta] = useState<Omit<RespostaFornecedor, 'id' | 'data'>>({
+    fornecedor: '', prazo: '', rota: '', forma_pgto: '', obs: '', itens: [],
+  })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -606,20 +662,38 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
     } catch (e) { console.error(e) }
   }
 
-  // Item 3 – Confirmar Recebimento
+  // Item 3 – Confirmar Recebimento + Entrada automática no Estoque
   const confirmarRecebimento = async () => {
     try {
       const tipoLabel = recTipo === 'total' ? 'Total' : recTipo === 'parcial' ? 'Parcial' : 'Não recebido'
       const faltantesStr = recTipo === 'parcial' && recFaltantes.trim() ? ' | Faltantes: ' + recFaltantes.trim() : ''
       const obs = (lista.observacoes || '') +
         '\n[RECEBIMENTO: ' + tipoLabel + ' | por: ' + recNome + ' | ' + recData + faltantesStr + ']'
-      if (lista.status !== 'concluido') {
-        await mudarStatus('concluido')
-      }
+      if (lista.status !== 'concluido') await mudarStatus('concluido')
       await updateComprasLista(lista.id, { observacoes: obs })
+
+      // ── Entrada automática no estoque para itens comprados ──────
+      if (recTipo !== 'nao_recebido') {
+        const itensComprados = itens.filter(i => i.status === 'comprado')
+        const entradas = itensComprados.map(item =>
+          insertEstoqueMovimentacao({
+            loja: lista.loja || 'Todas as Lojas',
+            produto_id: null,
+            produto_nome: item.produto_nome,
+            tipo: 'entrada',
+            quantidade: item.quantidade,
+            unidade: item.unidade || 'un',
+            motivo: `Entrada via Compras: ${lista.titulo} | Conf. por: ${recNome}`,
+            created_by: recNome,
+          }).catch(() => null)
+        )
+        await Promise.all(entradas)
+        setRecEstoqueQtd(itensComprados.length)
+      }
+
       setShowRecebimento(false)
       setRecToast(true)
-      setTimeout(() => setRecToast(false), 3500)
+      setTimeout(() => { setRecToast(false); setRecEstoqueQtd(0) }, 4500)
     } catch (e) { console.error(e) }
   }
 
@@ -745,6 +819,24 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Resposta do Fornecedor */}
+          {pendentes > 0 && historicoCotacoes.length > 0 && (
+            <button className="btn bo bsm" onClick={abrirModalResposta}
+              title="Registrar resposta recebida do fornecedor"
+              style={{ color: '#7C3AED', borderColor: '#7C3AED' }}>
+              📥 Resposta Fornecedor
+            </button>
+          )}
+
+          {/* Comparativo de preços */}
+          {respostas.length >= 2 && (
+            <button className="btn bo bsm" onClick={() => setShowComparativo(true)}
+              title={`Comparativo de ${respostas.length} fornecedores`}
+              style={{ color: '#EA580C', borderColor: '#EA580C' }}>
+              📊 Comparativo ({respostas.length})
+            </button>
           )}
 
           {/* Item 3 – Confirmar Recebimento */}
@@ -1009,7 +1101,224 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
           boxShadow: '0 4px 20px rgba(0,0,0,.18)', zIndex: 9999,
           display: 'flex', alignItems: 'center', gap: 8,
         }}>
-          <CheckCircle2 size={15} /> Recebimento confirmado! Estoque atualizado.
+          <CheckCircle2 size={15} />
+          Recebimento confirmado!
+          {recEstoqueQtd > 0 && ` ${recEstoqueQtd} item(ns) lançado(s) no estoque automaticamente.`}
+        </div>
+      )}
+
+      {/* ── Modal Resposta do Fornecedor ──────────────────────── */}
+      {showResposta && (
+        <div className="ov open" onClick={e => e.target === e.currentTarget && setShowResposta(false)}>
+          <div className="modal" style={{ maxWidth: 680 }} onClick={e => e.stopPropagation()}>
+            <div className="mhd">
+              <span className="mtt">📥 Registrar Resposta do Fornecedor</span>
+              <button className="mx" onClick={() => setShowResposta(false)}>✕</button>
+            </div>
+            <div className="mbd" style={{ maxHeight: '72vh', overflowY: 'auto' }}>
+              {/* Dados do fornecedor */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                <div className="fg" style={{ gridColumn: '1/-1' }}>
+                  <label className="fl">Nome do Fornecedor <span className="rq">*</span></label>
+                  <input className="inp" value={formResposta.fornecedor} autoFocus
+                    onChange={e => setFormResposta(f => ({ ...f, fornecedor: e.target.value }))}
+                    placeholder="Ex: Distribuidora São João" />
+                </div>
+                <div className="fg">
+                  <label className="fl">Prazo de Entrega</label>
+                  <input className="inp" value={formResposta.prazo}
+                    onChange={e => setFormResposta(f => ({ ...f, prazo: e.target.value }))}
+                    placeholder="Ex: 2 dias úteis" />
+                </div>
+                <div className="fg">
+                  <label className="fl">Rota de Entrega</label>
+                  <input className="inp" value={formResposta.rota}
+                    onChange={e => setFormResposta(f => ({ ...f, rota: e.target.value }))}
+                    placeholder="Ex: Terças e quintas" />
+                </div>
+                <div className="fg">
+                  <label className="fl">Forma de Pagamento</label>
+                  <input className="inp" value={formResposta.forma_pgto}
+                    onChange={e => setFormResposta(f => ({ ...f, forma_pgto: e.target.value }))}
+                    placeholder="Ex: Boleto 30 dias, PIX à vista" />
+                </div>
+                <div className="fg">
+                  <label className="fl">Observações</label>
+                  <input className="inp" value={formResposta.obs}
+                    onChange={e => setFormResposta(f => ({ ...f, obs: e.target.value }))}
+                    placeholder="Descontos, condições especiais..." />
+                </div>
+              </div>
+
+              {/* Tabela de itens com preços */}
+              <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, color: 'var(--bordo)' }}>
+                📋 Preços por Item (preencha o que o fornecedor cotou)
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bordo)', color: '#fff' }}>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600 }}>Produto</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 600, width: 130 }}>Marca</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, width: 100 }}>Preço Unit.</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, width: 100 }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {formResposta.itens.map((ri, idx) => {
+                      const itemOriginal = itens.find(i => i.produto_nome === ri.produto_nome)
+                      return (
+                        <tr key={idx} style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'transparent' : 'var(--surface2, #fafafa)' }}>
+                          <td style={{ padding: '5px 10px', fontWeight: 600, fontSize: 12 }}>
+                            {ri.produto_nome}
+                            {itemOriginal && <span style={{ color: 'var(--muted)', fontSize: 10, marginLeft: 4 }}>({itemOriginal.quantidade} {itemOriginal.unidade})</span>}
+                          </td>
+                          <td style={{ padding: '5px 6px' }}>
+                            <input style={{ width: '100%', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4, padding: '3px 6px', background: 'var(--surface, #fff)', color: 'var(--text)' }}
+                              value={ri.marca} placeholder="Marca..."
+                              onChange={e => setFormResposta(f => ({
+                                ...f,
+                                itens: f.itens.map((it, i) => i === idx ? { ...it, marca: e.target.value } : it),
+                              }))} />
+                          </td>
+                          <td style={{ padding: '5px 6px' }}>
+                            <input type="number" min={0} step={0.01} style={{ width: '100%', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4, padding: '3px 6px', background: 'var(--surface, #fff)', color: 'var(--text)', textAlign: 'right' }}
+                              value={ri.preco_unit} placeholder="0,00"
+                              onChange={e => {
+                                const pu = e.target.value
+                                const qtd = itemOriginal?.quantidade || 1
+                                const total = (parseFloat(pu) * qtd).toFixed(2)
+                                setFormResposta(f => ({
+                                  ...f,
+                                  itens: f.itens.map((it, i) => i === idx ? { ...it, preco_unit: pu, preco_total: isNaN(parseFloat(pu)) ? '' : total } : it),
+                                }))
+                              }} />
+                          </td>
+                          <td style={{ padding: '5px 6px', fontWeight: 700, textAlign: 'right', color: ri.preco_total ? 'var(--success)' : 'var(--muted)', fontSize: 12 }}>
+                            {ri.preco_total ? `R$ ${parseFloat(ri.preco_total).toFixed(2).replace('.', ',')}` : '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: 'var(--bordo-bg)', fontWeight: 800 }}>
+                      <td colSpan={3} style={{ padding: '6px 10px', textAlign: 'right', fontSize: 12 }}>Total Geral:</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: 13, color: 'var(--bordo)' }}>
+                        {(() => {
+                          const total = formResposta.itens.reduce((s, it) => s + (parseFloat(it.preco_total) || 0), 0)
+                          return total > 0 ? `R$ ${total.toFixed(2).replace('.', ',')}` : '—'
+                        })()}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10 }}>
+                💡 Os preços serão aplicados automaticamente nos itens da lista ao salvar.
+              </p>
+            </div>
+            <div className="mft" style={{ justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn bo bsm" onClick={() => setShowResposta(false)}>Cancelar</button>
+              <button className="btn bsm" onClick={salvarResposta}
+                disabled={!formResposta.fornecedor.trim()}
+                style={{ background: '#7C3AED', color: '#fff', border: 'none' }}>
+                ✅ Salvar Resposta e Aplicar Preços
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Comparativo de Fornecedores ──────────────────── */}
+      {showComparativo && respostas.length >= 1 && (
+        <div className="ov open" onClick={e => e.target === e.currentTarget && setShowComparativo(false)}>
+          <div className="modal" style={{ maxWidth: 780 }} onClick={e => e.stopPropagation()}>
+            <div className="mhd">
+              <span className="mtt">📊 Comparativo de Fornecedores — {lista.titulo}</span>
+              <button className="mx" onClick={() => setShowComparativo(false)}>✕</button>
+            </div>
+            <div className="mbd" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
+              {/* Tabela comparativa */}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bordo)', color: '#fff' }}>
+                      <th style={{ padding: '8px 12px', textAlign: 'left' }}>Produto</th>
+                      {respostas.map(r => (
+                        <th key={r.id} style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          {r.fornecedor}
+                          <div style={{ fontSize: 10, fontWeight: 400, opacity: 0.85 }}>{new Date(r.data).toLocaleDateString('pt-BR')}</div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Linhas por produto */}
+                    {(() => {
+                      const todosProdutos = [...new Set(respostas.flatMap(r => r.itens.map(i => i.produto_nome)))]
+                      return todosProdutos.map((prod, idx) => {
+                        const precos = respostas.map(r => {
+                          const it = r.itens.find(i => i.produto_nome === prod)
+                          return it?.preco_unit ? parseFloat(it.preco_unit) : null
+                        })
+                        const minPreco = Math.min(...precos.filter(p => p !== null) as number[])
+                        return (
+                          <tr key={prod} style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'transparent' : '#fafafa' }}>
+                            <td style={{ padding: '6px 12px', fontWeight: 600 }}>{prod}</td>
+                            {respostas.map((r, ri) => {
+                              const it = r.itens.find(i => i.produto_nome === prod)
+                              const preco = it?.preco_unit ? parseFloat(it.preco_unit) : null
+                              const isMenor = preco !== null && preco === minPreco && precos.filter(p => p !== null).length > 1
+                              return (
+                                <td key={ri} style={{ padding: '6px 10px', textAlign: 'right', fontWeight: isMenor ? 800 : 400, color: isMenor ? 'var(--success)' : 'var(--text)' }}>
+                                  {preco !== null ? (
+                                    <>
+                                      {isMenor && '✓ '}
+                                      R$ {preco.toFixed(2).replace('.', ',')}
+                                      {it?.marca && <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400 }}>{it.marca}</div>}
+                                    </>
+                                  ) : '—'}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })
+                    })()}
+                    {/* Linha de totais */}
+                    <tr style={{ background: 'var(--bordo-bg)', fontWeight: 800 }}>
+                      <td style={{ padding: '8px 12px', fontSize: 12 }}>💰 Total Geral</td>
+                      {respostas.map(r => {
+                        const total = r.itens.reduce((s, it) => s + (parseFloat(it.preco_total) || 0), 0)
+                        return (
+                          <td key={r.id} style={{ padding: '8px 10px', textAlign: 'right', fontSize: 13, color: 'var(--bordo)' }}>
+                            {total > 0 ? `R$ ${total.toFixed(2).replace('.', ',')}` : '—'}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Info de cada fornecedor */}
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(respostas.length, 3)}, 1fr)`, gap: 12, marginTop: 16 }}>
+                {respostas.map(r => (
+                  <div key={r.id} className="card" style={{ padding: '12px 14px', fontSize: 11 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8, color: 'var(--bordo)' }}>{r.fornecedor}</div>
+                    {r.prazo && <div><strong>Prazo:</strong> {r.prazo}</div>}
+                    {r.rota && <div><strong>Rota:</strong> {r.rota}</div>}
+                    {r.forma_pgto && <div><strong>Pgto:</strong> {r.forma_pgto}</div>}
+                    {r.obs && <div style={{ marginTop: 6, color: 'var(--muted)' }}>{r.obs}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="mft" style={{ justifyContent: 'flex-end' }}>
+              <button className="btn bp" onClick={() => setShowComparativo(false)}>Fechar</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
