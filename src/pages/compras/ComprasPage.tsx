@@ -4,7 +4,7 @@ import {
   Plus, Search, Trash2, ChevronLeft, Loader, CheckCircle2,
   Circle, XCircle, ShoppingCart, ClipboardList, Calendar,
   Package, ChevronDown, Edit3, Check, X, Download,
-  AlertTriangle, Building2, TrendingUp, RefreshCw,
+  AlertTriangle, Building2, TrendingUp, RefreshCw, Mail, Clock,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLoja } from '../../contexts/LojaContext'
@@ -461,6 +461,22 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
   const [recFaltantes, setRecFaltantes] = useState('')
   const [recNome, setRecNome] = useState('')
   const [recData, setRecData] = useState(new Date().toISOString().split('T')[0])
+
+  // Histórico de cotações enviadas (localStorage por lista)
+  const histKey = `cotacao-hist-${lista.id}`
+  const [historicoCotacoes, setHistoricoCotacoes] = useState<{ tipo: 'whatsapp' | 'email'; data: string; qtd: number }[]>(() => {
+    try { return JSON.parse(localStorage.getItem(histKey) || '[]') } catch { return [] }
+  })
+  const [showHistorico, setShowHistorico] = useState(false)
+  const [emailCotacao, setEmailCotacao] = useState('')
+  const [showEmailInput, setShowEmailInput] = useState(false)
+
+  const registrarCotacao = (tipo: 'whatsapp' | 'email', qtd: number) => {
+    const novo = { tipo, data: new Date().toISOString(), qtd }
+    const atualizado = [novo, ...historicoCotacoes].slice(0, 20)
+    setHistoricoCotacoes(atualizado)
+    localStorage.setItem(histKey, JSON.stringify(atualizado))
+  }
   const [recToast, setRecToast] = useState(false)
 
   const load = useCallback(async () => {
@@ -521,15 +537,36 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
   }
 
   // Item 9 – Cotação WhatsApp
+  const gerarTextoCotacao = (itensPendentes: ComprasListaItem[]) => {
+    const dataFmt = lista.data_compra ? fmtData(lista.data_compra) : new Date().toLocaleDateString('pt-BR')
+    const linhasItens = itensPendentes.map((it, idx) =>
+      `${idx + 1}. ${it.produto_nome} – ${it.quantidade} ${it.unidade || 'un'}${it.preco_estimado ? ` (est. ${fmtR$(it.preco_estimado)})` : ''}`
+    ).join('\n')
+    return `🛒 COTAÇÃO — ${lista.titulo}\nData: ${dataFmt}\n\nPrezado fornecedor, solicito cotação dos itens abaixo:\n\n${linhasItens}\n\nResponda com:\n• Produto | Marca | Preço unit. | Prazo | Forma pgto\n\nAmore Gestão`
+  }
+
   const abrirCotacaoWhatsApp = () => {
     const itensPendentes = itens.filter(i => i.status === 'pendente')
     if (itensPendentes.length === 0) return
     const dataFmt = lista.data_compra ? fmtData(lista.data_compra) : new Date().toLocaleDateString('pt-BR')
     const linhasItens = itensPendentes.map((it, idx) =>
-      `${idx + 1}. ${it.produto_nome} – ${it.quantidade} ${it.unidade || 'un'}`
+      `${idx + 1}. ${it.produto_nome} – ${it.quantidade} ${it.unidade || 'un'}${it.preco_estimado ? ` (est. ${fmtR$(it.preco_estimado)})` : ''}`
     ).join('\n')
-    const texto = `🛒 *COTAÇÃO — ${lista.titulo}*\nData: ${dataFmt}\n\nPrezado fornecedor, solicito cotação dos itens abaixo:\n\n${linhasItens}\n\nResponda com:\n• Produto | Marca | Preço unit. | Prazo | Forma pgto\n\n📞 Amore Gestão`
-    window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank')
+    const textoWA = `🛒 *COTAÇÃO — ${lista.titulo}*\nData: ${dataFmt}\n\nPrezado fornecedor, solicito cotação dos itens abaixo:\n\n${linhasItens}\n\nResponda com:\n• Produto | Marca | Preço unit. | Prazo | Forma pgto\n\n📞 Amore Gestão`
+    window.open('https://wa.me/?text=' + encodeURIComponent(textoWA), '_blank')
+    registrarCotacao('whatsapp', itensPendentes.length)
+  }
+
+  const abrirCotacaoEmail = () => {
+    const itensPendentes = itens.filter(i => i.status === 'pendente')
+    if (itensPendentes.length === 0) return
+    const assunto = encodeURIComponent(`Solicitação de Cotação — ${lista.titulo}`)
+    const corpo = encodeURIComponent(gerarTextoCotacao(itensPendentes))
+    const dest = emailCotacao.trim() ? encodeURIComponent(emailCotacao.trim()) : ''
+    window.open(`mailto:${dest}?subject=${assunto}&body=${corpo}`, '_blank')
+    registrarCotacao('email', itensPendentes.length)
+    setShowEmailInput(false)
+    setEmailCotacao('')
   }
 
   // Item 10 – Aprovação
@@ -619,13 +656,68 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
 
         {/* Ações */}
         <div style={{ display: 'flex', gap: 6, position: 'relative', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {/* Item 9 – Cotação WhatsApp */}
+          {/* Cotação WhatsApp + Email + Histórico */}
           {pendentes > 0 && (
-            <button className="btn bo bsm" onClick={abrirCotacaoWhatsApp}
-              title="Enviar cotação dos itens pendentes via WhatsApp"
-              style={{ color: '#16A34A', borderColor: '#16A34A' }}>
-              📱 Cotação WhatsApp
-            </button>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              <button className="btn bo bsm" onClick={abrirCotacaoWhatsApp}
+                title="Enviar cotação dos itens pendentes via WhatsApp"
+                style={{ color: '#16A34A', borderColor: '#16A34A' }}>
+                📱 WhatsApp
+              </button>
+              {showEmailInput ? (
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  <input
+                    className="inp" type="email" placeholder="email@fornecedor.com"
+                    value={emailCotacao} onChange={e => setEmailCotacao(e.target.value)}
+                    style={{ fontSize: 12, width: 200, padding: '4px 8px' }}
+                    onKeyDown={e => e.key === 'Enter' && abrirCotacaoEmail()}
+                    autoFocus
+                  />
+                  <button className="ib" onClick={abrirCotacaoEmail} style={{ color: 'var(--success)' }} title="Enviar"><Check size={13} /></button>
+                  <button className="ib" onClick={() => { setShowEmailInput(false); setEmailCotacao('') }} title="Cancelar"><X size={13} /></button>
+                </div>
+              ) : (
+                <button className="btn bo bsm" onClick={() => setShowEmailInput(true)}
+                  title="Enviar cotação via Email"
+                  style={{ color: '#2563EB', borderColor: '#2563EB' }}>
+                  <Mail size={12} /> Email
+                </button>
+              )}
+              {historicoCotacoes.length > 0 && (
+                <button className="btn bo bsm" onClick={() => setShowHistorico(o => !o)}
+                  title="Histórico de cotações enviadas"
+                  style={{ color: 'var(--muted)' }}>
+                  <Clock size={12} /> {historicoCotacoes.length}
+                </button>
+              )}
+            </div>
+          )}
+          {/* Painel histórico de cotações */}
+          {showHistorico && historicoCotacoes.length > 0 && (
+            <div style={{
+              position: 'absolute', right: 0, top: '110%', zIndex: 300,
+              background: 'var(--sidebar)', border: '1px solid var(--border)',
+              borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,.15)',
+              minWidth: 280, padding: '12px 14px',
+            }}>
+              <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 10, display: 'flex', justifyContent: 'space-between' }}>
+                <span>📋 Histórico de cotações</span>
+                <button className="mx" onClick={() => setShowHistorico(false)} style={{ fontSize: 12 }}>✕</button>
+              </div>
+              {historicoCotacoes.map((h, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
+                  <span style={{ fontSize: 16 }}>{h.tipo === 'whatsapp' ? '📱' : '📧'}</span>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>
+                      {h.tipo === 'whatsapp' ? 'WhatsApp' : 'Email'} — {h.qtd} item(ns)
+                    </div>
+                    <div style={{ color: 'var(--muted)', fontSize: 10 }}>
+                      {new Date(h.data).toLocaleString('pt-BR')}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
 
           {/* Item 3 – Confirmar Recebimento */}

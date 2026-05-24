@@ -854,30 +854,60 @@ function PainelAnexos({ lancamentoId, prestacaoId, userName, onFechar }: {
                   <button className="ib rd" onClick={() => remover(a.id)} title="Remover"><Trash2 size={12} /></button>
                 </div>
               ))}
-              {errMsg === '__RLS__' && (
-                <div style={{ marginTop: 12, padding: '12px 14px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, fontSize: 11.5, color: '#991B1B' }}>
-                  <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <AlertTriangle size={13} /> Política de segurança bloqueou o upload (RLS)
+              {(errMsg === '__RLS__' || errMsg === '__BUCKET__') && (
+                <div style={{ marginTop: 12, padding: '14px 16px', background: errMsg === '__RLS__' ? '#FEF2F2' : '#FEF3C7', border: `1px solid ${errMsg === '__RLS__' ? '#FECACA' : '#FDE68A'}`, borderRadius: 10, fontSize: 11.5, color: errMsg === '__RLS__' ? '#991B1B' : '#92400E' }}>
+                  <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertTriangle size={13} />
+                    {errMsg === '__RLS__' ? 'Política de segurança bloqueou o upload (RLS)' : 'Bucket de armazenamento não encontrado'}
                   </div>
-                  <p style={{ marginBottom: 8, lineHeight: 1.6 }}>
-                    O Supabase recusou o arquivo com erro <code style={{ background: '#FEE2E2', padding: '1px 4px', borderRadius: 3 }}>new row violates row-level security policy</code>.
+                  <p style={{ marginBottom: 10, lineHeight: 1.6, fontSize: 11 }}>
+                    {errMsg === '__RLS__'
+                      ? 'O Supabase bloqueou o upload por falta de política RLS no bucket fin-comprovantes.'
+                      : 'O bucket fin-comprovantes não existe no Supabase Storage. Siga os passos abaixo para criar e configurar.'}
                   </p>
-                  <p style={{ fontWeight: 700, marginBottom: 4 }}>Como corrigir no Supabase:</p>
-                  <ol style={{ paddingLeft: 16, lineHeight: 2 }}>
-                    <li>Acesse <strong>Storage → Buckets → fin-comprovantes → Policies</strong></li>
-                    <li>Crie uma política de INSERT com: <code style={{ background: '#FEE2E2', padding: '1px 4px', borderRadius: 3 }}>auth.role() = 'authenticated'</code></li>
-                    <li>Repita para SELECT, UPDATE e DELETE</li>
-                    <li>Alternativamente, marque o bucket como <strong>Public</strong> (apenas para ambientes de desenvolvimento)</li>
-                  </ol>
-                </div>
-              )}
-              {errMsg === '__BUCKET__' && (
-                <div style={{ marginTop: 12, padding: '12px 14px', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 8, fontSize: 11.5, color: '#92400E' }}>
-                  <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <AlertTriangle size={13} /> Bucket de armazenamento não encontrado
+                  <p style={{ fontWeight: 800, marginBottom: 6, fontSize: 11 }}>Execute este SQL no Supabase → SQL Editor:</p>
+                  <div style={{ position: 'relative' }}>
+                    <pre style={{
+                      background: '#1e1e1e', color: '#d4d4d4', padding: '12px 14px', borderRadius: 7,
+                      fontSize: 10.5, lineHeight: 1.7, overflowX: 'auto', margin: 0, whiteSpace: 'pre-wrap',
+                    }}>{`-- 1. Criar bucket (se não existir)
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('fin-comprovantes', 'fin-comprovantes', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- 2. Política de INSERT para usuários autenticados
+CREATE POLICY "Autenticados podem fazer upload"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (bucket_id = 'fin-comprovantes');
+
+-- 3. Política de SELECT
+CREATE POLICY "Autenticados podem visualizar"
+ON storage.objects FOR SELECT
+TO authenticated
+USING (bucket_id = 'fin-comprovantes');
+
+-- 4. Política de DELETE
+CREATE POLICY "Autenticados podem deletar"
+ON storage.objects FOR DELETE
+TO authenticated
+USING (bucket_id = 'fin-comprovantes');`}</pre>
+                    <button
+                      onClick={() => {
+                        const sql = `-- 1. Criar bucket (se não existir)\nINSERT INTO storage.buckets (id, name, public)\nVALUES ('fin-comprovantes', 'fin-comprovantes', false)\nON CONFLICT (id) DO NOTHING;\n\n-- 2. Política de INSERT\nCREATE POLICY "Autenticados podem fazer upload"\nON storage.objects FOR INSERT\nTO authenticated\nWITH CHECK (bucket_id = 'fin-comprovantes');\n\n-- 3. Política de SELECT\nCREATE POLICY "Autenticados podem visualizar"\nON storage.objects FOR SELECT\nTO authenticated\nUSING (bucket_id = 'fin-comprovantes');\n\n-- 4. Política de DELETE\nCREATE POLICY "Autenticados podem deletar"\nON storage.objects FOR DELETE\nTO authenticated\nUSING (bucket_id = 'fin-comprovantes');`
+                        navigator.clipboard.writeText(sql)
+                      }}
+                      style={{
+                        position: 'absolute', top: 8, right: 8,
+                        background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.2)',
+                        color: '#d4d4d4', borderRadius: 5, padding: '3px 8px', fontSize: 10, cursor: 'pointer', fontWeight: 700,
+                      }}
+                    >
+                      📋 Copiar SQL
+                    </button>
                   </div>
-                  <p style={{ lineHeight: 1.6 }}>
-                    Crie o bucket <strong>fin-comprovantes</strong> em <strong>Supabase → Storage → New bucket</strong> e configure as políticas de acesso.
+                  <p style={{ marginTop: 10, fontSize: 10.5, lineHeight: 1.6, opacity: 0.85 }}>
+                    Após executar, recarregue a página e tente o upload novamente.
                   </p>
                 </div>
               )}
