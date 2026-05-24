@@ -10,26 +10,58 @@ import type { Colaborador } from '../../types/database'
 
 const COLORS = ['#F59E0B', '#10B981', '#CD7C2F', '#6366F1', '#EF4444', '#6B1212', '#3B82F6', '#8B5CF6']
 
-function calcScore(c: Colaborador) {
-  const p1 = Math.min(20, c.meta_fat > 0 ? Math.round((c.fat / c.meta_fat) * 20) : 0)
-  const p2 = Math.min(20, c.meta_tick > 0 ? Math.round((c.tick / c.meta_tick) * 20) : 0)
-  const p3 = Math.min(20, Math.round(((c.aval - 1) / 4) * 20))
+// ── Configuração de pesos e critérios ────────────────────────
+
+interface GamConfig {
+  peso_fat: number    // pontos máx — faturamento
+  peso_tick: number   // pontos máx — ticket médio
+  peso_aval: number   // pontos máx — avaliação cliente
+  peso_tempo: number  // pontos máx — tempo atendimento
+  peso_pres: number   // pontos máx — presença
+  pen_erros_m: number // penalidade erros moderados
+  pen_erros_a: number // penalidade erros graves
+  lim_erros_m: number // limiar erros moderados (qtd)
+  lim_erros_a: number // limiar erros graves (qtd)
+  dias_uteis: number  // dias úteis no mês
+  lv_elite: number    // mínimo para Elite
+  lv_ouro: number     // mínimo para Ouro
+  lv_prata: number    // mínimo para Prata
+}
+
+const GAM_CFG_DEFAULT: GamConfig = {
+  peso_fat: 20, peso_tick: 20, peso_aval: 20, peso_tempo: 20, peso_pres: 15,
+  pen_erros_m: 5, pen_erros_a: 15, lim_erros_m: 3, lim_erros_a: 6,
+  dias_uteis: 26, lv_elite: 90, lv_ouro: 75, lv_prata: 60,
+}
+const GAM_CFG_KEY = 'amore_gam_config_v1'
+
+function loadGamCfg(): GamConfig {
+  try {
+    const s = localStorage.getItem(GAM_CFG_KEY)
+    return s ? { ...GAM_CFG_DEFAULT, ...JSON.parse(s) } : GAM_CFG_DEFAULT
+  } catch { return GAM_CFG_DEFAULT }
+}
+
+function calcScore(c: Colaborador, cfg: GamConfig = GAM_CFG_DEFAULT) {
+  const p1 = Math.min(cfg.peso_fat, c.meta_fat > 0 ? Math.round((c.fat / c.meta_fat) * cfg.peso_fat) : 0)
+  const p2 = Math.min(cfg.peso_tick, c.meta_tick > 0 ? Math.round((c.tick / c.meta_tick) * cfg.peso_tick) : 0)
+  const p3 = Math.min(cfg.peso_aval, Math.round(((c.aval - 1) / 4) * cfg.peso_aval))
   const mt = c.meta_tempo || 15
-  const p4 = Math.max(0, c.tempo <= mt ? 20 : c.tempo <= mt + 5 ? Math.round(20 - (c.tempo - mt) * 2) : 0)
-  const p5 = Math.min(15, Math.round((c.pres / 26) * 15))
-  const p6 = c.erros < 3 ? 0 : c.erros < 6 ? -5 : -15
+  const p4 = Math.max(0, c.tempo <= mt ? cfg.peso_tempo : c.tempo <= mt + 5 ? Math.round(cfg.peso_tempo - (c.tempo - mt) * (cfg.peso_tempo / 10)) : 0)
+  const p5 = Math.min(cfg.peso_pres, Math.round((c.pres / cfg.dias_uteis) * cfg.peso_pres))
+  const p6 = c.erros < cfg.lim_erros_m ? 0 : c.erros < cfg.lim_erros_a ? -cfg.pen_erros_m : -cfg.pen_erros_a
   const total = Math.max(0, p1 + p2 + p3 + p4 + p5 + p6)
-  const nivel = total >= 90 ? { lbl: 'Elite', cls: 'lv-el' } : total >= 75 ? { lbl: 'Ouro', cls: 'lv-ou' } : total >= 60 ? { lbl: 'Prata', cls: 'lv-pr' } : { lbl: 'Bronze', cls: 'lv-br' }
+  const nivel = total >= cfg.lv_elite ? { lbl: 'Elite', cls: 'lv-el' } : total >= cfg.lv_ouro ? { lbl: 'Ouro', cls: 'lv-ou' } : total >= cfg.lv_prata ? { lbl: 'Prata', cls: 'lv-pr' } : { lbl: 'Bronze', cls: 'lv-br' }
   return { total, nivel }
 }
 
-type Tab = 'colabs' | 'ranking' | 'recompensas' | 'calculadora'
+type Tab = 'colabs' | 'ranking' | 'recompensas' | 'calculadora' | 'configurar'
 
 interface Badge { id: string; emoji: string; label: string; desc: string; color: string }
 
-function calcBadges(c: Colaborador, rank: number): Badge[] {
+function calcBadges(c: Colaborador, rank: number, cfg: GamConfig = GAM_CFG_DEFAULT): Badge[] {
   const badges: Badge[] = []
-  const sc = calcScore(c)
+  const sc = calcScore(c, cfg)
   if (sc.total >= 90) badges.push({ id: 'elite', emoji: '🏆', label: 'Elite Performance', desc: `Score ${sc.total}/100`, color: '#D97706' })
   if (sc.total >= 75) badges.push({ id: 'ouro', emoji: '🥇', label: 'Nível Ouro', desc: 'Score ≥ 75 pts', color: '#F59E0B' })
   if (c.meta_fat > 0 && c.fat >= c.meta_fat) badges.push({ id: 'fat', emoji: '💰', label: 'Meta Faturamento', desc: `R$ ${c.fat.toLocaleString('pt-BR')}`, color: '#10B981' })
@@ -48,6 +80,7 @@ export default function GamificacaoPage() {
   const [colabs, setColabs] = useState<Colaborador[]>([])
   const [loadingColabs, setLoadingColabs] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [gamCfg, setGamCfg] = useState<GamConfig>(loadGamCfg)
   const [search, setSearch] = useState('')
   const searchDebounced = useDebounce(search, 280)
   const [filterSetor, setFilterSetor] = useState('')
@@ -69,7 +102,7 @@ export default function GamificacaoPage() {
     return (!q || c.nome.toLowerCase().includes(q)) && (!filterSetor || c.setor === filterSetor)
   })
 
-  const sorted = [...colabs].sort((a, b) => calcScore(b).total - calcScore(a).total)
+  const sorted = [...colabs].sort((a, b) => calcScore(b, gamCfg).total - calcScore(a, gamCfg).total)
 
   const openNew = () => {
     setEditColab(null)
@@ -129,7 +162,7 @@ export default function GamificacaoPage() {
       </div>
 
       <div className="tabs">
-        {([['colabs', '👥 Colaboradores'], ['ranking', '🏆 Ranking'], ['recompensas', '🎁 Recompensas'], ['calculadora', '🧮 Calculadora']] as [Tab, string][]).map(([id, lbl]) => (
+        {([['colabs', '👥 Colaboradores'], ['ranking', '🏆 Ranking'], ['recompensas', '🎁 Recompensas'], ['calculadora', '🧮 Calculadora'], ['configurar', '⚙️ Configurar']] as [Tab, string][]).map(([id, lbl]) => (
           <button key={id} className={`tab${tab === id ? ' active' : ''}`} onClick={() => setTab(id)}>{lbl}</button>
         ))}
       </div>
@@ -152,7 +185,7 @@ export default function GamificacaoPage() {
           {loadingColabs && <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><Loader2 size={22} className="spin" /></div>}
           <div className="cc-grid">
             {filtered.map(c => {
-              const sc = calcScore(c)
+              const sc = calcScore(c, gamCfg)
               return (
                 <div className="cc" key={c.id}>
                   <div style={{ display: 'flex', gap: 11, marginBottom: 10 }}>
@@ -206,7 +239,7 @@ export default function GamificacaoPage() {
             <>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 11, marginBottom: 14 }}>
                 {sorted.slice(0, 3).map((c, i) => {
-                  const sc = calcScore(c)
+                  const sc = calcScore(c, gamCfg)
                   const colors = ['var(--warning)', '#9CA3AF', '#CD7C2F']
                   const emojis = ['🥇', '🥈', '🥉']
                   return (
@@ -227,7 +260,7 @@ export default function GamificacaoPage() {
                 <div className="card-hd"><span className="card-tt">Ranking Completo</span><span className="badge bg-br">{sorted.length} colaboradores</span></div>
                 <div className="card-bd" style={{ padding: '7px 11px' }}>
                   {sorted.map((c, i) => {
-                    const sc = calcScore(c)
+                    const sc = calcScore(c, gamCfg)
                     return (
                       <div className="rk" key={c.id}>
                         <span className="rk-n" style={{ color: ['var(--warning)', '#9CA3AF', '#CD7C2F'][i] || 'var(--muted)' }}>{['🥇','🥈','🥉'][i] || i + 1}</span>
@@ -254,7 +287,7 @@ export default function GamificacaoPage() {
             const grouped: Record<string, Colaborador[]> = { salao: [], cozinha: [], balcao: [] }
             sorted.forEach(c => { if (grouped[c.setor]) grouped[c.setor].push(c) })
             const setorAvg = (members: Colaborador[]) =>
-              members.length === 0 ? 0 : Math.round(members.reduce((sum, c) => sum + calcScore(c).total, 0) / members.length)
+              members.length === 0 ? 0 : Math.round(members.reduce((sum, c) => sum + calcScore(c, gamCfg).total, 0) / members.length)
             const maxAvg = Math.max(...setorKeys.map(s => setorAvg(grouped[s])), 1)
             return (
               <>
@@ -269,7 +302,7 @@ export default function GamificacaoPage() {
                       </div>
                       <div className="card-bd" style={{ padding: '7px 11px' }}>
                         {members.map((c, i) => {
-                          const sc = calcScore(c)
+                          const sc = calcScore(c, gamCfg)
                           return (
                             <div className="rk" key={c.id}>
                               <span className="rk-n" style={{ color: ['var(--warning)', '#9CA3AF', '#CD7C2F'][i] || 'var(--muted)' }}>{['🥇','🥈','🥉'][i] || i + 1}</span>
@@ -333,7 +366,7 @@ export default function GamificacaoPage() {
           {/* Resumo de badges totais */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 16 }}>
             {[
-              { emoji: '🏆', label: 'Elite', count: sorted.filter(c => calcScore(c).total >= 90).length, color: '#D97706' },
+              { emoji: '🏆', label: 'Elite', count: sorted.filter(c => calcScore(c, gamCfg).total >= gamCfg.lv_elite).length, color: '#D97706' },
               { emoji: '💰', label: 'Meta Fat.', count: sorted.filter(c => c.meta_fat > 0 && c.fat >= c.meta_fat).length, color: '#10B981' },
               { emoji: '⭐', label: 'Aval. Máx', count: sorted.filter(c => c.aval >= 4.8).length, color: '#F59E0B' },
               { emoji: '✅', label: 'Zero Erros', count: sorted.filter(c => c.erros === 0).length, color: '#6366F1' },
@@ -349,8 +382,8 @@ export default function GamificacaoPage() {
           {/* Cards de colaboradores com badges */}
           <div className="cc-grid">
             {sorted.map((c, rank) => {
-              const badges = calcBadges(c, rank)
-              const sc = calcScore(c)
+              const badges = calcBadges(c, rank, gamCfg)
+              const sc = calcScore(c, gamCfg)
               return (
                 <div className="cc" key={c.id}>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10 }}>
@@ -396,6 +429,16 @@ export default function GamificacaoPage() {
 
       {tab === 'calculadora' && (
         <ScoreCalc />
+      )}
+
+      {tab === 'configurar' && (
+        <ConfigurarGamificacao
+          cfg={gamCfg}
+          onChange={newCfg => {
+            setGamCfg(newCfg)
+            localStorage.setItem(GAM_CFG_KEY, JSON.stringify(newCfg))
+          }}
+        />
       )}
 
       <Modal open={showForm} onClose={() => setShowForm(false)} title={editColab ? 'Editar Colaborador' : 'Novo Colaborador'} size="lg"
@@ -445,6 +488,150 @@ export default function GamificacaoPage() {
     </div>
   )
 
+}
+
+// ── Painel de Configuração ───────────────────────────────────
+
+function ConfigurarGamificacao({ cfg, onChange }: { cfg: GamConfig; onChange: (c: GamConfig) => void }) {
+  const { toast } = useToast()
+  const [form, setForm] = useState<GamConfig>({ ...cfg })
+
+  const set = (k: keyof GamConfig, v: number) => setForm(f => ({ ...f, [k]: v }))
+  const n = (v: string) => parseFloat(v) || 0
+
+  const somaPos = form.peso_fat + form.peso_tick + form.peso_aval + form.peso_tempo + form.peso_pres
+  const totalOk = somaPos === 100
+
+  const salvar = () => {
+    if (!totalOk) { toast('A soma dos pesos de pontuação deve ser 100 pts', 'error'); return }
+    if (form.lv_prata >= form.lv_ouro || form.lv_ouro >= form.lv_elite) {
+      toast('Limiares de nível devem ser: Prata < Ouro < Elite', 'error'); return
+    }
+    onChange(form)
+    toast('Configuração salva com sucesso!')
+  }
+
+  const resetar = () => {
+    setForm({ ...GAM_CFG_DEFAULT })
+    onChange(GAM_CFG_DEFAULT)
+    localStorage.removeItem(GAM_CFG_KEY)
+    toast('Configuração restaurada para o padrão!')
+  }
+
+  const Row = ({ label, k, step = 1, min = 0, max = 100 }: { label: string; k: keyof GamConfig; step?: number; min?: number; max?: number }) => (
+    <div className="fg">
+      <label className="fl" style={{ fontSize: 11 }}>{label}</label>
+      <input className="inp" type="number" step={step} min={min} max={max}
+        value={form[k]}
+        onChange={e => set(k, n(e.target.value))} />
+    </div>
+  )
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>⚙️ Configuração da Gamificação</h3>
+        <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--muted)' }}>
+          Ajuste os pesos de pontuação, critérios de penalidade e limiares de nível sem necessidade de programação.
+        </p>
+      </div>
+
+      {/* Alerta de soma */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '10px 14px', borderRadius: 9, marginBottom: 16,
+        background: totalOk ? '#D1FAE5' : '#FEF3C7',
+        color: totalOk ? '#065F46' : '#92400E',
+        fontSize: 12, fontWeight: 700,
+      }}>
+        <span style={{ fontSize: 16 }}>{totalOk ? '✅' : '⚠️'}</span>
+        Soma dos pesos de pontuação: <strong>{somaPos} / 100 pts</strong>
+        {!totalOk && <span style={{ fontWeight: 400, marginLeft: 4 }}>— ajuste para totalizar 100</span>}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+        {/* Pesos positivos */}
+        <div className="card" style={{ padding: '16px 18px' }}>
+          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ background: 'var(--bordo-bg)', color: 'var(--bordo)', borderRadius: 6, padding: '3px 8px', fontSize: 10 }}>PONTUAÇÃO</span>
+            Pesos de critérios positivos
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Row label="Faturamento (pts)" k="peso_fat" />
+            <Row label="Ticket Médio (pts)" k="peso_tick" />
+            <Row label="Avaliação Cliente (pts)" k="peso_aval" />
+            <Row label="Tempo Atendimento (pts)" k="peso_tempo" />
+            <Row label="Presença (pts)" k="peso_pres" />
+            <div className="fg" style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
+              <div style={{ fontSize: 11, color: somaPos === 100 ? 'var(--success)' : 'var(--warning)', fontWeight: 700 }}>
+                Total: {somaPos} / 100
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Penalidades */}
+        <div className="card" style={{ padding: '16px 18px' }}>
+          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ background: '#FEE2E2', color: 'var(--danger)', borderRadius: 6, padding: '3px 8px', fontSize: 10 }}>PENALIDADE</span>
+            Controle de erros
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Row label="Limiar erros moderado (qtd)" k="lim_erros_m" min={1} />
+            <Row label="Limiar erros grave (qtd)" k="lim_erros_a" min={1} />
+            <Row label="Penalidade moderada (pts)" k="pen_erros_m" min={0} max={50} />
+            <Row label="Penalidade grave (pts)" k="pen_erros_a" min={0} max={50} />
+          </div>
+          <div style={{ marginTop: 10, fontSize: 11, color: 'var(--muted)', background: 'var(--bg)', padding: '8px 10px', borderRadius: 7 }}>
+            &lt; {form.lim_erros_m} erros: sem penalidade<br/>
+            {form.lim_erros_m}–{form.lim_erros_a - 1} erros: −{form.pen_erros_m} pts<br/>
+            ≥ {form.lim_erros_a} erros: −{form.pen_erros_a} pts
+          </div>
+        </div>
+
+        {/* Dias úteis */}
+        <div className="card" style={{ padding: '16px 18px' }}>
+          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ background: '#EDE9FE', color: '#7C3AED', borderRadius: 6, padding: '3px 8px', fontSize: 10 }}>CALENDÁRIO</span>
+            Referência do mês
+          </div>
+          <Row label="Dias úteis no mês (padrão 26)" k="dias_uteis" min={20} max={31} />
+        </div>
+
+        {/* Limiares de nível */}
+        <div className="card" style={{ padding: '16px 18px' }}>
+          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ background: '#FEF3C7', color: '#92400E', borderRadius: 6, padding: '3px 8px', fontSize: 10 }}>NÍVEIS</span>
+            Limiares de nível
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            <div className="fg">
+              <label className="fl" style={{ fontSize: 11, color: '#9CA3AF' }}>🥉 Prata ≥</label>
+              <input className="inp" type="number" min={0} max={99} value={form.lv_prata} onChange={e => set('lv_prata', n(e.target.value))} />
+            </div>
+            <div className="fg">
+              <label className="fl" style={{ fontSize: 11, color: '#F59E0B' }}>🥇 Ouro ≥</label>
+              <input className="inp" type="number" min={0} max={99} value={form.lv_ouro} onChange={e => set('lv_ouro', n(e.target.value))} />
+            </div>
+            <div className="fg">
+              <label className="fl" style={{ fontSize: 11, color: '#D97706' }}>🏆 Elite ≥</label>
+              <input className="inp" type="number" min={0} max={100} value={form.lv_elite} onChange={e => set('lv_elite', n(e.target.value))} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Ações */}
+      <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
+        <button className="btn bo" onClick={resetar} style={{ fontSize: 12 }}>
+          ↺ Restaurar padrão
+        </button>
+        <button className="btn bp" onClick={salvar} style={{ fontSize: 12 }}>
+          ✓ Salvar configuração
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function ScoreCalc() {

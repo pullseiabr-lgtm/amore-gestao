@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useDebounce } from '../../hooks/useDebounce'
-import { Search, Package, TrendingDown, History, ArrowLeftRight, ClipboardList, Download, Plus, ChevronRight, CheckCircle, XCircle, Calculator, Loader, Trash2, AlertTriangle } from 'lucide-react'
+import { Search, Package, TrendingDown, History, ArrowLeftRight, ClipboardList, Download, Plus, ChevronRight, CheckCircle, XCircle, Calculator, Loader, Trash2, AlertTriangle, Mail, MessageCircle, Bell } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLoja } from '../../contexts/LojaContext'
 import { useToast } from '../../hooks/useToast'
@@ -932,12 +932,176 @@ function TabContagem({ loja }: { loja: string }) {
   )
 }
 
+// ── Tab Alertas Críticos ────────────────────────────────────
+
+function TabAlertas({ loja }: { loja: string }) {
+  const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filtro, setFiltro] = useState<'critico' | 'repor' | 'todos'>('critico')
+
+  useEffect(() => {
+    setLoading(true)
+    fetchEstoqueProdutos(loja)
+      .then(p => setProdutos(p.filter(x => x.ativo)))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [loja])
+
+  const criticos = produtos.filter(p => nivelStatus(p) === 'Crítico')
+  const repor    = produtos.filter(p => nivelStatus(p) === 'Repor')
+  const alerta   = filtro === 'critico' ? criticos : filtro === 'repor' ? repor : [...criticos, ...repor]
+
+  const gerarMsgWpp = (lista: EstoqueProduto[]) => {
+    const linhas = lista.map(p => {
+      const sug = Math.max(0, p.nivel_ideal - p.nivel_atual)
+      return `• ${p.nome} | Atual: ${p.nivel_atual} | Mínimo: ${p.nivel_minimo} | Sugestão reposição: ${sug.toFixed(1)} | Preço unit.: R$ ${p.preco_unitario.toFixed(2)}`
+    }).join('\n')
+    return encodeURIComponent(`*ALERTA DE ESTOQUE CRÍTICO — ${loja}*\n\n${linhas}\n\nData: ${new Date().toLocaleDateString('pt-BR')}`)
+  }
+
+  const gerarMsgEmail = (lista: EstoqueProduto[]) => {
+    const linhas = lista.map(p => {
+      const sug = Math.max(0, p.nivel_ideal - p.nivel_atual)
+      return `- ${p.nome}: atual ${p.nivel_atual} / mínimo ${p.nivel_minimo} / sugestão reposição ${sug.toFixed(1)} un. / R$ ${p.preco_unitario.toFixed(2)} unit.`
+    }).join('%0D%0A')
+    return `mailto:?subject=Alerta%20Estoque%20Crítico%20—%20${encodeURIComponent(loja)}&body=Olá,%0D%0A%0D%0AOs%20seguintes%20produtos%20estão%20com%20estoque%20crítico:%0D%0A%0D%0A${linhas}%0D%0A%0D%0AData:%20${new Date().toLocaleDateString('pt-BR')}`
+  }
+
+  if (loading) return <div className="empty"><Loader size={22} className="spin" /></div>
+
+  return (
+    <div>
+      {/* Resumo */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 16 }}>
+        <div className="card" style={{ padding: '14px 16px', borderLeft: '3px solid var(--danger)', cursor: 'pointer', background: filtro === 'critico' ? '#FEF2F2' : undefined }}
+          onClick={() => setFiltro(filtro === 'critico' ? 'todos' : 'critico')}>
+          <div style={{ fontSize: 11, color: 'var(--muted)' }}>🔴 Estoque Crítico</div>
+          <div style={{ fontWeight: 900, fontSize: 26, color: 'var(--danger)' }}>{criticos.length}</div>
+          <div style={{ fontSize: 10, color: 'var(--muted)' }}>abaixo do mínimo</div>
+        </div>
+        <div className="card" style={{ padding: '14px 16px', borderLeft: '3px solid var(--warning)', cursor: 'pointer', background: filtro === 'repor' ? '#FFFBEB' : undefined }}
+          onClick={() => setFiltro(filtro === 'repor' ? 'todos' : 'repor')}>
+          <div style={{ fontSize: 11, color: 'var(--muted)' }}>🟡 Reposição Sugerida</div>
+          <div style={{ fontWeight: 900, fontSize: 26, color: 'var(--warning)' }}>{repor.length}</div>
+          <div style={{ fontSize: 10, color: 'var(--muted)' }}>abaixo de 150% do mínimo</div>
+        </div>
+        <div className="card" style={{ padding: '14px 16px', borderLeft: '3px solid var(--success)' }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)' }}>✅ Estoque Ok/Ideal</div>
+          <div style={{ fontWeight: 900, fontSize: 26, color: 'var(--success)' }}>
+            {produtos.filter(p => nivelStatus(p) === 'Ok' || nivelStatus(p) === 'Ideal').length}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--muted)' }}>dentro do esperado</div>
+        </div>
+      </div>
+
+      {/* Ações em massa */}
+      {alerta.length > 0 && (
+        <div className="card" style={{ marginBottom: 16, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <strong style={{ fontSize: 13 }}>
+              {filtro === 'critico' ? '🔴 Produtos Críticos' : filtro === 'repor' ? '🟡 Produtos para Repor' : '⚠️ Todos com Alerta'}
+            </strong>
+            <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>{alerta.length} produto(s)</span>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <a
+              href={`https://wa.me/?text=${gerarMsgWpp(alerta)}`}
+              target="_blank" rel="noopener noreferrer"
+              style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#25D366', color: '#fff', padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
+              <MessageCircle size={13} /> WhatsApp
+            </a>
+            <a
+              href={gerarMsgEmail(alerta)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'var(--bordo)', color: '#fff', padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
+              <Mail size={13} /> E-mail
+            </a>
+          </div>
+        </div>
+      )}
+
+      {alerta.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', padding: '48px 24px' }}>
+          <CheckCircle size={36} style={{ color: 'var(--success)', opacity: .5, display: 'block', margin: '0 auto 12px' }} />
+          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
+            {filtro === 'todos' ? 'Nenhum produto em alerta!' : `Nenhum produto na categoria "${filtro === 'critico' ? 'Crítico' : 'Repor'}"`}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Estoque está dentro dos parâmetros esperados.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: 12 }}>
+          {alerta.map(p => {
+            const st = nivelStatus(p)
+            const sug = Math.max(0, p.nivel_ideal - p.nivel_atual)
+            const pct = p.nivel_ideal > 0 ? Math.min(100, (p.nivel_atual / p.nivel_ideal) * 100) : 0
+            const cor = st === 'Crítico' ? 'var(--danger)' : 'var(--warning)'
+            const bg  = st === 'Crítico' ? '#FEF2F2' : '#FFFBEB'
+            return (
+              <div key={p.id} className="card" style={{ padding: '14px 16px', borderLeft: `3px solid ${cor}`, background: bg }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 13 }}>{p.nome}</div>
+                    <div style={{ fontSize: 10, color: 'var(--muted)' }}>{p.categoria} · {p.gramatura}</div>
+                  </div>
+                  <span className={`badge ${NIVEL_BADGE[st]}`}>{st}</span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: 11, marginBottom: 10 }}>
+                  <div style={{ background: '#fff', padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)' }}>
+                    <div style={{ color: 'var(--muted)' }}>Atual</div>
+                    <div style={{ fontWeight: 800, fontSize: 16, color: cor }}>{p.nivel_atual}</div>
+                  </div>
+                  <div style={{ background: '#fff', padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)' }}>
+                    <div style={{ color: 'var(--muted)' }}>Mínimo</div>
+                    <div style={{ fontWeight: 800, fontSize: 16 }}>{p.nivel_minimo}</div>
+                  </div>
+                  <div style={{ background: '#fff', padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)' }}>
+                    <div style={{ color: 'var(--muted)' }}>Ideal</div>
+                    <div style={{ fontWeight: 800, fontSize: 16, color: 'var(--success)' }}>{p.nivel_ideal}</div>
+                  </div>
+                  <div style={{ background: '#fff', padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)' }}>
+                    <div style={{ color: 'var(--muted)' }}>Sugestão repor</div>
+                    <div style={{ fontWeight: 800, fontSize: 16, color: 'var(--bordo)' }}>{sug.toFixed(1)}</div>
+                  </div>
+                </div>
+
+                <div style={{ background: '#fff', borderRadius: 5, height: 7, marginBottom: 8 }}>
+                  <div style={{ background: cor, height: 7, borderRadius: 5, width: `${pct}%`, transition: 'width .3s' }} />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                    R$ {p.preco_unitario.toFixed(2)} / un.
+                    {sug > 0 && <span style={{ color: 'var(--bordo)', fontWeight: 700, marginLeft: 6 }}>
+                      Custo est.: R$ {(sug * p.preco_unitario).toFixed(2)}
+                    </span>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 5 }}>
+                    <a href={`https://wa.me/?text=${gerarMsgWpp([p])}`} target="_blank" rel="noopener noreferrer"
+                      style={{ background: '#25D366', color: '#fff', padding: '4px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <MessageCircle size={10} /> WPP
+                    </a>
+                    <a href={gerarMsgEmail([p])}
+                      style={{ background: 'var(--bordo)', color: '#fff', padding: '4px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <Mail size={10} /> Email
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── EstoquePage ────────────────────────────────────────────
 
-type EstoqueTab = 'lista' | 'cmv' | 'historico' | 'movimentacoes' | 'contagem' | 'perdas'
+type EstoqueTab = 'lista' | 'cmv' | 'historico' | 'movimentacoes' | 'contagem' | 'perdas' | 'alertas'
 
 const TABS: { id: EstoqueTab; label: string; icon: React.ReactNode }[] = [
   { id: 'lista', label: 'Lista', icon: <Package size={12} /> },
+  { id: 'alertas', label: 'Alertas', icon: <Bell size={12} /> },
   { id: 'cmv', label: 'CMV', icon: <TrendingDown size={12} /> },
   { id: 'historico', label: 'Histórico', icon: <History size={12} /> },
   { id: 'movimentacoes', label: 'Movimentações', icon: <ArrowLeftRight size={12} /> },
@@ -960,6 +1124,7 @@ export default function EstoquePage() {
       </div>
 
       {tab === 'lista' && <TabLista loja={loja} />}
+      {tab === 'alertas' && <TabAlertas loja={loja} />}
       {tab === 'cmv' && <TabCMV loja={loja} />}
       {tab === 'historico' && <TabHistorico loja={loja} />}
       {tab === 'movimentacoes' && <TabMovimentacoes loja={loja} />}

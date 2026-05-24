@@ -183,6 +183,8 @@ type ProdutoForm = {
   ativo: boolean
   estoque_atual: string
   estoque_minimo: string
+  ultimo_preco_compra: string
+  fornecedor_padrao_nome: string
 }
 
 const FORM_EMPTY: ProdutoForm = {
@@ -191,6 +193,7 @@ const FORM_EMPTY: ProdutoForm = {
   gramatura:'', unidade:'Unidade',
   marca_id:'', marca_nome:'',
   ativo: true, estoque_atual:'0', estoque_minimo:'0',
+  ultimo_preco_compra:'', fornecedor_padrao_nome:'',
 }
 
 function FormProduto({ loja, produto, onSalvo, onVoltar }: {
@@ -215,6 +218,8 @@ function FormProduto({ loja, produto, onSalvo, onVoltar }: {
       ativo: produto.ativo,
       estoque_atual: produto.estoque_atual.toString(),
       estoque_minimo: produto.estoque_minimo.toString(),
+      ultimo_preco_compra: produto.ultimo_preco_compra?.toString() ?? '',
+      fornecedor_padrao_nome: produto.fornecedor_padrao_nome ?? '',
     } : FORM_EMPTY
   )
   const [erros, setErros] = useState<Partial<ProdutoForm>>({})
@@ -260,6 +265,7 @@ function FormProduto({ loja, produto, onSalvo, onVoltar }: {
     if (!validar()) { toast('Preencha os campos obrigatórios', 'err'); return }
     setSaving(true)
     try {
+      const novoPreco = form.ultimo_preco_compra ? parseFloat(form.ultimo_preco_compra) : null
       const payload = {
         loja,
         codigo_interno: form.codigo_interno.trim().toUpperCase(),
@@ -281,6 +287,14 @@ function FormProduto({ loja, produto, onSalvo, onVoltar }: {
         aprovado_por: produto?.aprovado_por ?? null,
         aprovacao_at: produto?.aprovacao_at ?? null,
         created_by: produto ? produto.created_by : (user?.name ?? null),
+        // Dados de compra
+        ultimo_preco_compra: novoPreco,
+        preco_anterior_compra: novoPreco && produto?.ultimo_preco_compra && novoPreco !== produto.ultimo_preco_compra
+          ? produto.ultimo_preco_compra
+          : (produto?.preco_anterior_compra ?? null),
+        data_ultima_compra: produto?.data_ultima_compra ?? null,
+        fornecedor_padrao_id: produto?.fornecedor_padrao_id ?? null,
+        fornecedor_padrao_nome: form.fornecedor_padrao_nome.trim() || null,
       }
       const saved = produto
         ? await updateProduto(produto.id, payload)
@@ -434,7 +448,7 @@ function FormProduto({ loja, produto, onSalvo, onVoltar }: {
       )}
 
       {tab === 'estoque' && (
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, maxWidth:600 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, maxWidth:700 }}>
           <div className="fg">
             <label className="fl">Estoque Atual</label>
             <input className="inp" type="number" min={0} step={0.01}
@@ -450,6 +464,33 @@ function FormProduto({ loja, produto, onSalvo, onVoltar }: {
           {parseFloat(form.estoque_atual||'0') <= parseFloat(form.estoque_minimo||'0') && parseFloat(form.estoque_minimo||'0') > 0 && (
             <div style={{ gridColumn:'1/-1', display:'flex', alignItems:'center', gap:8, padding:'10px 14px', background:'#FEF3C7', borderRadius:8, color:'#92400E', fontSize:12, fontWeight:700 }}>
               <AlertTriangle size={14}/> Estoque abaixo do mínimo — produto crítico
+            </div>
+          )}
+          {/* Separador */}
+          <div style={{ gridColumn:'1/-1', borderTop:'1px solid var(--border)', paddingTop:16, marginTop:4 }}>
+            <span style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:1 }}>Dados de Compra</span>
+          </div>
+          <div className="fg">
+            <label className="fl">Último Preço de Compra <span style={{ fontSize:10, color:'var(--muted)' }}>(R$)</span></label>
+            <input className="inp" type="number" min={0} step={0.01} placeholder="0,00"
+              value={form.ultimo_preco_compra}
+              onChange={e => set('ultimo_preco_compra', e.target.value)} />
+            {produto?.preco_anterior_compra && (
+              <span style={{ fontSize:10, color:'var(--muted)', marginTop:2, display:'block' }}>
+                Preço anterior: R$ {produto.preco_anterior_compra.toFixed(2).replace('.',',')}
+              </span>
+            )}
+          </div>
+          <div className="fg">
+            <label className="fl">Fornecedor Padrão</label>
+            <input className="inp" placeholder="Nome do fornecedor habitual..."
+              value={form.fornecedor_padrao_nome}
+              onChange={e => set('fornecedor_padrao_nome', e.target.value)} />
+          </div>
+          {produto?.data_ultima_compra && (
+            <div style={{ gridColumn:'1/-1', fontSize:11, color:'var(--muted)', display:'flex', alignItems:'center', gap:6, padding:'8px 12px', background:'var(--bg)', borderRadius:8 }}>
+              <Package size={12}/> Última compra registrada em: <strong>{fmtData(produto.data_ultima_compra)}</strong>
+              {produto.fornecedor_padrao_nome && <> — Fornecedor: <strong>{produto.fornecedor_padrao_nome}</strong></>}
             </div>
           )}
         </div>
@@ -804,10 +845,11 @@ export default function ProdutosPage({ initialView }: { initialView?: 'lista'|'c
                     <th>Produto</th>
                     <th>Categoria</th>
                     <th>Marca</th>
-                    <th>Gramatura</th>
                     <th>Estoque</th>
+                    <th>Últ. Preço</th>
+                    <th>Últ. Compra</th>
+                    <th>Variação</th>
                     <th>Status</th>
-                    <th>Atualizado</th>
                     <th style={{ width:90 }}></th>
                   </tr>
                 </thead>
@@ -838,9 +880,6 @@ export default function ProdutosPage({ initialView }: { initialView?: 'lista'|'c
                             : <span style={{ color:'var(--muted)', fontSize:11 }}>—</span>}
                         </td>
                         <td style={{ fontSize:11, color:'var(--muted)' }}>{p.marca_nome || '—'}</td>
-                        <td style={{ fontSize:12, fontWeight:600 }}>
-                          {p.gramatura ? `${p.gramatura} ${p.unidade}` : p.unidade}
-                        </td>
                         <td>
                           <div style={{ display:'flex', alignItems:'center', gap:4 }}>
                             {critico && <AlertTriangle size={11} style={{ color:'var(--warning)', flexShrink:0 }}/>}
@@ -852,6 +891,26 @@ export default function ProdutosPage({ initialView }: { initialView?: 'lista'|'c
                             )}
                           </div>
                         </td>
+                        <td style={{ fontSize:12, fontWeight:700, color: p.ultimo_preco_compra ? 'var(--bordo)' : 'var(--muted)' }}>
+                          {p.ultimo_preco_compra ? `R$ ${p.ultimo_preco_compra.toFixed(2).replace('.', ',')}` : '—'}
+                        </td>
+                        <td style={{ fontSize:10, color:'var(--muted)' }}>
+                          {p.data_ultima_compra ? fmtData(p.data_ultima_compra) : '—'}
+                        </td>
+                        <td>
+                          {p.ultimo_preco_compra && p.preco_anterior_compra ? (
+                            (() => {
+                              const diff = p.ultimo_preco_compra - p.preco_anterior_compra
+                              const pct = ((diff / p.preco_anterior_compra) * 100).toFixed(1)
+                              const up = diff > 0
+                              return (
+                                <span style={{ fontSize:10, fontWeight:700, color: up ? 'var(--danger)' : 'var(--success)', background: up ? '#FEE2E2' : '#D1FAE5', padding:'2px 6px', borderRadius:8 }}>
+                                  {up ? '▲' : '▼'} {Math.abs(parseFloat(pct))}%
+                                </span>
+                              )
+                            })()
+                          ) : <span style={{ color:'var(--muted)', fontSize:11 }}>—</span>}
+                        </td>
                         <td>
                           <Badge
                             label={p.ativo ? 'Ativo' : 'Inativo'}
@@ -859,7 +918,6 @@ export default function ProdutosPage({ initialView }: { initialView?: 'lista'|'c
                             bg={p.ativo ? '#D1FAE5' : '#F3F4F6'}
                           />
                         </td>
-                        <td style={{ fontSize:10, color:'var(--muted)' }}>{fmtData(p.updated_at)}</td>
                         <td onClick={e => e.stopPropagation()}>
                           <div className="ab" style={{ gap:3 }}>
                             <button className="ib" onClick={() => abrirEditar(p)} title="Editar"><Edit3 size={12}/></button>

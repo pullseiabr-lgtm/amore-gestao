@@ -463,42 +463,35 @@ function ModalLancamento({ prestacaoId, lancamento, onSalvo, onFechar }: {
     _parsedItens ?? [{ id: '1', desc: '', qtd: '1', unidade: 'un', peso: '', valor_unit: '', valor_total: '' }]
   )
 
-  const calcTotalNF = (itens: NfItem[]) => {
-    const soma = itens.reduce((acc, it) => acc + (parseFloat(it.valor_total) || 0), 0)
+  // Sincroniza total do NF com form.valor via effect (evita setState aninhado)
+  useEffect(() => {
+    if (!modoItens) return
+    const soma = nfItens.reduce((acc, it) => acc + (parseFloat(it.valor_total) || 0), 0)
     setForm(f => ({ ...f, valor: parseFloat(soma.toFixed(2)) }))
-    setErrs(x => ({ ...x, valor: '' }))
-  }
+  }, [nfItens, modoItens])
 
   const addNfItem = () => {
-    setNfItens(prev => {
-      const next = [...prev, { id: Date.now().toString(), desc: '', qtd: '1', unidade: 'un', peso: '', valor_unit: '', valor_total: '' }]
-      return next
-    })
+    setNfItens(prev => [
+      ...prev,
+      { id: Date.now().toString(), desc: '', qtd: '1', unidade: 'un', peso: '', valor_unit: '', valor_total: '' }
+    ])
   }
 
   const removeNfItem = (id: string) => {
-    setNfItens(prev => {
-      const next = prev.filter(it => it.id !== id)
-      calcTotalNF(next)
-      return next
-    })
+    setNfItens(prev => prev.filter(it => it.id !== id))
   }
 
   const updateNfItem = (id: string, field: keyof NfItem, value: string) => {
-    setNfItens(prev => {
-      const next = prev.map(it => {
-        if (it.id !== id) return it
-        const updated = { ...it, [field]: value }
-        if (field === 'qtd' || field === 'valor_unit') {
-          const q = parseFloat(field === 'qtd' ? value : it.qtd) || 0
-          const v = parseFloat(field === 'valor_unit' ? value : it.valor_unit) || 0
-          updated.valor_total = (q * v).toFixed(2)
-        }
-        return updated
-      })
-      calcTotalNF(next)
-      return next
-    })
+    setNfItens(prev => prev.map(it => {
+      if (it.id !== id) return it
+      const updated = { ...it, [field]: value }
+      if (field === 'qtd' || field === 'valor_unit') {
+        const q = parseFloat(field === 'qtd' ? value : it.qtd) || 0
+        const v = parseFloat(field === 'valor_unit' ? value : it.valor_unit) || 0
+        updated.valor_total = (q * v).toFixed(2)
+      }
+      return updated
+    }))
   }
 
   const salvar = async () => {
@@ -561,7 +554,10 @@ function ModalLancamento({ prestacaoId, lancamento, onSalvo, onFechar }: {
                   <input type="checkbox" checked={modoItens} onChange={e => {
                     setModoItens(e.target.checked)
                     if (!e.target.checked) { setForm(f => ({ ...f, valor: 0 })) }
-                    else { calcTotalNF(nfItens) }
+                    else {
+                      const soma = nfItens.reduce((acc, it) => acc + (parseFloat(it.valor_total) || 0), 0)
+                      setForm(f => ({ ...f, valor: parseFloat(soma.toFixed(2)) }))
+                    }
                   }} style={{ accentColor: 'var(--primary)', width: 14, height: 14 }} />
                   📋 Inserir por item (Nota Fiscal detalhada)
                 </label>
@@ -967,6 +963,21 @@ function DetalheView({ prestacao: inicial, credito, user, companyName, onVoltar,
   const isAuditor = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager'
   const userName = user?.name ?? 'Sistema'
 
+  // Busca dados sem escrever no banco — usado no mount
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [l, g] = await Promise.all([
+        fetchFinLancamentos(prestacao.id),
+        fetchFinAuditoriaLog(prestacao.id),
+      ])
+      setLancamentos(l)
+      setLogs(g)
+    } catch {}
+    setLoading(false)
+  }, [prestacao.id])
+
+  // Busca dados E recalcula totais no banco — usado após save/delete
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -976,7 +987,6 @@ function DetalheView({ prestacao: inicial, credito, user, companyName, onVoltar,
       ])
       setLancamentos(l)
       setLogs(g)
-      // Recalcular totais
       const utilizado = l.reduce((s, x) => s + x.valor, 0)
       const p = await updateFinPrestacao(prestacao.id, {
         valor_utilizado: utilizado,
@@ -987,7 +997,7 @@ function DetalheView({ prestacao: inicial, credito, user, companyName, onVoltar,
     setLoading(false)
   }, [prestacao.id])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { loadData() }, [loadData])
 
   const handleSalvoLanc = async (l: FinLancamento) => {
     setLancamentos(prev => {
@@ -1190,6 +1200,42 @@ function DetalheView({ prestacao: inicial, credito, user, companyName, onVoltar,
       )}
 
       {/* Lançamentos */}
+      {/* Resumo por categoria */}
+      {lancamentos.length > 0 && (() => {
+        const byCat: Record<string, number> = {}
+        lancamentos.forEach(l => { byCat[l.categoria || 'Outros'] = (byCat[l.categoria || 'Outros'] || 0) + l.valor })
+        const entries = Object.entries(byCat).sort((a, b) => b[1] - a[1])
+        const maxCat = entries[0]?.[1] || 1
+        return (
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div className="card-hd">
+              <span className="card-tt">📂 Gastos por Categoria</span>
+              <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>
+                {entries.length} categoria(s) · {fmtR$(totalLanc)}
+              </span>
+            </div>
+            <div style={{ padding: '10px 16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px,1fr))', gap: 10 }}>
+              {entries.map(([cat, val]) => {
+                const pct = Math.round((val / totalLanc) * 100)
+                const barW = Math.round((val / maxCat) * 100)
+                return (
+                  <div key={cat} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700 }}>{cat}</span>
+                      <span style={{ fontSize: 10, color: 'var(--muted)' }}>{pct}%</span>
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--bordo)', marginBottom: 5 }}>{fmtR$(val)}</div>
+                    <div style={{ background: 'var(--border)', borderRadius: 4, height: 5 }}>
+                      <div style={{ background: 'var(--bordo)', height: 5, borderRadius: 4, width: `${barW}%` }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
+
       <div className="card">
         <div className="card-hd">
           <span className="card-tt"><Receipt size={13} style={{ display: 'inline', marginRight: 4 }} />Lançamentos da Prestação</span>

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Plus, Search, ShoppingBag, Star, Clock, TrendingUp, Loader2, X } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { Plus, Search, ShoppingBag, Star, Clock, TrendingUp, Loader2, X, BarChart2, Users } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useToast } from '../../hooks/useToast'
@@ -55,11 +55,14 @@ const EMPTY_FORM = {
   pagamento: 'pix' as Venda['pagamento'], avaliacao: 5, tempo_min: 15, obs: '',
 }
 
+type PageTab = 'vendas' | 'dashboard'
+
 export default function VendasPage() {
   const { user, can, isDemoMode } = useAuth()
   const { theme } = useTheme()
   const { toast } = useToast()
 
+  const [pageTab, setPageTab] = useState<PageTab>('vendas')
   const [vendas, setVendas] = useState<Venda[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -98,6 +101,66 @@ export default function VendasPage() {
   const fatHoje = today.reduce((s, v) => s + Number(v.total), 0)
   const ticketMedio = today.length ? fatHoje / today.length : 0
   const avalMedia = today.filter(v => v.avaliacao).reduce((s, v, _, a) => s + (v.avaliacao || 0) / a.length, 0)
+
+  // ── Dashboard analytics ──────────────────────────────────────
+  const dash = useMemo(() => {
+    const now = new Date()
+    const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay())
+    startOfWeek.setHours(0, 0, 0, 0)
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+    const week  = vendas.filter(v => new Date(v.created_at) >= startOfWeek)
+    const month = vendas.filter(v => new Date(v.created_at) >= startOfMonth)
+
+    const fatSemana = week.reduce((s, v) => s + Number(v.total), 0)
+    const fatMes    = month.reduce((s, v) => s + Number(v.total), 0)
+
+    // Ranking por colaborador (mês)
+    const byColab: Record<string, { fat: number; cnt: number; aval: number[]; loja: string }> = {}
+    month.forEach(v => {
+      if (!byColab[v.colaborador]) byColab[v.colaborador] = { fat: 0, cnt: 0, aval: [], loja: v.loja }
+      byColab[v.colaborador].fat += Number(v.total)
+      byColab[v.colaborador].cnt += 1
+      if (v.avaliacao) byColab[v.colaborador].aval.push(v.avaliacao)
+    })
+    const rankingColab = Object.entries(byColab)
+      .map(([nome, d]) => ({
+        nome, loja: d.loja, fat: d.fat, cnt: d.cnt,
+        ticket: d.cnt ? d.fat / d.cnt : 0,
+        aval: d.aval.length ? d.aval.reduce((a, b) => a + b, 0) / d.aval.length : 0,
+      }))
+      .sort((a, b) => b.fat - a.fat)
+
+    // Ranking por canal (mês)
+    const byCanal: Record<string, number> = {}
+    month.forEach(v => { byCanal[v.canal] = (byCanal[v.canal] || 0) + Number(v.total) })
+
+    // Prato mais vendido (mês)
+    const pratoCnt: Record<string, number> = {}
+    month.forEach(v => {
+      if (Array.isArray(v.itens)) {
+        v.itens.forEach((it: VendaItem) => {
+          pratoCnt[it.nome] = (pratoCnt[it.nome] || 0) + it.qtd
+        })
+      }
+    })
+    const pratos = Object.entries(pratoCnt).sort((a, b) => b[1] - a[1])
+
+    // Comparativo últimos 7 dias
+    const dias7: { label: string; fat: number; cnt: number }[] = []
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now); d.setDate(now.getDate() - i); d.setHours(0, 0, 0, 0)
+      const next = new Date(d); next.setDate(d.getDate() + 1)
+      const dvs = vendas.filter(v => { const t = new Date(v.created_at); return t >= d && t < next })
+      dias7.push({
+        label: i === 0 ? 'Hoje' : d.toLocaleDateString('pt-BR', { weekday: 'short' }),
+        fat: dvs.reduce((s, v) => s + Number(v.total), 0),
+        cnt: dvs.length,
+      })
+    }
+
+    return { fatSemana, fatMes, rankingColab, byCanal, pratos, dias7, week, month }
+  }, [vendas])
 
   const pushItem = (nome: string, preco: number, qtd: number) => {
     if (!nome || !preco || qtd < 1) return
@@ -159,6 +222,21 @@ export default function VendasPage() {
 
   return (
     <div>
+      {/* Tabs */}
+      <div className="tabs" style={{ marginBottom: 16 }}>
+        <button className={`tab${pageTab === 'vendas' ? ' active' : ''}`} onClick={() => setPageTab('vendas')}>
+          <ShoppingBag size={12} style={{ marginRight: 5 }}/>Registro de Vendas
+        </button>
+        <button className={`tab${pageTab === 'dashboard' ? ' active' : ''}`} onClick={() => setPageTab('dashboard')}>
+          <BarChart2 size={12} style={{ marginRight: 5 }}/>📊 Dashboard Gerencial
+        </button>
+      </div>
+
+      {pageTab === 'dashboard' && (
+        <DashboardVendas dash={dash} today={today} fatHoje={fatHoje} ticketMedio={ticketMedio} loading={loading} />
+      )}
+
+      {pageTab === 'vendas' && <>
       {/* KPIs */}
       <div className="kpi-grid" style={{ marginBottom: 14 }}>
         {[
@@ -359,6 +437,171 @@ export default function VendasPage() {
           </div>
         </Modal>
       )}
+      </>}
+    </div>
+  )
+}
+
+// ── Dashboard Gerencial de Vendas ─────────────────────────────
+
+function DashboardVendas({ dash, today, fatHoje, ticketMedio, loading }: {
+  dash: {
+    fatSemana: number; fatMes: number
+    rankingColab: { nome: string; loja: string; fat: number; cnt: number; ticket: number; aval: number }[]
+    byCanal: Record<string, number>
+    pratos: [string, number][]
+    dias7: { label: string; fat: number; cnt: number }[]
+    week: unknown[]; month: unknown[]
+  }
+  today: { total: number | string }[]
+  fatHoje: number
+  ticketMedio: number
+  loading: boolean
+}) {
+  const ticketMes = (dash.month as {total:number}[]).length ? dash.fatMes / (dash.month as {total:number}[]).length : 0
+
+  const maxDia7 = Math.max(...dash.dias7.map(d => d.fat), 1)
+  const maxColab = dash.rankingColab[0]?.fat || 1
+  const canalEntries = Object.entries(dash.byCanal).sort((a, b) => b[1] - a[1])
+  const totalCanal = canalEntries.reduce((s, [, v]) => s + v, 0)
+
+  if (loading) return (
+    <div style={{ textAlign: 'center', padding: 48, color: 'var(--muted)' }}>
+      <Loader2 size={24} className="spin" style={{ margin: '0 auto 8px', display: 'block' }}/>
+      Carregando dados...
+    </div>
+  )
+
+  return (
+    <div>
+      {/* KPIs principais */}
+      <div className="kpi-grid" style={{ marginBottom: 16 }}>
+        {[
+          { lbl: 'Faturamento Hoje', val: fmtBRL(fatHoje), sub: `${today.length} comandas`, col: 'var(--bordo)', icon: '💰' },
+          { lbl: 'Faturamento Semana', val: fmtBRL(dash.fatSemana), sub: `${(dash.week as unknown[]).length} comandas`, col: 'var(--success)', icon: '📈' },
+          { lbl: 'Faturamento Mês', val: fmtBRL(dash.fatMes), sub: `${(dash.month as unknown[]).length} comandas`, col: '#6366F1', icon: '📊' },
+          { lbl: 'Ticket Médio Hoje', val: fmtBRL(ticketMedio), sub: 'por comanda', col: 'var(--blue)', icon: '🎯' },
+          { lbl: 'Ticket Médio Mês', val: fmtBRL(ticketMes), sub: `meta R$ 45,00`, col: '#8B5CF6', icon: '🏷️' },
+        ].map((k, i) => (
+          <div className="kpi" key={i}>
+            <div className="kpi-ac" style={{ background: k.col }}/>
+            <div className="kpi-lbl">{k.icon} {k.lbl}</div>
+            <div className="kpi-val" style={{ fontSize: 20 }}>{k.val}</div>
+            <div className="kpi-sub">{k.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        {/* Comparativo 7 dias */}
+        <div className="card">
+          <div className="card-hd">
+            <span className="card-tt">📅 Últimos 7 dias</span>
+            <span className="badge bg-br">Faturamento diário</span>
+          </div>
+          <div style={{ padding: '12px 16px' }}>
+            {dash.dias7.map((d, i) => (
+              <div key={i} style={{ marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, fontSize: 11 }}>
+                  <span style={{ fontWeight: d.label === 'Hoje' ? 800 : 500, color: d.label === 'Hoje' ? 'var(--bordo)' : 'var(--text)' }}>
+                    {d.label}
+                  </span>
+                  <span style={{ fontWeight: 700, color: 'var(--success)' }}>{fmtBRL(d.fat)}</span>
+                </div>
+                <div style={{ background: 'var(--border)', borderRadius: 4, height: 6 }}>
+                  <div style={{ background: d.label === 'Hoje' ? 'var(--bordo)' : 'var(--success)', height: 6, borderRadius: 4, width: `${(d.fat / maxDia7) * 100}%`, minWidth: d.fat > 0 ? 4 : 0 }}/>
+                </div>
+                {d.cnt > 0 && <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 1 }}>{d.cnt} comanda(s)</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Vendas por canal */}
+        <div className="card">
+          <div className="card-hd">
+            <span className="card-tt">📡 Por Canal</span>
+            <span className="badge bg-br">mês atual</span>
+          </div>
+          <div style={{ padding: '12px 16px' }}>
+            {canalEntries.length === 0
+              ? <div style={{ color: 'var(--muted)', fontSize: 12, textAlign: 'center', padding: 20 }}>Sem dados</div>
+              : canalEntries.map(([canal, fat]) => {
+                  const pct = Math.round((fat / totalCanal) * 100)
+                  return (
+                    <div key={canal} style={{ marginBottom: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, fontSize: 11 }}>
+                        <span style={{ fontWeight: 600 }}>{canalLabel(canal)}</span>
+                        <span style={{ fontWeight: 700, color: 'var(--bordo)' }}>{fmtBRL(fat)} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>({pct}%)</span></span>
+                      </div>
+                      <div style={{ background: 'var(--border)', borderRadius: 4, height: 8 }}>
+                        <div style={{ background: 'var(--bordo)', height: 8, borderRadius: 4, width: `${pct}%`, opacity: 0.8 }}/>
+                      </div>
+                    </div>
+                  )
+                })}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        {/* Ranking por colaborador */}
+        <div className="card">
+          <div className="card-hd">
+            <span className="card-tt"><Users size={13} style={{ display:'inline', marginRight:4 }}/>Ranking Garçons / Colaboradores</span>
+            <span className="badge bg-br">mês atual</span>
+          </div>
+          {dash.rankingColab.length === 0
+            ? <div style={{ color: 'var(--muted)', fontSize: 12, textAlign: 'center', padding: 24 }}>Sem dados</div>
+            : (
+              <div style={{ padding: '8px 16px' }}>
+                {dash.rankingColab.slice(0, 8).map((c, i) => (
+                  <div key={c.nome} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: i < Math.min(7, dash.rankingColab.length - 1) ? '1px solid var(--border)' : 'none' }}>
+                    <span style={{ fontSize: 14, minWidth: 20, textAlign: 'center', color: i === 0 ? '#F59E0B' : i === 1 ? '#9CA3AF' : i === 2 ? '#CD7C2F' : 'var(--muted)' }}>
+                      {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.nome}</div>
+                      <div style={{ background: 'var(--border)', borderRadius: 3, height: 4, marginTop: 3 }}>
+                        <div style={{ background: i === 0 ? 'var(--bordo)' : 'var(--success)', height: 4, borderRadius: 3, width: `${(c.fat / maxColab) * 100}%` }}/>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: 12, color: 'var(--success)' }}>{fmtBRL(c.fat)}</div>
+                      <div style={{ fontSize: 9, color: 'var(--muted)' }}>{c.cnt} venda(s) · ticket {fmtBRL(c.ticket)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+        </div>
+
+        {/* Pratos mais vendidos */}
+        <div className="card">
+          <div className="card-hd">
+            <span className="card-tt">🍽️ Pratos Mais Vendidos</span>
+            <span className="badge bg-br">mês atual</span>
+          </div>
+          {dash.pratos.length === 0
+            ? <div style={{ color: 'var(--muted)', fontSize: 12, textAlign: 'center', padding: 24 }}>Sem dados</div>
+            : (
+              <div style={{ padding: '8px 16px' }}>
+                {dash.pratos.slice(0, 8).map(([nome, cnt], i) => (
+                  <div key={nome} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: i < 7 ? '1px solid var(--border)' : 'none' }}>
+                    <span style={{ fontSize: 12, color: 'var(--muted)', minWidth: 18 }}>{i + 1}.</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>{nome}</div>
+                      <div style={{ background: 'var(--border)', borderRadius: 3, height: 4, marginTop: 3 }}>
+                        <div style={{ background: '#8B5CF6', height: 4, borderRadius: 3, width: `${(cnt / (dash.pratos[0]?.[1] || 1)) * 100}%` }}/>
+                      </div>
+                    </div>
+                    <span style={{ fontWeight: 800, fontSize: 13, color: 'var(--bordo)', minWidth: 30, textAlign: 'right' }}>{cnt}x</span>
+                  </div>
+                ))}
+              </div>
+            )}
+        </div>
+      </div>
     </div>
   )
 }

@@ -545,6 +545,11 @@ export interface Produto {
   ativo: boolean
   estoque_atual: number
   estoque_minimo: number
+  ultimo_preco_compra: number | null
+  preco_anterior_compra: number | null
+  data_ultima_compra: string | null
+  fornecedor_padrao_id: string | null
+  fornecedor_padrao_nome: string | null
   status_homologacao: HomologacaoStatus
   feedback_teste: string | null
   data_inicio_teste: string | null
