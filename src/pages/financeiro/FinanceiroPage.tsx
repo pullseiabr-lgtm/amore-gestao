@@ -918,9 +918,12 @@ USING (bucket_id = 'fin-comprovantes');`}</pre>
           )}
         </div>
         <div className="mft">
-          <input ref={fileRef} type="file" accept="image/*,.pdf" style={{ display: 'none' }}
+          <input ref={fileRef} type="file"
+            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.xml,.txt"
+            style={{ display: 'none' }}
             onChange={e => { if (e.target.files?.[0]) upload(e.target.files[0]); e.target.value = '' }} />
-          <button className="btn bo bsm" onClick={() => fileRef.current?.click()} disabled={uploading}>
+          <button className="btn bo bsm" onClick={() => fileRef.current?.click()} disabled={uploading}
+            title="Aceita: imagens, PDF, Word, Excel, XML (NF-e), TXT">
             {uploading ? <Loader size={11} className="spin" /> : <Upload size={11} />} Anexar comprovante
           </button>
           <button className="btn bp" onClick={onFechar}>Fechar</button>

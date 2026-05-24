@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useDebounce } from '../../hooks/useDebounce'
 import {
   Plus, Search, Trash2, ChevronLeft, Loader, CheckCircle2,
@@ -470,6 +470,21 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
   const [showHistorico, setShowHistorico] = useState(false)
   const [emailCotacao, setEmailCotacao] = useState('')
   const [showEmailInput, setShowEmailInput] = useState(false)
+  const historicoRef = useRef<HTMLDivElement>(null)
+
+  // Fechar histórico ao clicar fora (click-outside)
+  useEffect(() => {
+    if (!showHistorico) return
+    const handler = (e: MouseEvent) => {
+      if (historicoRef.current && !historicoRef.current.contains(e.target as Node)) {
+        setShowHistorico(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showHistorico])
+
+  // pendentesCount calculado junto com os demais (ver abaixo), efeito movido após declaração
 
   const registrarCotacao = (tipo: 'whatsapp' | 'email', qtd: number) => {
     const novo = { tipo, data: new Date().toISOString(), qtd }
@@ -613,6 +628,15 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
   const cancelados = itens.filter(i => i.status === 'cancelado').length
   const todosComprados = itens.length > 0 && itens.every(i => i.status === 'comprado' || i.status === 'cancelado')
 
+  // Fechar email input / histórico quando não há mais pendentes
+  useEffect(() => {
+    if (pendentes === 0) {
+      setShowHistorico(false)
+      setShowEmailInput(false)
+      setEmailCotacao('')
+    }
+  }, [pendentes])
+
   const filtrados = itens
     .filter(i => filtroStatus === 'todos' || i.status === filtroStatus)
     .filter(i => !filtroCateg || i.categoria === filtroCateg)
@@ -670,7 +694,10 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
                     className="inp" type="email" placeholder="email@fornecedor.com"
                     value={emailCotacao} onChange={e => setEmailCotacao(e.target.value)}
                     style={{ fontSize: 12, width: 200, padding: '4px 8px' }}
-                    onKeyDown={e => e.key === 'Enter' && abrirCotacaoEmail()}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') abrirCotacaoEmail()
+                      if (e.key === 'Escape') { setShowEmailInput(false); setEmailCotacao('') }
+                    }}
                     autoFocus
                   />
                   <button className="ib" onClick={abrirCotacaoEmail} style={{ color: 'var(--success)' }} title="Enviar"><Check size={13} /></button>
@@ -694,7 +721,7 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
           )}
           {/* Painel histórico de cotações */}
           {showHistorico && historicoCotacoes.length > 0 && (
-            <div style={{
+            <div ref={historicoRef} style={{
               position: 'absolute', right: 0, top: '110%', zIndex: 300,
               background: 'var(--sidebar)', border: '1px solid var(--border)',
               borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,.15)',

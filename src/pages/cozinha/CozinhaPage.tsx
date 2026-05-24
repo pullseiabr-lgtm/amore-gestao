@@ -1048,6 +1048,7 @@ function SolicitacoesTab({
   const [editItem, setEditItem] = useState<SolicitacaoItem | null>(null)
   const [filtroTipo, setFiltroTipo] = useState<SolicitacaoItem['tipo'] | ''>('')
   const [filtroUrgencia, setFiltroUrgencia] = useState<SolicitacaoItem['urgencia'] | ''>('')
+  const [formErros, setFormErros] = useState<{ item?: string; responsavel?: string }>({})
 
   const EMPTY_FORM = {
     tipo: 'produto' as SolicitacaoItem['tipo'],
@@ -1064,17 +1065,22 @@ function SolicitacoesTab({
   const openNovo = () => {
     setEditItem(null)
     setForm(EMPTY_FORM)
+    setFormErros({})
     setShowModal(true)
   }
 
   const openEdit = (s: SolicitacaoItem) => {
     setEditItem(s)
     setForm({ tipo: s.tipo, item: s.item, quantidade: s.quantidade, urgencia: s.urgencia, responsavel: s.responsavel, setor: s.setor, status: s.status, obs: s.obs })
+    setFormErros({})
     setShowModal(true)
   }
 
   const salvar = () => {
-    if (!form.item.trim()) return
+    const erros: { item?: string; responsavel?: string } = {}
+    if (!form.item.trim()) erros.item = 'Informe o item solicitado'
+    if (!form.responsavel.trim()) erros.responsavel = 'Informe o responsável'
+    if (Object.keys(erros).length) { setFormErros(erros); return }
     const now = new Date()
     const data = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}`
     if (editItem) {
@@ -1251,15 +1257,28 @@ function SolicitacoesTab({
                 </div>
                 <div className="fg" style={{ gridColumn: '1/-1' }}>
                   <label className="fl">Item / Descrição <span className="rq">*</span></label>
-                  <input className="inp" value={form.item} onChange={e => setForm(f => ({ ...f, item: e.target.value }))} placeholder="Ex: Polpa de açaí, Liquidificador industrial..." autoFocus />
+                  <input
+                    className={`inp${formErros.item ? ' err' : ''}`}
+                    value={form.item}
+                    onChange={e => { setForm(f => ({ ...f, item: e.target.value })); setFormErros(v => ({ ...v, item: undefined })) }}
+                    placeholder="Ex: Polpa de açaí, Liquidificador industrial..."
+                    autoFocus
+                  />
+                  {formErros.item && <span style={{ fontSize: 11, color: 'var(--danger)' }}>{formErros.item}</span>}
                 </div>
                 <div className="fg">
                   <label className="fl">Quantidade</label>
                   <input className="inp" value={form.quantidade} onChange={e => setForm(f => ({ ...f, quantidade: e.target.value }))} placeholder="Ex: 50 kg, 2 un" />
                 </div>
                 <div className="fg">
-                  <label className="fl">Responsável</label>
-                  <input className="inp" value={form.responsavel} onChange={e => setForm(f => ({ ...f, responsavel: e.target.value }))} placeholder="Nome do solicitante" />
+                  <label className="fl">Responsável <span className="rq">*</span></label>
+                  <input
+                    className={`inp${formErros.responsavel ? ' err' : ''}`}
+                    value={form.responsavel}
+                    onChange={e => { setForm(f => ({ ...f, responsavel: e.target.value })); setFormErros(v => ({ ...v, responsavel: undefined })) }}
+                    placeholder="Nome do solicitante"
+                  />
+                  {formErros.responsavel && <span style={{ fontSize: 11, color: 'var(--danger)' }}>{formErros.responsavel}</span>}
                 </div>
                 <div className="fg">
                   <label className="fl">Setor</label>
