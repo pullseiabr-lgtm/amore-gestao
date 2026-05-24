@@ -1,8 +1,8 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import {
-  Plus, Trash2, Check, X, Search, ShoppingCart,
+  Trash2, Check, X, Search, ShoppingCart,
   DollarSign, CreditCard, Smartphone, Banknote,
-  ArrowLeft, Printer, RefreshCw, Lock, Unlock,
+  ArrowLeft, Printer, Lock, Unlock,
   TrendingUp, Package, History, AlertTriangle,
 } from 'lucide-react'
 
