@@ -31,3 +31,7 @@ supabase/
 *.njsproj
 *.sln
 *.sw?
+
+# Vercel — manter project.json no git para deploy consistente
+.vercel/*
+!.vercel/project.json
