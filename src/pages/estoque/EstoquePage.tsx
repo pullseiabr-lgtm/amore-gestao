@@ -1,12 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useDebounce } from '../../hooks/useDebounce'
-import { Search, Package, TrendingDown, History, ArrowLeftRight, ClipboardList, Download, Plus, ChevronRight, CheckCircle, XCircle, Calculator, Loader, Trash2, AlertTriangle, Mail, MessageCircle, Bell } from 'lucide-react'
+import { Search, Package, TrendingDown, History, ArrowLeftRight, ClipboardList, Download, Plus, ChevronRight, CheckCircle, XCircle, Calculator, Loader, Trash2, AlertTriangle, Mail, MessageCircle, Bell, BarChart2, RefreshCw, TrendingUp, User } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLoja } from '../../contexts/LojaContext'
 import { useToast } from '../../hooks/useToast'
 import {
   fetchEstoqueProdutos, insertEstoqueProduto, updateEstoqueProduto,
-  fetchEstoqueMovimentacoes, fetchEstoqueMovimentacoesDias, insertEstoqueMovimentacao,
+  fetchEstoqueMovimentacoes, fetchEstoqueMovimentacoesDias, fetchEstoqueMovimentacoesRange, insertEstoqueMovimentacao,
   fetchEstoqueContagens, insertEstoqueContagem,
   fetchEstoqueContagemItens, upsertEstoqueContagemItens,
   fetchEstoquePerdas, insertEstoquePerda, deleteEstoquePerda,
@@ -652,7 +652,7 @@ function TabMovimentacoes({ loja }: { loja: string }) {
   const [loadingMovs, setLoadingMovs] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
-  const [form, setForm] = useState({ produto_id: '', produto_nome: '', tipo: 'entrada' as 'entrada' | 'saida', quantidade: '', motivo: '' })
+  const [form, setForm] = useState({ produto_id: '', produto_nome: '', tipo: 'entrada' as 'entrada' | 'saida', quantidade: '', motivo: '', setor_destino: '', tipo_saida: '', responsavel: '' })
   const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
@@ -680,6 +680,14 @@ function TabMovimentacoes({ loja }: { loja: string }) {
     try {
       const prod = produtos.find(p => p.id === form.produto_id)
       const qtd = parseFloat(form.quantidade)
+      // Constrói motivo estruturado para saídas
+      const motivoParts: string[] = []
+      if (form.tipo === 'saida') {
+        if (form.tipo_saida) motivoParts.push(form.tipo_saida)
+        if (form.setor_destino) motivoParts.push(`Setor: ${form.setor_destino}`)
+        if (form.responsavel) motivoParts.push(`Resp: ${form.responsavel}`)
+      }
+      if (form.motivo) motivoParts.push(form.motivo)
       await insertEstoqueMovimentacao({
         loja: loja === 'Todas as Lojas' ? (lojas[0] || loja) : loja,
         produto_id: form.produto_id || null,
@@ -687,8 +695,8 @@ function TabMovimentacoes({ loja }: { loja: string }) {
         tipo: form.tipo,
         quantidade: qtd,
         unidade: prod?.gramatura.replace('(s)', '') || 'un',
-        motivo: form.motivo || null,
-        created_by: user?.name || null,
+        motivo: motivoParts.join(' | ') || null,
+        created_by: form.tipo === 'saida' && form.responsavel ? form.responsavel : (user?.name || null),
       })
       // Atualiza nivel_atual do produto no Supabase
       if (prod && form.produto_id) {
@@ -697,7 +705,7 @@ function TabMovimentacoes({ loja }: { loja: string }) {
         await updateEstoqueProduto(form.produto_id, { nivel_atual: novoNivel })
       }
       setShowModal(false)
-      setForm({ produto_id: '', produto_nome: '', tipo: 'entrada', quantidade: '', motivo: '' })
+      setForm({ produto_id: '', produto_nome: '', tipo: 'entrada', quantidade: '', motivo: '', setor_destino: '', tipo_saida: '', responsavel: '' })
       toast('Movimentação registrada!')
       await load()
       if (diaSel) await selecionarDia(diaSel)
@@ -793,8 +801,38 @@ function TabMovimentacoes({ loja }: { loja: string }) {
                   <input type="number" className="inp" value={form.quantidade} onChange={e => setForm(f => ({ ...f, quantidade: e.target.value }))} />
                 </div>
               </div>
-              <div className="fg"><label className="fl">Motivo</label>
-                <input className="inp" placeholder="Ex: Compra, Uso produção, Perda..." value={form.motivo} onChange={e => setForm(f => ({ ...f, motivo: e.target.value }))} />
+              {/* Campos extras para saída */}
+              {form.tipo === 'saida' && (
+                <>
+                  <div className="g2">
+                    <div className="fg">
+                      <label className="fl">Tipo de saída</label>
+                      <select className="sel" value={form.tipo_saida} onChange={e => setForm(f => ({ ...f, tipo_saida: e.target.value }))}>
+                        <option value="">Selecione...</option>
+                        <option value="Consumo interno">Consumo interno</option>
+                        <option value="Produção">Produção</option>
+                        <option value="Transferência">Transferência</option>
+                        <option value="Descarte">Descarte</option>
+                        <option value="Vencimento">Vencimento</option>
+                        <option value="Outros">Outros</option>
+                      </select>
+                    </div>
+                    <div className="fg">
+                      <label className="fl">Setor de destino</label>
+                      <select className="sel" value={form.setor_destino} onChange={e => setForm(f => ({ ...f, setor_destino: e.target.value }))}>
+                        <option value="">Selecione...</option>
+                        {['Cozinha','Salão','Balcão','Bar','Administrativo','Limpeza','Manutenção','Outro'].map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="fg">
+                    <label className="fl"><User size={11} style={{ display:'inline', marginRight:3 }} />Responsável pela retirada</label>
+                    <input className="inp" placeholder="Nome de quem retirou..." value={form.responsavel} onChange={e => setForm(f => ({ ...f, responsavel: e.target.value }))} />
+                  </div>
+                </>
+              )}
+              <div className="fg"><label className="fl">Observação / Motivo</label>
+                <input className="inp" placeholder={form.tipo === 'saida' ? 'Ex: Reposição do turno, pedido especial...' : 'Ex: Compra, reposição automática...'} value={form.motivo} onChange={e => setForm(f => ({ ...f, motivo: e.target.value }))} />
               </div>
             </div>
             <div className="mft">
@@ -1095,13 +1133,274 @@ function TabAlertas({ loja }: { loja: string }) {
   )
 }
 
+// ── Tab Análise de Consumo ─────────────────────────────────
+
+function TabAnalise({ loja }: { loja: string }) {
+  const [periodo, setPeriodo] = useState<30 | 60 | 90 | 180>(30)
+  const [movs, setMovs] = useState<EstoqueMovimentacao[]>([])
+  const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const fim = new Date().toISOString().slice(0, 10)
+    const ini = new Date(Date.now() - periodo * 86400000).toISOString().slice(0, 10)
+    try {
+      const [m, p] = await Promise.all([
+        fetchEstoqueMovimentacoesRange(loja, ini, fim),
+        fetchEstoqueProdutos(loja),
+      ])
+      setMovs(m); setProdutos(p)
+    } catch {}
+    setLoading(false)
+  }, [loja, periodo])
+
+  useEffect(() => { load() }, [load])
+
+  const saidasPorProduto = useMemo(() => {
+    const map: Record<string, { nome: string; qtdTotal: number; valorTotal: number }> = {}
+    movs.filter(m => m.tipo === 'saida').forEach(m => {
+      const prod = produtos.find(p => p.id === m.produto_id || p.nome.toLowerCase() === m.produto_nome.toLowerCase())
+      const preco = prod?.preco_unitario ?? 0
+      if (!map[m.produto_nome]) map[m.produto_nome] = { nome: m.produto_nome, qtdTotal: 0, valorTotal: 0 }
+      map[m.produto_nome].qtdTotal += m.quantidade
+      map[m.produto_nome].valorTotal += m.quantidade * preco
+    })
+    return Object.values(map).sort((a, b) => b.valorTotal - a.valorTotal)
+  }, [movs, produtos])
+
+  const curvaABC = useMemo(() => {
+    const total = saidasPorProduto.reduce((s, p) => s + p.valorTotal, 0)
+    let acum = 0
+    return saidasPorProduto.map(p => {
+      acum += p.valorTotal
+      const pctAcum = total > 0 ? (acum / total) * 100 : 0
+      const classe = pctAcum <= 80 ? 'A' : pctAcum <= 95 ? 'B' : 'C'
+      return { ...p, classe, pctAcum, pctInd: total > 0 ? (p.valorTotal / total) * 100 : 0 }
+    })
+  }, [saidasPorProduto])
+
+  const produtosParados = useMemo(() => {
+    const comSaida = new Set(movs.filter(m => m.tipo === 'saida').map(m => m.produto_nome.toLowerCase()))
+    return produtos.filter(p => !comSaida.has(p.nome.toLowerCase()) && p.nivel_atual > 0)
+  }, [movs, produtos])
+
+  const previsoes = useMemo(() => {
+    return curvaABC.slice(0, 15).map(p => {
+      const prod = produtos.find(x => x.nome.toLowerCase() === p.nome.toLowerCase())
+      const consumoDiario = p.qtdTotal / periodo
+      const diasRestantes = prod && consumoDiario > 0 ? Math.floor(prod.nivel_atual / consumoDiario) : null
+      return { ...p, prod, consumoDiario, diasRestantes }
+    }).filter(p => p.prod)
+  }, [curvaABC, produtos, periodo])
+
+  const totalEntradas = movs.filter(m => m.tipo === 'entrada').reduce((s, m) => s + m.quantidade, 0)
+  const totalSaidas = movs.filter(m => m.tipo === 'saida').reduce((s, m) => s + m.quantidade, 0)
+  const maxSaida = saidasPorProduto[0]?.valorTotal ?? 1
+
+  const COR_ABC: Record<string, string> = { A: '#7B1835', B: '#2563EB', C: '#64748B' }
+
+  if (loading) return <div className="empty"><Loader size={28} className="spin" /></div>
+
+  return (
+    <div>
+      {/* Header + Período */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:8 }}>
+        <div>
+          <div className="sec-tt">Análise de Consumo</div>
+          <div className="sec-sub">Curva ABC, previsão de reposição e produtos parados</div>
+        </div>
+        <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+          {([30,60,90,180] as const).map(p => (
+            <button key={p} onClick={() => setPeriodo(p)}
+              className={`btn bsm ${periodo === p ? 'bp' : 'bo'}`} style={{ minWidth:50 }}>
+              {p}d
+            </button>
+          ))}
+          <button className="btn bo bsm" onClick={load}><RefreshCw size={11} /></button>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div className="kpi-grid" style={{ marginBottom:16 }}>
+        <div className="kpi">
+          <div className="kpi-ac" style={{ background:'var(--bordo)' }} />
+          <div className="kpi-lbl">Movimentações</div>
+          <div className="kpi-val">{movs.length}</div>
+          <div className="kpi-sub">nos últimos {periodo} dias</div>
+        </div>
+        <div className="kpi">
+          <div className="kpi-ac" style={{ background:'var(--success)' }} />
+          <div className="kpi-lbl">Total Entradas</div>
+          <div className="kpi-val" style={{ color:'var(--success)', fontSize:20 }}>{totalEntradas.toLocaleString('pt-BR')}</div>
+          <div className="kpi-sub">unidades recebidas</div>
+        </div>
+        <div className="kpi">
+          <div className="kpi-ac" style={{ background:'var(--danger)' }} />
+          <div className="kpi-lbl">Total Saídas</div>
+          <div className="kpi-val" style={{ color:'var(--danger)', fontSize:20 }}>{totalSaidas.toLocaleString('pt-BR')}</div>
+          <div className="kpi-sub">unidades consumidas</div>
+        </div>
+        <div className="kpi">
+          <div className="kpi-ac" style={{ background:'var(--warning)' }} />
+          <div className="kpi-lbl">Produtos Parados</div>
+          <div className="kpi-val" style={{ color: produtosParados.length > 0 ? 'var(--warning)' : 'var(--muted)' }}>{produtosParados.length}</div>
+          <div className="kpi-sub">sem saída no período</div>
+        </div>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
+        {/* Top Consumo */}
+        <div className="card">
+          <div className="card-hd">
+            <span className="card-tt"><TrendingUp size={13} style={{ display:'inline', marginRight:4 }} />Top Produtos por Consumo</span>
+          </div>
+          {saidasPorProduto.length === 0 ? (
+            <div className="empty" style={{ padding:'24px 0', fontSize:12 }}>Nenhuma saída registrada</div>
+          ) : (
+            <div style={{ padding:'4px 0' }}>
+              {saidasPorProduto.slice(0, 10).map((p, i) => (
+                <div key={p.nome} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 14px', borderBottom: i < 9 ? '1px solid var(--border)' : 'none' }}>
+                  <div style={{ width:22, height:22, borderRadius:6, background:'var(--bordo-bg)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:800, color:'var(--bordo)', flexShrink:0 }}>{i+1}</div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:12, fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.nome}</div>
+                    <div style={{ height:4, background:'var(--border)', borderRadius:99, marginTop:3, overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${Math.min(100,(p.valorTotal/maxSaida)*100)}%`, background:'var(--bordo)', borderRadius:99 }} />
+                    </div>
+                  </div>
+                  <div style={{ textAlign:'right', flexShrink:0 }}>
+                    <div style={{ fontSize:11, fontWeight:700 }}>{p.qtdTotal.toLocaleString('pt-BR')}</div>
+                    {p.valorTotal > 0 && <div style={{ fontSize:10, color:'var(--muted)' }}>R$ {p.valorTotal.toFixed(0)}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Produtos Parados */}
+        <div className="card">
+          <div className="card-hd">
+            <span className="card-tt"><AlertTriangle size={13} style={{ display:'inline', marginRight:4, color:'var(--warning)' }} />Produtos Parados ({produtosParados.length})</span>
+          </div>
+          {produtosParados.length === 0 ? (
+            <div className="empty" style={{ padding:'24px 0', fontSize:12, color:'var(--success)' }}>✅ Nenhum produto parado</div>
+          ) : (
+            <div style={{ padding:'4px 0', maxHeight:280, overflowY:'auto' }}>
+              {produtosParados.map((p, i) => (
+                <div key={p.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 14px', borderBottom: i < produtosParados.length-1 ? '1px solid var(--border)' : 'none' }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:12, fontWeight:700 }}>{p.nome}</div>
+                    <div style={{ fontSize:10, color:'var(--muted)' }}>{p.categoria} — estoque: {p.nivel_atual}</div>
+                  </div>
+                  {p.preco_unitario > 0 && (
+                    <div style={{ fontSize:11, color:'var(--warning)', fontWeight:700, flexShrink:0 }}>
+                      R$ {(p.nivel_atual * p.preco_unitario).toFixed(0)} parado
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Curva ABC */}
+      {curvaABC.length > 0 && (
+        <div className="card" style={{ marginBottom:16 }}>
+          <div className="card-hd">
+            <span className="card-tt"><BarChart2 size={13} style={{ display:'inline', marginRight:4 }} />Curva ABC de Produtos</span>
+            <div style={{ display:'flex', gap:8, fontSize:11 }}>
+              {(['A','B','C'] as const).map(c => (
+                <span key={c} style={{ padding:'2px 8px', borderRadius:12, background: c==='A'?'#FEE2E2':c==='B'?'#DBEAFE':'#F1F5F9', color:COR_ABC[c], fontWeight:700 }}>
+                  Classe {c}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="tw">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width:40 }}>Classe</th>
+                  <th>Produto</th>
+                  <th style={{ textAlign:'right' }}>Qtd Consumida</th>
+                  {curvaABC.some(p => p.valorTotal > 0) && <th style={{ textAlign:'right' }}>Valor (R$)</th>}
+                  <th style={{ textAlign:'right' }}>% Individual</th>
+                  <th style={{ textAlign:'right' }}>% Acumulado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {curvaABC.slice(0, 30).map((p, i) => (
+                  <tr key={i} style={{ background: p.classe==='A'?'#FFF5F5':p.classe==='B'?'#EFF6FF':undefined }}>
+                    <td>
+                      <span style={{ display:'inline-block', width:22, height:22, borderRadius:6, background:p.classe==='A'?'#FEE2E2':p.classe==='B'?'#DBEAFE':'#F1F5F9', color:COR_ABC[p.classe], fontWeight:800, fontSize:12, textAlign:'center', lineHeight:'22px' }}>
+                        {p.classe}
+                      </span>
+                    </td>
+                    <td style={{ fontSize:12, fontWeight: p.classe==='A'?700:400 }}>{p.nome}</td>
+                    <td style={{ textAlign:'right', fontSize:12, fontWeight:600 }}>{p.qtdTotal.toLocaleString('pt-BR')}</td>
+                    {curvaABC.some(x => x.valorTotal > 0) && <td style={{ textAlign:'right', fontSize:11, color:'var(--muted)' }}>{p.valorTotal > 0 ? `R$ ${p.valorTotal.toFixed(2)}` : '—'}</td>}
+                    <td style={{ textAlign:'right', fontSize:11 }}>{p.pctInd.toFixed(1)}%</td>
+                    <td style={{ textAlign:'right', fontSize:11, color:'var(--muted)' }}>{p.pctAcum.toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Previsão de Reposição */}
+      {previsoes.length > 0 && (
+        <div className="card">
+          <div className="card-hd">
+            <span className="card-tt"><TrendingDown size={13} style={{ display:'inline', marginRight:4 }} />Previsão de Reposição</span>
+            <span style={{ fontSize:11, color:'var(--muted)' }}>Baseado no consumo médio dos últimos {periodo} dias</span>
+          </div>
+          <div className="tw">
+            <table>
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th style={{ textAlign:'right' }}>Estoque Atual</th>
+                  <th style={{ textAlign:'right' }}>Consumo/dia</th>
+                  <th style={{ textAlign:'right' }}>Dias Restantes</th>
+                  <th>Situação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {previsoes.map((p, i) => {
+                  const dias = p.diasRestantes
+                  const cor = dias === null ? 'var(--muted)' : dias <= 3 ? 'var(--danger)' : dias <= 7 ? 'var(--warning)' : 'var(--success)'
+                  const badge = dias === null ? '—' : dias <= 0 ? '🔴 Ruptura!' : dias <= 3 ? '🚨 Urgente' : dias <= 7 ? '⚠️ Repor' : '✅ OK'
+                  return (
+                    <tr key={i}>
+                      <td style={{ fontSize:12, fontWeight:600 }}>{p.nome}</td>
+                      <td style={{ textAlign:'right', fontSize:12 }}>{p.prod?.nivel_atual ?? '—'}</td>
+                      <td style={{ textAlign:'right', fontSize:12 }}>{p.consumoDiario.toFixed(2)}/d</td>
+                      <td style={{ textAlign:'right', fontSize:13, fontWeight:700, color:cor }}>{dias !== null ? `${dias}d` : '—'}</td>
+                      <td><span style={{ fontSize:11, fontWeight:700 }}>{badge}</span></td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── EstoquePage ────────────────────────────────────────────
 
-type EstoqueTab = 'lista' | 'cmv' | 'historico' | 'movimentacoes' | 'contagem' | 'perdas' | 'alertas'
+type EstoqueTab = 'lista' | 'cmv' | 'historico' | 'movimentacoes' | 'contagem' | 'perdas' | 'alertas' | 'analise'
 
 const TABS: { id: EstoqueTab; label: string; icon: React.ReactNode }[] = [
   { id: 'lista', label: 'Lista', icon: <Package size={12} /> },
   { id: 'alertas', label: 'Alertas', icon: <Bell size={12} /> },
+  { id: 'analise', label: 'Análise', icon: <BarChart2 size={12} /> },
   { id: 'cmv', label: 'CMV', icon: <TrendingDown size={12} /> },
   { id: 'historico', label: 'Histórico', icon: <History size={12} /> },
   { id: 'movimentacoes', label: 'Movimentações', icon: <ArrowLeftRight size={12} /> },
@@ -1125,6 +1424,7 @@ export default function EstoquePage() {
 
       {tab === 'lista' && <TabLista loja={loja} />}
       {tab === 'alertas' && <TabAlertas loja={loja} />}
+      {tab === 'analise' && <TabAnalise loja={loja} />}
       {tab === 'cmv' && <TabCMV loja={loja} />}
       {tab === 'historico' && <TabHistorico loja={loja} />}
       {tab === 'movimentacoes' && <TabMovimentacoes loja={loja} />}

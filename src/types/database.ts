@@ -181,7 +181,7 @@ export interface Pendencia {
 export type ReqStatus =
   | 'rascunho' | 'enviada' | 'em_analise' | 'em_cotacao'
   | 'parcialmente_aprovada' | 'aprovada' | 'reprovada'
-  | 'compra_realizada' | 'prestacao_pendente' | 'em_auditoria'
+  | 'em_separacao' | 'compra_realizada' | 'prestacao_pendente' | 'em_auditoria'
   | 'concluida' | 'cancelada'
 
 export type ReqItemStatus = 'pendente' | 'cotado' | 'aprovado' | 'cancelado'

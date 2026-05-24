@@ -552,6 +552,15 @@ export async function fetchEstoqueMovimentacoes(loja?: string, dataISO?: string)
   return estoqueFetch('estoque_movimentacoes', q)
 }
 
+/** Busca movimentações em um intervalo de datas (dataInicio e dataFim no formato YYYY-MM-DD) */
+export async function fetchEstoqueMovimentacoesRange(loja: string | undefined, dataInicio: string, dataFim: string): Promise<EstoqueMovimentacao[]> {
+  let q = loja && loja !== 'Todas as Lojas'
+    ? `loja=eq.${encodeURIComponent(loja)}&`
+    : ''
+  q += `created_at=gte.${dataInicio}T00:00:00Z&created_at=lte.${dataFim}T23:59:59Z&order=created_at.desc&limit=2000`
+  return estoqueFetch('estoque_movimentacoes', q)
+}
+
 export async function fetchEstoqueMovimentacoesDias(loja?: string): Promise<string[]> {
   const q = loja && loja !== 'Todas as Lojas'
     ? `loja=eq.${encodeURIComponent(loja)}&select=created_at&order=created_at.desc`

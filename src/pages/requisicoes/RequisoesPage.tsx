@@ -37,6 +37,7 @@ const CFG_STATUS: Record<ReqStatus, { label: string; color: string; bg: string; 
   parcialmente_aprovada: { label:'Aprov. Parcial',     color:'#CA8A04', bg:'#FEF9C3', icon:<CheckCircle2 size={11} /> },
   aprovada:              { label:'Aprovada',           color:'#15803D', bg:'#DCFCE7', icon:<Check size={11} /> },
   reprovada:             { label:'Reprovada',          color:'#DC2626', bg:'#FEE2E2', icon:<XCircle size={11} /> },
+  em_separacao:          { label:'Em Separação',       color:'#D97706', bg:'#FEF3C7', icon:<Package size={11} /> },
   compra_realizada:      { label:'Compra Realizada',   color:'#0891B2', bg:'#CFFAFE', icon:<ShoppingCart size={11} /> },
   prestacao_pendente:    { label:'Prestação Pendente', color:'#EA580C', bg:'#FFEDD5', icon:<Receipt size={11} /> },
   em_auditoria:          { label:'Em Auditoria',       color:'#6D28D9', bg:'#EDE9FE', icon:<AlertTriangle size={11} /> },
@@ -565,6 +566,27 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
     onAtualizar(u); toast('Compra realizada!'); load()
   }
 
+  const handleSeparacao = async () => {
+    const u = await updateRequisicao(req.id, { status:'em_separacao' })
+    await tEntry('ajuste',`Em separação — por ${userName}`)
+    onAtualizar(u); toast('Status atualizado: Em Separação')
+  }
+
+  const [showConfReceb, setShowConfReceb] = useState(false)
+  const [confRecebNome, setConfRecebNome] = useState('')
+  const [confRecebHorario, setConfRecebHorario] = useState(new Date().toISOString().slice(0,16))
+  const [confRecebObs, setConfRecebObs] = useState('')
+
+  const handleConfirmarEntrega = async () => {
+    if (!confRecebNome.trim()) return
+    const u = await updateRequisicao(req.id, {
+      status:'concluida',
+      observacoes: (req.observacoes||'') + `\n[ENTREGUE: por ${confRecebNome} em ${new Date(confRecebHorario).toLocaleString('pt-BR')}${confRecebObs ? ' | ' + confRecebObs : ''}]`
+    })
+    await tEntry('finalizacao',`Entrega confirmada por ${confRecebNome}`)
+    onAtualizar(u); toast('Entrega confirmada!'); setShowConfReceb(false); load()
+  }
+
   const handleCriarCred = async (c: Partial<FinCredito>) => {
     const cr = await insertFinCredito({ loja, responsavel_nome:c.responsavel_nome!, responsavel_cargo:c.responsavel_cargo||null, supervisor_nome:null, setor:c.setor||null, valor_liberado:c.valor_liberado!, data_liberacao:today(), objetivo:c.objetivo!, forma_pagamento:c.forma_pagamento!, prazo_prestacao:c.prazo_prestacao||null, observacoes:c.observacoes||null, status:'aberto', created_by:userName })
     await updateRequisicao(req.id, { credito_id:cr.id })
@@ -590,6 +612,8 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   const canEnviar  = s==='rascunho'
   const canAprovar = s==='enviada'||s==='em_analise'
   const canCompra  = s==='aprovada'||s==='parcialmente_aprovada'
+  const canSep     = s==='aprovada'||s==='parcialmente_aprovada'||s==='compra_realizada'
+  const canConfReceb = s==='em_separacao'||s==='compra_realizada'
   const canCred    = canCompra&&!req.credito_id
   const canFinal   = s==='compra_realizada'||s==='prestacao_pendente'||s==='em_auditoria'
   const canCancel  = !['concluida','cancelada','compra_realizada'].includes(s)
@@ -614,7 +638,9 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
           {canEnviar&&<button className="btn" style={{ background:'#B45309', padding:'5px 11px', fontSize:12 }} onClick={handleEnviar}><Send size={12}/> Enviar</button>}
           {canAprovar&&<button className="btn" style={{ padding:'5px 11px', fontSize:12 }} onClick={()=>setMAprov(true)}><CheckCircle2 size={12}/> Analisar</button>}
           {canCompra&&<button className="btn" style={{ background:'#0891B2', padding:'5px 11px', fontSize:12 }} onClick={handleCompra}><ShoppingCart size={12}/> Compra Realiz.</button>}
-          {canFinal&&<button className="btn" style={{ background:'#15803D', padding:'5px 11px', fontSize:12 }} onClick={handleFinalizar}><CheckCircle2 size={12}/> Finalizar</button>}
+          {canSep&&<button className="btn" style={{ background:'#D97706', padding:'5px 11px', fontSize:12 }} onClick={handleSeparacao}><Package size={12}/> Em Separação</button>}
+          {canConfReceb&&<button className="btn" style={{ background:'#15803D', padding:'5px 11px', fontSize:12 }} onClick={()=>setShowConfReceb(true)}><CheckCircle2 size={12}/> Confirmar Entrega</button>}
+          {canFinal&&!canConfReceb&&<button className="btn" style={{ background:'#15803D', padding:'5px 11px', fontSize:12 }} onClick={handleFinalizar}><CheckCircle2 size={12}/> Finalizar</button>}
           <button className="ib" style={{ padding:'5px 9px' }} onClick={()=>gerarPDF(req,itens,loja)}><Download size={13}/></button>
           <button className="ib" style={{ padding:'5px 9px' }} onClick={onEditar}><Edit3 size={13}/></button>
           {canCancel&&<button className="ib rd" style={{ padding:'5px 9px' }} onClick={handleCancelar}><X size={13}/></button>}
@@ -782,6 +808,62 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
 
       {mAprov&&<ModalAprovacao req={req} itens={itens} userName={userName} onSalvo={handleAprov} onFechar={()=>setMAprov(false)} />}
       {mCred&&<ModalCredito req={req} onCriar={handleCriarCred} onFechar={()=>setMCred(false)} />}
+
+      {/* MODAL CONFIRMAÇÃO DE ENTREGA */}
+      {showConfReceb&&(
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div style={{ background:'white', borderRadius:14, width:'100%', maxWidth:440, boxShadow:'0 20px 60px rgba(0,0,0,.25)' }}>
+            <div style={{ padding:'18px 20px 14px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ width:36, height:36, borderRadius:10, background:'#DCFCE7', display:'flex', alignItems:'center', justifyContent:'center', color:'#15803D' }}><CheckCircle2 size={18}/></div>
+              <div>
+                <div style={{ fontWeight:700, fontSize:15 }}>Confirmar Entrega</div>
+                <div style={{ fontSize:11, color:'var(--muted)' }}>Req #{req.numero} — {req.titulo}</div>
+              </div>
+              <button onClick={()=>setShowConfReceb(false)} style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:18, lineHeight:1 }}>×</button>
+            </div>
+            <div style={{ padding:'16px 20px 20px', display:'flex', flexDirection:'column', gap:13 }}>
+              <div>
+                <label style={{ fontSize:12, fontWeight:600, display:'block', marginBottom:5 }}>Recebido por <span style={{ color:'#DC2626' }}>*</span></label>
+                <input
+                  value={confRecebNome}
+                  onChange={e=>setConfRecebNome(e.target.value)}
+                  placeholder="Nome completo de quem recebeu"
+                  style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, boxSizing:'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize:12, fontWeight:600, display:'block', marginBottom:5 }}>Data e Horário</label>
+                <input
+                  type="datetime-local"
+                  value={confRecebHorario}
+                  onChange={e=>setConfRecebHorario(e.target.value)}
+                  style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, boxSizing:'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize:12, fontWeight:600, display:'block', marginBottom:5 }}>Observações</label>
+                <textarea
+                  value={confRecebObs}
+                  onChange={e=>setConfRecebObs(e.target.value)}
+                  placeholder="Condição do material, divergências, etc."
+                  rows={3}
+                  style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', fontSize:13, boxSizing:'border-box', resize:'vertical' }}
+                />
+              </div>
+              <div style={{ display:'flex', gap:9, marginTop:2 }}>
+                <button onClick={()=>setShowConfReceb(false)} style={{ flex:1, padding:'9px', borderRadius:8, border:'1px solid var(--border)', background:'white', cursor:'pointer', fontSize:13 }}>Cancelar</button>
+                <button
+                  onClick={handleConfirmarEntrega}
+                  disabled={!confRecebNome.trim()}
+                  style={{ flex:2, padding:'9px', borderRadius:8, border:'none', background:confRecebNome.trim()?'#15803D':'#9CA3AF', color:'white', cursor:confRecebNome.trim()?'pointer':'default', fontSize:13, fontWeight:600 }}
+                >
+                  ✓ Confirmar Entrega
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

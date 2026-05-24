@@ -795,6 +795,7 @@ function PainelAnexos({ lancamentoId, prestacaoId, userName, onFechar }: {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [errMsg, setErrMsg] = useState('')
+  const [downloading, setDownloading] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -828,6 +829,28 @@ function PainelAnexos({ lancamentoId, prestacaoId, userName, onFechar }: {
     catch (e) { console.error(e) }
   }
 
+  // Fix cross-origin download: fetch → blob → link temporário
+  const baixarArquivo = async (url: string, nome: string, id: string) => {
+    setDownloading(id)
+    try {
+      const resp = await fetch(url)
+      if (!resp.ok) throw new Error('Falha ao baixar arquivo')
+      const blob = await resp.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = nome
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+    } catch (e) {
+      console.error('Download falhou, abrindo em nova aba:', e)
+      window.open(url, '_blank')  // fallback: abre em nova aba
+    }
+    setDownloading(null)
+  }
+
   const tipoIcon = (tipo: string) => tipo === 'pdf' ? '📄' : tipo === 'foto' ? '🖼️' : '📎'
 
   return (
@@ -846,7 +869,10 @@ function PainelAnexos({ lancamentoId, prestacaoId, userName, onFechar }: {
                     <div style={{ fontSize: 10, color: 'var(--muted)' }}>{a.tamanho_kb ? `${a.tamanho_kb} KB · ` : ''}{fmtDt(a.created_at)}</div>
                   </div>
                   <a href={a.url} target="_blank" rel="noopener noreferrer" className="ib" title="Visualizar"><Eye size={12} /></a>
-                  <a href={a.url} download className="ib" title="Download"><Download size={12} /></a>
+                  <button className="ib" onClick={() => baixarArquivo(a.url, a.nome_arquivo, a.id)}
+                    title="Download" disabled={downloading === a.id}>
+                    {downloading === a.id ? <Loader size={12} className="spin" /> : <Download size={12} />}
+                  </button>
                   <button className="ib rd" onClick={() => remover(a.id)} title="Remover"><Trash2 size={12} /></button>
                 </div>
               ))}
