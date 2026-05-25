@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao } from '../types/database'
 
 const db = supabase as any
 
@@ -1249,4 +1249,112 @@ export async function updateRequisicaoAutomatica(
 
 export async function deleteRequisicaoAutomatica(id: string): Promise<void> {
   await sdkCall<null>(db.from('requisicoes_automaticas').delete().eq('id', id))
+}
+
+// ── Cozinha — Checklists ────────────────────────────────────
+
+export async function fetchCozinhaChecklists(loja?: string): Promise<CozinhaChecklist[]> {
+  let q = db.from('cozinha_checklists').select('*').order('created_at', { ascending: true })
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
+  return sdkCall<CozinhaChecklist[]>(q).then(d => d ?? []).catch(() => [])
+}
+export async function insertCozinhaChecklist(
+  c: Omit<CozinhaChecklist, 'id' | 'created_at' | 'updated_at'>
+): Promise<CozinhaChecklist> {
+  return sdkCall<CozinhaChecklist>(db.from('cozinha_checklists').insert(c).select().single())
+}
+export async function updateCozinhaChecklist(
+  id: string, c: Partial<CozinhaChecklist>
+): Promise<CozinhaChecklist> {
+  return sdkCall<CozinhaChecklist>(
+    db.from('cozinha_checklists').update({ ...c, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  )
+}
+export async function deleteCozinhaChecklist(id: string): Promise<void> {
+  await sdkCall<null>(db.from('cozinha_checklists').delete().eq('id', id))
+}
+
+// ── Cozinha — Produção ──────────────────────────────────────
+
+export async function fetchCozinhaProducao(loja?: string): Promise<CozinhaProducao[]> {
+  let q = db.from('cozinha_producao').select('*').order('created_at', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
+  return sdkCall<CozinhaProducao[]>(q).then(d => d ?? []).catch(() => [])
+}
+export async function insertCozinhaProducao(
+  p: Omit<CozinhaProducao, 'id' | 'created_at' | 'updated_at'>
+): Promise<CozinhaProducao> {
+  return sdkCall<CozinhaProducao>(db.from('cozinha_producao').insert(p).select().single())
+}
+export async function updateCozinhaProducao(
+  id: string, p: Partial<CozinhaProducao>
+): Promise<CozinhaProducao> {
+  return sdkCall<CozinhaProducao>(
+    db.from('cozinha_producao').update({ ...p, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  )
+}
+export async function deleteCozinhaProducao(id: string): Promise<void> {
+  await sdkCall<null>(db.from('cozinha_producao').delete().eq('id', id))
+}
+
+// ── Cozinha — Desperdício ───────────────────────────────────
+
+export async function fetchCozinhaDesperdicio(loja?: string): Promise<CozinhaDesperdicio[]> {
+  let q = db.from('cozinha_desperdicio').select('*').order('created_at', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
+  return sdkCall<CozinhaDesperdicio[]>(q).then(d => d ?? []).catch(() => [])
+}
+export async function insertCozinhaDesperdicio(
+  d: Omit<CozinhaDesperdicio, 'id' | 'created_at'>
+): Promise<CozinhaDesperdicio> {
+  return sdkCall<CozinhaDesperdicio>(db.from('cozinha_desperdicio').insert(d).select().single())
+}
+export async function deleteCozinhaDesperdicio(id: string): Promise<void> {
+  await sdkCall<null>(db.from('cozinha_desperdicio').delete().eq('id', id))
+}
+
+// ── Cozinha — Fichas Técnicas ───────────────────────────────
+
+export async function fetchCozinhaFichas(): Promise<CozinhaFicha[]> {
+  return sdkCall<CozinhaFicha[]>(
+    db.from('cozinha_fichas').select('*').order('created_at', { ascending: false })
+  ).then(d => d ?? []).catch(() => [])
+}
+export async function insertCozinhaFicha(
+  f: Omit<CozinhaFicha, 'id' | 'created_at' | 'updated_at'>
+): Promise<CozinhaFicha> {
+  return sdkCall<CozinhaFicha>(db.from('cozinha_fichas').insert(f).select().single())
+}
+export async function updateCozinhaFicha(
+  id: string, f: Partial<CozinhaFicha>
+): Promise<CozinhaFicha> {
+  return sdkCall<CozinhaFicha>(
+    db.from('cozinha_fichas').update({ ...f, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  )
+}
+export async function deleteCozinhaFicha(id: string): Promise<void> {
+  await sdkCall<null>(db.from('cozinha_fichas').delete().eq('id', id))
+}
+
+// ── Cozinha — Solicitações ──────────────────────────────────
+
+export async function fetchCozinhaSolicitacoes(loja?: string): Promise<CozinhaSolicitacao[]> {
+  let q = db.from('cozinha_solicitacoes').select('*').order('created_at', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
+  return sdkCall<CozinhaSolicitacao[]>(q).then(d => d ?? []).catch(() => [])
+}
+export async function insertCozinhaSolicitacao(
+  s: Omit<CozinhaSolicitacao, 'id' | 'created_at' | 'updated_at'>
+): Promise<CozinhaSolicitacao> {
+  return sdkCall<CozinhaSolicitacao>(db.from('cozinha_solicitacoes').insert(s).select().single())
+}
+export async function updateCozinhaSolicitacao(
+  id: string, s: Partial<CozinhaSolicitacao>
+): Promise<CozinhaSolicitacao> {
+  return sdkCall<CozinhaSolicitacao>(
+    db.from('cozinha_solicitacoes').update({ ...s, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  )
+}
+export async function deleteCozinhaSolicitacao(id: string): Promise<void> {
+  await sdkCall<null>(db.from('cozinha_solicitacoes').delete().eq('id', id))
 }

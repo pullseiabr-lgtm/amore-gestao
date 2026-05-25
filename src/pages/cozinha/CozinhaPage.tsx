@@ -1,11 +1,19 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import {
   CheckCircle, Circle, Plus, Trash2, Edit3, Check, X,
   ChefHat, ClipboardList, Package, AlertTriangle, Camera,
   Save, RefreshCw, Star, Clock, DollarSign, User,
 } from 'lucide-react'
+import { useLoja } from '../../contexts/LojaContext'
+import {
+  fetchCozinhaChecklists, insertCozinhaChecklist, updateCozinhaChecklist, deleteCozinhaChecklist,
+  fetchCozinhaProducao,   insertCozinhaProducao,   updateCozinhaProducao,   deleteCozinhaProducao,
+  fetchCozinhaDesperdicio, insertCozinhaDesperdicio, deleteCozinhaDesperdicio,
+  fetchCozinhaFichas,    insertCozinhaFicha,       updateCozinhaFicha,      deleteCozinhaFicha,
+  fetchCozinhaSolicitacoes, insertCozinhaSolicitacao, updateCozinhaSolicitacao, deleteCozinhaSolicitacao,
+} from '../../lib/db'
 
-// ── Tipos ────────────────────────────────────────────────────
+// ── Tipos locais ─────────────────────────────────────────────
 
 type Setor = 'cozinha' | 'salao' | 'limpeza' | 'estoque' | 'abertura' | 'fechamento'
 
@@ -31,46 +39,21 @@ interface FichaTecnica {
   custo_total: string; margem: string; preco_venda: string
 }
 
-// ── Dados iniciais ───────────────────────────────────────────
+interface SolicitacaoItem {
+  id: string
+  tipo: 'produto' | 'equipamento' | 'utensilio' | 'manutencao' | 'compra_emergencial'
+  item: string
+  quantidade: string
+  urgencia: 'baixa' | 'media' | 'alta' | 'critica'
+  responsavel: string
+  setor: string
+  status: 'solicitado' | 'em_cotacao' | 'aprovado' | 'em_compra' | 'recebido' | 'cancelado'
+  obs: string
+  data: string
+  loja: string
+}
 
-const INIT_CHECKLISTS: Checklist[] = [
-  { id: 'c1', titulo: 'Abertura Cozinha', loja: 'Amore CD', setor: 'abertura', itens: [
-    { id: 'i1', txt: 'Verificar temperatura câmara fria', ok: true, obrigatorio: true },
-    { id: 'i2', txt: 'Higienizar bancadas', ok: true, obrigatorio: true },
-    { id: 'i3', txt: 'Checar estoque açaí base', ok: false, obrigatorio: false },
-    { id: 'i4', txt: 'Preparar toppings do dia', ok: false, obrigatorio: false },
-  ]},
-  { id: 'c2', titulo: 'Fechamento Cozinha', loja: 'Amore Paiva', setor: 'fechamento', itens: [
-    { id: 'i5', txt: 'Desligar equipamentos', ok: false, obrigatorio: true },
-    { id: 'i6', txt: 'Armazenar sobras corretamente', ok: false, obrigatorio: true },
-    { id: 'i7', txt: 'Limpeza geral', ok: false, obrigatorio: false },
-  ]},
-]
-
-const INIT_PRODUCAO: ProducaoItem[] = [
-  { id: 'p1', prato: 'Açaí base porcionado', qtd: '45 kg', loja: 'Amore CD', solicitante: 'Gerente', executor: 'Carlos', hora: '07:30', status: 'concluido', obs: '' },
-  { id: 'p2', prato: 'Creme de açaí especial', qtd: '20 kg', loja: 'Amore Paiva', solicitante: 'Gerente', executor: 'Ana', hora: '08:00', status: 'em_preparo', obs: '' },
-  { id: 'p3', prato: 'Mix de granola caseira', qtd: '15 kg', loja: 'Todas', solicitante: 'Cozinha', executor: 'Pedro', hora: '09:00', status: 'pendente', obs: '' },
-]
-
-const INIT_DESPERDICIO: DespItem[] = [
-  { id: 'd1', data: '22/07', item: 'Polpa de morango', qtd: '2', unidade: 'kg', motivo: 'Vencimento', categoria: 'Perda por Validade', responsavel: 'Carlos', loja: 'Amore CD', custo: '22,40' },
-  { id: 'd2', data: '21/07', item: 'Creme de leite', qtd: '0,5', unidade: 'kg', motivo: 'Contaminação', categoria: 'Contaminação', responsavel: 'Ana', loja: 'Amore CD', custo: '3,95' },
-  { id: 'd3', data: '20/07', item: 'Granola', qtd: '1', unidade: 'kg', motivo: 'Armazenamento inadequado', categoria: 'Armazenamento Inadequado', responsavel: 'Pedro', loja: 'Amore Paiva', custo: '12,00' },
-]
-
-const INIT_FICHAS: FichaTecnica[] = [
-  {
-    id: 'f1', nome: 'Açaí 300ml Tradicional', foto: '',
-    ingredientes: [
-      { desc: 'Polpa de açaí', qtd: '200', unidade: 'g', custo: '3,20' },
-      { desc: 'Banana', qtd: '50', unidade: 'g', custo: '0,40' },
-      { desc: 'Granola', qtd: '30', unidade: 'g', custo: '0,60' },
-    ],
-    rendimento: '1 porção', tempo_preparo: '5', modo_preparo: '1. Bater polpa com banana no liquidificador\n2. Servir em tigela gelada\n3. Adicionar granola por cima',
-    custo_total: '4,20', margem: '70', preco_venda: '14,00',
-  },
-]
+// ── Constantes ───────────────────────────────────────────────
 
 const MOTIVOS_DESPERDICIO = [
   'Vencimento', 'Armazenamento Inadequado', 'Produção Excessiva',
@@ -99,60 +82,134 @@ const STATUS_PROD = {
 
 type Tab = 'checklist' | 'producao' | 'desperdicio' | 'ficha' | 'solicitacoes'
 
-interface SolicitacaoItem {
-  id: string
-  tipo: 'produto' | 'equipamento' | 'utensilio' | 'manutencao' | 'compra_emergencial'
-  item: string
-  quantidade: string
-  urgencia: 'baixa' | 'media' | 'alta' | 'critica'
-  responsavel: string
-  setor: string
-  status: 'solicitado' | 'em_cotacao' | 'aprovado' | 'em_compra' | 'recebido' | 'cancelado'
-  obs: string
-  data: string
-}
-
-const INIT_SOLICITACOES: SolicitacaoItem[] = [
-  {
-    id: 's1', tipo: 'produto', item: 'Polpa de açaí extra', quantidade: '50 kg',
-    urgencia: 'alta', responsavel: 'Carlos', setor: 'Cozinha',
-    status: 'em_cotacao', obs: 'Estoque crítico previsto para sexta', data: '22/05',
-  },
-  {
-    id: 's2', tipo: 'equipamento', item: 'Liquidificador industrial', quantidade: '1 un',
-    urgencia: 'media', responsavel: 'Ana', setor: 'Cozinha',
-    status: 'aprovado', obs: 'Motor do atual queimou', data: '21/05',
-  },
-  {
-    id: 's3', tipo: 'manutencao', item: 'Câmara fria — revisão compressor', quantidade: '1 serviço',
-    urgencia: 'critica', responsavel: 'Pedro', setor: 'Estoque',
-    status: 'solicitado', obs: 'Temperatura subindo 2°C acima do esperado', data: '23/05',
-  },
-]
-
 // ── Componente Principal ─────────────────────────────────────
 
 export default function CozinhaPage() {
-  const [tab, setTab] = useState<Tab>('checklist')
-  const [checks, setChecks] = useState<Checklist[]>(INIT_CHECKLISTS)
-  const [producao, setProducao] = useState<ProducaoItem[]>(INIT_PRODUCAO)
-  const [desperdicio, setDesperdicio] = useState<DespItem[]>(INIT_DESPERDICIO)
-  const [fichas, setFichas] = useState<FichaTecnica[]>(INIT_FICHAS)
-  const [solicitacoes, setSolicitacoes] = useState<SolicitacaoItem[]>(INIT_SOLICITACOES)
+  const { loja, lojas } = useLoja()
+  const lojaReal = loja === 'Todas as Lojas'
+    ? lojas.find(l => l !== 'Todas as Lojas') ?? 'Amore CD'
+    : loja
 
-  // Toggle item checklist
-  const toggle = (clId: string, itId: string) => {
-    setChecks(prev => prev.map(cl => cl.id !== clId ? cl : {
-      ...cl, itens: cl.itens.map(it => it.id !== itId ? it : { ...it, ok: !it.ok })
-    }))
-  }
+  const [loading, setLoading]       = useState(true)
+  const [tab, setTab]               = useState<Tab>('checklist')
+  const [checks, setChecks]         = useState<Checklist[]>([])
+  const [producao, setProducao]     = useState<ProducaoItem[]>([])
+  const [desperdicio, setDesperdicio] = useState<DespItem[]>([])
+  const [fichas, setFichas]         = useState<FichaTecnica[]>([])
+  const [solicitacoes, setSolicitacoes] = useState<SolicitacaoItem[]>([])
 
-  // KPIs
+  const lojaQ = loja !== 'Todas as Lojas' ? loja : undefined
+
+  // ── Carregamento inicial ─────────────────────────────────
+  const reload = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [ch, pr, de, fi, so] = await Promise.all([
+        fetchCozinhaChecklists(lojaQ),
+        fetchCozinhaProducao(lojaQ),
+        fetchCozinhaDesperdicio(lojaQ),
+        fetchCozinhaFichas(),
+        fetchCozinhaSolicitacoes(lojaQ),
+      ])
+      setChecks((ch as unknown as Checklist[]) ?? [])
+      setProducao((pr as unknown as ProducaoItem[]) ?? [])
+      setDesperdicio((de as unknown as DespItem[]) ?? [])
+      setFichas((fi as unknown as FichaTecnica[]) ?? [])
+      setSolicitacoes((so as unknown as SolicitacaoItem[]) ?? [])
+    } catch (e) { console.error('[cozinha] reload error:', e) }
+    finally { setLoading(false) }
+  }, [lojaQ])
+
+  useEffect(() => { void reload() }, [reload])
+
+  // ── Handlers Checklist ───────────────────────────────────
+  const handleAddChecklist = useCallback(async (titulo: string, lojaArg: string, setor: string) => {
+    const novo = await insertCozinhaChecklist({ titulo, loja: lojaArg, setor, itens: [] })
+    setChecks(prev => [...prev, novo as unknown as Checklist])
+  }, [])
+
+  const handleDeleteChecklist = useCallback(async (id: string) => {
+    setChecks(prev => prev.filter(c => c.id !== id))
+    deleteCozinhaChecklist(id).catch(console.error)
+  }, [])
+
+  const handleUpdateItens = useCallback(async (id: string, itens: CheckItem[]) => {
+    setChecks(prev => prev.map(c => c.id !== id ? c : { ...c, itens }))
+    updateCozinhaChecklist(id, { itens: itens as unknown[] } as never).catch(console.error)
+  }, [])
+
+  // ── Handlers Produção ─────────────────────────────────────
+  const handleAddProducao = useCallback(async (p: Omit<ProducaoItem, 'id'>) => {
+    const novo = await insertCozinhaProducao(p as never)
+    setProducao(prev => [novo as unknown as ProducaoItem, ...prev])
+  }, [])
+
+  const handleUpdateProducao = useCallback(async (id: string, p: Partial<ProducaoItem>) => {
+    setProducao(prev => prev.map(x => x.id !== id ? x : { ...x, ...p }))
+    updateCozinhaProducao(id, p as never).catch(console.error)
+  }, [])
+
+  const handleDeleteProducao = useCallback(async (id: string) => {
+    setProducao(prev => prev.filter(x => x.id !== id))
+    deleteCozinhaProducao(id).catch(console.error)
+  }, [])
+
+  // ── Handlers Desperdício ──────────────────────────────────
+  const handleAddDesperdicio = useCallback(async (d: Omit<DespItem, 'id'>) => {
+    const novo = await insertCozinhaDesperdicio(d as never)
+    setDesperdicio(prev => [novo as unknown as DespItem, ...prev])
+  }, [])
+
+  const handleDeleteDesperdicio = useCallback(async (id: string) => {
+    setDesperdicio(prev => prev.filter(x => x.id !== id))
+    deleteCozinhaDesperdicio(id).catch(console.error)
+  }, [])
+
+  // ── Handlers Fichas ───────────────────────────────────────
+  const handleAddFicha = useCallback(async (f: Omit<FichaTecnica, 'id'>) => {
+    const novo = await insertCozinhaFicha(f as never)
+    setFichas(prev => [novo as unknown as FichaTecnica, ...prev])
+  }, [])
+
+  const handleUpdateFicha = useCallback(async (id: string, f: Partial<FichaTecnica>) => {
+    setFichas(prev => prev.map(x => x.id !== id ? x : { ...x, ...f }))
+    updateCozinhaFicha(id, f as never).catch(console.error)
+  }, [])
+
+  const handleDeleteFicha = useCallback(async (id: string) => {
+    setFichas(prev => prev.filter(x => x.id !== id))
+    deleteCozinhaFicha(id).catch(console.error)
+  }, [])
+
+  // ── Handlers Solicitações ─────────────────────────────────
+  const handleAddSolicitacao = useCallback(async (s: Omit<SolicitacaoItem, 'id'>) => {
+    const novo = await insertCozinhaSolicitacao(s as never)
+    setSolicitacoes(prev => [novo as unknown as SolicitacaoItem, ...prev])
+  }, [])
+
+  const handleUpdateSolicitacao = useCallback(async (id: string, s: Partial<SolicitacaoItem>) => {
+    setSolicitacoes(prev => prev.map(x => x.id !== id ? x : { ...x, ...s }))
+    updateCozinhaSolicitacao(id, s as never).catch(console.error)
+  }, [])
+
+  const handleDeleteSolicitacao = useCallback(async (id: string) => {
+    setSolicitacoes(prev => prev.filter(x => x.id !== id))
+    deleteCozinhaSolicitacao(id).catch(console.error)
+  }, [])
+
+  // ── KPIs ──────────────────────────────────────────────────
   const totalChecklists = checks.length
   const concluidos = checks.filter(cl => cl.itens.every(it => it.ok)).length
   const prodAndamento = producao.filter(p => p.status === 'em_preparo').length
   const totalDesp = desperdicio.reduce((s, d) => s + parseFloat(d.custo.replace(',', '.') || '0'), 0)
   const totalFichas = fichas.length
+
+  if (loading) return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200, gap: 10, color: 'var(--muted)' }}>
+      <RefreshCw size={18} className="spin" />
+      <span style={{ fontSize: 14 }}>Carregando dados da cozinha…</span>
+    </div>
+  )
 
   return (
     <div>
@@ -187,19 +244,47 @@ export default function CozinhaPage() {
       </div>
 
       {tab === 'checklist' && (
-        <ChecklistTab checks={checks} onChange={setChecks} onToggle={toggle} />
+        <ChecklistTab
+          checks={checks}
+          lojaDefault={lojaReal}
+          onAddChecklist={handleAddChecklist}
+          onDeleteChecklist={handleDeleteChecklist}
+          onUpdateItens={handleUpdateItens}
+        />
       )}
       {tab === 'producao' && (
-        <ProducaoTab producao={producao} onChange={setProducao} />
+        <ProducaoTab
+          producao={producao}
+          lojaDefault={lojaReal}
+          onAdd={handleAddProducao}
+          onUpdate={handleUpdateProducao}
+          onDelete={handleDeleteProducao}
+        />
       )}
       {tab === 'desperdicio' && (
-        <DespedicioTab desperdicio={desperdicio} onChange={setDesperdicio} />
+        <DespedicioTab
+          desperdicio={desperdicio}
+          lojaDefault={lojaReal}
+          onAdd={handleAddDesperdicio}
+          onDelete={handleDeleteDesperdicio}
+        />
       )}
       {tab === 'ficha' && (
-        <FichaTab fichas={fichas} onChange={setFichas} />
+        <FichaTab
+          fichas={fichas}
+          onAdd={handleAddFicha}
+          onUpdate={handleUpdateFicha}
+          onDelete={handleDeleteFicha}
+        />
       )}
       {tab === 'solicitacoes' && (
-        <SolicitacoesTab solicitacoes={solicitacoes} setSolicitacoes={setSolicitacoes} />
+        <SolicitacoesTab
+          solicitacoes={solicitacoes}
+          lojaDefault={lojaReal}
+          onAdd={handleAddSolicitacao}
+          onUpdate={handleUpdateSolicitacao}
+          onDelete={handleDeleteSolicitacao}
+        />
       )}
     </div>
   )
@@ -207,69 +292,81 @@ export default function CozinhaPage() {
 
 // ── Tab Checklist ─────────────────────────────────────────────
 
-function ChecklistTab({ checks, onChange, onToggle }: {
+function ChecklistTab({
+  checks,
+  lojaDefault,
+  onAddChecklist,
+  onDeleteChecklist,
+  onUpdateItens,
+}: {
   checks: Checklist[]
-  onChange: (c: Checklist[]) => void
-  onToggle: (clId: string, itId: string) => void
+  lojaDefault: string
+  onAddChecklist: (titulo: string, loja: string, setor: string) => Promise<void>
+  onDeleteChecklist: (id: string) => Promise<void>
+  onUpdateItens: (id: string, itens: CheckItem[]) => Promise<void>
 }) {
   const [showForm, setShowForm] = useState(false)
-  const [editId, setEditId] = useState<string | null>(null)
   const [editItemId, setEditItemId] = useState<string | null>(null)
+  const [editId, setEditId] = useState<string | null>(null)
   const [newItemTxt, setNewItemTxt] = useState('')
   const [responsavel, setResponsavel] = useState<Record<string, string>>({})
-  const [form, setForm] = useState({ titulo: '', loja: 'Amore CD', setor: 'cozinha' as Setor })
+  const [form, setForm] = useState({ titulo: '', loja: lojaDefault, setor: 'cozinha' as Setor })
+  const [saving, setSaving] = useState(false)
 
-  const addChecklist = () => {
-    if (!form.titulo.trim()) return
-    const novo: Checklist = {
-      id: `cl_${Date.now()}`, titulo: form.titulo.trim(),
-      loja: form.loja, setor: form.setor, itens: [],
-    }
-    onChange([...checks, novo])
-    setForm({ titulo: '', loja: 'Amore CD', setor: 'cozinha' })
-    setShowForm(false)
+  const addChecklist = async () => {
+    if (!form.titulo.trim() || saving) return
+    setSaving(true)
+    try {
+      await onAddChecklist(form.titulo.trim(), form.loja, form.setor)
+      setForm({ titulo: '', loja: lojaDefault, setor: 'cozinha' })
+      setShowForm(false)
+    } finally { setSaving(false) }
   }
 
-  const deleteChecklist = (id: string) => {
-    onChange(checks.filter(cl => cl.id !== id))
+  const toggle = (clId: string, itId: string) => {
+    const cl = checks.find(c => c.id === clId)
+    if (!cl) return
+    const newItens = cl.itens.map(it => it.id !== itId ? it : { ...it, ok: !it.ok })
+    onUpdateItens(clId, newItens)
   }
 
   const addItem = (clId: string) => {
     if (!newItemTxt.trim()) return
-    onChange(checks.map(cl => cl.id !== clId ? cl : {
-      ...cl, itens: [...cl.itens, { id: `i_${Date.now()}`, txt: newItemTxt.trim(), ok: false, obrigatorio: false }],
-    }))
+    const cl = checks.find(c => c.id === clId)
+    if (!cl) return
+    const newItens = [...cl.itens, { id: `i_${Date.now()}`, txt: newItemTxt.trim(), ok: false, obrigatorio: false }]
+    onUpdateItens(clId, newItens)
     setNewItemTxt('')
     setEditId(null)
   }
 
   const deleteItem = (clId: string, itId: string) => {
-    onChange(checks.map(cl => cl.id !== clId ? cl : {
-      ...cl, itens: cl.itens.filter(it => it.id !== itId),
-    }))
+    const cl = checks.find(c => c.id === clId)
+    if (!cl) return
+    onUpdateItens(clId, cl.itens.filter(it => it.id !== itId))
   }
 
   const toggleObrigatorio = (clId: string, itId: string) => {
-    onChange(checks.map(cl => cl.id !== clId ? cl : {
-      ...cl, itens: cl.itens.map(it => it.id !== itId ? it : { ...it, obrigatorio: !it.obrigatorio }),
-    }))
+    const cl = checks.find(c => c.id === clId)
+    if (!cl) return
+    const newItens = cl.itens.map(it => it.id !== itId ? it : { ...it, obrigatorio: !it.obrigatorio })
+    onUpdateItens(clId, newItens)
   }
 
   const editItemSave = (clId: string, itId: string, txt: string) => {
-    onChange(checks.map(cl => cl.id !== clId ? cl : {
-      ...cl, itens: cl.itens.map(it => it.id !== itId ? it : { ...it, txt }),
-    }))
+    const cl = checks.find(c => c.id === clId)
+    if (!cl) return
+    onUpdateItens(clId, cl.itens.map(it => it.id !== itId ? it : { ...it, txt }))
     setEditItemId(null)
   }
 
-  const fileRef = useRef<HTMLInputElement>(null)
-
   const anexarFoto = (clId: string, itId: string) => {
-    // Simula captura de foto — em produção faria upload para Supabase Storage
-    onChange(checks.map(cl => cl.id !== clId ? cl : {
-      ...cl, itens: cl.itens.map(it => it.id !== itId ? it : { ...it, foto: '📷 Foto anexada' }),
-    }))
+    const cl = checks.find(c => c.id === clId)
+    if (!cl) return
+    onUpdateItens(clId, cl.itens.map(it => it.id !== itId ? it : { ...it, foto: '📷 Foto anexada' }))
   }
+
+  const fileRef = useRef<HTMLInputElement>(null)
 
   return (
     <div>
@@ -300,7 +397,21 @@ function ChecklistTab({ checks, onChange, onToggle }: {
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button className="btn bo" onClick={() => setShowForm(false)}>Cancelar</button>
-            <button className="btn bp" onClick={addChecklist}><Check size={11} /> Criar</button>
+            <button className="btn bp" onClick={addChecklist} disabled={saving}>
+              {saving ? <RefreshCw size={11} className="spin" /> : <Check size={11} />} Criar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {checks.length === 0 && (
+        <div className="card" style={{ padding: '48px 0' }}>
+          <div className="empty">
+            <ClipboardList size={36} style={{ opacity: 0.3 }} />
+            <div style={{ marginTop: 10, fontWeight: 600 }}>Nenhum checklist cadastrado</div>
+            <button className="btn bp bsm" style={{ marginTop: 12 }} onClick={() => setShowForm(true)}>
+              <Plus size={11} /> Criar primeiro checklist
+            </button>
           </div>
         </div>
       )}
@@ -321,7 +432,7 @@ function ChecklistTab({ checks, onChange, onToggle }: {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 11, color: 'var(--muted)' }}>{cl.loja}</span>
                   <span className={`badge ${done === cl.itens.length && cl.itens.length > 0 ? 'bg-g' : 'bg-y'}`}>{done}/{cl.itens.length}</span>
-                  <button className="ib rd" onClick={() => deleteChecklist(cl.id)} title="Excluir checklist"><Trash2 size={12} /></button>
+                  <button className="ib rd" onClick={() => onDeleteChecklist(cl.id)} title="Excluir checklist"><Trash2 size={12} /></button>
                 </div>
               </div>
 
@@ -339,7 +450,7 @@ function ChecklistTab({ checks, onChange, onToggle }: {
               <div className="card-bd" style={{ padding: 10 }}>
                 {cl.itens.map(it => (
                   <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 4px', borderBottom: '1px solid var(--border)' }}>
-                    <div style={{ cursor: 'pointer' }} onClick={() => onToggle(cl.id, it.id)}>
+                    <div style={{ cursor: 'pointer' }} onClick={() => toggle(cl.id, it.id)}>
                       {it.ok
                         ? <CheckCircle size={16} color="var(--success)" />
                         : <Circle size={16} color="var(--muted)" />}
@@ -354,7 +465,7 @@ function ChecklistTab({ checks, onChange, onToggle }: {
                     ) : (
                       <span
                         style={{ fontSize: 13, flex: 1, textDecoration: it.ok ? 'line-through' : 'none', color: it.ok ? 'var(--muted)' : 'var(--text)' }}
-                        onClick={() => onToggle(cl.id, it.id)}
+                        onClick={() => toggle(cl.id, it.id)}
                       >
                         {it.txt}
                         {it.obrigatorio && <span style={{ marginLeft: 5, fontSize: 9, color: 'var(--danger)', fontWeight: 700 }}>OBR</span>}
@@ -433,18 +544,30 @@ function EditItemInline({ txt, onSave, onCancel }: { txt: string; onSave: (v: st
 
 // ── Tab Produção ──────────────────────────────────────────────
 
-function ProducaoTab({ producao, onChange }: { producao: ProducaoItem[]; onChange: (p: ProducaoItem[]) => void }) {
+function ProducaoTab({
+  producao,
+  lojaDefault,
+  onAdd,
+  onUpdate,
+  onDelete,
+}: {
+  producao: ProducaoItem[]
+  lojaDefault: string
+  onAdd: (p: Omit<ProducaoItem, 'id'>) => Promise<void>
+  onUpdate: (id: string, p: Partial<ProducaoItem>) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+}) {
   const [showModal, setShowModal] = useState(false)
   const [editItem, setEditItem] = useState<ProducaoItem | null>(null)
   const [form, setForm] = useState<Omit<ProducaoItem, 'id'>>({
-    prato: '', qtd: '', loja: 'Amore CD', solicitante: '', executor: '',
+    prato: '', qtd: '', loja: lojaDefault, solicitante: '', executor: '',
     hora: new Date().toTimeString().slice(0, 5), status: 'pendente', obs: '',
   })
   const [saving, setSaving] = useState(false)
 
   const openNovo = () => {
     setEditItem(null)
-    setForm({ prato: '', qtd: '', loja: 'Amore CD', solicitante: '', executor: '', hora: new Date().toTimeString().slice(0, 5), status: 'pendente', obs: '' })
+    setForm({ prato: '', qtd: '', loja: lojaDefault, solicitante: '', executor: '', hora: new Date().toTimeString().slice(0, 5), status: 'pendente', obs: '' })
     setShowModal(true)
   }
 
@@ -455,26 +578,26 @@ function ProducaoTab({ producao, onChange }: { producao: ProducaoItem[]; onChang
   }
 
   const salvar = async () => {
-    if (!form.prato.trim()) return
+    if (!form.prato.trim() || saving) return
     setSaving(true)
-    await new Promise(r => setTimeout(r, 400))
-    if (editItem) {
-      onChange(producao.map(p => p.id === editItem.id ? { ...p, ...form } : p))
-    } else {
-      onChange([...producao, { id: `p_${Date.now()}`, ...form }])
-    }
-    setSaving(false)
-    setShowModal(false)
+    try {
+      if (editItem) {
+        await onUpdate(editItem.id, form)
+      } else {
+        await onAdd(form)
+      }
+      setShowModal(false)
+    } finally { setSaving(false) }
   }
 
   const ciclarStatus = (id: string) => {
     const prox: Record<ProducaoItem['status'], ProducaoItem['status']> = {
       pendente: 'em_preparo', em_preparo: 'concluido', concluido: 'pendente',
     }
-    onChange(producao.map(p => p.id === id ? { ...p, status: prox[p.status] } : p))
+    const item = producao.find(p => p.id === id)
+    if (!item) return
+    onUpdate(id, { status: prox[item.status] })
   }
-
-  const deletar = (id: string) => onChange(producao.filter(p => p.id !== id))
 
   return (
     <div>
@@ -521,7 +644,7 @@ function ProducaoTab({ producao, onChange }: { producao: ProducaoItem[]; onChang
                       <td>
                         <div className="ab" style={{ gap: 4 }}>
                           <button className="ib" onClick={() => openEdit(p)} title="Editar"><Edit3 size={12} /></button>
-                          <button className="ib rd" onClick={() => deletar(p.id)} title="Remover"><Trash2 size={12} /></button>
+                          <button className="ib rd" onClick={() => onDelete(p.id)} title="Remover"><Trash2 size={12} /></button>
                         </div>
                       </td>
                     </tr>
@@ -597,12 +720,22 @@ function ProducaoTab({ producao, onChange }: { producao: ProducaoItem[]; onChang
 
 // ── Tab Desperdício ───────────────────────────────────────────
 
-function DespedicioTab({ desperdicio, onChange }: { desperdicio: DespItem[]; onChange: (d: DespItem[]) => void }) {
+function DespedicioTab({
+  desperdicio,
+  lojaDefault,
+  onAdd,
+  onDelete,
+}: {
+  desperdicio: DespItem[]
+  lojaDefault: string
+  onAdd: (d: Omit<DespItem, 'id'>) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+}) {
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     item: '', qtd: '', unidade: 'kg', motivo: 'Vencimento', categoria: 'Perda por Validade',
-    responsavel: '', loja: 'Amore CD', custo: '',
+    responsavel: '', loja: lojaDefault, custo: '',
   })
 
   const totalCusto = desperdicio.reduce((s, d) => s + parseFloat(d.custo.replace(',', '.') || '0'), 0)
@@ -613,18 +746,16 @@ function DespedicioTab({ desperdicio, onChange }: { desperdicio: DespItem[]; onC
   })).filter(c => c.count > 0)
 
   const salvar = async () => {
-    if (!form.item.trim() || !form.qtd) return
+    if (!form.item.trim() || !form.qtd || saving) return
     setSaving(true)
-    await new Promise(r => setTimeout(r, 300))
-    const now = new Date()
-    const data = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}`
-    onChange([{ id: `d_${Date.now()}`, data, ...form }, ...desperdicio])
-    setSaving(false)
-    setShowModal(false)
-    setForm({ item: '', qtd: '', unidade: 'kg', motivo: 'Vencimento', categoria: 'Perda por Validade', responsavel: '', loja: 'Amore CD', custo: '' })
+    try {
+      const now = new Date()
+      const data = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}`
+      await onAdd({ data, ...form })
+      setShowModal(false)
+      setForm({ item: '', qtd: '', unidade: 'kg', motivo: 'Vencimento', categoria: 'Perda por Validade', responsavel: '', loja: lojaDefault, custo: '' })
+    } finally { setSaving(false) }
   }
-
-  const deletar = (id: string) => onChange(desperdicio.filter(d => d.id !== id))
 
   return (
     <div>
@@ -677,7 +808,7 @@ function DespedicioTab({ desperdicio, onChange }: { desperdicio: DespItem[]; onC
                   <td style={{ fontSize: 11 }}>{d.loja}</td>
                   <td style={{ color: 'var(--danger)', fontWeight: 700, fontSize: 12 }}>R$ {d.custo}</td>
                   <td>
-                    <button className="ib rd" onClick={() => deletar(d.id)}><Trash2 size={11} /></button>
+                    <button className="ib rd" onClick={() => onDelete(d.id)}><Trash2 size={11} /></button>
                   </td>
                 </tr>
               ))}
@@ -749,10 +880,21 @@ function DespedicioTab({ desperdicio, onChange }: { desperdicio: DespItem[]; onC
 
 // ── Tab Ficha Técnica ─────────────────────────────────────────
 
-function FichaTab({ fichas, onChange }: { fichas: FichaTecnica[]; onChange: (f: FichaTecnica[]) => void }) {
+function FichaTab({
+  fichas,
+  onAdd,
+  onUpdate,
+  onDelete,
+}: {
+  fichas: FichaTecnica[]
+  onAdd: (f: Omit<FichaTecnica, 'id'>) => Promise<void>
+  onUpdate: (id: string, f: Partial<FichaTecnica>) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+}) {
   const [selecionada, setSelecionada] = useState<FichaTecnica | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editFicha, setEditFicha] = useState<FichaTecnica | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const EMPTY_FICHA: Omit<FichaTecnica, 'id'> = {
     nome: '', foto: '',
@@ -774,27 +916,24 @@ function FichaTab({ fichas, onChange }: { fichas: FichaTecnica[]; onChange: (f: 
     setShowForm(true)
   }
 
-  const salvar = () => {
-    if (!form.nome.trim()) return
-    // Calcula custo total automaticamente
-    const custo = form.ingredientes.reduce((s, i) => s + parseFloat(i.custo.replace(',', '.') || '0'), 0)
-    const fichaFinal = {
-      ...form,
-      custo_total: custo.toFixed(2).replace('.', ','),
-      preco_venda: form.preco_venda || (custo / (1 - parseFloat(form.margem || '60') / 100)).toFixed(2).replace('.', ','),
-    }
-    if (editFicha) {
-      onChange(fichas.map(f => f.id === editFicha.id ? { ...fichaFinal, id: editFicha.id } : f))
-    } else {
-      onChange([...fichas, { ...fichaFinal, id: `ft_${Date.now()}` }])
-    }
-    setShowForm(false)
-    setSelecionada(null)
-  }
-
-  const deletar = (id: string) => {
-    onChange(fichas.filter(f => f.id !== id))
-    if (selecionada?.id === id) setSelecionada(null)
+  const salvar = async () => {
+    if (!form.nome.trim() || saving) return
+    setSaving(true)
+    try {
+      const custo = form.ingredientes.reduce((s, i) => s + parseFloat(i.custo.replace(',', '.') || '0'), 0)
+      const fichaFinal = {
+        ...form,
+        custo_total: custo.toFixed(2).replace('.', ','),
+        preco_venda: form.preco_venda || (custo / (1 - parseFloat(form.margem || '60') / 100)).toFixed(2).replace('.', ','),
+      }
+      if (editFicha) {
+        await onUpdate(editFicha.id, fichaFinal)
+      } else {
+        await onAdd(fichaFinal)
+      }
+      setShowForm(false)
+      setSelecionada(null)
+    } finally { setSaving(false) }
   }
 
   const addIngrediente = () => {
@@ -824,11 +963,10 @@ function FichaTab({ fichas, onChange }: { fichas: FichaTecnica[]; onChange: (f: 
           <button className="btn bo bsm" onClick={() => setSelecionada(null)}>← Fichas</button>
           <h3 style={{ margin: 0, fontWeight: 800, fontSize: 16, flex: 1 }}>{ft.nome}</h3>
           <button className="btn bo bsm" onClick={() => openEdit(ft)}><Edit3 size={11} /> Editar</button>
-          <button className="btn bsm" style={{ background: 'var(--danger)', color: '#fff' }} onClick={() => deletar(ft.id)}><Trash2 size={11} /> Excluir</button>
+          <button className="btn bsm" style={{ background: 'var(--danger)', color: '#fff' }} onClick={() => { onDelete(ft.id); setSelecionada(null) }}><Trash2 size={11} /> Excluir</button>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          {/* Ingredientes */}
           <div className="card">
             <div className="card-hd"><span className="card-tt"><Package size={13} style={{ display: 'inline', marginRight: 4 }} />Ingredientes</span></div>
             <div className="tw">
@@ -852,7 +990,6 @@ function FichaTab({ fichas, onChange }: { fichas: FichaTecnica[]; onChange: (f: 
             </div>
           </div>
 
-          {/* KPIs financeiros */}
           <div>
             <div className="kpi-grid" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: 14 }}>
               <div className="kpi"><div className="kpi-ac" style={{ background: 'var(--bordo)' }} /><div className="kpi-lbl">Custo Total</div><div className="kpi-val" style={{ fontSize: 18 }}>R$ {ft.custo_total}</div></div>
@@ -860,8 +997,6 @@ function FichaTab({ fichas, onChange }: { fichas: FichaTecnica[]; onChange: (f: 
               <div className="kpi"><div className="kpi-ac" style={{ background: 'var(--blue)' }} /><div className="kpi-lbl">Margem</div><div className="kpi-val" style={{ fontSize: 18, color: 'var(--blue)' }}>{margemCalc(ft)}%</div></div>
               <div className="kpi"><div className="kpi-ac" style={{ background: 'var(--warning)' }} /><div className="kpi-lbl">Rendimento</div><div className="kpi-val" style={{ fontSize: 14 }}>{ft.rendimento}</div></div>
             </div>
-
-            {/* Tempo e modo */}
             <div className="card" style={{ padding: 14 }}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                 <Clock size={14} style={{ color: 'var(--bordo)', flexShrink: 0, marginTop: 1 }} />
@@ -907,7 +1042,7 @@ function FichaTab({ fichas, onChange }: { fichas: FichaTecnica[]; onChange: (f: 
                       <span><Package size={10} style={{ display: 'inline' }} /> {f.ingredientes.length} ingredientes</span>
                     </div>
                   </div>
-                  <div onClick={e => { e.stopPropagation(); deletar(f.id) }} style={{ cursor: 'pointer', color: 'var(--muted)' }}>
+                  <div onClick={e => { e.stopPropagation(); onDelete(f.id) }} style={{ cursor: 'pointer', color: 'var(--muted)' }}>
                     <Trash2 size={12} />
                   </div>
                 </div>
@@ -944,7 +1079,6 @@ function FichaTab({ fichas, onChange }: { fichas: FichaTecnica[]; onChange: (f: 
                 <label className="fl">Nome do prato <span className="rq">*</span></label>
                 <input className="inp" value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: Açaí 300ml Tradicional" autoFocus />
               </div>
-
               <div className="g2" style={{ marginBottom: 14 }}>
                 <div className="fg">
                   <label className="fl"><Clock size={11} style={{ display: 'inline', marginRight: 3 }} />Tempo de preparo (min)</label>
@@ -955,7 +1089,6 @@ function FichaTab({ fichas, onChange }: { fichas: FichaTecnica[]; onChange: (f: 
                   <input className="inp" value={form.rendimento} onChange={e => setForm(f => ({ ...f, rendimento: e.target.value }))} placeholder="Ex: 1 porção, 500ml" />
                 </div>
               </div>
-
               <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>📦 Ingredientes</div>
               <div className="card" style={{ padding: 10, marginBottom: 14 }}>
                 {form.ingredientes.map((it, idx) => (
@@ -976,14 +1109,12 @@ function FichaTab({ fichas, onChange }: { fichas: FichaTecnica[]; onChange: (f: 
                   <Plus size={10} /> Adicionar ingrediente
                 </button>
               </div>
-
               <div className="fg" style={{ marginBottom: 14 }}>
                 <label className="fl">Modo de preparo</label>
                 <textarea className="inp" rows={4} style={{ resize: 'vertical' }} value={form.modo_preparo}
                   onChange={e => setForm(f => ({ ...f, modo_preparo: e.target.value }))}
                   placeholder="Descreva o passo a passo do preparo..." />
               </div>
-
               <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}><DollarSign size={11} style={{ display: 'inline', marginRight: 3 }} />Precificação</div>
               <div className="g2">
                 <div className="fg">
@@ -998,7 +1129,9 @@ function FichaTab({ fichas, onChange }: { fichas: FichaTecnica[]; onChange: (f: 
             </div>
             <div className="mft">
               <button className="btn bo" onClick={() => setShowForm(false)}>Cancelar</button>
-              <button className="btn bp" onClick={salvar}><Save size={12} /> Salvar Ficha</button>
+              <button className="btn bp" onClick={salvar} disabled={saving}>
+                {saving ? <RefreshCw size={12} className="spin" /> : <Save size={12} />} Salvar Ficha
+              </button>
             </div>
           </div>
         </div>
@@ -1039,16 +1172,23 @@ const STATUS_SOL_FLOW: SolicitacaoItem['status'][] = [
 
 function SolicitacoesTab({
   solicitacoes,
-  setSolicitacoes,
+  lojaDefault,
+  onAdd,
+  onUpdate,
+  onDelete,
 }: {
   solicitacoes: SolicitacaoItem[]
-  setSolicitacoes: (fn: SolicitacaoItem[] | ((prev: SolicitacaoItem[]) => SolicitacaoItem[])) => void
+  lojaDefault: string
+  onAdd: (s: Omit<SolicitacaoItem, 'id'>) => Promise<void>
+  onUpdate: (id: string, s: Partial<SolicitacaoItem>) => Promise<void>
+  onDelete: (id: string) => Promise<void>
 }) {
   const [showModal, setShowModal] = useState(false)
   const [editItem, setEditItem] = useState<SolicitacaoItem | null>(null)
   const [filtroTipo, setFiltroTipo] = useState<SolicitacaoItem['tipo'] | ''>('')
   const [filtroUrgencia, setFiltroUrgencia] = useState<SolicitacaoItem['urgencia'] | ''>('')
   const [formErros, setFormErros] = useState<{ item?: string; responsavel?: string }>({})
+  const [saving, setSaving] = useState(false)
 
   const EMPTY_FORM = {
     tipo: 'produto' as SolicitacaoItem['tipo'],
@@ -1076,31 +1216,31 @@ function SolicitacoesTab({
     setShowModal(true)
   }
 
-  const salvar = () => {
+  const salvar = async () => {
     const erros: { item?: string; responsavel?: string } = {}
     if (!form.item.trim()) erros.item = 'Informe o item solicitado'
     if (!form.responsavel.trim()) erros.responsavel = 'Informe o responsável'
     if (Object.keys(erros).length) { setFormErros(erros); return }
-    const now = new Date()
-    const data = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}`
-    if (editItem) {
-      setSolicitacoes(prev => prev.map(s => s.id === editItem.id ? { ...s, ...form } : s))
-    } else {
-      const nova: SolicitacaoItem = { id: `sol_${Date.now()}`, data, ...form }
-      setSolicitacoes(prev => [nova, ...prev])
-    }
-    setShowModal(false)
+    if (saving) return
+    setSaving(true)
+    try {
+      const now = new Date()
+      const data = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}`
+      if (editItem) {
+        await onUpdate(editItem.id, form)
+      } else {
+        await onAdd({ ...form, data, loja: lojaDefault })
+      }
+      setShowModal(false)
+    } finally { setSaving(false) }
   }
 
-  const deletar = (id: string) => setSolicitacoes(prev => prev.filter(s => s.id !== id))
-
   const avancarStatus = (id: string) => {
-    setSolicitacoes(prev => prev.map(s => {
-      if (s.id !== id) return s
-      const idx = STATUS_SOL_FLOW.indexOf(s.status)
-      const proximo = idx >= 0 && idx < STATUS_SOL_FLOW.length - 1 ? STATUS_SOL_FLOW[idx + 1] : s.status
-      return { ...s, status: proximo }
-    }))
+    const s = solicitacoes.find(x => x.id === id)
+    if (!s) return
+    const idx = STATUS_SOL_FLOW.indexOf(s.status)
+    const proximo = idx >= 0 && idx < STATUS_SOL_FLOW.length - 1 ? STATUS_SOL_FLOW[idx + 1] : s.status
+    if (proximo !== s.status) onUpdate(id, { status: proximo })
   }
 
   const lista = solicitacoes.filter(s =>
@@ -1115,7 +1255,6 @@ function SolicitacoesTab({
 
   return (
     <div>
-      {/* KPI cards */}
       <div className="kpi-grid" style={{ marginBottom: 14 }}>
         {[
           { lbl: 'Total de Solicitações', val: String(total), sub: 'registradas', col: 'var(--blue)' },
@@ -1167,14 +1306,8 @@ function SolicitacoesTab({
             <table>
               <thead>
                 <tr>
-                  <th>Data</th>
-                  <th>Tipo</th>
-                  <th>Item</th>
-                  <th>Qtd</th>
-                  <th>Urgência</th>
-                  <th>Status</th>
-                  <th>Responsável</th>
-                  <th></th>
+                  <th>Data</th><th>Tipo</th><th>Item</th><th>Qtd</th>
+                  <th>Urgência</th><th>Status</th><th>Responsável</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -1194,17 +1327,13 @@ function SolicitacoesTab({
                         {s.obs && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{s.obs}</div>}
                       </td>
                       <td style={{ fontSize: 12 }}>{s.quantidade || '—'}</td>
-                      <td>
-                        <span className={`badge ${urg.cls}`}>{urg.lbl}</span>
-                      </td>
+                      <td><span className={`badge ${urg.cls}`}>{urg.lbl}</span></td>
                       <td>
                         <span
                           className={`badge ${st.cls}`}
                           style={{ cursor: s.status !== 'recebido' && s.status !== 'cancelado' ? 'pointer' : 'default' }}
                           title={s.status !== 'recebido' && s.status !== 'cancelado' ? 'Clique para avançar status' : undefined}
-                          onClick={() => {
-                            if (s.status !== 'recebido' && s.status !== 'cancelado') avancarStatus(s.id)
-                          }}
+                          onClick={() => { if (s.status !== 'recebido' && s.status !== 'cancelado') avancarStatus(s.id) }}
                         >
                           {st.lbl}
                         </span>
@@ -1218,7 +1347,7 @@ function SolicitacoesTab({
                       <td>
                         <div className="ab" style={{ gap: 4 }}>
                           <button className="ib" onClick={() => openEdit(s)} title="Editar"><Edit3 size={12} /></button>
-                          <button className="ib rd" onClick={() => deletar(s.id)} title="Excluir"><Trash2 size={12} /></button>
+                          <button className="ib rd" onClick={() => onDelete(s.id)} title="Excluir"><Trash2 size={12} /></button>
                         </div>
                       </td>
                     </tr>
@@ -1300,7 +1429,9 @@ function SolicitacoesTab({
             </div>
             <div className="mft">
               <button className="btn bo" onClick={() => setShowModal(false)}>Cancelar</button>
-              <button className="btn bp" onClick={salvar}><Check size={12} /> Salvar</button>
+              <button className="btn bp" onClick={salvar} disabled={saving}>
+                {saving ? <RefreshCw size={12} className="spin" /> : <Check size={12} />} Salvar
+              </button>
             </div>
           </div>
         </div>

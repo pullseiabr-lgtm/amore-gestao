@@ -605,6 +605,77 @@ export interface ProdutoFornecedor {
   fornecedor?: import('./database').Fornecedor
 }
 
+// ── Cozinha ──────────────────────────────────────────────────
+
+export interface CozinhaChecklist {
+  id: string
+  titulo: string
+  loja: string
+  setor: string
+  itens: Array<{ id: string; txt: string; ok: boolean; obrigatorio: boolean; foto?: string }>
+  created_at: string
+  updated_at: string
+}
+
+export interface CozinhaProducao {
+  id: string
+  prato: string
+  qtd: string
+  loja: string
+  solicitante: string
+  executor: string
+  hora: string
+  status: 'pendente' | 'em_preparo' | 'concluido'
+  obs: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CozinhaDesperdicio {
+  id: string
+  data: string
+  item: string
+  qtd: string
+  unidade: string
+  motivo: string
+  categoria: string
+  responsavel: string
+  loja: string
+  custo: string
+  created_at: string
+}
+
+export interface CozinhaFicha {
+  id: string
+  nome: string
+  foto: string
+  ingredientes: Array<{ desc: string; qtd: string; unidade: string; custo: string }>
+  rendimento: string
+  tempo_preparo: string
+  modo_preparo: string
+  custo_total: string
+  margem: string
+  preco_venda: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CozinhaSolicitacao {
+  id: string
+  tipo: 'produto' | 'equipamento' | 'utensilio' | 'manutencao' | 'compra_emergencial'
+  item: string
+  quantidade: string
+  urgencia: 'baixa' | 'media' | 'alta' | 'critica'
+  responsavel: string
+  setor: string
+  status: 'solicitado' | 'em_cotacao' | 'aprovado' | 'em_compra' | 'recebido' | 'cancelado'
+  obs: string
+  data: string
+  loja: string
+  created_at: string
+  updated_at: string
+}
+
 export interface Database {
   public: {
     Tables: {
