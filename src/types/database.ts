@@ -676,6 +676,74 @@ export interface CozinhaSolicitacao {
   updated_at: string
 }
 
+// ── Market Analytics & Supplier Intelligence ─────────────────
+
+export interface MarketPriceHistory {
+  id: string
+  produto: string
+  categoria: string
+  fornecedor_nome: string
+  preco: number
+  unidade: string
+  loja: string
+  fonte: 'manual' | 'cotacao' | 'compra'
+  data: string
+  obs: string
+  created_at: string
+}
+
+export interface FornecedorScore {
+  id: string
+  fornecedor_nome: string
+  score_operacional: number
+  score_financeiro: number
+  score_confiabilidade: number
+  score_entrega: number
+  score_competitividade: number
+  score_total: number
+  classificacao: 'ouro' | 'prata' | 'bronze' | 'observacao' | 'critico'
+  total_pedidos: number
+  pedidos_no_prazo: number
+  pedidos_em_atraso: number
+  rupturas: number
+  avaliacao_media: number
+  obs: string
+  ultima_atualizacao: string
+  created_at: string
+}
+
+export interface MarketAlert {
+  id: string
+  tipo: 'aumento' | 'reducao' | 'oportunidade' | 'risco_ruptura' | 'antecipacao' | 'variacao'
+  produto: string
+  categoria: string
+  mensagem: string
+  variacao_pct: number
+  preco_anterior: number | null
+  preco_atual: number | null
+  fornecedor_nome: string
+  loja: string
+  lido: boolean
+  created_at: string
+}
+
+export interface MarketTendencia {
+  id: string
+  produto: string
+  categoria: string
+  tendencia: 'alta' | 'baixa' | 'estavel' | 'volatil'
+  variacao_7d: number
+  variacao_30d: number
+  preco_medio_30d: number
+  preco_atual: number
+  melhor_fornecedor: string
+  melhor_preco: number
+  previsao_7d_pct: number
+  data_analise: string
+  created_at: string
+  updated_at: string
+}
+
 export interface Database {
   public: {
     Tables: {

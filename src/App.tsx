@@ -24,6 +24,7 @@ import ProdutosPage from './pages/produtos/ProdutosPage'
 import RelatorioCVLPage from './pages/relatorios/RelatorioCVLPage'
 import RupturaPage from './pages/relatorios/RupturaPage'
 import PdvPage from './pages/pdv/PdvPage'
+import MarketPage from './pages/market/MarketPage'
 
 export type PageId =
   | 'dashboard'
@@ -46,6 +47,7 @@ export type PageId =
   | 'relatorio-cvl'
   | 'ruptura'
   | 'pdv'
+  | 'market'
 
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Dashboard',
@@ -68,6 +70,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'relatorio-cvl': 'Compra vs Lista',
   ruptura: 'Ruptura de Pedidos',
   pdv: 'PDV — Ponto de Venda',
+  market: 'Market Analytics & Supplier Intelligence',
 }
 
 function PageContent({ page }: { page: PageId }) {
@@ -92,6 +95,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'relatorio-cvl':        return <RelatorioCVLPage />
     case 'ruptura':              return <RupturaPage />
     case 'pdv':                  return <PdvPage />
+    case 'market':               return <MarketPage />
     default: return <DashboardPage />
   }
 }

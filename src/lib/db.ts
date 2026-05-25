@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia } from '../types/database'
 
 const db = supabase as any
 
@@ -1357,4 +1357,119 @@ export async function updateCozinhaSolicitacao(
 }
 export async function deleteCozinhaSolicitacao(id: string): Promise<void> {
   await sdkCall<null>(db.from('cozinha_solicitacoes').delete().eq('id', id))
+}
+
+// ── Market Analytics — Histórico de Preços ──────────────────
+
+export async function fetchMarketPriceHistory(loja?: string, produto?: string): Promise<MarketPriceHistory[]> {
+  let q = db.from('market_price_history').select('*').order('data', { ascending: false }).order('created_at', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
+  if (produto) q = q.eq('produto', produto)
+  return sdkCall<MarketPriceHistory[]>(q).then(d => d ?? []).catch(() => [])
+}
+
+export async function insertMarketPrice(p: Omit<MarketPriceHistory, 'id' | 'created_at'>): Promise<MarketPriceHistory> {
+  return sdkCall<MarketPriceHistory>(db.from('market_price_history').insert(p).select().single())
+}
+
+export async function deleteMarketPrice(id: string): Promise<void> {
+  await sdkCall<null>(db.from('market_price_history').delete().eq('id', id))
+}
+
+// ── Market Analytics — Scores de Fornecedores ───────────────
+
+export async function fetchFornecedorScores(): Promise<FornecedorScore[]> {
+  return sdkCall<FornecedorScore[]>(
+    db.from('fornecedor_scores').select('*').order('score_total', { ascending: false })
+  ).then(d => d ?? []).catch(() => [])
+}
+
+export async function upsertFornecedorScore(
+  s: Omit<FornecedorScore, 'id' | 'created_at'>
+): Promise<FornecedorScore> {
+  const token = await getToken()
+  const ctrl  = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 8000)
+  try {
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/fornecedor_scores`,
+      {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: {
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation,resolution=merge-duplicates',
+        },
+        body: JSON.stringify(s),
+      },
+    )
+    if (!res.ok) throw new Error(res.statusText)
+    const rows = await res.json()
+    return Array.isArray(rows) ? rows[0] : rows
+  } finally { clearTimeout(timer) }
+}
+
+export async function deleteFornecedorScore(id: string): Promise<void> {
+  await sdkCall<null>(db.from('fornecedor_scores').delete().eq('id', id))
+}
+
+// ── Market Analytics — Alertas ───────────────────────────────
+
+export async function fetchMarketAlerts(apenasNaoLidos = false): Promise<MarketAlert[]> {
+  let q = db.from('market_alerts').select('*').order('created_at', { ascending: false }).limit(200)
+  if (apenasNaoLidos) q = q.eq('lido', false)
+  return sdkCall<MarketAlert[]>(q).then(d => d ?? []).catch(() => [])
+}
+
+export async function insertMarketAlert(a: Omit<MarketAlert, 'id' | 'created_at'>): Promise<MarketAlert> {
+  return sdkCall<MarketAlert>(db.from('market_alerts').insert(a).select().single())
+}
+
+export async function marcarAlertaLido(id: string): Promise<void> {
+  await sdkCall<null>(db.from('market_alerts').update({ lido: true }).eq('id', id))
+}
+
+export async function marcarTodosLidos(): Promise<void> {
+  await sdkCall<null>(db.from('market_alerts').update({ lido: true }).eq('lido', false))
+}
+
+// ── Market Analytics — Tendências ───────────────────────────
+
+export async function fetchMarketTendencias(): Promise<MarketTendencia[]> {
+  return sdkCall<MarketTendencia[]>(
+    db.from('market_tendencias').select('*').order('updated_at', { ascending: false })
+  ).then(d => d ?? []).catch(() => [])
+}
+
+export async function upsertMarketTendencia(
+  t: Omit<MarketTendencia, 'id' | 'created_at'>
+): Promise<MarketTendencia> {
+  const token = await getToken()
+  const ctrl  = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 8000)
+  try {
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/market_tendencias`,
+      {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: {
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation,resolution=merge-duplicates',
+        },
+        body: JSON.stringify(t),
+      },
+    )
+    if (!res.ok) throw new Error(res.statusText)
+    const rows = await res.json()
+    return Array.isArray(rows) ? rows[0] : rows
+  } finally { clearTimeout(timer) }
+}
+
+export async function deleteMarketTendencia(id: string): Promise<void> {
+  await sdkCall<null>(db.from('market_tendencias').delete().eq('id', id))
 }

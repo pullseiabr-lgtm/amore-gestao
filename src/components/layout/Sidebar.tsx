@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap } from 'lucide-react'
+import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap, Activity } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 
@@ -38,8 +38,9 @@ const COMPRAS_SUBMENU: NavItem[] = [
 
 // Sub-itens do grupo Relatórios
 const RELATORIOS_SUBMENU: NavItem[] = [
-  { id: 'relatorio-cvl', label: 'Compra vs Lista', icon: <BarChart2 size={12} /> },
-  { id: 'ruptura',       label: 'Ruptura de Pedidos', icon: <AlertTriangle size={12} /> },
+  { id: 'relatorio-cvl', label: 'Compra vs Lista',      icon: <BarChart2 size={12} /> },
+  { id: 'ruptura',       label: 'Ruptura de Pedidos',   icon: <AlertTriangle size={12} /> },
+  { id: 'market',        label: 'Market Analytics',     icon: <Activity size={12} /> },
 ]
 
 const MENU_BOTTOM: NavItem[] = [
@@ -72,7 +73,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
 
   // Abre o dropdown automaticamente se a página ativa for do grupo Compras
   const isComprasGroup = (p: string) => p === 'compras' || p === 'requisicoes' || p === 'req-automaticas' || p === 'estoque' || p === 'fornecedores'
-  const isRelatoriosGroup = (p: string) => p === 'relatorio-cvl' || p === 'ruptura'
+  const isRelatoriosGroup = (p: string) => p === 'relatorio-cvl' || p === 'ruptura' || p === 'market'
 
   const [produtosOpen, setProdutosOpen] = useState(isProdutosGroup(activePage))
   const [comprasOpen, setComprasOpen] = useState(isComprasGroup(activePage))
