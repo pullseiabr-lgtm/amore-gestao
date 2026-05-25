@@ -4,7 +4,7 @@ import {
   Plus, Search, Trash2, ChevronLeft, Loader, CheckCircle2,
   Circle, XCircle, ShoppingCart, ClipboardList, Calendar,
   Package, ChevronDown, Edit3, Check, X, Download,
-  AlertTriangle, Building2, TrendingUp, RefreshCw, Mail, Clock,
+  AlertTriangle, Building2, TrendingUp, RefreshCw, Clock,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLoja } from '../../contexts/LojaContext'
@@ -12,9 +12,9 @@ import {
   fetchComprasListas, insertComprasLista, updateComprasLista, deleteComprasLista,
   fetchComprasListaItens, insertComprasListaItem, updateComprasListaItem, deleteComprasListaItem,
   fetchItensComprasDashboard, fetchEstoqueProdutos, insertEstoqueMovimentacao,
-  atualizarCustoMedioPorNome,
+  atualizarCustoMedioPorNome, fetchFornecedores,
 } from '../../lib/db'
-import type { ComprasLista, ComprasListaItem, ListaStatus, ListaItemStatus, EstoqueProduto } from '../../types/database'
+import type { ComprasLista, ComprasListaItem, ListaStatus, ListaItemStatus, EstoqueProduto, Fornecedor } from '../../types/database'
 
 // ── Constantes ───────────────────────────────────────────────
 
@@ -520,9 +520,13 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
     try { return JSON.parse(localStorage.getItem(histKey) || '[]') } catch { return [] }
   })
   const [showHistorico, setShowHistorico] = useState(false)
-  const [emailCotacao, setEmailCotacao] = useState('')
-  const [showEmailInput, setShowEmailInput] = useState(false)
   const historicoRef = useRef<HTMLDivElement>(null)
+
+  // Disparar Cotação — modal multi-fornecedor
+  const [showDispararCot, setShowDispararCot] = useState(false)
+  const [fornecedoresBD, setFornecedoresBD] = useState<Fornecedor[]>([])
+  const [fornsSelecionados, setFornsSelecionados] = useState<Set<string>>(new Set())
+  const [loadingFornBD, setLoadingFornBD] = useState(false)
 
   // Fechar histórico ao clicar fora (click-outside)
   useEffect(() => {
@@ -543,6 +547,67 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
     const atualizado = [novo, ...historicoCotacoes].slice(0, 20)
     setHistoricoCotacoes(atualizado)
     localStorage.setItem(histKey, JSON.stringify(atualizado))
+  }
+
+  // Formata telefone para WA: remove tudo exceto dígitos, adiciona 55 se precisar
+  const fmtFoneWA = (fone: string) => {
+    const digits = fone.replace(/\D/g, '')
+    if (digits.startsWith('55') && digits.length >= 12) return digits
+    if (digits.length >= 10) return '55' + digits
+    return digits
+  }
+
+  const abrirDispararCotacao = async () => {
+    setShowDispararCot(true)
+    setFornsSelecionados(new Set())
+    setLoadingFornBD(true)
+    try {
+      const lista_forn = await fetchFornecedores(lista.loja)
+      setFornecedoresBD(lista_forn.filter(f => f.ativo !== false))
+    } catch { setFornecedoresBD([]) }
+    setLoadingFornBD(false)
+  }
+
+  const txtCotacaoWA = (itensPend: ComprasListaItem[]) => {
+    const data = lista.data_compra ? fmtData(lista.data_compra) : new Date().toLocaleDateString('pt-BR')
+    const linhas = itensPend.map((it, i) =>
+      `${i + 1}. ${it.produto_nome} – ${it.quantidade} ${it.unidade || 'un'}${it.preco_estimado ? ` (est. ${fmtR$(it.preco_estimado)})` : ''}`
+    ).join('\n')
+    return `🛒 *COTAÇÃO — ${lista.titulo}*\nData: ${data}\n\nPrezado fornecedor, solicito cotação dos itens abaixo:\n\n${linhas}\n\nResponda com:\n• Produto | Marca | Preço unit. | Prazo | Forma pgto\n\n📞 Amore Gestão`
+  }
+
+  const txtCotacaoEmail = (itensPend: ComprasListaItem[]) => {
+    const data = lista.data_compra ? fmtData(lista.data_compra) : new Date().toLocaleDateString('pt-BR')
+    const linhas = itensPend.map((it, i) =>
+      `${i + 1}. ${it.produto_nome} – ${it.quantidade} ${it.unidade || 'un'}${it.preco_estimado ? ` (est. R$ ${it.preco_estimado.toFixed(2).replace('.', ',')})` : ''}`
+    ).join('\n')
+    return `Prezado fornecedor,\n\nSolicito cotação dos itens abaixo para a lista "${lista.titulo}" — Data: ${data}\n\n${linhas}\n\nPor favor, responda com:\n• Produto | Marca | Preço unitário | Prazo de entrega | Forma de pagamento\n\nAtenciosamente,\nAmore Gestão`
+  }
+
+  const dispararWA = (forn: Fornecedor, itensPend: ComprasListaItem[]) => {
+    const fone = forn.whatsapp || forn.telefone || forn.contato_telefone || ''
+    const txt = txtCotacaoWA(itensPend)
+    const numFone = fmtFoneWA(fone)
+    window.open(`https://wa.me/${numFone}?text=${encodeURIComponent(txt)}`, '_blank')
+    registrarCotacao('whatsapp', itensPend.length)
+  }
+
+  const dispararEmail = (forn: Fornecedor, itensPend: ComprasListaItem[]) => {
+    const email = forn.email || forn.contato_email || ''
+    const assunto = encodeURIComponent(`Solicitação de Cotação — ${lista.titulo}`)
+    const corpo = encodeURIComponent(txtCotacaoEmail(itensPend))
+    window.open(`mailto:${encodeURIComponent(email)}?subject=${assunto}&body=${corpo}`, '_blank')
+    registrarCotacao('email', itensPend.length)
+  }
+
+  const dispararParaTodos = () => {
+    const itensPend = itens.filter(i => i.status === 'pendente')
+    fornecedoresBD
+      .filter(f => fornsSelecionados.has(f.id))
+      .forEach(f => {
+        const temWA = !!(f.whatsapp || f.telefone || f.contato_telefone)
+        if (temWA) dispararWA(f, itensPend)
+      })
   }
 
   const abrirModalResposta = () => {
@@ -657,39 +722,6 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
       onAtualizar(atualizado)
     } catch {}
     setMudandoStatus(false)
-  }
-
-  // Item 9 – Cotação WhatsApp
-  const gerarTextoCotacao = (itensPendentes: ComprasListaItem[]) => {
-    const dataFmt = lista.data_compra ? fmtData(lista.data_compra) : new Date().toLocaleDateString('pt-BR')
-    const linhasItens = itensPendentes.map((it, idx) =>
-      `${idx + 1}. ${it.produto_nome} – ${it.quantidade} ${it.unidade || 'un'}${it.preco_estimado ? ` (est. ${fmtR$(it.preco_estimado)})` : ''}`
-    ).join('\n')
-    return `🛒 COTAÇÃO — ${lista.titulo}\nData: ${dataFmt}\n\nPrezado fornecedor, solicito cotação dos itens abaixo:\n\n${linhasItens}\n\nResponda com:\n• Produto | Marca | Preço unit. | Prazo | Forma pgto\n\nAmore Gestão`
-  }
-
-  const abrirCotacaoWhatsApp = () => {
-    const itensPendentes = itens.filter(i => i.status === 'pendente')
-    if (itensPendentes.length === 0) return
-    const dataFmt = lista.data_compra ? fmtData(lista.data_compra) : new Date().toLocaleDateString('pt-BR')
-    const linhasItens = itensPendentes.map((it, idx) =>
-      `${idx + 1}. ${it.produto_nome} – ${it.quantidade} ${it.unidade || 'un'}${it.preco_estimado ? ` (est. ${fmtR$(it.preco_estimado)})` : ''}`
-    ).join('\n')
-    const textoWA = `🛒 *COTAÇÃO — ${lista.titulo}*\nData: ${dataFmt}\n\nPrezado fornecedor, solicito cotação dos itens abaixo:\n\n${linhasItens}\n\nResponda com:\n• Produto | Marca | Preço unit. | Prazo | Forma pgto\n\n📞 Amore Gestão`
-    window.open('https://wa.me/?text=' + encodeURIComponent(textoWA), '_blank')
-    registrarCotacao('whatsapp', itensPendentes.length)
-  }
-
-  const abrirCotacaoEmail = () => {
-    const itensPendentes = itens.filter(i => i.status === 'pendente')
-    if (itensPendentes.length === 0) return
-    const assunto = encodeURIComponent(`Solicitação de Cotação — ${lista.titulo}`)
-    const corpo = encodeURIComponent(gerarTextoCotacao(itensPendentes))
-    const dest = emailCotacao.trim() ? encodeURIComponent(emailCotacao.trim()) : ''
-    window.open(`mailto:${dest}?subject=${assunto}&body=${corpo}`, '_blank')
-    registrarCotacao('email', itensPendentes.length)
-    setShowEmailInput(false)
-    setEmailCotacao('')
   }
 
   // Cotação Formal — abrir modal pré-preenchido
@@ -839,8 +871,6 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
   useEffect(() => {
     if (pendentes === 0) {
       setShowHistorico(false)
-      setShowEmailInput(false)
-      setEmailCotacao('')
     }
   }, [pendentes])
 
@@ -887,36 +917,14 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
 
         {/* Ações */}
         <div style={{ display: 'flex', gap: 6, position: 'relative', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {/* Cotação WhatsApp + Email + Histórico */}
+          {/* Cotação — botão principal + histórico */}
           {pendentes > 0 && (
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              <button className="btn bo bsm" onClick={abrirCotacaoWhatsApp}
-                title="Enviar cotação dos itens pendentes via WhatsApp"
-                style={{ color: '#16A34A', borderColor: '#16A34A' }}>
-                📱 WhatsApp
+            <div style={{ display: 'flex', gap: 4, position: 'relative', flexWrap: 'wrap' }}>
+              <button className="btn bo bsm" onClick={abrirDispararCotacao}
+                title="Selecionar fornecedores e disparar cotação via WhatsApp ou e-mail"
+                style={{ color: '#16A34A', borderColor: '#16A34A', fontWeight: 700 }}>
+                📨 Disparar Cotação
               </button>
-              {showEmailInput ? (
-                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                  <input
-                    className="inp" type="email" placeholder="email@fornecedor.com"
-                    value={emailCotacao} onChange={e => setEmailCotacao(e.target.value)}
-                    style={{ fontSize: 12, width: 200, padding: '4px 8px' }}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') abrirCotacaoEmail()
-                      if (e.key === 'Escape') { setShowEmailInput(false); setEmailCotacao('') }
-                    }}
-                    autoFocus
-                  />
-                  <button className="ib" onClick={abrirCotacaoEmail} style={{ color: 'var(--success)' }} title="Enviar"><Check size={13} /></button>
-                  <button className="ib" onClick={() => { setShowEmailInput(false); setEmailCotacao('') }} title="Cancelar"><X size={13} /></button>
-                </div>
-              ) : (
-                <button className="btn bo bsm" onClick={() => setShowEmailInput(true)}
-                  title="Enviar cotação via Email"
-                  style={{ color: '#2563EB', borderColor: '#2563EB' }}>
-                  <Mail size={12} /> Email
-                </button>
-              )}
               {historicoCotacoes.length > 0 && (
                 <button className="btn bo bsm" onClick={() => setShowHistorico(o => !o)}
                   title="Histórico de cotações enviadas"
@@ -924,38 +932,34 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
                   <Clock size={12} /> {historicoCotacoes.length}
                 </button>
               )}
-            </div>
-          )}
-          {/* Painel histórico de cotações */}
-          {showHistorico && historicoCotacoes.length > 0 && (
-            <div ref={historicoRef} style={{
-              position: 'absolute', right: 0, top: '110%', zIndex: 300,
-              background: 'var(--sidebar)', border: '1px solid var(--border)',
-              borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,.15)',
-              minWidth: 280, padding: '12px 14px',
-            }}>
-              <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 10, display: 'flex', justifyContent: 'space-between' }}>
-                <span>📋 Histórico de cotações</span>
-                <button className="mx" onClick={() => setShowHistorico(false)} style={{ fontSize: 12 }}>✕</button>
-              </div>
-              {historicoCotacoes.map((h, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
-                  <span style={{ fontSize: 16 }}>{h.tipo === 'whatsapp' ? '📱' : '📧'}</span>
-                  <div>
-                    <div style={{ fontWeight: 700 }}>
-                      {h.tipo === 'whatsapp' ? 'WhatsApp' : 'Email'} — {h.qtd} item(ns)
-                    </div>
-                    <div style={{ color: 'var(--muted)', fontSize: 10 }}>
-                      {new Date(h.data).toLocaleString('pt-BR')}
-                    </div>
+              {/* Painel histórico */}
+              {showHistorico && historicoCotacoes.length > 0 && (
+                <div ref={historicoRef} style={{
+                  position: 'absolute', right: 0, top: '110%', zIndex: 300,
+                  background: 'var(--sidebar)', border: '1px solid var(--border)',
+                  borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,.15)',
+                  minWidth: 280, padding: '12px 14px',
+                }}>
+                  <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 10, display: 'flex', justifyContent: 'space-between' }}>
+                    <span>📋 Histórico de cotações</span>
+                    <button className="mx" onClick={() => setShowHistorico(false)} style={{ fontSize: 12 }}>✕</button>
                   </div>
+                  {historicoCotacoes.map((h, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
+                      <span style={{ fontSize: 16 }}>{h.tipo === 'whatsapp' ? '📱' : '📧'}</span>
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{h.tipo === 'whatsapp' ? 'WhatsApp' : 'Email'} — {h.qtd} item(ns)</div>
+                        <div style={{ color: 'var(--muted)', fontSize: 10 }}>{new Date(h.data).toLocaleString('pt-BR')}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
 
-          {/* Resposta do Fornecedor */}
-          {pendentes > 0 && historicoCotacoes.length > 0 && (
+          {/* Resposta do Fornecedor — aparece sempre que há cotações no histórico */}
+          {historicoCotacoes.length > 0 && (
             <button className="btn bo bsm" onClick={abrirModalResposta}
               title="Registrar resposta recebida do fornecedor"
               style={{ color: '#7C3AED', borderColor: '#7C3AED' }}>
@@ -1414,6 +1418,119 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
         </div>
       )}
 
+      {/* ── Modal Disparar Cotação ─────────────────────────────── */}
+      {showDispararCot && (
+        <div className="ov open" onClick={e => e.target === e.currentTarget && setShowDispararCot(false)}>
+          <div className="modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
+            <div className="mhd">
+              <span className="mtt">📨 Disparar Cotação — {lista.titulo}</span>
+              <button className="mx" onClick={() => setShowDispararCot(false)}>✕</button>
+            </div>
+            <div className="mbd" style={{ maxHeight: '78vh', overflowY: 'auto' }}>
+
+              {/* Preview da mensagem */}
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--bordo)', marginBottom: 8 }}>📋 Mensagem que será enviada ({itens.filter(i => i.status === 'pendente').length} itens pendentes)</div>
+                <pre style={{ background: 'var(--cream,#fdf8f0)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', fontSize: 11.5, lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text)', margin: 0 }}>
+                  {txtCotacaoWA(itens.filter(i => i.status === 'pendente'))}
+                </pre>
+              </div>
+
+              {/* Lista de fornecedores */}
+              <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--bordo)', marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>🏭 Selecione os fornecedores</span>
+                {!loadingFornBD && fornecedoresBD.length > 0 && (
+                  <button className="btn bo bsm" style={{ fontSize: 11 }}
+                    onClick={() => setFornsSelecionados(
+                      fornsSelecionados.size === fornecedoresBD.length
+                        ? new Set()
+                        : new Set(fornecedoresBD.map(f => f.id))
+                    )}>
+                    {fornsSelecionados.size === fornecedoresBD.length ? 'Desmarcar todos' : 'Selecionar todos'}
+                  </button>
+                )}
+              </div>
+
+              {loadingFornBD && <div style={{ padding: 20, textAlign: 'center' }}><Loader size={18} className="spin" /></div>}
+
+              {!loadingFornBD && fornecedoresBD.length === 0 && (
+                <div style={{ padding: '16px', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 8, fontSize: 12, color: '#92400E' }}>
+                  <strong>Nenhum fornecedor cadastrado.</strong> Acesse <em>Compras &amp; Estoque → Fornecedores</em> para cadastrar seus fornecedores com telefone/WhatsApp.
+                </div>
+              )}
+
+              {!loadingFornBD && fornecedoresBD.map(f => {
+                const temWA  = !!(f.whatsapp || f.telefone || f.contato_telefone)
+                const temMail = !!(f.email || f.contato_email)
+                const isSel  = fornsSelecionados.has(f.id)
+                const itensPend = itens.filter(i => i.status === 'pendente')
+                return (
+                  <div key={f.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px',
+                    borderBottom: '1px solid var(--border)', borderRadius: isSel ? 8 : 0,
+                    background: isSel ? 'var(--cream,#fdf8f0)' : 'transparent',
+                    transition: 'background .15s',
+                  }}>
+                    {/* Checkbox */}
+                    <input type="checkbox" checked={isSel} style={{ width: 16, height: 16, accentColor: 'var(--bordo)', flexShrink: 0, cursor: 'pointer' }}
+                      onChange={() => {
+                        setFornsSelecionados(prev => {
+                          const n = new Set(prev)
+                          isSel ? n.delete(f.id) : n.add(f.id)
+                          return n
+                        })
+                      }} />
+                    {/* Info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{f.nome}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 2 }}>
+                        {(f.whatsapp || f.telefone) && <span>📱 {f.whatsapp || f.telefone}</span>}
+                        {f.contato_nome && <span>👤 {f.contato_nome}</span>}
+                        {(f.email || f.contato_email) && <span>📧 {f.email || f.contato_email}</span>}
+                        {!temWA && !temMail && <span style={{ color: '#EF4444' }}>⚠ Sem contato cadastrado</span>}
+                      </div>
+                    </div>
+                    {/* Botões individuais */}
+                    <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                      <button
+                        className="btn bo bsm"
+                        disabled={!temWA || itensPend.length === 0}
+                        onClick={() => { dispararWA(f, itensPend); setFornsSelecionados(prev => new Set([...prev, f.id])) }}
+                        title={temWA ? `Enviar WhatsApp para ${f.whatsapp || f.telefone}` : 'Sem WhatsApp cadastrado'}
+                        style={{ color: temWA ? '#16A34A' : 'var(--muted)', borderColor: temWA ? '#16A34A' : 'var(--border)', fontSize: 11, padding: '4px 8px' }}>
+                        📱 WA
+                      </button>
+                      <button
+                        className="btn bo bsm"
+                        disabled={!temMail || itensPend.length === 0}
+                        onClick={() => { dispararEmail(f, itensPend); setFornsSelecionados(prev => new Set([...prev, f.id])) }}
+                        title={temMail ? `Enviar e-mail para ${f.email || f.contato_email}` : 'Sem e-mail cadastrado'}
+                        style={{ color: temMail ? '#2563EB' : 'var(--muted)', borderColor: temMail ? '#2563EB' : 'var(--border)', fontSize: 11, padding: '4px 8px' }}>
+                        📧 Email
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="mft" style={{ justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                {fornsSelecionados.size > 0 ? `${fornsSelecionados.size} fornecedor(es) selecionado(s)` : 'Nenhum selecionado'}
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn bo bsm" onClick={() => setShowDispararCot(false)}>Fechar</button>
+                <button className="btn bsm"
+                  disabled={fornsSelecionados.size === 0 || itens.filter(i => i.status === 'pendente').length === 0}
+                  onClick={dispararParaTodos}
+                  style={{ background: '#16A34A', color: '#fff', border: 'none', fontWeight: 700 }}>
+                  📱 Disparar WA para todos ({fornsSelecionados.size})
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Modal Resposta do Fornecedor ──────────────────────── */}
       {showResposta && (
         <div className="ov open" onClick={e => e.target === e.currentTarget && setShowResposta(false)}>
@@ -1807,17 +1924,50 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
                 </table>
               </div>
 
-              {/* Info de cada fornecedor */}
+              {/* Cards por fornecedor com botão Selecionar Vencedor */}
               <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(respostas.length, 3)}, 1fr)`, gap: 12, marginTop: 16 }}>
-                {respostas.map(r => (
-                  <div key={r.id} className="card" style={{ padding: '12px 14px', fontSize: 11 }}>
-                    <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8, color: 'var(--bordo)' }}>{r.fornecedor}</div>
-                    {r.prazo && <div><strong>Prazo:</strong> {r.prazo}</div>}
-                    {r.rota && <div><strong>Rota:</strong> {r.rota}</div>}
-                    {r.forma_pgto && <div><strong>Pgto:</strong> {r.forma_pgto}</div>}
-                    {r.obs && <div style={{ marginTop: 6, color: 'var(--muted)' }}>{r.obs}</div>}
-                  </div>
-                ))}
+                {respostas.map(r => {
+                  const totalForn = r.itens.reduce((s, it) => s + (parseFloat(it.preco_total) || 0), 0)
+                  // menor total entre todos os fornecedores
+                  const todosTotal = respostas.map(rf => rf.itens.reduce((s, it) => s + (parseFloat(it.preco_total) || 0), 0))
+                  const minTotal = Math.min(...todosTotal.filter(t => t > 0))
+                  const isVencedor = totalForn > 0 && totalForn === minTotal && todosTotal.filter(t => t > 0).length > 1
+                  return (
+                    <div key={r.id} className="card" style={{ padding: '12px 14px', fontSize: 11, border: isVencedor ? '2px solid var(--success)' : undefined }}>
+                      <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8, color: isVencedor ? 'var(--success)' : 'var(--bordo)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {isVencedor && '🏆 '}{r.fornecedor}
+                      </div>
+                      {r.prazo && <div><strong>Prazo:</strong> {r.prazo}</div>}
+                      {r.rota && <div><strong>Rota:</strong> {r.rota}</div>}
+                      {r.forma_pgto && <div><strong>Pgto:</strong> {r.forma_pgto}</div>}
+                      {totalForn > 0 && <div style={{ marginTop: 6, fontWeight: 700 }}>Total: R$ {totalForn.toFixed(2).replace('.', ',')}</div>}
+                      {r.obs && <div style={{ marginTop: 6, color: 'var(--muted)' }}>{r.obs}</div>}
+                      <button
+                        className="btn bsm"
+                        style={{ marginTop: 10, width: '100%', background: isVencedor ? 'var(--success)' : 'var(--bordo)', color: '#fff', border: 'none', fontWeight: 700 }}
+                        onClick={async () => {
+                          // Aplica preços deste fornecedor em todos os itens da lista
+                          const updates = r.itens.filter(ri => ri.preco_unit)
+                          let count = 0
+                          for (const ri of updates) {
+                            const item = itens.find(i => i.produto_nome === ri.produto_nome)
+                            if (!item) continue
+                            await updateComprasListaItem(item.id, {
+                              preco_real: parseFloat(ri.preco_unit) || null,
+                              fornecedor_nome: r.fornecedor,
+                            }).then(updated => {
+                              setItens(prev => prev.map(i => i.id === updated.id ? updated : i))
+                              count++
+                            }).catch(() => {})
+                          }
+                          setShowComparativo(false)
+                          alert(`✅ ${r.fornecedor} selecionado! Preços aplicados em ${count} item(ns).`)
+                        }}>
+                        ✅ Selecionar como Fornecedor
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             </div>
             <div className="mft" style={{ justifyContent: 'flex-end' }}>
