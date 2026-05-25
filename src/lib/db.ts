@@ -1212,7 +1212,10 @@ export async function insertRuptura(r: Omit<Ruptura, 'id' | 'created_at' | 'upda
 }
 
 export async function updateRuptura(id: string, r: Partial<Ruptura>): Promise<Ruptura> {
-  return sdkCall<Ruptura>(db.from('rupturas').update({ ...r, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+  // Strip GENERATED ALWAYS AS STORED columns — Postgres rejects updates to them
+  const { qtd_ruptura, pct_ruptura, ...safe } = r
+  void qtd_ruptura; void pct_ruptura
+  return sdkCall<Ruptura>(db.from('rupturas').update({ ...safe, updated_at: new Date().toISOString() }).eq('id', id).select().single())
 }
 
 export async function deleteRuptura(id: string): Promise<void> {
