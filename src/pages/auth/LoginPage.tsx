@@ -32,7 +32,7 @@ export default function LoginPage() {
             }
           </div>
           <h1 style={{ fontSize: 18, fontWeight: 800 }}>{theme.company_name}</h1>
-          <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Sistema Integrado v5.0</p>
+          <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Sistema Integrado v5.2</p>
         </div>
 
         <form onSubmit={handleSubmit}>

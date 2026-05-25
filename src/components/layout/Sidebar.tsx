@@ -105,7 +105,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
             }
           </div>
           <div className="sb-company">{theme.company_name}</div>
-          <div className="sb-sub">Sistema Integrado v5.0</div>
+          <div className="sb-sub">Sistema Integrado v5.2</div>
         </div>
 
         <nav className="sb-nav">
