@@ -12,7 +12,7 @@ import {
   fetchComprasListas, insertComprasLista, updateComprasLista, deleteComprasLista,
   fetchComprasListaItens, insertComprasListaItem, updateComprasListaItem, deleteComprasListaItem,
   fetchItensComprasDashboard, fetchEstoqueProdutos, insertEstoqueMovimentacao,
-  updateEstoqueProdutoPrecoPorNome,
+  atualizarCustoMedioPorNome,
 } from '../../lib/db'
 import type { ComprasLista, ComprasListaItem, ListaStatus, ListaItemStatus, EstoqueProduto } from '../../types/database'
 
@@ -34,6 +34,33 @@ type ItemCotFormal = {
   produto_nome: string; marca: string; qtd: string; unidade: string
   descricao: string; marcas_similares: string; preco_unit: string
 }
+
+// ── Conferência de Recebimento ───────────────────────────────
+
+export type ConfStatus = 'correto' | 'avariado' | 'faltando' | 'fora_padrao' | 'ruptura_parcial' | 'ruptura_total'
+
+const CONF_STATUS: Record<ConfStatus, { label: string; emoji: string; color: string; bg: string; entraEstoque: boolean }> = {
+  correto:        { label: 'Correto',        emoji: '✅', color: '#15803D', bg: '#D1FAE5', entraEstoque: true  },
+  avariado:       { label: 'Avariado',       emoji: '⚠️', color: '#B45309', bg: '#FEF3C7', entraEstoque: false },
+  faltando:       { label: 'Faltando',       emoji: '📭', color: '#6B7280', bg: '#F3F4F6', entraEstoque: false },
+  fora_padrao:    { label: 'Fora do padrão', emoji: '❌', color: '#DC2626', bg: '#FEE2E2', entraEstoque: false },
+  ruptura_parcial:{ label: 'Ruptura parcial',emoji: '🔶', color: '#EA580C', bg: '#FFEDD5', entraEstoque: true  },
+  ruptura_total:  { label: 'Ruptura total',  emoji: '🔴', color: '#9F1239', bg: '#FFE4E6', entraEstoque: false },
+}
+
+type ConferenciaItem = {
+  item_id: string
+  produto_nome: string
+  quantidade_pedida: number
+  quantidade_recebida: number
+  unidade: string
+  status_conf: ConfStatus
+  data_validade: string
+  numero_lote: string
+  obs: string
+}
+
+// ── Status de Listas ─────────────────────────────────────────
 
 const STATUS_LISTA: Record<ListaStatus, { label: string; color: string; bg: string }> = {
   rascunho:    { label: 'Rascunho',    color: '#92400E', bg: '#FEF3C7' },
@@ -467,17 +494,16 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
 
   // Item 3 – Recebimento
   const [showRecebimento, setShowRecebimento] = useState(false)
-  const [recTipo, setRecTipo] = useState<'total' | 'parcial' | 'nao_recebido'>('total')
-  const [recFaltantes, setRecFaltantes] = useState('')
   const [recNome, setRecNome] = useState('')
   const [recData, setRecData] = useState(new Date().toISOString().split('T')[0])
+  const [recHorario, setRecHorario] = useState(() => new Date().toTimeString().slice(0, 5))
   // Campos extras do recebimento
   const [recNf, setRecNf] = useState('')
-  const [recQualidade, setRecQualidade] = useState<'ok' | 'com_ressalvas' | 'problema'>('ok')
-  const [recValidadeObs, setRecValidadeObs] = useState('')
   const [recDivergencias, setRecDivergencias] = useState('')
   const [recObsGeral, setRecObsGeral] = useState('')
   const [recAtualizarPrecos, setRecAtualizarPrecos] = useState(true)
+  // Conferência por item
+  const [recConferencia, setRecConferencia] = useState<ConferenciaItem[]>([])
 
   // Cotação Formal
   const [showCotacaoFormal, setShowCotacaoFormal] = useState(false)
@@ -706,62 +732,100 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
     } catch (e) { console.error(e) }
   }
 
-  // Item 3 – Confirmar Recebimento + Entrada automática no Estoque
+  // ── Inicializar conferência ao abrir o modal ────────────────
+  const initConferencia = () => {
+    const itensComprados = itens.filter(i => i.status === 'comprado')
+    setRecConferencia(itensComprados.map(i => ({
+      item_id: i.id,
+      produto_nome: i.produto_nome,
+      quantidade_pedida: i.quantidade,
+      quantidade_recebida: i.quantidade,
+      unidade: i.unidade || 'un',
+      status_conf: 'correto' as ConfStatus,
+      data_validade: '',
+      numero_lote: '',
+      obs: '',
+    })))
+    setRecHorario(new Date().toTimeString().slice(0, 5))
+    setRecData(new Date().toISOString().split('T')[0])
+  }
+
+  // Item 3 – Confirmar Recebimento + Entrada automática no Estoque com custo médio
   const confirmarRecebimento = async () => {
     try {
-      const tipoLabel = recTipo === 'total' ? 'Total' : recTipo === 'parcial' ? 'Parcial' : 'Não recebido'
-      const qualidadeLabel = recQualidade === 'ok' ? 'OK' : recQualidade === 'com_ressalvas' ? 'Com ressalvas' : 'Problema'
-      const faltantesStr = recTipo === 'parcial' && recFaltantes.trim() ? ' | Faltantes: ' + recFaltantes.trim() : ''
-      const nfStr = recNf.trim() ? ' | NF: ' + recNf.trim() : ''
-      const qualStr = ' | Qualidade: ' + qualidadeLabel
-      const validStr = recValidadeObs.trim() ? ' | Validade: ' + recValidadeObs.trim() : ''
-      const divStr = recDivergencias.trim() ? ' | Divergências: ' + recDivergencias.trim() : ''
-      const obsStr = recObsGeral.trim() ? ' | Obs: ' + recObsGeral.trim() : ''
+      // ── Resumo da conferência ──────────────────────────────────
+      const nfStr     = recNf.trim() ? ` | NF: ${recNf.trim()}` : ''
+      const horStr    = recHorario ? ` ${recHorario}` : ''
+      const divStr    = recDivergencias.trim() ? `\nDivergências: ${recDivergencias.trim()}` : ''
+      const obsStr    = recObsGeral.trim() ? `\nObs: ${recObsGeral.trim()}` : ''
+
+      const confLines = recConferencia.map(c => {
+        const s = CONF_STATUS[c.status_conf]
+        const loteInfo = c.numero_lote ? ` · Lote: ${c.numero_lote}` : ''
+        const valInfo  = c.data_validade ? ` · Val: ${fmtData(c.data_validade)}` : ''
+        const qtdInfo  = c.quantidade_recebida !== c.quantidade_pedida
+          ? ` (rec. ${c.quantidade_recebida}/${c.quantidade_pedida} ${c.unidade})`
+          : ` (${c.quantidade_pedida} ${c.unidade})`
+        return `  ${s.emoji} ${c.produto_nome}${qtdInfo}${loteInfo}${valInfo}`
+      }).join('\n')
+
+      const totalConfOk   = recConferencia.filter(c => CONF_STATUS[c.status_conf].entraEstoque).length
+      const totalFaltando = recConferencia.filter(c => !CONF_STATUS[c.status_conf].entraEstoque).length
+      const tipoLabel     = totalFaltando === 0 ? 'Total' : totalConfOk === 0 ? 'Não recebido' : 'Parcial'
+
       const obsAtual = (lista.observacoes || '') +
-        '\n[RECEBIMENTO: ' + tipoLabel + nfStr + qualStr + ' | por: ' + recNome + ' | ' + recData +
-        faltantesStr + validStr + divStr + obsStr + ']'
+        `\n[RECEBIMENTO: ${tipoLabel} | por: ${recNome} | ${recData}${horStr}${nfStr}\nConferência:\n${confLines}${divStr}${obsStr}]`
+
       if (lista.status !== 'concluido') await mudarStatus('concluido')
       await updateComprasLista(lista.id, { observacoes: obsAtual })
 
-      // ── Entrada automática no estoque para itens comprados ──────
-      if (recTipo !== 'nao_recebido') {
-        const itensComprados = itens.filter(i => i.status === 'comprado')
-        const nfMotivo = recNf.trim() ? ` | NF: ${recNf.trim()}` : ''
-        const entradas = itensComprados.map(item =>
-          insertEstoqueMovimentacao({
-            loja: lista.loja || 'Todas as Lojas',
-            produto_id: null,
-            produto_nome: item.produto_nome,
-            tipo: 'entrada',
-            quantidade: item.quantidade,
-            unidade: item.unidade || 'un',
-            motivo: `Entrada via Compras: ${lista.titulo}${nfMotivo} | Conf. por: ${recNome}`,
-            created_by: recNome,
-          }).catch(() => null)
-        )
-        await Promise.all(entradas)
+      // ── Itens que entram no estoque (correto + ruptura_parcial) ──
+      const itensParaEstoque = recConferencia.filter(c => CONF_STATUS[c.status_conf].entraEstoque)
+      const nfMotivo = recNf.trim() ? ` | NF: ${recNf.trim()}` : ''
 
-        // ── Atualizar preço de custo no estoque ──────────────────
-        if (recAtualizarPrecos) {
-          await Promise.all(itensComprados.map(item => {
-            const preco = item.preco_real ?? item.preco_estimado
-            if (preco && preco > 0) {
-              return updateEstoqueProdutoPrecoPorNome(
-                item.produto_nome, lista.loja || 'Todas as Lojas', preco
-              ).catch(() => null)
-            }
-            return Promise.resolve()
-          }))
-        }
+      const entradas = itensParaEstoque.map(conf => {
+        const loteInfo  = conf.numero_lote    ? ` | Lote: ${conf.numero_lote}`                : ''
+        const valInfo   = conf.data_validade  ? ` | Val: ${fmtData(conf.data_validade)}`      : ''
+        return insertEstoqueMovimentacao({
+          loja: lista.loja || 'Todas as Lojas',
+          produto_id: null,
+          produto_nome: conf.produto_nome,
+          tipo: 'entrada',
+          quantidade: conf.quantidade_recebida,
+          unidade: conf.unidade,
+          motivo: `Entrada via Compras: ${lista.titulo}${nfMotivo}${loteInfo}${valInfo} | Conf. por: ${recNome}`,
+          created_by: recNome,
+        }).catch(() => null)
+      })
+      await Promise.all(entradas)
 
-        setRecEstoqueQtd(itensComprados.length)
+      // ── Custo médio ponderado ──────────────────────────────────
+      if (recAtualizarPrecos) {
+        await Promise.all(itensParaEstoque.map(conf => {
+          const item  = itens.find(i => i.id === conf.item_id)
+          const preco = item?.preco_real ?? item?.preco_estimado
+          if (preco && preco > 0) {
+            return atualizarCustoMedioPorNome(
+              conf.produto_nome,
+              lista.loja || 'Todas as Lojas',
+              conf.quantidade_recebida,
+              preco,
+              conf.data_validade || null,
+              conf.numero_lote   || null,
+            ).catch(() => null)
+          }
+          return Promise.resolve()
+        }))
       }
 
+      setRecEstoqueQtd(itensParaEstoque.length)
       setShowRecebimento(false)
       setRecToast(true)
-      // reset extras
-      setRecNf(''); setRecQualidade('ok'); setRecValidadeObs(''); setRecDivergencias(''); setRecObsGeral('')
-      setRecTipo('total'); setRecFaltantes(''); setRecNome(''); setRecData(new Date().toISOString().split('T')[0])
+      // reset
+      setRecNf(''); setRecDivergencias(''); setRecObsGeral('')
+      setRecNome(''); setRecData(new Date().toISOString().split('T')[0])
+      setRecHorario(new Date().toTimeString().slice(0, 5))
+      setRecConferencia([])
       setTimeout(() => { setRecToast(false); setRecEstoqueQtd(0) }, 4500)
     } catch (e) { console.error(e) }
   }
@@ -919,9 +983,9 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
 
           {/* Item 3 – Confirmar Recebimento */}
           {(lista.status === 'concluido' || todosComprados) && (
-            <button className="btn bo bsm" onClick={() => setShowRecebimento(true)}
+            <button className="btn bo bsm" onClick={() => { initConferencia(); setShowRecebimento(true) }}
               style={{ color: '#2563EB', borderColor: '#2563EB' }}>
-              📦 Confirmar Recebimento
+              📦 Conferir Recebimento
             </button>
           )}
 
@@ -1114,92 +1178,177 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
         )}
       </div>
 
-      {/* Item 3 – Modal de Confirmação de Recebimento (aprimorado) */}
+      {/* Item 3 – Modal de Conferência de Recebimento (V6.0) */}
       {showRecebimento && (
         <div className="ov open" onClick={e => e.target === e.currentTarget && setShowRecebimento(false)}>
-          <div className="modal" style={{ maxWidth: 520 }}>
+          <div className="modal" style={{ maxWidth: 780 }} onClick={e => e.stopPropagation()}>
             <div className="mhd">
-              <span className="mtt">📦 Confirmar Recebimento</span>
+              <span className="mtt">📦 Conferência de Recebimento — {lista.titulo}</span>
               <button className="mx" onClick={() => setShowRecebimento(false)}><X size={14} /></button>
             </div>
-            <div className="mbd" style={{ display: 'flex', flexDirection: 'column', gap: 13, maxHeight: '72vh', overflowY: 'auto' }}>
+            <div className="mbd" style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '76vh', overflowY: 'auto' }}>
 
-              {/* Tipo de recebimento */}
-              <div className="fg">
-                <label className="fl" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Tipo de Recebimento <span className="rq">*</span></label>
-                <div style={{ display: 'flex', gap: 16 }}>
-                  {(['total', 'parcial', 'nao_recebido'] as const).map(op => (
-                    <label key={op} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
-                      <input type="radio" name="recTipo" value={op} checked={recTipo === op} onChange={() => setRecTipo(op)} />
-                      {op === 'total' ? '✅ Total' : op === 'parcial' ? '⚠️ Parcial' : '❌ Não recebido'}
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Itens faltantes (só se parcial) */}
-              {recTipo === 'parcial' && (
-                <div className="fg">
-                  <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Itens faltantes / pendentes</label>
-                  <textarea className="inp" rows={2} style={{ resize: 'vertical', fontSize: 12 }}
-                    placeholder="Ex: Produto X, Produto Y..." value={recFaltantes} onChange={e => setRecFaltantes(e.target.value)} />
-                </div>
-              )}
-
-              {/* Linha: Recebido por + Data */}
-              <div className="g2">
+              {/* ── Linha cabeçalho: Responsável + Data + Hora + NF ── */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 90px 1fr', gap: 10 }}>
                 <div className="fg">
                   <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Recebido por <span className="rq">*</span></label>
                   <input className="inp" placeholder="Nome do responsável" style={{ fontSize: 12 }}
-                    value={recNome} onChange={e => setRecNome(e.target.value)} />
+                    value={recNome} onChange={e => setRecNome(e.target.value)} autoFocus />
                 </div>
                 <div className="fg">
-                  <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Data de recebimento <span className="rq">*</span></label>
+                  <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Data <span className="rq">*</span></label>
                   <input className="inp" type="date" style={{ fontSize: 12 }}
                     value={recData} onChange={e => setRecData(e.target.value)} />
                 </div>
+                <div className="fg">
+                  <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Horário</label>
+                  <input className="inp" type="time" style={{ fontSize: 12 }}
+                    value={recHorario} onChange={e => setRecHorario(e.target.value)} />
+                </div>
+                <div className="fg">
+                  <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>NF / Pedido</label>
+                  <input className="inp" placeholder="Ex: NF-00123" style={{ fontSize: 12 }}
+                    value={recNf} onChange={e => setRecNf(e.target.value)} />
+                </div>
               </div>
 
-              {/* Número da NF */}
-              <div className="fg">
-                <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Número da NF / Pedido</label>
-                <input className="inp" placeholder="Ex: NF-00123, PED-456..." style={{ fontSize: 12 }}
-                  value={recNf} onChange={e => setRecNf(e.target.value)} />
-              </div>
+              {/* ── Tabela de conferência por item ── */}
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 12, color: 'var(--bordo)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  📋 Conferência por Item
+                  {recConferencia.length > 0 && (
+                    <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--muted)' }}>
+                      — {recConferencia.filter(c => CONF_STATUS[c.status_conf].entraEstoque).length} entram no estoque,{' '}
+                      {recConferencia.filter(c => !CONF_STATUS[c.status_conf].entraEstoque).length} com problema
+                    </span>
+                  )}
+                </div>
 
-              {/* Qualidade */}
-              <div className="fg">
-                <label className="fl" style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Qualidade dos produtos</label>
-                <div style={{ display: 'flex', gap: 16 }}>
-                  {([
-                    ['ok', '✅ OK'],
-                    ['com_ressalvas', '⚠️ Com ressalvas'],
-                    ['problema', '❌ Problema'],
-                  ] as const).map(([val, lbl]) => (
-                    <label key={val} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
-                      <input type="radio" name="recQualidade" value={val} checked={recQualidade === val} onChange={() => setRecQualidade(val)} />
-                      {lbl}
-                    </label>
+                {recConferencia.length === 0 ? (
+                  <div style={{ padding: '20px 0', textAlign: 'center', fontSize: 12, color: 'var(--muted)' }}>
+                    Nenhum item marcado como "Comprado" nesta lista.
+                    <div style={{ marginTop: 6, fontSize: 11 }}>Marque os itens como comprados antes de confirmar o recebimento.</div>
+                  </div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bordo)', color: '#fff' }}>
+                          <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600 }}>Produto</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 600, width: 60 }}>Pedido</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 600, width: 70 }}>Recebido</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 600, width: 160 }}>Status</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 600, width: 90 }}>N° Lote</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 600, width: 110 }}>Validade</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 600 }}>Obs</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recConferencia.map((conf, idx) => {
+                          const s = CONF_STATUS[conf.status_conf]
+                          return (
+                            <tr key={conf.item_id} style={{
+                              borderBottom: '1px solid var(--border)',
+                              background: s.entraEstoque
+                                ? (idx % 2 === 0 ? 'transparent' : '#f9f9f9')
+                                : s.bg + '66',
+                            }}>
+                              {/* Produto */}
+                              <td style={{ padding: '5px 10px', fontWeight: 700, fontSize: 12 }}>
+                                {conf.produto_nome}
+                                <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400, marginLeft: 4 }}>
+                                  {conf.unidade}
+                                </span>
+                              </td>
+                              {/* Qtd pedida */}
+                              <td style={{ padding: '5px 8px', textAlign: 'center', color: 'var(--muted)', fontSize: 12 }}>
+                                {conf.quantidade_pedida}
+                              </td>
+                              {/* Qtd recebida */}
+                              <td style={{ padding: '5px 6px' }}>
+                                <input
+                                  type="number" min={0} step={0.001}
+                                  style={{ width: '100%', fontSize: 12, border: '1px solid var(--border)', borderRadius: 4, padding: '3px 5px', background: 'var(--surface,#fff)', color: 'var(--text)', textAlign: 'center' }}
+                                  value={conf.quantidade_recebida}
+                                  onChange={e => setRecConferencia(prev => prev.map((c, i) => i === idx
+                                    ? { ...c, quantidade_recebida: parseFloat(e.target.value) || 0 }
+                                    : c))}
+                                />
+                              </td>
+                              {/* Status */}
+                              <td style={{ padding: '5px 6px' }}>
+                                <select
+                                  style={{ width: '100%', fontSize: 11, border: `1.5px solid ${s.color}`, borderRadius: 5, padding: '3px 5px', background: s.bg, color: s.color, fontWeight: 700, cursor: 'pointer' }}
+                                  value={conf.status_conf}
+                                  onChange={e => setRecConferencia(prev => prev.map((c, i) => i === idx
+                                    ? { ...c, status_conf: e.target.value as ConfStatus }
+                                    : c))}
+                                >
+                                  {(Object.entries(CONF_STATUS) as [ConfStatus, typeof CONF_STATUS[ConfStatus]][]).map(([k, v]) => (
+                                    <option key={k} value={k}>{v.emoji} {v.label}</option>
+                                  ))}
+                                </select>
+                              </td>
+                              {/* Lote */}
+                              <td style={{ padding: '5px 6px' }}>
+                                <input
+                                  style={{ width: '100%', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, padding: '3px 5px', background: 'var(--surface,#fff)', color: 'var(--text)' }}
+                                  placeholder="Lote..."
+                                  value={conf.numero_lote}
+                                  onChange={e => setRecConferencia(prev => prev.map((c, i) => i === idx
+                                    ? { ...c, numero_lote: e.target.value }
+                                    : c))}
+                                />
+                              </td>
+                              {/* Validade */}
+                              <td style={{ padding: '5px 6px' }}>
+                                <input
+                                  type="date"
+                                  style={{ width: '100%', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, padding: '3px 5px', background: 'var(--surface,#fff)', color: 'var(--text)' }}
+                                  value={conf.data_validade}
+                                  onChange={e => setRecConferencia(prev => prev.map((c, i) => i === idx
+                                    ? { ...c, data_validade: e.target.value }
+                                    : c))}
+                                />
+                              </td>
+                              {/* Obs */}
+                              <td style={{ padding: '5px 6px' }}>
+                                <input
+                                  style={{ width: '100%', fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, padding: '3px 5px', background: 'var(--surface,#fff)', color: 'var(--text)' }}
+                                  placeholder="Observação..."
+                                  value={conf.obs}
+                                  onChange={e => setRecConferencia(prev => prev.map((c, i) => i === idx
+                                    ? { ...c, obs: e.target.value }
+                                    : c))}
+                                />
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Legenda de status */}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                  {(Object.entries(CONF_STATUS) as [ConfStatus, typeof CONF_STATUS[ConfStatus]][]).map(([k, v]) => (
+                    <span key={k} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: v.bg, color: v.color, fontWeight: 600 }}>
+                      {v.emoji} {v.label}{v.entraEstoque ? ' ✓estoque' : ''}
+                    </span>
                   ))}
                 </div>
               </div>
 
-              {/* Validade */}
+              {/* ── Divergências gerais ── */}
               <div className="fg">
-                <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Obs. de validade / prazo</label>
-                <input className="inp" placeholder="Ex: Todos dentro do prazo, produto X vence em 30/06..." style={{ fontSize: 12 }}
-                  value={recValidadeObs} onChange={e => setRecValidadeObs(e.target.value)} />
-              </div>
-
-              {/* Divergências */}
-              <div className="fg">
-                <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Divergências constatadas</label>
+                <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Divergências gerais</label>
                 <textarea className="inp" rows={2} style={{ resize: 'vertical', fontSize: 12 }}
-                  placeholder="Ex: Qtd errada no produto X, embalagem danificada no Y..."
+                  placeholder="Ex: NF com valor divergente, embalagem danificada no produto X..."
                   value={recDivergencias} onChange={e => setRecDivergencias(e.target.value)} />
               </div>
 
-              {/* Observações gerais */}
+              {/* ── Observações gerais ── */}
               <div className="fg">
                 <label className="fl" style={{ fontSize: 12, fontWeight: 700 }}>Observações gerais</label>
                 <textarea className="inp" rows={2} style={{ resize: 'vertical', fontSize: 12 }}
@@ -1207,24 +1356,41 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
                   value={recObsGeral} onChange={e => setRecObsGeral(e.target.value)} />
               </div>
 
-              {/* Atualizar preço de custo */}
-              {recTipo !== 'nao_recebido' && (
-                <div style={{ padding: '10px 12px', background: 'var(--bordo-bg)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <input type="checkbox" id="recAtualizarPrecos" checked={recAtualizarPrecos}
-                    onChange={e => setRecAtualizarPrecos(e.target.checked)} style={{ width: 14, height: 14, cursor: 'pointer' }} />
-                  <label htmlFor="recAtualizarPrecos" style={{ fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                    Atualizar preço de custo dos produtos recebidos no estoque
-                    <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400, marginTop: 2 }}>
-                      Usa o preço real pago (ou estimado, se sem preço real) para atualizar o estoque.
-                    </div>
-                  </label>
-                </div>
-              )}
+              {/* ── Custo médio ── */}
+              <div style={{ padding: '10px 12px', background: 'var(--bordo-bg)', borderRadius: 8, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <input type="checkbox" id="recAtualizarPrecos" checked={recAtualizarPrecos}
+                  onChange={e => setRecAtualizarPrecos(e.target.checked)} style={{ width: 14, height: 14, cursor: 'pointer', marginTop: 2 }} />
+                <label htmlFor="recAtualizarPrecos" style={{ fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                  Atualizar custo médio ponderado no estoque
+                  <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400, marginTop: 2 }}>
+                    Recalcula automaticamente: (qtd_atual × preço_atual + qtd_nova × preço_pago) ÷ (qtd_atual + qtd_nova).
+                    Também salva lote e validade no produto.
+                  </div>
+                </label>
+              </div>
+
+              {/* ── Resumo ── */}
+              {recConferencia.length > 0 && (() => {
+                const ok   = recConferencia.filter(c => c.status_conf === 'correto').length
+                const parc = recConferencia.filter(c => c.status_conf === 'ruptura_parcial').length
+                const prob = recConferencia.filter(c => !CONF_STATUS[c.status_conf].entraEstoque).length
+                return (
+                  <div style={{ padding: '10px 14px', borderRadius: 8, background: prob > 0 ? '#FFFBEB' : '#F0FDF4', border: `1px solid ${prob > 0 ? '#FCD34D' : '#86EFAC'}`, fontSize: 12 }}>
+                    <strong>Resumo:</strong>{' '}
+                    {ok > 0 && <span style={{ color: '#15803D', marginRight: 8 }}>✅ {ok} correto(s)</span>}
+                    {parc > 0 && <span style={{ color: '#EA580C', marginRight: 8 }}>🔶 {parc} ruptura parcial</span>}
+                    {prob > 0 && <span style={{ color: '#DC2626' }}>⚠️ {prob} com problema(s)</span>}
+                    {' — '}
+                    <strong>{recConferencia.filter(c => CONF_STATUS[c.status_conf].entraEstoque).length} de {recConferencia.length}</strong> itens entrarão no estoque.
+                  </div>
+                )
+              })()}
             </div>
+
             <div className="mft" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn bo bsm" onClick={() => setShowRecebimento(false)}>Cancelar</button>
               <button className="btn bsm" onClick={confirmarRecebimento}
-                disabled={!recNome.trim() || !recData}
+                disabled={!recNome.trim() || !recData || recConferencia.length === 0}
                 style={{ background: 'var(--success)', color: '#fff', border: 'none' }}>
                 <CheckCircle2 size={13} /> Confirmar Recebimento
               </button>

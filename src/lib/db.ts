@@ -537,6 +537,50 @@ export async function updateEstoqueProdutoPrecoPorNome(nome: string, loja: strin
   } catch (e) { console.warn('updateEstoqueProdutoPrecoPorNome:', e) }
 }
 
+/**
+ * Custo Médio Ponderado — busca nivel_atual + preco_unitario e recalcula:
+ * (nivel_atual × preco_atual + qtdNova × precoNovo) / (nivel_atual + qtdNova)
+ * Também atualiza data_validade e numero_lote se fornecidos.
+ */
+export async function atualizarCustoMedioPorNome(
+  nome: string,
+  loja: string,
+  qtdNova: number,
+  precoNovo: number,
+  dataValidade?: string | null,
+  numeroLote?: string | null,
+): Promise<void> {
+  try {
+    const { data } = await db.from('estoque_produtos')
+      .select('nivel_atual, preco_unitario')
+      .ilike('nome', nome.trim())
+      .in('loja', [loja, 'Todas as Lojas'])
+      .eq('ativo', true)
+      .maybeSingle()
+
+    if (!data) return
+
+    const nivelAtual  = (data as { nivel_atual: number; preco_unitario: number }).nivel_atual   ?? 0
+    const precoAtual  = (data as { nivel_atual: number; preco_unitario: number }).preco_unitario ?? precoNovo
+    const custoMedio  = (nivelAtual + qtdNova) > 0
+      ? (nivelAtual * precoAtual + qtdNova * precoNovo) / (nivelAtual + qtdNova)
+      : precoNovo
+
+    const patch: Record<string, unknown> = {
+      preco_unitario: Math.round(custoMedio * 100) / 100,
+      updated_at: new Date().toISOString(),
+    }
+    if (dataValidade)  patch.data_validade  = dataValidade
+    if (numeroLote)    patch.numero_lote    = numeroLote
+
+    await db.from('estoque_produtos')
+      .update(patch)
+      .ilike('nome', nome.trim())
+      .in('loja', [loja, 'Todas as Lojas'])
+      .eq('ativo', true)
+  } catch (e) { console.warn('atualizarCustoMedioPorNome:', e) }
+}
+
 // ── Estoque — Movimentações ─────────────────────────────────
 
 export async function fetchEstoqueMovimentacoes(loja?: string, dataISO?: string): Promise<EstoqueMovimentacao[]> {
