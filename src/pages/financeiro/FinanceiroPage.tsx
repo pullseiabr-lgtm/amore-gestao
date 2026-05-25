@@ -808,18 +808,7 @@ function PainelAnexos({ lancamentoId, prestacaoId, userName, onFechar }: {
       const novo = await uploadFinComprovante(file, lancamentoId, prestacaoId, userName)
       setAnexos(prev => [...prev, novo])
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      const isRLS = msg.toLowerCase().includes('row-level security') ||
-                    msg.toLowerCase().includes('rls') ||
-                    msg.toLowerCase().includes('new row violates') ||
-                    msg.toLowerCase().includes('policy')
-      if (isRLS) {
-        setErrMsg('__RLS__')
-      } else if (msg.toLowerCase().includes('bucket') || msg.toLowerCase().includes('not found')) {
-        setErrMsg('__BUCKET__')
-      } else {
-        setErrMsg(`Erro no upload: ${msg}`)
-      }
+      setErrMsg(e instanceof Error ? e.message : 'Erro ao anexar comprovante.')
     }
     setUploading(false)
   }
@@ -829,24 +818,55 @@ function PainelAnexos({ lancamentoId, prestacaoId, userName, onFechar }: {
     catch (e) { console.error(e) }
   }
 
-  // Fix cross-origin download: fetch → blob → link temporário
+  // Abre o comprovante para visualização (suporta data: URL e URLs externas)
+  const visualizar = (url: string, nome: string) => {
+    if (url.startsWith('data:')) {
+      // data: URL — converter para Blob e abrir em nova aba
+      try {
+        const [header, base64] = url.split(',')
+        const mime = header.match(/:(.*?);/)?.[1] || 'application/octet-stream'
+        const byteChars = atob(base64)
+        const bytes = new Uint8Array(byteChars.length)
+        for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i)
+        const blob = new Blob([bytes], { type: mime })
+        const blobUrl = URL.createObjectURL(blob)
+        window.open(blobUrl, '_blank')
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
+      } catch {
+        // fallback: abrir data: URL diretamente
+        window.open(url, '_blank')
+      }
+    } else {
+      window.open(url, '_blank')
+    }
+    void nome
+  }
+
+  // Download: suporta data: URL (sem fetch) e URLs externas
   const baixarArquivo = async (url: string, nome: string, id: string) => {
     setDownloading(id)
     try {
-      const resp = await fetch(url)
-      if (!resp.ok) throw new Error('Falha ao baixar arquivo')
-      const blob = await resp.blob()
-      const blobUrl = URL.createObjectURL(blob)
+      let blobUrl: string
+      if (url.startsWith('data:')) {
+        const [header, base64] = url.split(',')
+        const mime = header.match(/:(.*?);/)?.[1] || 'application/octet-stream'
+        const byteChars = atob(base64)
+        const bytes = new Uint8Array(byteChars.length)
+        for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i)
+        const blob = new Blob([bytes], { type: mime })
+        blobUrl = URL.createObjectURL(blob)
+      } else {
+        const resp = await fetch(url)
+        if (!resp.ok) throw new Error('Falha ao baixar arquivo')
+        blobUrl = URL.createObjectURL(await resp.blob())
+      }
       const a = document.createElement('a')
-      a.href = blobUrl
-      a.download = nome
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(blobUrl)
+      a.href = blobUrl; a.download = nome
+      document.body.appendChild(a); a.click(); document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000)
     } catch (e) {
-      console.error('Download falhou, abrindo em nova aba:', e)
-      window.open(url, '_blank')  // fallback: abre em nova aba
+      console.error('Download falhou:', e)
+      window.open(url, '_blank')
     }
     setDownloading(null)
   }
@@ -868,7 +888,7 @@ function PainelAnexos({ lancamentoId, prestacaoId, userName, onFechar }: {
                     <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.nome_arquivo}</div>
                     <div style={{ fontSize: 10, color: 'var(--muted)' }}>{a.tamanho_kb ? `${a.tamanho_kb} KB · ` : ''}{fmtDt(a.created_at)}</div>
                   </div>
-                  <a href={a.url} target="_blank" rel="noopener noreferrer" className="ib" title="Visualizar"><Eye size={12} /></a>
+                  <button className="ib" onClick={() => visualizar(a.url, a.nome_arquivo)} title="Visualizar"><Eye size={12} /></button>
                   <button className="ib" onClick={() => baixarArquivo(a.url, a.nome_arquivo, a.id)}
                     title="Download" disabled={downloading === a.id}>
                     {downloading === a.id ? <Loader size={12} className="spin" /> : <Download size={12} />}
@@ -876,65 +896,10 @@ function PainelAnexos({ lancamentoId, prestacaoId, userName, onFechar }: {
                   <button className="ib rd" onClick={() => remover(a.id)} title="Remover"><Trash2 size={12} /></button>
                 </div>
               ))}
-              {(errMsg === '__RLS__' || errMsg === '__BUCKET__') && (
-                <div style={{ marginTop: 12, padding: '14px 16px', background: errMsg === '__RLS__' ? '#FEF2F2' : '#FEF3C7', border: `1px solid ${errMsg === '__RLS__' ? '#FECACA' : '#FDE68A'}`, borderRadius: 10, fontSize: 11.5, color: errMsg === '__RLS__' ? '#991B1B' : '#92400E' }}>
-                  <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <AlertTriangle size={13} />
-                    {errMsg === '__RLS__' ? 'Política de segurança bloqueou o upload (RLS)' : 'Bucket de armazenamento não encontrado'}
-                  </div>
-                  <p style={{ marginBottom: 10, lineHeight: 1.6, fontSize: 11 }}>
-                    {errMsg === '__RLS__'
-                      ? 'O Supabase bloqueou o upload por falta de política RLS no bucket fin-comprovantes.'
-                      : 'O bucket fin-comprovantes não existe no Supabase Storage. Siga os passos abaixo para criar e configurar.'}
-                  </p>
-                  <p style={{ fontWeight: 800, marginBottom: 6, fontSize: 11 }}>Execute este SQL no Supabase → SQL Editor:</p>
-                  <div style={{ position: 'relative' }}>
-                    <pre style={{
-                      background: '#1e1e1e', color: '#d4d4d4', padding: '12px 14px', borderRadius: 7,
-                      fontSize: 10.5, lineHeight: 1.7, overflowX: 'auto', margin: 0, whiteSpace: 'pre-wrap',
-                    }}>{`-- 1. Criar bucket (se não existir)
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('fin-comprovantes', 'fin-comprovantes', false)
-ON CONFLICT (id) DO NOTHING;
-
--- 2. Política de INSERT para usuários autenticados
-CREATE POLICY "Autenticados podem fazer upload"
-ON storage.objects FOR INSERT
-TO authenticated
-WITH CHECK (bucket_id = 'fin-comprovantes');
-
--- 3. Política de SELECT
-CREATE POLICY "Autenticados podem visualizar"
-ON storage.objects FOR SELECT
-TO authenticated
-USING (bucket_id = 'fin-comprovantes');
-
--- 4. Política de DELETE
-CREATE POLICY "Autenticados podem deletar"
-ON storage.objects FOR DELETE
-TO authenticated
-USING (bucket_id = 'fin-comprovantes');`}</pre>
-                    <button
-                      onClick={() => {
-                        const sql = `-- 1. Criar bucket (se não existir)\nINSERT INTO storage.buckets (id, name, public)\nVALUES ('fin-comprovantes', 'fin-comprovantes', false)\nON CONFLICT (id) DO NOTHING;\n\n-- 2. Política de INSERT\nCREATE POLICY "Autenticados podem fazer upload"\nON storage.objects FOR INSERT\nTO authenticated\nWITH CHECK (bucket_id = 'fin-comprovantes');\n\n-- 3. Política de SELECT\nCREATE POLICY "Autenticados podem visualizar"\nON storage.objects FOR SELECT\nTO authenticated\nUSING (bucket_id = 'fin-comprovantes');\n\n-- 4. Política de DELETE\nCREATE POLICY "Autenticados podem deletar"\nON storage.objects FOR DELETE\nTO authenticated\nUSING (bucket_id = 'fin-comprovantes');`
-                        navigator.clipboard.writeText(sql)
-                      }}
-                      style={{
-                        position: 'absolute', top: 8, right: 8,
-                        background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.2)',
-                        color: '#d4d4d4', borderRadius: 5, padding: '3px 8px', fontSize: 10, cursor: 'pointer', fontWeight: 700,
-                      }}
-                    >
-                      📋 Copiar SQL
-                    </button>
-                  </div>
-                  <p style={{ marginTop: 10, fontSize: 10.5, lineHeight: 1.6, opacity: 0.85 }}>
-                    Após executar, recarregue a página e tente o upload novamente.
-                  </p>
+              {errMsg && (
+                <div style={{ marginTop: 10, padding: '8px 12px', background: '#FEE2E2', borderRadius: 6, fontSize: 11, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <AlertTriangle size={12} /> {errMsg}
                 </div>
-              )}
-              {errMsg && errMsg !== '__RLS__' && errMsg !== '__BUCKET__' && (
-                <div style={{ marginTop: 10, padding: '8px 12px', background: '#FEE2E2', borderRadius: 6, fontSize: 11, color: 'var(--danger)' }}>{errMsg}</div>
               )}
             </>
           )}
@@ -945,7 +910,7 @@ USING (bucket_id = 'fin-comprovantes');`}</pre>
             style={{ display: 'none' }}
             onChange={e => { if (e.target.files?.[0]) upload(e.target.files[0]); e.target.value = '' }} />
           <button className="btn bo bsm" onClick={() => fileRef.current?.click()} disabled={uploading}
-            title="Aceita: imagens, PDF, Word, Excel, XML (NF-e), TXT">
+            title="Aceita: imagens, PDF, Word, Excel, XML (NF-e), TXT — máx. 5 MB">
             {uploading ? <Loader size={11} className="spin" /> : <Upload size={11} />} Anexar comprovante
           </button>
           <button className="btn bp" onClick={onFechar}>Fechar</button>

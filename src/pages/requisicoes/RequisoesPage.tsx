@@ -116,6 +116,7 @@ td{padding:4px 8px;border-bottom:1px solid #f3f4f6}tr:nth-child(even) td{backgro
   <div class="f"><label>Prioridade</label><span>${CFG_PRIO[req.prioridade].label}</span></div>
   <div class="f"><label>Responsável</label><span>${req.responsavel_nome||'—'}</span></div>
   <div class="f"><label>Data Necessidade</label><span>${fmtDt(req.data_necessidade)}</span></div>
+  <div class="f"><label>Prazo de Entrega</label><span>${fmtDt(req.prazo_entrega??null)}</span></div>
   <div class="f"><label>Centro de Custo</label><span>${req.centro_custo||'—'}</span></div>
 </div>
 ${req.aprovador_nome?`<div class="gr" style="grid-template-columns:1fr 1fr">
@@ -405,7 +406,7 @@ function FormularioView({ req, loja, userName, produtos, onSalvo, onVoltar }: {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<Partial<Requisicao>>({
     loja, titulo:'', setor:'', responsavel_nome:userName,
-    prioridade:'media', data_necessidade:null, centro_custo:'', observacoes:'',
+    prioridade:'media', data_necessidade:null, prazo_entrega:null, centro_custo:'', observacoes:'',
     ...req,
   })
   const [itens, setItens] = useState<Partial<RequisicaoItem>[]>([])
@@ -457,6 +458,7 @@ function FormularioView({ req, loja, userName, produtos, onSalvo, onVoltar }: {
             <option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option>
           </select></div>
           <div><label className="form-label">Data de Necessidade</label><input className="form-input" type="date" value={form.data_necessidade||''} onChange={e=>setForm(f=>({...f,data_necessidade:e.target.value||null}))} /></div>
+          <div><label className="form-label">Prazo de Entrega</label><input className="form-input" type="date" value={form.prazo_entrega||''} onChange={e=>setForm(f=>({...f,prazo_entrega:e.target.value||null}))} /></div>
           <div><label className="form-label">Centro de Custo</label><input className="form-input" value={form.centro_custo||''} onChange={e=>setForm(f=>({...f,centro_custo:e.target.value}))} /></div>
           <div style={{ gridColumn:'1/-1' }}><label className="form-label">Observações</label>
             <textarea className="form-input" rows={2} value={form.observacoes||''} onChange={e=>setForm(f=>({...f,observacoes:e.target.value}))} style={{ resize:'vertical' }} /></div>
@@ -632,7 +634,7 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
             <StatusBadge status={req.status} />
           </div>
           <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', marginTop:2 }}>{req.titulo}</div>
-          <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>{req.loja} · {req.setor||'—'} · {req.responsavel_nome} · {fmtDt(req.created_at)}</div>
+          <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>{req.loja} · {req.setor||'—'} · {req.responsavel_nome} · {fmtDt(req.created_at)}{req.prazo_entrega ? ` · Prazo entrega: ${fmtDt(req.prazo_entrega)}` : ''}</div>
         </div>
         <div className="ab" style={{ flexWrap:'wrap', justifyContent:'flex-end', gap:5 }}>
           {canEnviar&&<button className="btn" style={{ background:'#B45309', padding:'5px 11px', fontSize:12 }} onClick={handleEnviar}><Send size={12}/> Enviar</button>}
@@ -1065,7 +1067,7 @@ export default function RequisoesPage() {
       const old = await fetchRequisicaoItens(req.id)
       for (const o of old) await deleteRequisicaoItem(o.id)
     } else {
-      req = await insertRequisicao({ loja:formData.loja!, titulo:formData.titulo!, setor:formData.setor||null, responsavel_nome:formData.responsavel_nome||userName, prioridade:formData.prioridade||'media', data_necessidade:formData.data_necessidade||null, centro_custo:formData.centro_custo||null, total_estimado:formData.total_estimado||0, total_final:0, observacoes:formData.observacoes||null, status:submit?'enviada':'rascunho', aprovador_nome:null, aprovador_at:null, obs_aprovacao:null, credito_id:null, created_by:userName })
+      req = await insertRequisicao({ loja:formData.loja!, titulo:formData.titulo!, setor:formData.setor||null, responsavel_nome:formData.responsavel_nome||userName, prioridade:formData.prioridade||'media', data_necessidade:formData.data_necessidade||null, prazo_entrega:formData.prazo_entrega||null, centro_custo:formData.centro_custo||null, total_estimado:formData.total_estimado||0, total_final:0, observacoes:formData.observacoes||null, status:submit?'enviada':'rascunho', aprovador_nome:null, aprovador_at:null, obs_aprovacao:null, credito_id:null, created_by:userName })
       await insertReqTimeline({ requisicao_id:req.id, tipo:'criacao', descricao:`Requisição criada por ${userName}`, usuario:userName, dados:null })
     }
     for (const item of itens) {

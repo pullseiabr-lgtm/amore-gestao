@@ -194,6 +194,7 @@ export interface Requisicao {
   numero: number
   titulo: string
   data_necessidade: string | null
+  prazo_entrega: string | null
   status: ReqStatus
   prioridade: ReqPrioridade
   setor: string | null

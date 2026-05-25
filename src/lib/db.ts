@@ -891,16 +891,21 @@ export async function insertFinAnexo(a: Omit<FinAnexo, 'id' | 'created_at'>): Pr
 export async function deleteFinAnexo(id: string): Promise<void> {
   await sdkCall<null>(db.from('fin_anexos').delete().eq('id', id))
 }
-export async function uploadFinComprovante(file: File, lancamentoId: string, prestacaoId: string, createdBy: string): Promise<FinAnexo> {
-  const ext  = file.name.split('.').pop() || 'bin'
-  const path = `${prestacaoId}/${lancamentoId}/${Date.now()}.${ext}`
-  const { error: upErr } = await db.storage.from('fin-comprovantes').upload(path, file)
-  if (upErr) throw upErr
-  const { data: { publicUrl } } = db.storage.from('fin-comprovantes').getPublicUrl(path)
+export async function uploadFinComprovante(file: File, lancamentoId: string, _prestacaoId: string, createdBy: string): Promise<FinAnexo> {
+  if (file.size > 5 * 1024 * 1024) throw new Error('Arquivo muito grande — máximo 5 MB por comprovante.')
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload  = () => resolve(reader.result as string)
+    reader.onerror = () => reject(new Error('Falha ao ler o arquivo.'))
+    reader.readAsDataURL(file)
+  })
   return insertFinAnexo({
-    lancamento_id: lancamentoId, nome_arquivo: file.name,
-    tipo: file.type.startsWith('image/') ? 'foto' : file.type === 'application/pdf' ? 'pdf' : 'outro',
-    url: publicUrl, tamanho_kb: Math.round(file.size / 1024), created_by: createdBy,
+    lancamento_id: lancamentoId,
+    nome_arquivo:  file.name,
+    tipo:          file.type.startsWith('image/') ? 'foto' : file.type === 'application/pdf' ? 'pdf' : 'outro',
+    url:           dataUrl,
+    tamanho_kb:    Math.round(file.size / 1024),
+    created_by:    createdBy,
   })
 }
 
