@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from 'react'
-import { Activity, TrendingUp, TrendingDown, Star, Award, BarChart3, RefreshCw, Plus, Trash2, Bell, Eye, Code2, ChevronDown, ChevronUp, Zap, Target } from 'lucide-react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { Activity, TrendingUp, TrendingDown, Star, Award, BarChart3, RefreshCw, Plus, Trash2, Bell, Eye, Code2, ChevronDown, ChevronUp, Zap, Target, Bot, Search, Send, Key, ExternalLink, CheckCircle2, XCircle } from 'lucide-react'
 import {
   fetchMarketPriceHistory, insertMarketPrice, deleteMarketPrice,
   fetchFornecedorScores, upsertFornecedorScore, deleteFornecedorScore,
@@ -210,7 +210,7 @@ function calcCompetitividadeScores(history: MarketPriceHistory[]): Record<string
 
 // ── Tipos locais de formulário ────────────────────────────────
 
-type Tab = 'overview' | 'ranking' | 'precos' | 'tendencias' | 'api'
+type Tab = 'overview' | 'ranking' | 'precos' | 'tendencias' | 'agente' | 'api'
 
 const UNIDADES = ['kg', 'g', 'L', 'ml', 'un', 'cx', 'pç', 'dz', 'sc', 'fd']
 
@@ -497,6 +497,7 @@ export default function MarketPage() {
         <button style={tabStyle('ranking')}   onClick={() => setTab('ranking')}>🏆 Ranking</button>
         <button style={tabStyle('precos')}    onClick={() => setTab('precos')}>💲 Preços</button>
         <button style={tabStyle('tendencias')}onClick={() => setTab('tendencias')}>📈 Tendências</button>
+        <button style={{ ...tabStyle('agente'), background: tab === 'agente' ? '#7c3aed' : 'transparent', border: tab === 'agente' ? 'none' : '1px solid #7c3aed40', color: tab === 'agente' ? '#fff' : '#7c3aed' }} onClick={() => setTab('agente')}>🤖 Agente IA</button>
         <button style={tabStyle('api')}       onClick={() => setTab('api')}>🔌 API Docs</button>
       </div>
 
@@ -1040,6 +1041,19 @@ export default function MarketPage() {
         </div>
       )}
 
+      {/* ── TAB: AGENTE IA ───────────────────────────────────── */}
+      {tab === 'agente' && (
+        <AgenteTab
+          prices={prices}
+          scores={scores}
+          tendencias={tendencias}
+          lojaReal={lojaReal}
+          onAddPrice={(p) => {
+            insertMarketPrice(p).then(saved => setPrices(prev => [saved, ...prev])).catch(console.error)
+          }}
+        />
+      )}
+
       {/* ── TAB: API DOCS ────────────────────────────────────── */}
       {tab === 'api' && <ApiDocsTab />}
     </div>
@@ -1054,6 +1068,531 @@ function OpCard({ titulo, valor, detalhe, cor, icone }: { titulo: string; valor:
       <div style={{ fontSize: 11, color: 'var(--txt-sec)', marginBottom: 4 }}>{icone} {titulo}</div>
       <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--txt)', marginBottom: 2, wordBreak: 'break-word' }}>{valor}</div>
       <div style={{ fontSize: 11, color: 'var(--txt-sec)' }}>{detalhe}</div>
+    </div>
+  )
+}
+
+// ── Serper Search ─────────────────────────────────────────────
+
+interface SerperOrganic { title: string; link: string; snippet: string; position: number }
+interface SerperResult  { organic: SerperOrganic[]; answerBox?: { answer?: string; snippet?: string } }
+
+async function serperSearch(query: string, apiKey: string): Promise<SerperResult> {
+  const res = await fetch('https://google.serper.dev/search', {
+    method: 'POST',
+    headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ q: query, gl: 'br', hl: 'pt-br', num: 10 }),
+  })
+  if (!res.ok) throw new Error(`Serper API: ${res.status} ${res.statusText}`)
+  return res.json()
+}
+
+function extractPrecos(text: string): Array<{ valor: number; contexto: string }> {
+  const results: Array<{ valor: number; contexto: string }> = []
+  // Match R$ X,XX or R$ X.XXX,XX patterns
+  const re = /R\$\s*([\d]{1,4}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    const raw = m[1].replace(/\./g, '').replace(',', '.')
+    const val = parseFloat(raw)
+    if (!isNaN(val) && val > 0.5 && val < 50000) {
+      const start = Math.max(0, m.index - 40)
+      const end   = Math.min(text.length, m.index + m[0].length + 40)
+      results.push({ valor: val, contexto: text.slice(start, end).trim() })
+    }
+  }
+  return results
+}
+
+type MsgRole = 'user' | 'agent' | 'error' | 'system'
+
+interface ChatMsg {
+  id: string
+  role: MsgRole
+  content: string
+  results?: SerperOrganic[]
+  precos?: Array<{ valor: number; contexto: string; fonte: string; produto: string; fornecedor: string }>
+  added?: boolean
+  timestamp: Date
+}
+
+function buildQuery(input: string): { query: string; tipo: string; produto: string } {
+  const low = input.toLowerCase().trim()
+
+  // Detecta intenção
+  if (/^(pesquisar?|buscar?|procurar?|preço|preco|valor|cotação|cotacao)\s+(.+)/i.test(low)) {
+    const produto = low.replace(/^(pesquisar?|buscar?|procurar?|preço|preco|valor|cotação|cotacao)\s+/i, '').trim()
+    return { query: `preço ${produto} atacado fornecedor brasil 2025`, tipo: 'preco', produto }
+  }
+  if (/^(analisar?|fornecedor)\s+(.+)/i.test(low)) {
+    const nome = low.replace(/^(analisar?|fornecedor)\s+/i, '').trim()
+    return { query: `${nome} fornecedor atacado brasil avaliação confiabilidade`, tipo: 'fornecedor', produto: nome }
+  }
+  if (/^(tendência|tendencia|variação|variacao|histórico|historico)\s+(.+)/i.test(low)) {
+    const produto = low.replace(/^(tendência|tendencia|variação|variacao|histórico|historico)\s+/i, '').trim()
+    return { query: `variação preço ${produto} brasil 2024 2025 tendência`, tipo: 'tendencia', produto }
+  }
+  if (/^(melhores?|top|ranking)\s+(fornecedores?|distribuidoras?)\s+(.+)/i.test(low)) {
+    const cat = low.replace(/^(melhores?|top|ranking)\s+(fornecedores?|distribuidoras?)\s+/i, '').trim()
+    return { query: `melhores fornecedores distribuidores ${cat} atacado brasil`, tipo: 'ranking', produto: cat }
+  }
+  return { query: `${input} mercado brasil preços atacado`, tipo: 'geral', produto: input }
+}
+
+// ── AgenteTab Component ───────────────────────────────────────
+
+interface AgenteTabProps {
+  prices: MarketPriceHistory[]
+  scores: FornecedorScore[]
+  tendencias: MarketTendencia[]
+  lojaReal: string
+  onAddPrice: (p: Omit<MarketPriceHistory, 'id' | 'created_at'>) => void
+}
+
+function AgenteTab({ prices, scores, tendencias, lojaReal, onAddPrice }: AgenteTabProps) {
+  const STORAGE_KEY = 'amore_serper_key'
+  const [apiKey, setApiKey]       = useState(() => localStorage.getItem(STORAGE_KEY) ?? (import.meta.env.VITE_SERPER_API_KEY ?? ''))
+  const [keyInput, setKeyInput]   = useState('')
+  const [showSetup, setShowSetup] = useState(false)
+  const [msgs, setMsgs]           = useState<ChatMsg[]>([])
+  const [input, setInput]         = useState('')
+  const [loading, setLoading]     = useState(false)
+  const bottomRef                 = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
+
+  const saveKey = () => {
+    if (!keyInput.trim()) return
+    localStorage.setItem(STORAGE_KEY, keyInput.trim())
+    setApiKey(keyInput.trim())
+    setKeyInput('')
+    setShowSetup(false)
+    addSystemMsg('✅ Chave Serper configurada com sucesso! Já pode pesquisar no Google.')
+  }
+
+  const removeKey = () => {
+    localStorage.removeItem(STORAGE_KEY)
+    setApiKey('')
+    addSystemMsg('🔑 Chave removida. Configure uma nova chave para pesquisar no Google.')
+  }
+
+  const addSystemMsg = (content: string) => {
+    setMsgs(prev => [...prev, { id: crypto.randomUUID(), role: 'system', content, timestamp: new Date() }])
+  }
+
+  // Análise interna sem Google
+  const runInternalAnalysis = (query: string) => {
+    const low = query.toLowerCase()
+    const lines: string[] = []
+
+    // Encontra produtos relevantes no histórico
+    const matching = prices.filter(p =>
+      p.produto.toLowerCase().includes(low) ||
+      p.categoria.toLowerCase().includes(low) ||
+      low.includes(p.produto.toLowerCase())
+    )
+
+    if (matching.length > 0) {
+      const produto = matching[0].produto
+      const precos  = matching.map(p => p.preco)
+      const min     = Math.min(...precos)
+      const max     = Math.max(...precos)
+      const avg     = precos.reduce((a, b) => a + b, 0) / precos.length
+      lines.push(`📦 **${produto}** — ${matching.length} registros no histórico`)
+      lines.push(`💰 Menor preço: R$ ${min.toFixed(2)} · Maior: R$ ${max.toFixed(2)} · Média: R$ ${avg.toFixed(2)}`)
+      const melhorRow = matching.reduce((a, b) => a.preco < b.preco ? a : b)
+      lines.push(`🏆 Melhor fornecedor: ${melhorRow.fornecedor_nome} @ R$ ${melhorRow.preco.toFixed(2)}/${melhorRow.unidade}`)
+      const tend = tendencias.find(t => t.produto === produto)
+      if (tend) {
+        lines.push(`📈 Tendência atual: ${tend.tendencia.toUpperCase()} · Variação 7d: ${tend.variacao_7d > 0 ? '+' : ''}${tend.variacao_7d.toFixed(1)}%`)
+      }
+    } else {
+      lines.push(`🔍 Nenhum dado interno encontrado para "${query}".`)
+      lines.push(`💡 Configure a API do Google (Serper) para buscar preços em tempo real.`)
+    }
+
+    // Score do fornecedor
+    const scoreMatch = scores.filter(s => s.fornecedor_nome.toLowerCase().includes(low))
+    if (scoreMatch.length > 0) {
+      lines.push('')
+      for (const s of scoreMatch.slice(0, 3)) {
+        lines.push(`🎯 Fornecedor: **${s.fornecedor_nome}** — Score: ${s.score_total.toFixed(1)}/10 (${s.classificacao.toUpperCase()})`)
+      }
+    }
+
+    // Resumo geral se consulta genérica
+    if (matching.length === 0 && scoreMatch.length === 0) {
+      const total = prices.length
+      const fornecs = [...new Set(prices.map(p => p.fornecedor_nome))].length
+      const produtos = [...new Set(prices.map(p => p.produto))].length
+      lines.push(`📊 **Resumo do mercado monitorado:**`)
+      lines.push(`• ${produtos} produtos · ${fornecs} fornecedores · ${total} registros de preço`)
+      lines.push(`• ${scores.length} fornecedores com score ativo`)
+      lines.push(`• ${tendencias.length} tendências analisadas`)
+      if (scores.length > 0) {
+        lines.push(`• Melhor fornecedor geral: **${scores[0].fornecedor_nome}** (${scores[0].score_total.toFixed(1)}/10)`)
+      }
+    }
+
+    return lines.join('\n')
+  }
+
+  const handleSend = async () => {
+    if (!input.trim() || loading) return
+    const userMsg = input.trim()
+    setInput('')
+
+    setMsgs(prev => [...prev, {
+      id: crypto.randomUUID(), role: 'user', content: userMsg, timestamp: new Date()
+    }])
+
+    setLoading(true)
+    try {
+      if (!apiKey) {
+        // Análise interna
+        const analysis = runInternalAnalysis(userMsg)
+        setMsgs(prev => [...prev, {
+          id: crypto.randomUUID(), role: 'agent',
+          content: analysis + '\n\n_⚠️ Para pesquisa em tempo real no Google, configure a chave Serper acima._',
+          timestamp: new Date()
+        }])
+        return
+      }
+
+      const { query, tipo, produto } = buildQuery(userMsg)
+
+      // Informar usuário o que está buscando
+      setMsgs(prev => [...prev, {
+        id: crypto.randomUUID(), role: 'system',
+        content: `🔍 Buscando: "${query}"...`,
+        timestamp: new Date()
+      }])
+
+      const result = await serperSearch(query, apiKey)
+      const organics = result.organic ?? []
+
+      // Extrair preços de todos os snippets + títulos
+      const allPrecos: Array<{ valor: number; contexto: string; fonte: string; produto: string; fornecedor: string }> = []
+      for (const r of organics) {
+        const text = `${r.title} ${r.snippet}`
+        const found = extractPrecos(text)
+        for (const p of found) {
+          let domain = r.link
+          try { domain = new URL(r.link).hostname.replace('www.', '') } catch { /* ignore */ }
+          allPrecos.push({
+            valor: p.valor, contexto: p.contexto,
+            fonte: domain, produto: produto || userMsg, fornecedor: domain,
+          })
+        }
+      }
+
+      // Montar mensagem de resposta
+      let responseContent = ''
+      if (tipo === 'preco' && allPrecos.length > 0) {
+        const vals = allPrecos.map(p => p.valor)
+        const min = Math.min(...vals)
+        const max = Math.max(...vals)
+        const avg = vals.reduce((a, b) => a + b, 0) / vals.length
+
+        // Compare com dados internos
+        const interno = prices.filter(p => p.produto.toLowerCase().includes(produto.toLowerCase()))
+        const interno_med = interno.length > 0 ? interno.map(p => p.preco).reduce((a, b) => a + b, 0) / interno.length : null
+
+        responseContent = `✅ **${produto.charAt(0).toUpperCase() + produto.slice(1)}** — ${allPrecos.length} preços encontrados\n\n`
+        responseContent += `💰 Mínimo: **R$ ${min.toFixed(2)}** · Máximo: R$ ${max.toFixed(2)} · Média: **R$ ${avg.toFixed(2)}**\n`
+        if (interno_med !== null) {
+          const diff = ((avg - interno_med) / interno_med) * 100
+          responseContent += `📊 Comparando com seu histórico (R$ ${interno_med.toFixed(2)}): ${diff > 0 ? '⬆️' : '⬇️'} ${Math.abs(diff).toFixed(1)}% ${diff > 0 ? 'mais caro' : 'mais barato'} no mercado\n`
+        }
+        responseContent += `\n_Selecione os preços abaixo para adicionar ao histórico:_`
+      } else if (tipo === 'fornecedor') {
+        responseContent = `🏢 **Análise de fornecedor: ${produto}**\n\n`
+        responseContent += organics.slice(0, 4).map(r => `• **${r.title}**\n  ${r.snippet}`).join('\n\n')
+      } else if (tipo === 'tendencia') {
+        responseContent = `📈 **Tendência de mercado: ${produto}**\n\n`
+        const tend = tendencias.find(t => t.produto.toLowerCase().includes(produto.toLowerCase()))
+        if (tend) {
+          responseContent += `📊 Dados internos: ${tend.tendencia.toUpperCase()} · 7d: ${tend.variacao_7d > 0 ? '+' : ''}${tend.variacao_7d.toFixed(1)}% · 30d: ${tend.variacao_30d.toFixed(1)}%\n\n`
+        }
+        responseContent += `🌐 Mercado:\n` + organics.slice(0, 3).map(r => `• ${r.title}: ${r.snippet.slice(0, 120)}...`).join('\n')
+      } else {
+        responseContent = organics.length > 0
+          ? `🌐 Resultados para "${userMsg}":\n\n` + organics.slice(0, 5).map(r => `• **${r.title}**\n  ${r.snippet}`).join('\n\n')
+          : `Nenhum resultado encontrado para "${userMsg}".`
+      }
+
+      setMsgs(prev => [...prev, {
+        id: crypto.randomUUID(), role: 'agent',
+        content: responseContent,
+        results: organics.slice(0, 6),
+        precos: allPrecos.length > 0 ? allPrecos.slice(0, 12) : undefined,
+        timestamp: new Date()
+      }])
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setMsgs(prev => [...prev, {
+        id: crypto.randomUUID(), role: 'error',
+        content: `❌ Erro: ${msg}\n\nVerifique se a chave Serper está correta e tem créditos disponíveis.`,
+        timestamp: new Date()
+      }])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleAddPreco = (msg: ChatMsg, p: { valor: number; contexto: string; fonte: string; produto: string; fornecedor: string }, unidade = 'kg') => {
+    onAddPrice({
+      produto: p.produto,
+      categoria: '',
+      fornecedor_nome: p.fornecedor,
+      preco: p.valor,
+      unidade,
+      loja: lojaReal,
+      fonte: 'manual',
+      data: new Date().toISOString().slice(0, 10),
+      obs: `Via Agente IA · ${p.contexto.slice(0, 80)}`,
+    })
+    setMsgs(prev => prev.map(m => m.id === msg.id ? { ...m, added: true } : m))
+    addSystemMsg(`✅ Preço adicionado: ${p.produto} · R$ ${p.valor.toFixed(2)} via ${p.fornecedor}`)
+  }
+
+  const SUGESTOES = [
+    'Pesquisar preço do frango',
+    'Buscar preço da carne bovina',
+    'Analisar fornecedores de hortifruti',
+    'Tendência preço do café',
+    'Melhores fornecedores de laticínios',
+    'Resumo do mercado',
+  ]
+
+  const renderMsgContent = (content: string) => {
+    return content.split('\n').map((line, i) => {
+      const boldLine = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      return <div key={i} style={{ lineHeight: 1.5 }} dangerouslySetInnerHTML={{ __html: boldLine || '&nbsp;' }} />
+    })
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Header do Agente */}
+      <div style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', borderRadius: 14, padding: '16px 20px', color: '#fff' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Bot size={22} />
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>Canal de Comando — Market Intelligence</div>
+              <div style={{ fontSize: 12, opacity: 0.85 }}>Pesquise fornecedores e preços no Google e alimente os indicadores automaticamente</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.15)', borderRadius: 8, padding: '5px 10px', fontSize: 12 }}>
+              {apiKey ? <><CheckCircle2 size={13} /><span>Google ativo</span></> : <><XCircle size={13} /><span>Sem Google</span></>}
+            </div>
+            <button onClick={() => setShowSetup(p => !p)}
+              style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 8, padding: '5px 10px', color: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Key size={12} /> Configurar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Setup Panel */}
+      {showSetup && (
+        <div style={{ background: 'var(--bg-card)', borderRadius: 12, padding: 16, border: '2px solid #7c3aed40' }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--txt)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Key size={14} color="#7c3aed" /> Configurar Serper API (Google Search)
+          </div>
+          <ol style={{ margin: '0 0 12px', paddingLeft: 20, fontSize: 13, color: 'var(--txt-sec)', lineHeight: 2 }}>
+            <li>Acesse <a href="https://serper.dev" target="_blank" rel="noreferrer" style={{ color: '#7c3aed' }}>serper.dev <ExternalLink size={10} /></a> e crie uma conta gratuita</li>
+            <li>Copie sua <strong>API Key</strong> do painel</li>
+            <li>Cole abaixo e clique em Salvar</li>
+          </ol>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="password"
+              placeholder="Cole sua chave Serper aqui..."
+              value={keyInput}
+              onChange={e => setKeyInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && saveKey()}
+              style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--bordo-l)', background: 'var(--bg)', color: 'var(--txt)', fontSize: 13 }}
+            />
+            <button onClick={saveKey} disabled={!keyInput.trim()}
+              style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
+              Salvar
+            </button>
+            {apiKey && (
+              <button onClick={removeKey}
+                style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #fca5a5', background: 'transparent', color: '#ef4444', cursor: 'pointer', fontSize: 13 }}>
+                Remover
+              </button>
+            )}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 11, color: 'var(--txt-sec)' }}>
+            Plano gratuito: 2.500 buscas/mês · A chave é salva localmente neste navegador.
+          </div>
+        </div>
+      )}
+
+      {/* Chat window */}
+      <div style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--bordo-l)', overflow: 'hidden' }}>
+        {/* Messages area */}
+        <div style={{ minHeight: 380, maxHeight: 520, overflowY: 'auto', padding: '16px 16px 8px' }}>
+          {msgs.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '30px 0' }}>
+              <Bot size={40} color="#7c3aed" style={{ opacity: 0.4, marginBottom: 10 }} />
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--txt)', marginBottom: 6 }}>Agente de Inteligência de Mercado</div>
+              <div style={{ fontSize: 13, color: 'var(--txt-sec)', marginBottom: 20 }}>
+                {apiKey
+                  ? 'Pesquise fornecedores e preços no Google ou use comandos especiais.'
+                  : 'Configure a API do Google acima para pesquisar em tempo real. Análise de dados internos sempre disponível.'}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+                {SUGESTOES.map(s => (
+                  <button key={s} onClick={() => { setInput(s); }}
+                    style={{ padding: '6px 12px', borderRadius: 99, border: '1px solid #7c3aed50', background: '#7c3aed10', color: '#7c3aed', cursor: 'pointer', fontSize: 12 }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {msgs.map(msg => (
+            <div key={msg.id} style={{
+              marginBottom: 12,
+              display: 'flex',
+              flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
+              gap: 8,
+              alignItems: 'flex-start',
+            }}>
+              {/* Avatar */}
+              <div style={{
+                width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                background: msg.role === 'user' ? 'var(--bordo)' : msg.role === 'error' ? '#ef4444' : msg.role === 'system' ? '#6b7280' : '#7c3aed',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2,
+              }}>
+                {msg.role === 'user' ? <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>EU</span>
+                  : msg.role === 'agent' ? <Bot size={13} color="#fff" />
+                  : <Activity size={13} color="#fff" />}
+              </div>
+
+              {/* Bubble */}
+              <div style={{
+                maxWidth: '75%',
+                background: msg.role === 'user' ? 'var(--bordo)' : msg.role === 'error' ? '#fef2f2' : msg.role === 'system' ? 'var(--bg)' : 'var(--bg)',
+                color: msg.role === 'user' ? '#fff' : msg.role === 'error' ? '#991b1b' : 'var(--txt)',
+                borderRadius: msg.role === 'user' ? '14px 4px 14px 14px' : '4px 14px 14px 14px',
+                padding: '10px 14px',
+                fontSize: 13,
+                border: msg.role === 'system' ? '1px solid var(--bordo-l)' : 'none',
+              }}>
+                <div>{renderMsgContent(msg.content)}</div>
+
+                {/* Precos extraídos */}
+                {msg.precos && msg.precos.length > 0 && !msg.added && (
+                  <div style={{ marginTop: 12, borderTop: '1px solid var(--bordo-l)', paddingTop: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', marginBottom: 6 }}>
+                      💰 {msg.precos.length} preços encontrados — clique para adicionar ao histórico:
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {msg.precos.map((p, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f5f3ff', borderRadius: 8, padding: '6px 10px' }}>
+                          <span style={{ fontWeight: 800, color: '#22c55e', fontSize: 15 }}>R$ {p.valor.toFixed(2)}</span>
+                          <span style={{ fontSize: 11, color: '#6b7280', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.contexto.slice(0, 60)}</span>
+                          <span style={{ fontSize: 10, color: '#7c3aed' }}>{p.fonte}</span>
+                          <button onClick={() => handleAddPreco(msg, p)}
+                            style={{ padding: '3px 8px', borderRadius: 6, border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer', fontSize: 11, whiteSpace: 'nowrap' }}>
+                            + Adicionar
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => { msg.precos!.forEach(p => handleAddPreco(msg, p)); }}
+                        style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 12, marginTop: 4 }}>
+                        ✅ Adicionar todos ao histórico
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {msg.added && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#22c55e', fontWeight: 600 }}>✅ Adicionados ao histórico de preços!</div>
+                )}
+
+                {/* Links de resultados */}
+                {msg.results && msg.results.length > 0 && (
+                  <div style={{ marginTop: 10, borderTop: '1px solid var(--bordo-l)', paddingTop: 8 }}>
+                    <div style={{ fontSize: 11, color: 'var(--txt-sec)', marginBottom: 4 }}>🌐 Fontes:</div>
+                    {msg.results.slice(0, 4).map((r, i) => (
+                      <a key={i} href={r.link} target="_blank" rel="noreferrer"
+                        style={{ display: 'block', fontSize: 11, color: '#7c3aed', textDecoration: 'none', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <ExternalLink size={10} style={{ marginRight: 4, verticalAlign: 'middle' }} />{r.title}
+                      </a>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ fontSize: 10, color: msg.role === 'user' ? 'rgba(255,255,255,0.6)' : 'var(--txt-sec)', marginTop: 4 }}>
+                  {msg.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {loading && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Bot size={13} color="#fff" />
+              </div>
+              <div style={{ background: 'var(--bg)', borderRadius: '4px 14px 14px 14px', padding: '10px 14px', display: 'flex', gap: 4, alignItems: 'center' }}>
+                <div className="dot-flash" style={{ width: 6, height: 6, borderRadius: '50%', background: '#7c3aed', animation: 'pulse 1.2s ease-in-out infinite' }} />
+                <div className="dot-flash" style={{ width: 6, height: 6, borderRadius: '50%', background: '#7c3aed', animation: 'pulse 1.2s ease-in-out 0.3s infinite' }} />
+                <div className="dot-flash" style={{ width: 6, height: 6, borderRadius: '50%', background: '#7c3aed', animation: 'pulse 1.2s ease-in-out 0.6s infinite' }} />
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Input area */}
+        <div style={{ padding: '10px 14px', borderTop: '1px solid var(--bordo-l)', background: 'var(--bg)', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--txt-sec)' }} />
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
+              placeholder={apiKey ? 'Pesquisar preço, analisar fornecedor, tendência...' : 'Analisar dados internos... (configure Google para buscar em tempo real)'}
+              style={{ width: '100%', padding: '9px 12px 9px 32px', borderRadius: 10, border: '1px solid var(--bordo-l)', background: 'transparent', color: 'var(--txt)', fontSize: 13, boxSizing: 'border-box', outline: 'none' }}
+            />
+          </div>
+          <button onClick={handleSend} disabled={loading || !input.trim()}
+            style={{ padding: '9px 14px', borderRadius: 10, border: 'none', background: loading || !input.trim() ? 'var(--bordo-l)' : '#7c3aed', color: '#fff', cursor: loading || !input.trim() ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 13 }}>
+            <Send size={13} />
+            {loading ? 'Buscando...' : 'Enviar'}
+          </button>
+        </div>
+      </div>
+
+      {/* Comandos disponíveis */}
+      <div style={{ background: 'var(--bg-card)', borderRadius: 10, padding: '12px 16px', border: '1px solid var(--bordo-l)' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--txt)', marginBottom: 6 }}>💬 Comandos disponíveis:</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 6, fontSize: 12, color: 'var(--txt-sec)' }}>
+          {[
+            ['pesquisar <produto>', 'Busca preços no Google e extrai valores automaticamente'],
+            ['analisar fornecedor <nome>', 'Pesquisa avaliações e informações do fornecedor'],
+            ['tendência <produto>', 'Analisa variação de preço e tendências de mercado'],
+            ['melhores fornecedores <categoria>', 'Lista os melhores fornecedores por categoria'],
+            ['resumo do mercado', 'Análise geral dos dados internos'],
+            ['<texto livre>', 'Qualquer busca no Google'],
+          ].map(([cmd, desc]) => (
+            <div key={cmd} style={{ display: 'flex', gap: 6 }}>
+              <code style={{ background: '#7c3aed15', color: '#7c3aed', padding: '1px 5px', borderRadius: 4, whiteSpace: 'nowrap', fontSize: 11 }}>{cmd}</code>
+              <span style={{ fontSize: 11 }}>{desc}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
