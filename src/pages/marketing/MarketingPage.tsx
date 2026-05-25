@@ -2,50 +2,19 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Plus, Edit3, Trash2, Search, X, Check, Loader,
   TrendingUp, BarChart2, Target, Calendar, RefreshCw,
-  ChevronLeft, ToggleLeft, ToggleRight, Send,
+  ChevronLeft, ToggleLeft, ToggleRight, Send, AlertTriangle,
 } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useLoja } from '../../contexts/LojaContext'
+import { useAuth } from '../../contexts/AuthContext'
+import { fetchMktCampanhas, insertMktCampanha, updateMktCampanha, deleteMktCampanha } from '../../lib/db'
+import type { MktCampanha } from '../../lib/db'
 
 // ── Tipos ─────────────────────────────────────────────────────
 
 type CampanhaTipo = 'promocao' | 'evento' | 'digital' | 'acao_rua' | 'parceria' | 'redes_sociais'
 type CampanhaStatus = 'planejamento' | 'em_execucao' | 'pausada' | 'finalizada' | 'cancelada'
 type CampanhaIntensidade = 'leve' | 'media' | 'agressiva'
-
-interface Campanha {
-  id: string
-  nome: string
-  descricao: string
-  tipo: CampanhaTipo
-  loja: string
-  objetivo: string
-  intensidade: CampanhaIntensidade
-  status: CampanhaStatus
-  data_inicio: string
-  data_fim: string
-  investimento: number
-  receita_estimada: number
-  receita_real: number
-  aprendizado: string
-  responsavel: string
-  created_at: string
-  updated_at: string
-}
-
-// ── Storage ───────────────────────────────────────────────────
-
-const MKT_KEY = 'amore_mkt_campanhas_v1'
-
-function loadCampanhas(): Campanha[] {
-  try {
-    const s = localStorage.getItem(MKT_KEY)
-    return s ? JSON.parse(s) : []
-  } catch { return [] }
-}
-
-function saveCampanhas(list: Campanha[]) {
-  localStorage.setItem(MKT_KEY, JSON.stringify(list))
-}
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -73,8 +42,7 @@ const INTENSIDADE: Record<CampanhaIntensidade, { label: string; color: string; b
 }
 
 function fmtBRL(v: number) { return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
-function fmtDate(iso: string) { if (!iso) return '—'; return new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR') }
-function newId() { return `c_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` }
+function fmtDate(iso: string | null) { if (!iso) return '—'; return new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR') }
 
 function Badge({ label, color, bg }: { label: string; color: string; bg: string }) {
   return <span style={{ background: bg, color, borderRadius: 12, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, display: 'inline-block', whiteSpace: 'nowrap' }}>{label}</span>
@@ -106,32 +74,41 @@ type FormData = {
   aprendizado: string; responsavel: string
 }
 
-const FORM_EMPTY: FormData = {
-  nome: '', descricao: '', tipo: 'promocao', loja: 'Todas',
-  objetivo: '', intensidade: 'media', status: 'planejamento',
-  data_inicio: '', data_fim: '', investimento: '0',
-  receita_estimada: '0', receita_real: '0',
-  aprendizado: '', responsavel: '',
+function formDefault(lojaAtual: string): FormData {
+  return {
+    nome: '', descricao: '', tipo: 'promocao', loja: lojaAtual,
+    objetivo: '', intensidade: 'media', status: 'planejamento',
+    data_inicio: '', data_fim: '', investimento: '0',
+    receita_estimada: '0', receita_real: '0',
+    aprendizado: '', responsavel: '',
+  }
 }
 
-function FormCampanha({ campanha, lojas, onSalvo, onVoltar }: {
-  campanha: Campanha | null
+function FormCampanha({ campanha, lojaAtual, lojas, onSalvo, onVoltar }: {
+  campanha: MktCampanha | null
+  lojaAtual: string
   lojas: string[]
-  onSalvo: (c: Campanha) => void
+  onSalvo: (c: MktCampanha) => void
   onVoltar: () => void
 }) {
   const { toast, ToastEl } = useToastLocal()
+  const { user } = useAuth()
+
   const [form, setForm] = useState<FormData>(
     campanha ? {
-      nome: campanha.nome, descricao: campanha.descricao, tipo: campanha.tipo,
-      loja: campanha.loja, objetivo: campanha.objetivo, intensidade: campanha.intensidade,
-      status: campanha.status, data_inicio: campanha.data_inicio, data_fim: campanha.data_fim,
-      investimento: String(campanha.investimento), receita_estimada: String(campanha.receita_estimada),
-      receita_real: String(campanha.receita_real), aprendizado: campanha.aprendizado,
-      responsavel: campanha.responsavel,
-    } : FORM_EMPTY
+      nome: campanha.nome, descricao: campanha.descricao ?? '',
+      tipo: (campanha.tipo as CampanhaTipo), loja: campanha.loja,
+      objetivo: campanha.objetivo ?? '', intensidade: (campanha.intensidade as CampanhaIntensidade),
+      status: (campanha.status as CampanhaStatus),
+      data_inicio: campanha.data_inicio ?? '', data_fim: campanha.data_fim ?? '',
+      investimento: String(campanha.investimento),
+      receita_estimada: String(campanha.receita_estimada),
+      receita_real: String(campanha.receita_real),
+      aprendizado: campanha.aprendizado ?? '', responsavel: campanha.responsavel ?? '',
+    } : formDefault(lojaAtual)
   )
   const [saving, setSaving] = useState(false)
+  const [errMsg, setErrMsg] = useState('')
 
   const set = (k: keyof FormData, v: string) => setForm(f => ({ ...f, [k]: v }))
 
@@ -142,14 +119,40 @@ function FormCampanha({ campanha, lojas, onSalvo, onVoltar }: {
     return ((rec - inv) / inv * 100).toFixed(1)
   })()
 
-  const salvar = () => {
+  const salvar = async () => {
     if (!form.nome.trim()) { toast('Nome da campanha é obrigatório', 'err'); return }
-    setSaving(true)
-    const now = new Date().toISOString()
-    const saved: Campanha = campanha
-      ? { ...campanha, ...form, investimento: parseFloat(form.investimento) || 0, receita_estimada: parseFloat(form.receita_estimada) || 0, receita_real: parseFloat(form.receita_real) || 0, updated_at: now }
-      : { id: newId(), ...form, investimento: parseFloat(form.investimento) || 0, receita_estimada: parseFloat(form.receita_estimada) || 0, receita_real: parseFloat(form.receita_real) || 0, created_at: now, updated_at: now }
-    setTimeout(() => { onSalvo(saved); setSaving(false) }, 200)
+    setSaving(true); setErrMsg('')
+    try {
+      const payload: Omit<MktCampanha, 'id' | 'created_at' | 'updated_at'> = {
+        loja: form.loja || lojaAtual,
+        nome: form.nome.trim(),
+        descricao: form.descricao.trim() || null,
+        tipo: form.tipo,
+        objetivo: form.objetivo.trim() || null,
+        intensidade: form.intensidade,
+        status: form.status,
+        data_inicio: form.data_inicio || null,
+        data_fim: form.data_fim || null,
+        investimento: parseFloat(form.investimento) || 0,
+        receita_estimada: parseFloat(form.receita_estimada) || 0,
+        receita_real: parseFloat(form.receita_real) || 0,
+        aprendizado: form.aprendizado.trim() || null,
+        responsavel: form.responsavel.trim() || null,
+        created_by: user?.name ?? null,
+      }
+      let saved: MktCampanha
+      if (campanha) {
+        saved = await updateMktCampanha(campanha.id, payload)
+      } else {
+        saved = await insertMktCampanha(payload)
+      }
+      onSalvo(saved)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao salvar campanha.'
+      setErrMsg(msg)
+      toast(msg, 'err')
+    }
+    setSaving(false)
   }
 
   return (
@@ -161,7 +164,12 @@ function FormCampanha({ campanha, lojas, onSalvo, onVoltar }: {
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>{campanha ? 'Editar Campanha' : 'Nova Campanha'}</h2>
           <p style={{ margin: 0, fontSize: 12, color: 'var(--muted)' }}>{campanha ? campanha.nome : 'Preencha os dados da nova campanha'}</p>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {errMsg && (
+            <span style={{ fontSize: 11, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <AlertTriangle size={12} /> {errMsg}
+            </span>
+          )}
           <button className="btn bo" onClick={onVoltar}>Cancelar</button>
           <button className="btn bp" onClick={salvar} disabled={saving}>
             {saving ? <Loader size={11} className="spin" /> : <Check size={11} />} Salvar
@@ -170,7 +178,6 @@ function FormCampanha({ campanha, lojas, onSalvo, onVoltar }: {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 900 }}>
-        {/* Nome */}
         <div className="fg" style={{ gridColumn: '1/-1' }}>
           <label className="fl">Nome da Campanha <span className="rq">*</span></label>
           <input className="inp" value={form.nome} onChange={e => set('nome', e.target.value)} placeholder="Ex: Promoção Quarta do Combo, Festival Temaki..." />
@@ -186,8 +193,7 @@ function FormCampanha({ campanha, lojas, onSalvo, onVoltar }: {
         <div className="fg">
           <label className="fl">Loja</label>
           <select className="sel" value={form.loja} onChange={e => set('loja', e.target.value)}>
-            <option value="Todas">Todas as lojas</option>
-            {lojas.map(l => <option key={l}>{l}</option>)}
+            {lojas.filter(l => l !== 'Todas as Lojas').map(l => <option key={l}>{l}</option>)}
           </select>
         </div>
 
@@ -225,7 +231,6 @@ function FormCampanha({ campanha, lojas, onSalvo, onVoltar }: {
           <input className="inp" value={form.responsavel} onChange={e => set('responsavel', e.target.value)} placeholder="Nome do responsável" />
         </div>
 
-        {/* Financeiros */}
         <div style={{ gridColumn: '1/-1', borderTop: '1px solid var(--border)', paddingTop: 16 }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Indicadores Financeiros</span>
         </div>
@@ -253,7 +258,6 @@ function FormCampanha({ campanha, lojas, onSalvo, onVoltar }: {
           )}
         </div>
 
-        {/* Descrição + Aprendizado */}
         <div className="fg" style={{ gridColumn: '1/-1' }}>
           <label className="fl">Descrição</label>
           <textarea className="inp" rows={2} value={form.descricao} onChange={e => set('descricao', e.target.value)} placeholder="Descreva a campanha, mecânica, público-alvo..." style={{ resize: 'vertical' }} />
@@ -272,58 +276,84 @@ function FormCampanha({ campanha, lojas, onSalvo, onVoltar }: {
 
 export default function MarketingPage() {
   const { theme } = useTheme()
+  const { loja, lojas } = useLoja()
+  const lojaReal = (loja && loja !== 'Todas as Lojas') ? loja : (lojas.find(l => l !== 'Todas as Lojas') || lojas[0] || 'Geral')
+
   const { toast, ToastEl } = useToastLocal()
-  const [campanhas, setCampanhas] = useState<Campanha[]>([])
+  const [campanhas, setCampanhas] = useState<MktCampanha[]>([])
+  const [loading, setLoading] = useState(true)
   const [view, setView] = useState<'lista' | 'form'>('lista')
-  const [editando, setEditando] = useState<Campanha | null>(null)
+  const [editando, setEditando] = useState<MktCampanha | null>(null)
   const [busca, setBusca] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('')
   const [filtroLoja, setFiltroLoja] = useState('')
-  const [confirmDel, setConfirmDel] = useState<Campanha | null>(null)
+  const [confirmDel, setConfirmDel] = useState<MktCampanha | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
-  const load = useCallback(() => { setCampanhas(loadCampanhas()) }, [])
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await fetchMktCampanhas(loja)
+      setCampanhas(data)
+    } catch {
+      toast('Erro ao carregar campanhas.', 'err')
+    }
+    setLoading(false)
+  }, [loja])
+
   useEffect(() => { load() }, [load])
 
-  const handleSalvo = (c: Campanha) => {
+  const handleSalvo = (c: MktCampanha) => {
     setCampanhas(prev => {
       const exists = prev.find(x => x.id === c.id)
-      const updated = exists ? prev.map(x => x.id === c.id ? c : x) : [c, ...prev]
-      saveCampanhas(updated)
-      return updated
+      return exists ? prev.map(x => x.id === c.id ? c : x) : [c, ...prev]
     })
     toast(editando ? 'Campanha atualizada!' : 'Campanha criada!')
     setView('lista')
     setEditando(null)
   }
 
-  const handleDel = () => {
+  const handleDel = async () => {
     if (!confirmDel) return
-    setCampanhas(prev => {
-      const updated = prev.filter(x => x.id !== confirmDel.id)
-      saveCampanhas(updated)
-      return updated
-    })
-    toast('Campanha removida')
+    setDeleting(true)
+    try {
+      await deleteMktCampanha(confirmDel.id)
+      setCampanhas(prev => prev.filter(x => x.id !== confirmDel.id))
+      toast('Campanha removida')
+    } catch {
+      toast('Erro ao remover campanha', 'err')
+    }
+    setDeleting(false)
     setConfirmDel(null)
   }
 
-  const toggleStatus = (c: Campanha) => {
-    const nextStatus: CampanhaStatus = c.status === 'em_execucao' ? 'pausada' : c.status === 'pausada' ? 'em_execucao' : c.status === 'planejamento' ? 'em_execucao' : c.status
-    if (nextStatus === c.status) return
-    const updated: Campanha = { ...c, status: nextStatus, updated_at: new Date().toISOString() }
-    setCampanhas(prev => {
-      const list = prev.map(x => x.id === c.id ? updated : x)
-      saveCampanhas(list); return list
-    })
-    toast(`Status: ${STATUS[nextStatus].label}`)
+  const toggleStatus = async (c: MktCampanha) => {
+    const next: CampanhaStatus = c.status === 'em_execucao' ? 'pausada'
+      : c.status === 'pausada' ? 'em_execucao'
+      : c.status === 'planejamento' ? 'em_execucao'
+      : c.status as CampanhaStatus
+    if (next === c.status) return
+    try {
+      const updated = await updateMktCampanha(c.id, { status: next })
+      setCampanhas(prev => prev.map(x => x.id === c.id ? updated : x))
+      toast(`Status: ${STATUS[next as CampanhaStatus]?.label ?? next}`)
+    } catch {
+      toast('Erro ao atualizar status', 'err')
+    }
   }
 
   if (view === 'form') {
     return (
       <>
         {ToastEl}
-        <FormCampanha campanha={editando} lojas={theme.stores || []} onSalvo={handleSalvo} onVoltar={() => { setView('lista'); setEditando(null) }} />
+        <FormCampanha
+          campanha={editando}
+          lojaAtual={lojaReal}
+          lojas={lojas.length > 0 ? lojas : [lojaReal]}
+          onSalvo={handleSalvo}
+          onVoltar={() => { setView('lista'); setEditando(null) }}
+        />
       </>
     )
   }
@@ -337,10 +367,10 @@ export default function MarketingPage() {
 
   // ── Filtros ──
   const filtradas = campanhas
-    .filter(c => !busca || c.nome.toLowerCase().includes(busca.toLowerCase()) || c.responsavel?.toLowerCase().includes(busca.toLowerCase()))
+    .filter(c => !busca || c.nome.toLowerCase().includes(busca.toLowerCase()) || (c.responsavel ?? '').toLowerCase().includes(busca.toLowerCase()))
     .filter(c => !filtroTipo || c.tipo === filtroTipo)
     .filter(c => !filtroStatus || c.status === filtroStatus)
-    .filter(c => !filtroLoja || c.loja === filtroLoja || c.loja === 'Todas')
+    .filter(c => !filtroLoja || c.loja === filtroLoja)
 
   return (
     <div>
@@ -364,7 +394,7 @@ export default function MarketingPage() {
         ))}
       </div>
 
-      {/* Análise por tipo (somente se há dados) */}
+      {/* Análise por tipo */}
       {campanhas.length > 0 && (() => {
         const byTipo: Record<string, { inv: number; rec: number; cnt: number }> = {}
         campanhas.forEach(c => {
@@ -413,14 +443,13 @@ export default function MarketingPage() {
         <div className="card-hd">
           <span className="card-tt"><Send size={13} style={{ display: 'inline', marginRight: 4 }} />Campanhas de Marketing</span>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn bo bsm" onClick={load}><RefreshCw size={11} /></button>
+            <button className="btn bo bsm" onClick={load} disabled={loading}><RefreshCw size={11} /></button>
             <button className="btn bp bsm" onClick={() => { setEditando(null); setView('form') }}>
               <Plus size={11} /> Nova Campanha
             </button>
           </div>
         </div>
 
-        {/* Filtros */}
         <div style={{ padding: '10px 15px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <div className="sw-wrap" style={{ flex: 1, minWidth: 200 }}>
             <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
@@ -436,7 +465,7 @@ export default function MarketingPage() {
           </select>
           <select className="flt" value={filtroLoja} onChange={e => setFiltroLoja(e.target.value)}>
             <option value="">Todas as lojas</option>
-            {(theme.stores || []).map(l => <option key={l}>{l}</option>)}
+            {(theme.stores || []).filter(l => l !== 'Todas as Lojas').map(l => <option key={l}>{l}</option>)}
           </select>
           {(busca || filtroTipo || filtroStatus || filtroLoja) && (
             <button className="btn bo bsm" onClick={() => { setBusca(''); setFiltroTipo(''); setFiltroStatus(''); setFiltroLoja('') }}>
@@ -445,7 +474,9 @@ export default function MarketingPage() {
           )}
         </div>
 
-        {campanhas.length === 0 ? (
+        {loading ? (
+          <div className="empty"><Loader size={24} className="spin" /></div>
+        ) : campanhas.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--muted)' }}>
             <BarChart2 size={40} style={{ opacity: .25, display: 'block', margin: '0 auto 12px' }} />
             <div style={{ fontWeight: 600, marginBottom: 8 }}>Nenhuma campanha cadastrada</div>
@@ -481,6 +512,9 @@ export default function MarketingPage() {
                 <tbody>
                   {filtradas.map(c => {
                     const roi = c.investimento > 0 ? ((c.receita_real - c.investimento) / c.investimento * 100) : null
+                    const tipo = TIPOS[c.tipo as CampanhaTipo]
+                    const stat = STATUS[c.status as CampanhaStatus]
+                    const intens = INTENSIDADE[c.intensidade as CampanhaIntensidade]
                     return (
                       <tr key={c.id}>
                         <td>
@@ -488,10 +522,10 @@ export default function MarketingPage() {
                           {c.objetivo && <div style={{ fontSize: 10, color: 'var(--muted)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.objetivo}</div>}
                           {c.responsavel && <div style={{ fontSize: 10, color: 'var(--muted)' }}>👤 {c.responsavel}</div>}
                         </td>
-                        <td><Badge label={TIPOS[c.tipo].label} color={TIPOS[c.tipo].color} bg={TIPOS[c.tipo].bg} /></td>
+                        <td><Badge label={tipo?.label || c.tipo} color={tipo?.color || '#666'} bg={tipo?.bg || '#eee'} /></td>
                         <td style={{ fontSize: 11 }}>{c.loja}</td>
                         <td style={{ fontSize: 10, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-                          {c.data_inicio ? fmtDate(c.data_inicio) : '—'}{c.data_fim ? ` → ${fmtDate(c.data_fim)}` : ''}
+                          {fmtDate(c.data_inicio)}{c.data_fim ? ` → ${fmtDate(c.data_fim)}` : ''}
                         </td>
                         <td style={{ fontSize: 12, fontWeight: 600 }}>{fmtBRL(c.investimento)}</td>
                         <td style={{ fontSize: 12, fontWeight: 700, color: c.receita_real > 0 ? 'var(--success)' : 'var(--muted)' }}>{fmtBRL(c.receita_real)}</td>
@@ -502,14 +536,14 @@ export default function MarketingPage() {
                               </span>
                             : <span style={{ color: 'var(--muted)', fontSize: 11 }}>—</span>}
                         </td>
-                        <td><Badge label={INTENSIDADE[c.intensidade].label} color={INTENSIDADE[c.intensidade].color} bg={INTENSIDADE[c.intensidade].bg} /></td>
+                        <td><Badge label={intens?.label || c.intensidade} color={intens?.color || '#666'} bg={intens?.bg || '#eee'} /></td>
                         <td>
                           <button onClick={() => toggleStatus(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 5 }}
-                            title={`Status: ${STATUS[c.status].label} — clique para alternar`}>
+                            title={`Status: ${stat?.label ?? c.status} — clique para alternar`}>
                             {c.status === 'em_execucao'
                               ? <ToggleRight size={14} style={{ color: 'var(--success)' }} />
                               : <ToggleLeft size={14} style={{ color: 'var(--muted)' }} />}
-                            <Badge label={STATUS[c.status].label} color={STATUS[c.status].color} bg={STATUS[c.status].bg} />
+                            <Badge label={stat?.label || c.status} color={stat?.color || '#666'} bg={stat?.bg || '#eee'} />
                           </button>
                         </td>
                         <td onClick={e => e.stopPropagation()}>
@@ -541,7 +575,9 @@ export default function MarketingPage() {
             </div>
             <div className="mft">
               <button className="btn bo" onClick={() => setConfirmDel(null)}>Cancelar</button>
-              <button className="btn" style={{ background: 'var(--danger)', color: '#fff' }} onClick={handleDel}><Trash2 size={11} /> Excluir</button>
+              <button className="btn" style={{ background: 'var(--danger)', color: '#fff' }} onClick={handleDel} disabled={deleting}>
+                {deleting ? <Loader size={11} className="spin" /> : <Trash2 size={11} />} Excluir
+              </button>
             </div>
           </div>
         </div>

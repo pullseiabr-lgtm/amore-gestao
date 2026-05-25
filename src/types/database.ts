@@ -263,6 +263,22 @@ export interface RequisicaoCotacaoItem {
   created_at: string
 }
 
+// ── Requisições Automáticas ──────────────────────────────────
+
+export interface RequisicaoAutomatica {
+  id: string
+  loja: string
+  lista_id: string | null
+  lista_titulo: string
+  dia_semana: number           // 0=Dom 1=Seg 2=Ter 3=Qua 4=Qui 5=Sex 6=Sáb
+  hora_maxima: string          // 'HH:MM'
+  prazo_dias: number
+  ativo: boolean
+  criado_por: string | null
+  created_at: string
+  updated_at: string
+}
+
 // ── Compras / Lista de Compras ───────────────────────────────
 
 export type ListaStatus = 'rascunho' | 'em_andamento' | 'concluido' | 'cancelado'
@@ -549,6 +565,8 @@ export interface Produto {
   ultimo_preco_compra: number | null
   preco_anterior_compra: number | null
   data_ultima_compra: string | null
+  preco_venda: number | null
+  disponivel_pdv: boolean
   fornecedor_padrao_id: string | null
   fornecedor_padrao_nome: string | null
   status_homologacao: HomologacaoStatus

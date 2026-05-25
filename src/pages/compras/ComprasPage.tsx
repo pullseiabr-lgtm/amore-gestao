@@ -12,7 +12,7 @@ import {
   fetchComprasListas, insertComprasLista, updateComprasLista, deleteComprasLista,
   fetchComprasListaItens, insertComprasListaItem, updateComprasListaItem, deleteComprasListaItem,
   fetchItensComprasDashboard, fetchEstoqueProdutos, insertEstoqueMovimentacao,
-  atualizarCustoMedioPorNome, fetchFornecedores,
+  atualizarCustoMedioPorNome, atualizarUltimoPrecoCompraPorNome, fetchFornecedores,
 } from '../../lib/db'
 import type { ComprasLista, ComprasListaItem, ListaStatus, ListaItemStatus, EstoqueProduto, Fornecedor } from '../../types/database'
 
@@ -844,6 +844,21 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
               preco,
               conf.data_validade || null,
               conf.numero_lote   || null,
+            ).catch(() => null)
+          }
+          return Promise.resolve()
+        }))
+
+        // ── Atualiza último preço de compra no catálogo de produtos ──
+        await Promise.all(itensParaEstoque.map(conf => {
+          const item  = itens.find(i => i.id === conf.item_id)
+          const preco = item?.preco_real ?? item?.preco_estimado
+          if (preco && preco > 0) {
+            return atualizarUltimoPrecoCompraPorNome(
+              conf.produto_nome,
+              lista.loja || 'Todas as Lojas',
+              preco,
+              recData,
             ).catch(() => null)
           }
           return Promise.resolve()

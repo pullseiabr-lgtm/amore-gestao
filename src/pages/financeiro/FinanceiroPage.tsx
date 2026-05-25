@@ -1729,7 +1729,9 @@ function PrestacoesView({ prestacoes, creditos, onAbrir, onNova, onDelete, toast
 export default function FinanceiroPage() {
   const { user } = useAuth()
   const { theme } = useTheme()
-  const { loja } = useLoja()
+  const { loja, lojas } = useLoja()
+  // Garante que créditos/prestações nunca sejam salvos com 'Todas as Lojas'
+  const lojaReal = (loja && loja !== 'Todas as Lojas') ? loja : (lojas.find(l => l !== 'Todas as Lojas') || loja)
   const { toast, ToastEl } = useToast()
 
   const [creditos, setCreditos]     = useState<FinCredito[]>([])
@@ -1866,7 +1868,7 @@ export default function FinanceiroPage() {
       {/* Modal Crédito */}
       {modalCred && (
         <ModalCredito
-          loja={loja}
+          loja={lojaReal}
           credito={modalCred === 'novo' ? null : modalCred}
           onSalvo={handleSalvoCredito}
           onFechar={() => setModalCred(null)}
@@ -1876,7 +1878,7 @@ export default function FinanceiroPage() {
       {/* Modal Prestação */}
       {modalPrest !== null && (
         <ModalPrestacao
-          loja={loja} creditos={creditos}
+          loja={lojaReal} creditos={creditos}
           prestacao={null}
           defaultCreditoId={modalPrest.credito_id}
           onSalvo={handleSalvoPrestacao}

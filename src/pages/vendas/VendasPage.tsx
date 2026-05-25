@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Plus, Search, ShoppingBag, Star, Clock, TrendingUp, Loader2, X, BarChart2, Users } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useLoja } from '../../contexts/LojaContext'
 import { useToast } from '../../hooks/useToast'
 import { fetchVendas, insertVenda } from '../../lib/db'
 import type { Venda, VendaItem } from '../../lib/db'
@@ -60,7 +61,10 @@ type PageTab = 'vendas' | 'dashboard'
 export default function VendasPage() {
   const { user, can, isDemoMode } = useAuth()
   const { theme } = useTheme()
+  const { loja, lojas } = useLoja()
   const { toast } = useToast()
+  // Para formulário: garante loja real (nunca 'Todas as Lojas')
+  const lojaReal = (loja && loja !== 'Todas as Lojas') ? loja : (lojas.find(l => l !== 'Todas as Lojas') || theme.stores[0] || '')
 
   const [pageTab, setPageTab] = useState<PageTab>('vendas')
   const [vendas, setVendas] = useState<Venda[]>([])
@@ -78,14 +82,17 @@ export default function VendasPage() {
   const [itemQtd, setItemQtd] = useState(1)
   const [itemPreco, setItemPreco] = useState('')
 
-  useEffect(() => {
+  const loadVendas = useCallback(() => {
+    setLoading(true)
     const fallback = setTimeout(() => setLoading(false), 7000)
-    fetchVendas()
+    fetchVendas(loja)
       .then(data => setVendas(data))
       .catch(() => {})
       .finally(() => { clearTimeout(fallback); setLoading(false) })
     return () => clearTimeout(fallback)
-  }, [])
+  }, [loja])
+
+  useEffect(() => { return loadVendas() }, [loadVendas])
 
   const total = itens.reduce((acc, i) => acc + i.qtd * i.preco, 0)
 
@@ -185,7 +192,7 @@ export default function VendasPage() {
   }
 
   const openForm = () => {
-    setForm({ ...EMPTY_FORM, loja: theme.stores[0] || '', colaborador: user?.name || '' })
+    setForm({ ...EMPTY_FORM, loja: lojaReal, colaborador: user?.name || '' })
     setItens([])
     setItemNome(''); setItemQtd(1); setItemPreco('')
     setShowForm(true)

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor } from 'lucide-react'
+import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 
@@ -29,10 +29,11 @@ const PRODUTOS_SUBMENU: NavItem[] = [
 
 // Sub-itens do grupo Compras & Estoque
 const COMPRAS_SUBMENU: NavItem[] = [
-  { id: 'compras',      label: 'Lista de Compras', icon: <ShoppingCart size={12} /> },
-  { id: 'requisicoes',  label: 'Requisições',      icon: <ClipboardList size={12} /> },
-  { id: 'estoque',      label: 'Estoque',           icon: <Package size={12} /> },
-  { id: 'fornecedores', label: 'Fornecedores',      icon: <Building2 size={12} /> },
+  { id: 'compras',                label: 'Lista de Compras',   icon: <ShoppingCart size={12} /> },
+  { id: 'requisicoes',            label: 'Requisições',        icon: <ClipboardList size={12} /> },
+  { id: 'req-automaticas',        label: 'Req. Automáticas',   icon: <Zap size={12} /> },
+  { id: 'estoque',                label: 'Estoque',            icon: <Package size={12} /> },
+  { id: 'fornecedores',           label: 'Fornecedores',       icon: <Building2 size={12} /> },
 ]
 
 // Sub-itens do grupo Relatórios
@@ -70,7 +71,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
   const isProdutosGroup = (p: string) => p === 'produtos' || p === 'produtos-categorias'
 
   // Abre o dropdown automaticamente se a página ativa for do grupo Compras
-  const isComprasGroup = (p: string) => p === 'compras' || p === 'requisicoes' || p === 'estoque' || p === 'fornecedores'
+  const isComprasGroup = (p: string) => p === 'compras' || p === 'requisicoes' || p === 'req-automaticas' || p === 'estoque' || p === 'fornecedores'
   const isRelatoriosGroup = (p: string) => p === 'relatorio-cvl' || p === 'ruptura'
 
   const [produtosOpen, setProdutosOpen] = useState(isProdutosGroup(activePage))

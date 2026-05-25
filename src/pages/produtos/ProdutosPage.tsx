@@ -185,6 +185,8 @@ type ProdutoForm = {
   estoque_minimo: string
   ultimo_preco_compra: string
   fornecedor_padrao_nome: string
+  preco_venda: string
+  disponivel_pdv: boolean
 }
 
 const FORM_EMPTY: ProdutoForm = {
@@ -194,6 +196,7 @@ const FORM_EMPTY: ProdutoForm = {
   marca_id:'', marca_nome:'',
   ativo: true, estoque_atual:'0', estoque_minimo:'0',
   ultimo_preco_compra:'', fornecedor_padrao_nome:'',
+  preco_venda:'', disponivel_pdv: false,
 }
 
 function FormProduto({ loja, produto, onSalvo, onVoltar }: {
@@ -220,6 +223,8 @@ function FormProduto({ loja, produto, onSalvo, onVoltar }: {
       estoque_minimo: produto.estoque_minimo.toString(),
       ultimo_preco_compra: produto.ultimo_preco_compra?.toString() ?? '',
       fornecedor_padrao_nome: produto.fornecedor_padrao_nome ?? '',
+      preco_venda: produto.preco_venda?.toString() ?? '',
+      disponivel_pdv: produto.disponivel_pdv ?? false,
     } : FORM_EMPTY
   )
   const [erros, setErros] = useState<Partial<ProdutoForm>>({})
@@ -295,6 +300,9 @@ function FormProduto({ loja, produto, onSalvo, onVoltar }: {
         data_ultima_compra: produto?.data_ultima_compra ?? null,
         fornecedor_padrao_id: produto?.fornecedor_padrao_id ?? null,
         fornecedor_padrao_nome: form.fornecedor_padrao_nome.trim() || null,
+        // PDV
+        preco_venda: form.preco_venda ? parseFloat(form.preco_venda) : null,
+        disponivel_pdv: form.disponivel_pdv,
       }
       const saved = produto
         ? await updateProduto(produto.id, payload)
@@ -493,6 +501,26 @@ function FormProduto({ loja, produto, onSalvo, onVoltar }: {
               {produto.fornecedor_padrao_nome && <> — Fornecedor: <strong>{produto.fornecedor_padrao_nome}</strong></>}
             </div>
           )}
+          {/* Separador PDV */}
+          <div style={{ gridColumn:'1/-1', borderTop:'1px solid var(--border)', paddingTop:16, marginTop:4 }}>
+            <span style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:1 }}>PDV — Ponto de Venda</span>
+          </div>
+          <div className="fg">
+            <label className="fl">Preço de Venda (R$)</label>
+            <input className="inp" type="number" min={0} step={0.01} placeholder="0,00"
+              value={form.preco_venda}
+              onChange={e => set('preco_venda', e.target.value)} />
+            <span style={{ fontSize:10, color:'var(--muted)', marginTop:2, display:'block' }}>Preço ao público no PDV</span>
+          </div>
+          <div className="fg" style={{ display:'flex', alignItems:'center', gap:10, paddingTop:20 }}>
+            <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', userSelect:'none', fontSize:13, fontWeight:600 }}>
+              <input type="checkbox" checked={form.disponivel_pdv}
+                onChange={e => setForm(f => ({ ...f, disponivel_pdv: e.target.checked }))}
+                style={{ width:16, height:16, accentColor:'var(--bordo)', cursor:'pointer' }} />
+              Disponível no PDV
+            </label>
+            <span style={{ fontSize:11, color:'var(--muted)' }}>Exibir no Ponto de Venda</span>
+          </div>
         </div>
       )}
 

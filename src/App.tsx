@@ -19,6 +19,7 @@ import SettingsPage from './pages/settings/SettingsPage'
 import EstoquePage from './pages/estoque/EstoquePage'
 import FornecedoresPage from './pages/fornecedores/FornecedoresPage'
 import RequisoesPage from './pages/requisicoes/RequisoesPage'
+import RequisoesAutomaticasPage from './pages/requisicoes/RequisoesAutomaticasPage'
 import ProdutosPage from './pages/produtos/ProdutosPage'
 import RelatorioCVLPage from './pages/relatorios/RelatorioCVLPage'
 import RupturaPage from './pages/relatorios/RupturaPage'
@@ -29,6 +30,7 @@ export type PageId =
   | 'vendas'
   | 'compras'
   | 'requisicoes'
+  | 'req-automaticas'
   | 'estoque'
   | 'fornecedores'
   | 'financeiro'
@@ -50,6 +52,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   vendas: 'Vendas',
   compras: 'Compras',
   requisicoes: 'Requisições de Compra',
+  'req-automaticas': 'Requisições Automáticas',
   estoque: 'Estoque',
   fornecedores: 'Fornecedores',
   financeiro: 'Financeiro',
@@ -72,7 +75,8 @@ function PageContent({ page }: { page: PageId }) {
     case 'dashboard': return <DashboardPage />
     case 'vendas': return <VendasPage />
     case 'compras': return <ComprasPage />
-    case 'requisicoes': return <RequisoesPage />
+    case 'requisicoes':      return <RequisoesPage />
+    case 'req-automaticas': return <RequisoesAutomaticasPage />
     case 'estoque': return <EstoquePage />
     case 'fornecedores': return <FornecedoresPage />
     case 'financeiro': return <FinanceiroPage />

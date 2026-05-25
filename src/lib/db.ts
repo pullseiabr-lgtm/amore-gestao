@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica } from '../types/database'
 
 const db = supabase as any
 
@@ -166,7 +166,7 @@ export interface Venda {
   created_at: string
 }
 
-export async function fetchVendas(): Promise<Venda[]> {
+export async function fetchVendas(loja?: string): Promise<Venda[]> {
   // SDK hangs; use direct fetch with timeout
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 6000)
@@ -176,8 +176,11 @@ export async function fetchVendas(): Promise<Venda[]> {
       new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
     ])
     const session = sessionResult && 'data' in sessionResult ? sessionResult.data.session : null
+    const lojaFilter = loja && loja !== 'Todas as Lojas' && loja !== 'all'
+      ? `&loja=eq.${encodeURIComponent(loja)}`
+      : ''
     const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/vendas?order=created_at.desc`,
+      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/vendas?order=created_at.desc${lojaFilter}`,
       {
         signal: controller.signal,
         headers: {
@@ -579,6 +582,38 @@ export async function atualizarCustoMedioPorNome(
       .in('loja', [loja, 'Todas as Lojas'])
       .eq('ativo', true)
   } catch (e) { console.warn('atualizarCustoMedioPorNome:', e) }
+}
+
+// Atualiza ultimo_preco_compra + data_ultima_compra no catálogo de produtos por nome
+export async function atualizarUltimoPrecoCompraPorNome(
+  nome: string,
+  loja: string,
+  preco: number,
+  dataCompra: string,
+): Promise<void> {
+  try {
+    // Busca o produto pelo nome (case-insensitive, mesma loja)
+    const q = db.from('produtos')
+      .select('id, ultimo_preco_compra')
+      .ilike('nome', nome.trim())
+      .eq('loja', loja)
+      .eq('ativo', true)
+      .maybeSingle()
+    const { data } = await q
+    if (!data) return
+
+    const prod = data as { id: string; ultimo_preco_compra: number | null }
+    const patch: Record<string, unknown> = {
+      ultimo_preco_compra: preco,
+      data_ultima_compra: dataCompra,
+      updated_at: new Date().toISOString(),
+    }
+    // Salva preço anterior somente se mudou
+    if (prod.ultimo_preco_compra && prod.ultimo_preco_compra !== preco) {
+      patch.preco_anterior_compra = prod.ultimo_preco_compra
+    }
+    await db.from('produtos').update(patch).eq('id', prod.id)
+  } catch (e) { console.warn('atualizarUltimoPrecoCompraPorNome:', e) }
 }
 
 // ── Estoque — Movimentações ─────────────────────────────────
@@ -1018,6 +1053,47 @@ export async function fetchItensComprasDashboard(loja: string): Promise<{
     .eq('status', 'comprado')).then(d => d ?? []).catch(() => [])
 }
 
+// ── MÓDULO MARKETING ────────────────────────────────────────────────────────
+
+export interface MktCampanha {
+  id: string
+  loja: string
+  nome: string
+  descricao: string | null
+  tipo: string
+  objetivo: string | null
+  intensidade: string
+  status: string
+  data_inicio: string | null
+  data_fim: string | null
+  investimento: number
+  receita_estimada: number
+  receita_real: number
+  aprendizado: string | null
+  responsavel: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export async function fetchMktCampanhas(loja: string): Promise<MktCampanha[]> {
+  let q = db.from('mkt_campanhas').select('*').order('created_at', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas' && loja !== 'all') q = q.eq('loja', loja)
+  return sdkCall<MktCampanha[]>(q).then(d => d ?? []).catch(() => [])
+}
+
+export async function insertMktCampanha(c: Omit<MktCampanha, 'id' | 'created_at' | 'updated_at'>): Promise<MktCampanha> {
+  return sdkCall<MktCampanha>(db.from('mkt_campanhas').insert(c).select().single())
+}
+
+export async function updateMktCampanha(id: string, c: Partial<MktCampanha>): Promise<MktCampanha> {
+  return sdkCall<MktCampanha>(db.from('mkt_campanhas').update({ ...c, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+}
+
+export async function deleteMktCampanha(id: string): Promise<void> {
+  await sdkCall<null>(db.from('mkt_campanhas').delete().eq('id', id))
+}
+
 // Contagem por categoria
 export async function fetchContagemPorCategoria(loja: string): Promise<{ categoria_nome: string | null; total: number }[]> {
   let q = db.from('produtos').select('categoria_nome').eq('ativo', true)
@@ -1141,4 +1217,33 @@ export async function updateRuptura(id: string, r: Partial<Ruptura>): Promise<Ru
 
 export async function deleteRuptura(id: string): Promise<void> {
   await sdkCall<null>(db.from('rupturas').delete().eq('id', id))
+}
+
+// ── Requisições Automáticas ──────────────────────────────────
+
+export async function fetchRequisoesAutomaticas(loja?: string): Promise<RequisicaoAutomatica[]> {
+  let q = db.from('requisicoes_automaticas').select('*').order('created_at', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
+  return sdkCall<RequisicaoAutomatica[]>(q).then(d => d ?? [])
+}
+
+export async function insertRequisicaoAutomatica(
+  r: Omit<RequisicaoAutomatica, 'id' | 'created_at' | 'updated_at'>
+): Promise<RequisicaoAutomatica> {
+  return sdkCall<RequisicaoAutomatica>(db.from('requisicoes_automaticas').insert(r).select().single())
+}
+
+export async function updateRequisicaoAutomatica(
+  id: string,
+  r: Partial<RequisicaoAutomatica>
+): Promise<RequisicaoAutomatica> {
+  return sdkCall<RequisicaoAutomatica>(
+    db.from('requisicoes_automaticas')
+      .update({ ...r, updated_at: new Date().toISOString() })
+      .eq('id', id).select().single()
+  )
+}
+
+export async function deleteRequisicaoAutomatica(id: string): Promise<void> {
+  await sdkCall<null>(db.from('requisicoes_automaticas').delete().eq('id', id))
 }
