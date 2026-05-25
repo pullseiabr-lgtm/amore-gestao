@@ -527,12 +527,22 @@ function FormProduto({ loja, produto, onSalvo, onVoltar }: {
       {/* Modais */}
       {modalCat && (
         <ModalCategoria loja={loja} cat={null}
-          onSalvo={c => { setCategorias(prev => [...prev, c].sort((a,b) => a.nome.localeCompare(b.nome))); selecCateg(c.id); setModalCat(false) }}
+          onSalvo={c => {
+            setCategorias(prev => [...prev, c].sort((a,b) => a.nome.localeCompare(b.nome)))
+            // Definir diretamente no form (evita stale closure do selecCateg)
+            setForm(f => ({ ...f, categoria_id: c.id, categoria_nome: c.nome }))
+            setErros(e => ({ ...e, categoria_id: undefined }))
+            setModalCat(false)
+          }}
           onFechar={() => setModalCat(false)} />
       )}
       {modalMarca && (
         <ModalMarca loja={loja} marca={null}
-          onSalvo={m => { setMarcas(prev => [...prev, m].sort((a,b) => a.nome.localeCompare(b.nome))); selecMarca(m.id); setModalMarca(false) }}
+          onSalvo={m => {
+            setMarcas(prev => [...prev, m].sort((a,b) => a.nome.localeCompare(b.nome)))
+            setForm(f => ({ ...f, marca_id: m.id, marca_nome: m.nome }))
+            setModalMarca(false)
+          }}
           onFechar={() => setModalMarca(false)} />
       )}
     </div>
