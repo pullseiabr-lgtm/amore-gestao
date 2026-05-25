@@ -849,7 +849,9 @@ export async function deleteFinCredito(id: string): Promise<void> {
 }
 
 export async function fetchFinPrestacoes(loja: string): Promise<FinPrestacao[]> {
-  return sdkCall<FinPrestacao[]>(db.from('fin_prestacoes').select('*').eq('loja', loja).order('created_at', { ascending: false }))
+  let q = db.from('fin_prestacoes').select('*').order('created_at', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas' && loja !== 'all') q = q.eq('loja', loja)
+  return sdkCall<FinPrestacao[]>(q)
 }
 export async function insertFinPrestacao(p: Omit<FinPrestacao, 'id' | 'numero' | 'diferenca' | 'created_at' | 'updated_at'>): Promise<FinPrestacao> {
   return sdkCall<FinPrestacao>(db.from('fin_prestacoes').insert({ ...p, diferenca: 0 }).select().single())
@@ -921,7 +923,9 @@ import type { CategoriaProduto, MarcaProduto, Produto, ProdutoFornecedor } from 
 
 // Categorias
 export async function fetchCategoriasProduto(loja: string): Promise<CategoriaProduto[]> {
-  return sdkCall<CategoriaProduto[]>(db.from('categorias_produto').select('*').eq('loja', loja).order('nome', { ascending: true }))
+  let q = db.from('categorias_produto').select('*').order('nome', { ascending: true })
+  if (loja && loja !== 'Todas as Lojas' && loja !== 'all') q = q.eq('loja', loja)
+  return sdkCall<CategoriaProduto[]>(q)
 }
 export async function insertCategoriaProduto(c: Omit<CategoriaProduto, 'id' | 'created_at' | 'updated_at'>): Promise<CategoriaProduto> {
   return sdkCall<CategoriaProduto>(db.from('categorias_produto').insert(c).select().single())
@@ -935,7 +939,9 @@ export async function deleteCategoriaProduto(id: string): Promise<void> {
 
 // Marcas
 export async function fetchMarcasProduto(loja: string): Promise<MarcaProduto[]> {
-  return sdkCall<MarcaProduto[]>(db.from('marcas_produto').select('*').eq('loja', loja).order('nome', { ascending: true }))
+  let q = db.from('marcas_produto').select('*').order('nome', { ascending: true })
+  if (loja && loja !== 'Todas as Lojas' && loja !== 'all') q = q.eq('loja', loja)
+  return sdkCall<MarcaProduto[]>(q)
 }
 export async function insertMarcaProduto(m: Omit<MarcaProduto, 'id' | 'created_at'>): Promise<MarcaProduto> {
   return sdkCall<MarcaProduto>(db.from('marcas_produto').insert(m).select().single())
@@ -949,7 +955,8 @@ export async function deleteMarcaProduto(id: string): Promise<void> {
 
 // Produtos
 export async function fetchProdutos(loja: string, opts?: { search?: string; categoriaId?: string; marcaId?: string; ativo?: boolean }): Promise<Produto[]> {
-  let q = db.from('produtos').select('*').eq('loja', loja)
+  let q = db.from('produtos').select('*')
+  if (loja && loja !== 'Todas as Lojas' && loja !== 'all') q = q.eq('loja', loja)
   if (opts?.ativo !== undefined) q = q.eq('ativo', opts.ativo)
   if (opts?.categoriaId) q = q.eq('categoria_id', opts.categoriaId)
   if (opts?.marcaId) q = q.eq('marca_id', opts.marcaId)
@@ -1013,7 +1020,9 @@ export async function fetchItensComprasDashboard(loja: string): Promise<{
 
 // Contagem por categoria
 export async function fetchContagemPorCategoria(loja: string): Promise<{ categoria_nome: string | null; total: number }[]> {
-  const data = await sdkCall<{ categoria_nome: string | null }[]>(db.from('produtos').select('categoria_nome').eq('loja', loja).eq('ativo', true)).catch(() => [])
+  let q = db.from('produtos').select('categoria_nome').eq('ativo', true)
+  if (loja && loja !== 'Todas as Lojas' && loja !== 'all') q = q.eq('loja', loja)
+  const data = await sdkCall<{ categoria_nome: string | null }[]>(q).catch(() => [])
   const map: Record<string, number> = {}
   for (const r of (data ?? [])) {
     const k = r.categoria_nome ?? 'Sem categoria'

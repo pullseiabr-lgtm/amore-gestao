@@ -663,8 +663,16 @@ export default function ProdutosPage({ initialView }: { initialView?: 'lista'|'c
 
   useEffect(() => { load() }, [load])
 
-  const abrirEditar = (p: Produto) => { setProdutoAtivo(p); setView('editar') }
-  const abrirNovo   = () => { setProdutoAtivo(null); setView('novo') }
+  const todasAsLojas = loja === 'Todas as Lojas'
+
+  const abrirEditar = (p: Produto) => {
+    if (todasAsLojas) { toast('Selecione uma loja específica para editar produtos', 'err'); return }
+    setProdutoAtivo(p); setView('editar')
+  }
+  const abrirNovo = () => {
+    if (todasAsLojas) { toast('Selecione uma loja específica para cadastrar produtos', 'err'); return }
+    setProdutoAtivo(null); setView('novo')
+  }
 
   const handleSalvo = (p: Produto) => {
     setProdutos(prev => {
@@ -772,6 +780,14 @@ export default function ProdutosPage({ initialView }: { initialView?: 'lista'|'c
         </div>
       </div>
 
+      {/* Banner: selecionar loja */}
+      {todasAsLojas && (
+        <div style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 14px', background:'#FEF3C7', borderRadius:8, marginBottom:12, color:'#92400E', fontSize:12, fontWeight:600 }}>
+          <AlertTriangle size={14}/>
+          Você está visualizando todas as lojas. Selecione uma loja específica na barra superior para cadastrar ou editar produtos.
+        </div>
+      )}
+
       {/* Tabela */}
       <div className="card">
         {/* Header da tabela */}
@@ -781,7 +797,7 @@ export default function ProdutosPage({ initialView }: { initialView?: 'lista'|'c
             <button className="btn bo bsm" onClick={() => setView('em_teste')} style={{ color: '#8B5CF6', borderColor: '#8B5CF6' }}><Award size={12}/> Em Teste{totalEmTeste > 0 && <span style={{ background:'#8B5CF6', color:'#fff', borderRadius:10, padding:'1px 5px', fontSize:9, marginLeft:3 }}>{totalEmTeste}</span>}</button>
             <button className="btn bo bsm" onClick={() => setView('categorias')}><Grid3X3 size={12}/> Categorias</button>
             <button className="btn bo bsm" onClick={load}><RefreshCw size={12}/></button>
-            <button className="btn bp bsm" onClick={abrirNovo}><Plus size={12}/> Criar Produto</button>
+            <button className="btn bp bsm" onClick={abrirNovo} disabled={todasAsLojas} title={todasAsLojas ? 'Selecione uma loja específica' : undefined}><Plus size={12}/> Criar Produto</button>
           </div>
         </div>
 

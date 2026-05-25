@@ -206,6 +206,7 @@ function ModalCredito({ loja, credito, onSalvo, onFechar, user }: {
   })
   const [saving, setSaving] = useState(false)
   const [errs, setErrs] = useState<Record<string, string>>({})
+  const [errSave, setErrSave] = useState('')
 
   const set = (k: string, v: unknown) => { setForm(f => ({ ...f, [k]: v })); setErrs(e => ({ ...e, [k]: '' })) }
 
@@ -216,7 +217,7 @@ function ModalCredito({ loja, credito, onSalvo, onFechar, user }: {
     if (form.valor_liberado <= 0)      e.valor_liberado = 'Informe um valor'
     if (!form.data_liberacao)          e.data_liberacao = 'Obrigatório'
     if (Object.keys(e).length) { setErrs(e); return }
-    setSaving(true)
+    setSaving(true); setErrSave('')
     try {
       const payload = {
         loja, responsavel_nome: form.responsavel_nome.trim(),
@@ -234,7 +235,10 @@ function ModalCredito({ loja, credito, onSalvo, onFechar, user }: {
       }
       const saved = credito ? await updateFinCredito(credito.id, payload) : await insertFinCredito(payload)
       onSalvo(saved)
-    } catch (err: unknown) { console.error(err) }
+    } catch (err: unknown) {
+      console.error(err)
+      setErrSave((err instanceof Error ? err.message : '') || 'Erro ao salvar. Tente novamente.')
+    }
     setSaving(false)
   }
 
@@ -304,6 +308,11 @@ function ModalCredito({ loja, credito, onSalvo, onFechar, user }: {
           </div>
         </div>
         <div className="mft">
+          {errSave && (
+            <span style={{ flex: 1, fontSize: 11, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <AlertTriangle size={12}/> {errSave}
+            </span>
+          )}
           <button className="btn bo" onClick={onFechar}>Cancelar</button>
           <button className="btn bp" onClick={salvar} disabled={saving}>
             {saving ? <Loader size={12} className="spin" /> : <Check size={12} />} Salvar Crédito
@@ -336,6 +345,7 @@ function ModalPrestacao({ loja, creditos, prestacao, defaultCreditoId, onSalvo, 
     status:           prestacao?.status           ?? 'rascunho' as FinPrestacaoStatus,
   })
   const [saving, setSaving] = useState(false)
+  const [errSavePrest, setErrSavePrest] = useState('')
 
   const selCredito = (id: string) => {
     const c = creditos.find(x => x.id === id)
@@ -347,8 +357,11 @@ function ModalPrestacao({ loja, creditos, prestacao, defaultCreditoId, onSalvo, 
   }
 
   const salvar = async () => {
-    if (!form.responsavel_nome.trim()) return
-    setSaving(true)
+    if (!form.responsavel_nome.trim()) {
+      setErrSavePrest('Informe o nome do responsável')
+      return
+    }
+    setSaving(true); setErrSavePrest('')
     try {
       const payload = {
         loja, credito_id: form.credito_id || null,
@@ -366,7 +379,10 @@ function ModalPrestacao({ loja, creditos, prestacao, defaultCreditoId, onSalvo, 
       }
       const saved = prestacao ? await updateFinPrestacao(prestacao.id, payload) : await insertFinPrestacao(payload)
       onSalvo(saved)
-    } catch (err) { console.error(err) }
+    } catch (err) {
+      console.error(err)
+      setErrSavePrest((err instanceof Error ? err.message : '') || 'Erro ao salvar. Tente novamente.')
+    }
     setSaving(false)
   }
 
@@ -419,6 +435,11 @@ function ModalPrestacao({ loja, creditos, prestacao, defaultCreditoId, onSalvo, 
           </div>
         </div>
         <div className="mft">
+          {errSavePrest && (
+            <span style={{ flex: 1, fontSize: 11, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <AlertTriangle size={12}/> {errSavePrest}
+            </span>
+          )}
           <button className="btn bo" onClick={onFechar}>Cancelar</button>
           <button className="btn bp" onClick={salvar} disabled={saving}>
             {saving ? <Loader size={12} className="spin" /> : <Check size={12} />} Salvar
@@ -458,6 +479,7 @@ function ModalLancamento({ prestacaoId, lancamento, onSalvo, onFechar }: {
   })
   const [saving, setSaving] = useState(false)
   const [errs, setErrs] = useState<Record<string, string>>({})
+  const [errSaveLanc, setErrSaveLanc] = useState('')
   const [modoItens, setModoItens] = useState(_parsedItens !== null)
   const [nfItens, setNfItens] = useState<NfItem[]>(
     _parsedItens ?? [{ id: '1', desc: '', qtd: '1', unidade: 'un', peso: '', valor_unit: '', valor_total: '' }]
@@ -501,7 +523,7 @@ function ModalLancamento({ prestacaoId, lancamento, onSalvo, onFechar }: {
     if (form.valor <= 0)    e.valor = 'Informe o valor'
     if (!form.data_compra)  e.data_compra = 'Obrigatório'
     if (Object.keys(e).length) { setErrs(e); return }
-    setSaving(true)
+    setSaving(true); setErrSaveLanc('')
     try {
       const obsFinal = modoItens ? '[NF_ITENS]:' + JSON.stringify(nfItens) : (form.observacao || null)
       const payload = {
@@ -515,7 +537,10 @@ function ModalLancamento({ prestacaoId, lancamento, onSalvo, onFechar }: {
       }
       const saved = lancamento ? await updateFinLancamento(lancamento.id, payload) : await insertFinLancamento(payload)
       onSalvo(saved)
-    } catch (err) { console.error(err) }
+    } catch (err) {
+      console.error(err)
+      setErrSaveLanc((err instanceof Error ? err.message : '') || 'Erro ao salvar. Tente novamente.')
+    }
     setSaving(false)
   }
 
@@ -667,6 +692,11 @@ function ModalLancamento({ prestacaoId, lancamento, onSalvo, onFechar }: {
           </div>
         </div>
         <div className="mft">
+          {errSaveLanc && (
+            <span style={{ flex: 1, fontSize: 11, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <AlertTriangle size={12}/> {errSaveLanc}
+            </span>
+          )}
           <button className="btn bo" onClick={onFechar}>Cancelar</button>
           <button className="btn bp" onClick={salvar} disabled={saving}>
             {saving ? <Loader size={12} className="spin" /> : <Check size={12} />} Salvar Lançamento
@@ -763,7 +793,17 @@ function LancamentoRow({ l, isAuditor, onEdit, onDelete, onAudit, onViewAnexos }
       </td>
       <td>
         <div style={{ fontWeight: 700, fontSize: 12 }}>{l.descricao}</div>
-        {l.observacao && <div style={{ fontSize: 10, color: 'var(--muted)' }}>{l.observacao}</div>}
+        {l.observacao && (() => {
+          const nfItems = _parseNfObs(l.observacao)
+          if (nfItems) {
+            return <div style={{ fontSize: 10, color: 'var(--muted)' }}>
+              {nfItems.map((it, i) => (
+                <span key={i}>{i > 0 ? ' · ' : ''}{it.desc} ({it.qtd} {it.unidade})</span>
+              ))}
+            </div>
+          }
+          return <div style={{ fontSize: 10, color: 'var(--muted)' }}>{l.observacao}</div>
+        })()}
       </td>
       <td style={{ fontSize: 11, color: 'var(--muted)' }}>{l.fornecedor || '—'}</td>
       <td style={{ fontSize: 11 }}>{FORMAS_PGTO.find(f => f.value === l.forma_pagamento)?.label ?? l.forma_pagamento}</td>
