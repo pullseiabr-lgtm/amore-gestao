@@ -13,6 +13,7 @@ import {
   fetchComprasListaItens, insertComprasListaItem, updateComprasListaItem, deleteComprasListaItem,
   fetchItensComprasDashboard, fetchEstoqueProdutos, insertEstoqueMovimentacao,
   atualizarCustoMedioPorNome, atualizarUltimoPrecoCompraPorNome, fetchFornecedores,
+  registrarEAnalisarCompra,
 } from '../../lib/db'
 import type { ComprasLista, ComprasListaItem, ListaStatus, ListaItemStatus, EstoqueProduto, Fornecedor } from '../../types/database'
 
@@ -688,6 +689,22 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
       const novosItens = itens.map(i => i.id === id ? updated : i)
       setItens(novosItens)
       await recalcularTotais(novosItens)
+      // ── Agente Analítico: registrar compra para auditoria automática ──
+      if (updated.status === 'comprado' && updated.preco_real != null && updated.preco_real > 0) {
+        registrarEAnalisarCompra({
+          produto_nome:    updated.produto_nome,
+          categoria:       updated.categoria,
+          fornecedor_nome: updated.fornecedor_nome,
+          comprador_nome:  null,
+          quantidade:      updated.quantidade,
+          unidade:         updated.unidade,
+          preco_atual:     updated.preco_real,
+          loja:            lista.loja,
+          data_compra:     lista.data_compra ?? new Date().toISOString().slice(0, 10),
+          lista_id:        lista.id,
+          item_id:         updated.id,
+        }).catch(console.error)
+      }
     } catch (e) { console.error(e) }
   }
 

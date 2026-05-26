@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle, AlertCircle, TrendingUp, TrendingDown, ShoppingCart, Package, Clock, BarChart2, Zap } from 'lucide-react'
+import { AlertTriangle, CheckCircle, AlertCircle, TrendingUp, TrendingDown, ShoppingCart, Package, Clock, BarChart2, Zap, Bot, Shield, MessageSquare } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import {
   fetchRupturas, fetchRelatoriosCVL, fetchRequisicoes, fetchProdutos,
+  fetchComprasAuditoria,
   type Ruptura, type RelatorioCVL,
 } from '../../lib/db'
-import type { Requisicao, Produto } from '../../types/database'
+import type { Requisicao, Produto, ComprasAuditoria } from '../../types/database'
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,7 @@ export default function DashboardPage() {
   const [requisicoes,  setRequisicoes]  = useState<Requisicao[]>([])
   const [produtos,     setProdutos]     = useState<Produto[]>([])
   const [loading,      setLoading]      = useState(true)
+  const [auditorias,   setAuditorias]   = useState<ComprasAuditoria[]>([])
 
   useEffect(() => {
     setLoading(true)
@@ -68,12 +70,14 @@ export default function DashboardPage() {
       fetchRelatoriosCVL(loja),
       fetchRequisicoes(loja),
       lojaParam ? fetchProdutos(lojaParam, { ativo: true }) : Promise.resolve([] as Produto[]),
-    ]).then(([r, c, q, p]) => {
+      fetchComprasAuditoria(lojaParam).catch(() => [] as ComprasAuditoria[]),
+    ]).then(([r, c, q, p, a]) => {
       clearTimeout(safetyTimer)
       if (r.status === 'fulfilled') setRupturas(r.value)
       if (c.status === 'fulfilled') setCvlRels(c.value)
       if (q.status === 'fulfilled') setRequisicoes(q.value)
       if (p.status === 'fulfilled') setProdutos(p.value)
+      if (a.status === 'fulfilled') setAuditorias(a.value)
       setLoading(false)
     })
 
@@ -220,6 +224,91 @@ export default function DashboardPage() {
           loading={loading}
         />
       </div>
+
+      {/* ── 🤖 Agente Analítico de Compras ─────────────────────── */}
+      {(() => {
+        const alertasAlto  = auditorias.filter(a => a.nivel_alerta === 'alto').length
+        const alertasMedio = auditorias.filter(a => a.nivel_alerta === 'medio').length
+        const pendJust     = auditorias.filter(a => a.status === 'pendente_justificativa').length
+        const economiaPot  = auditorias.reduce((s, a) => {
+          if (!a.preco_anterior || !a.quantidade) return s
+          return a.preco_anterior > a.preco_atual ? s + (a.preco_anterior - a.preco_atual) * a.quantidade : s
+        }, 0)
+        return (
+          <div style={{
+            background: 'linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%)',
+            borderRadius: 14, padding: '18px 22px', marginBottom: 16,
+            color: '#fff', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+          }}>
+            {/* Icon + title */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+              <div style={{
+                width: 52, height: 52, borderRadius: 14,
+                background: 'rgba(255,255,255,0.2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <Bot size={26} color="#fff" />
+              </div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.3px' }}>
+                  🤖 Agente Analítico de Compras
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>
+                  Auditoria automática · Rastreamento de preços · Performance de compradores · Previsões
+                </div>
+              </div>
+            </div>
+
+            {/* Stats */}
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              {[
+                { lbl: 'Alertas Altos', val: alertasAlto, icon: <AlertTriangle size={12} />, color: alertasAlto > 0 ? '#FCA5A5' : '#A7F3D0' },
+                { lbl: 'Alertas Médios', val: alertasMedio, icon: <Shield size={12} />, color: '#FDE68A' },
+                { lbl: 'Pend. Justif.', val: pendJust, icon: <MessageSquare size={12} />, color: pendJust > 0 ? '#FCA5A5' : '#A7F3D0' },
+                { lbl: 'Auditados', val: auditorias.length, icon: <BarChart2 size={12} />, color: '#C4B5FD' },
+              ].map(m => (
+                <div key={m.lbl} style={{ textAlign: 'center', minWidth: 64 }}>
+                  <div style={{ fontSize: 10, opacity: 0.75, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, marginBottom: 2 }}>
+                    {m.icon}{m.lbl}
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: m.color, lineHeight: 1 }}>
+                    {loading ? '…' : m.val}
+                  </div>
+                </div>
+              ))}
+              {economiaPot > 0 && (
+                <div style={{ textAlign: 'center', minWidth: 80 }}>
+                  <div style={{ fontSize: 10, opacity: 0.75, marginBottom: 2 }}>💰 Economia Potencial</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#A7F3D0', lineHeight: 1 }}>
+                    {loading ? '…' : `R$ ${economiaPot.toFixed(0)}`}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* CTA Button — this triggers navigation via window postMessage since we're inside a component */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+              <button
+                id="btn-abrir-agente"
+                className="btn"
+                onClick={() => document.dispatchEvent(new CustomEvent('amore-nav', { detail: 'compras-agente' }))}
+                style={{
+                  background: '#fff', color: '#7C3AED',
+                  fontWeight: 800, fontSize: 12, padding: '9px 20px', borderRadius: 10,
+                  border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                }}>
+                <Bot size={13} /> Abrir Agente
+              </button>
+              {pendJust > 0 && (
+                <span style={{ fontSize: 10, opacity: 0.85, background: 'rgba(255,255,255,0.15)', borderRadius: 20, padding: '2px 10px' }}>
+                  ⚠️ {pendJust} justificativa(s) pendente(s)
+                </span>
+              )}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── Row 2: Assertividade + Alertas ─────────────────────── */}
       <div className="g11" style={{ marginBottom: 14 }}>

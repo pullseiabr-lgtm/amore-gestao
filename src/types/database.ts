@@ -313,6 +313,68 @@ export interface ComprasListaItem {
   created_at: string
 }
 
+// ── Agente Analítico de Compras ──────────────────────────────
+
+export interface ComprasHistoricoPreco {
+  id: string
+  produto_nome: string
+  categoria: string | null
+  fornecedor_nome: string | null
+  preco_unitario: number
+  quantidade: number
+  unidade: string
+  comprador_nome: string | null
+  loja: string
+  data_compra: string
+  lista_id: string | null
+  item_id: string | null
+  obs: string | null
+  created_at: string
+}
+
+export type NivelAlertaCompra = 'normal' | 'baixo' | 'medio' | 'alto'
+export type StatusAuditoria = 'ok' | 'pendente_justificativa' | 'justificado' | 'aprovado' | 'escalado'
+
+export interface ComprasAuditoria {
+  id: string
+  lista_id: string | null
+  item_id: string | null
+  produto_nome: string
+  categoria: string | null
+  fornecedor_nome: string | null
+  comprador_nome: string | null
+  quantidade: number | null
+  unidade: string | null
+  preco_atual: number
+  preco_anterior: number | null
+  preco_medio: number | null
+  preco_menor: number | null
+  preco_maior: number | null
+  variacao_pct: number | null
+  nivel_alerta: NivelAlertaCompra
+  status: StatusAuditoria
+  loja: string
+  data_compra: string
+  created_at: string
+}
+
+export type MotivoJustificativa =
+  | 'reajuste_mercado' | 'falta_fornecedor' | 'sem_opcao_barata'
+  | 'cotacao_realizada' | 'urgencia_operacional' | 'qualidade_superior' | 'outro'
+
+export interface ComprasJustificativa {
+  id: string
+  auditoria_id: string
+  motivo: MotivoJustificativa
+  descricao: string | null
+  houve_cotacao: boolean
+  comprador_nome: string | null
+  aprovador_nome: string | null
+  status_aprovacao: 'pendente' | 'aprovado' | 'reprovado'
+  obs_aprovacao: string | null
+  created_at: string
+}
+
 // ── Fornecedores ─────────────────────────────────────────────
 
 export interface FornecedorAvaliacao {

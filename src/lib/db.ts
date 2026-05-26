@@ -1473,3 +1473,145 @@ export async function upsertMarketTendencia(
 export async function deleteMarketTendencia(id: string): Promise<void> {
   await sdkCall<null>(db.from('market_tendencias').delete().eq('id', id))
 }
+
+// ── Agente Analítico de Compras — Histórico de Preços ───────
+import type { ComprasHistoricoPreco, ComprasAuditoria, ComprasJustificativa } from '../types/database'
+
+export async function fetchComprasHistoricoPreco(loja?: string, produto?: string): Promise<ComprasHistoricoPreco[]> {
+  let q = db.from('compras_historico_preco').select('*').order('data_compra', { ascending: false }).order('created_at', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
+  if (produto) q = q.ilike('produto_nome', `%${produto}%`)
+  return sdkCall<ComprasHistoricoPreco[]>(q).then(d => d ?? [])
+}
+
+export async function insertComprasHistoricoPreco(h: Omit<ComprasHistoricoPreco, 'id' | 'created_at'>): Promise<ComprasHistoricoPreco> {
+  return sdkCall<ComprasHistoricoPreco>(db.from('compras_historico_preco').insert(h).select().single())
+}
+
+// ── Agente Analítico de Compras — Auditoria ──────────────────
+
+export async function fetchComprasAuditoria(loja?: string): Promise<ComprasAuditoria[]> {
+  let q = db.from('compras_auditoria').select('*').order('data_compra', { ascending: false }).order('created_at', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
+  return sdkCall<ComprasAuditoria[]>(q).then(d => d ?? [])
+}
+
+export async function insertComprasAuditoria(a: Omit<ComprasAuditoria, 'id' | 'created_at'>): Promise<ComprasAuditoria> {
+  return sdkCall<ComprasAuditoria>(db.from('compras_auditoria').insert(a).select().single())
+}
+
+export async function updateComprasAuditoria(id: string, a: Partial<ComprasAuditoria>): Promise<ComprasAuditoria> {
+  return sdkCall<ComprasAuditoria>(db.from('compras_auditoria').update(a).eq('id', id).select().single())
+}
+
+// ── Agente Analítico de Compras — Justificativas ─────────────
+
+export async function fetchComprasJustificativas(auditoriaId?: string): Promise<ComprasJustificativa[]> {
+  let q = db.from('compras_justificativas').select('*').order('created_at', { ascending: false })
+  if (auditoriaId) q = q.eq('auditoria_id', auditoriaId)
+  return sdkCall<ComprasJustificativa[]>(q).then(d => d ?? [])
+}
+
+export async function insertComprasJustificativa(j: Omit<ComprasJustificativa, 'id' | 'created_at'>): Promise<ComprasJustificativa> {
+  return sdkCall<ComprasJustificativa>(db.from('compras_justificativas').insert(j).select().single())
+}
+
+export async function updateComprasJustificativa(id: string, j: Partial<ComprasJustificativa>): Promise<ComprasJustificativa> {
+  return sdkCall<ComprasJustificativa>(db.from('compras_justificativas').update(j).eq('id', id).select().single())
+}
+
+// ── Registro + análise automática de compra ──────────────────
+
+export async function registrarEAnalisarCompra(opts: {
+  produto_nome: string
+  categoria?: string | null
+  fornecedor_nome?: string | null
+  comprador_nome?: string | null
+  quantidade: number
+  unidade: string
+  preco_atual: number
+  loja: string
+  data_compra: string
+  lista_id?: string | null
+  item_id?: string | null
+}): Promise<{ historico: ComprasHistoricoPreco; auditoria?: ComprasAuditoria }> {
+  // 1. Save price history
+  const historico = await insertComprasHistoricoPreco({
+    produto_nome:    opts.produto_nome,
+    categoria:       opts.categoria ?? null,
+    fornecedor_nome: opts.fornecedor_nome ?? null,
+    preco_unitario:  opts.preco_atual,
+    quantidade:      opts.quantidade,
+    unidade:         opts.unidade,
+    comprador_nome:  opts.comprador_nome ?? null,
+    loja:            opts.loja,
+    data_compra:     opts.data_compra,
+    lista_id:        opts.lista_id ?? null,
+    item_id:         opts.item_id ?? null,
+    obs:             null,
+  })
+
+  // 2. Fetch historical prices for this product (last 90 days, same loja)
+  const historico90d = await sdkCall<ComprasHistoricoPreco[]>(
+    db.from('compras_historico_preco')
+      .select('*')
+      .eq('loja', opts.loja)
+      .ilike('produto_nome', opts.produto_nome)
+      .neq('id', historico.id)           // exclude current
+      .gte('data_compra', new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString().slice(0, 10))
+      .order('data_compra', { ascending: false })
+      .limit(50)
+  ).catch(() => [] as ComprasHistoricoPreco[])
+
+  if (!historico90d.length) return { historico }
+
+  const precos = historico90d.map(h => h.preco_unitario)
+  const preco_anterior = historico90d[0].preco_unitario   // most recent
+  const preco_medio = precos.reduce((s, p) => s + p, 0) / precos.length
+  const preco_menor = Math.min(...precos)
+  const preco_maior = Math.max(...precos)
+  const variacao_pct = preco_anterior > 0
+    ? ((opts.preco_atual - preco_anterior) / preco_anterior) * 100
+    : 0
+
+  // 3. Determine alert level
+  let nivel_alerta: ComprasAuditoria['nivel_alerta'] = 'normal'
+  let status: ComprasAuditoria['status'] = 'ok'
+
+  if (variacao_pct > 15) {
+    nivel_alerta = 'alto'
+    status = 'pendente_justificativa'
+  } else if (variacao_pct > 5) {
+    nivel_alerta = 'medio'
+    status = 'pendente_justificativa'
+  } else if (variacao_pct > 0) {
+    nivel_alerta = 'baixo'
+    status = 'ok'
+  }
+
+  if (nivel_alerta === 'normal') return { historico }
+
+  // 4. Create audit record
+  const auditoria = await insertComprasAuditoria({
+    lista_id:        opts.lista_id ?? null,
+    item_id:         opts.item_id ?? null,
+    produto_nome:    opts.produto_nome,
+    categoria:       opts.categoria ?? null,
+    fornecedor_nome: opts.fornecedor_nome ?? null,
+    comprador_nome:  opts.comprador_nome ?? null,
+    quantidade:      opts.quantidade,
+    unidade:         opts.unidade,
+    preco_atual:     opts.preco_atual,
+    preco_anterior,
+    preco_medio:     Math.round(preco_medio * 10000) / 10000,
+    preco_menor,
+    preco_maior,
+    variacao_pct:    Math.round(variacao_pct * 100) / 100,
+    nivel_alerta,
+    status,
+    loja:            opts.loja,
+    data_compra:     opts.data_compra,
+  }).catch(e => { console.error('audit insert', e); return undefined })
+
+  return { historico, auditoria }
+}

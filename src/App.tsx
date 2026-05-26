@@ -25,6 +25,7 @@ import RelatorioCVLPage from './pages/relatorios/RelatorioCVLPage'
 import RupturaPage from './pages/relatorios/RupturaPage'
 import PdvPage from './pages/pdv/PdvPage'
 import MarketPage from './pages/market/MarketPage'
+import ComprasAgentePage from './pages/compras/ComprasAgentePage'
 
 export type PageId =
   | 'dashboard'
@@ -48,6 +49,7 @@ export type PageId =
   | 'ruptura'
   | 'pdv'
   | 'market'
+  | 'compras-agente'
 
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Dashboard',
@@ -71,6 +73,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   ruptura: 'Ruptura de Pedidos',
   pdv: 'PDV — Ponto de Venda',
   market: 'Market Analytics & Supplier Intelligence',
+  'compras-agente': 'Agente Analítico de Compras',
 }
 
 function PageContent({ page }: { page: PageId }) {
@@ -96,6 +99,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'ruptura':              return <RupturaPage />
     case 'pdv':                  return <PdvPage />
     case 'market':               return <MarketPage />
+    case 'compras-agente':       return <ComprasAgentePage />
     default: return <DashboardPage />
   }
 }
@@ -109,6 +113,16 @@ export default function App() {
   useEffect(() => {
     document.title = theme.company_name || 'Amore Gestão'
   }, [theme.company_name])
+
+  // Custom event from dashboard agent button
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const id = (e as CustomEvent).detail as PageId
+      if (id) { setPage(id); setSidebarOpen(false) }
+    }
+    document.addEventListener('amore-nav', handler)
+    return () => document.removeEventListener('amore-nav', handler)
+  }, [])
 
   const navigate = (p: PageId) => {
     setPage(p)
