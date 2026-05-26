@@ -5,7 +5,7 @@ import {
   RefreshCw, Search, ChevronDown, ChevronUp, Download,
   ShieldAlert, Shield, ShieldCheck, Zap, Package,
   DollarSign, Eye, MessageSquare, Globe, ExternalLink,
-  Settings2, Trash2, Star,
+  Settings2, Trash2, Star, Send, Sparkles, Key,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLoja } from '../../contexts/LojaContext'
@@ -166,7 +166,7 @@ function MiniBar({ value, max, color }: { value: number; max: number; color: str
 
 // ── Tabs ──────────────────────────────────────────────────────
 
-type Tab = 'painel' | 'compradores' | 'historico' | 'justificativas' | 'previsoes' | 'pesquisa'
+type Tab = 'painel' | 'compradores' | 'historico' | 'justificativas' | 'previsoes' | 'pesquisa' | 'ia'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'painel',          label: 'Painel',              icon: <BarChart3 size={12} /> },
@@ -175,6 +175,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'justificativas',  label: 'Justificativas',       icon: <MessageSquare size={12} /> },
   { id: 'previsoes',       label: 'Previsões',            icon: <Zap size={12} /> },
   { id: 'pesquisa',        label: 'Pesquisa de Mercado',  icon: <Globe size={12} /> },
+  { id: 'ia',              label: 'IA Analítica',          icon: <Sparkles size={12} /> },
 ]
 
 // ── Main Component ────────────────────────────────────────────
@@ -210,6 +211,81 @@ export default function ComprasAgentePage() {
 
   // detail expand
   const [expandedAudit, setExpandedAudit] = useState<string | null>(null)
+
+  // ── IA Analítica (Gemini) ────────────────────────────────────
+  interface ChatMsg { role: 'user' | 'ai'; text: string; ts: Date }
+  const [geminiKey,    setGeminiKey]    = useState(() => localStorage.getItem('gemini_api_key') || '')
+  const [showKeyCfg,   setShowKeyCfg]   = useState(false)
+  const [chatMsgs,     setChatMsgs]     = useState<ChatMsg[]>([])
+  const [chatInput,    setChatInput]    = useState('')
+  const [chatLoading,  setChatLoading]  = useState(false)
+
+  const salvarGeminiKey = () => {
+    localStorage.setItem('gemini_api_key', geminiKey.trim())
+    setShowKeyCfg(false)
+  }
+
+  const enviarMensagem = async (texto?: string) => {
+    const pergunta = (texto || chatInput).trim()
+    if (!pergunta || chatLoading) return
+    if (!geminiKey) { setShowKeyCfg(true); return }
+
+    setChatInput('')
+    const novaMsgUser: ChatMsg = { role: 'user', text: pergunta, ts: new Date() }
+    setChatMsgs(prev => [...prev, novaMsgUser])
+    setChatLoading(true)
+
+    // Monta contexto com dados reais do agente
+    const ctx = [
+      `Você é um analista expert em compras de restaurantes.`,
+      `Responda em português, de forma direta e prática.`,
+      ``,
+      `=== DADOS ATUAIS DO SISTEMA ===`,
+      `Loja: ${loja}`,
+      `Total compras auditadas: ${auditorias.length}`,
+      `Alertas altos: ${alertasAlto.length}`,
+      `Alertas médios: ${alertasMedio.length}`,
+      `Pendentes de justificativa: ${pendJust.length}`,
+      `Economia potencial: R$ ${economiaPotencial.toFixed(2)}`,
+      `Produtos rastreados: ${Object.keys(produtoMap).length}`,
+      `Compradores monitorados: ${buyerRanking.length}`,
+      auditorias.length > 0
+        ? `\nTop 5 produtos com maior variação:\n${auditorias.sort((a,b)=>(b.variacao_pct||0)-(a.variacao_pct||0)).slice(0,5).map(a=>`- ${a.produto_nome}: ${a.variacao_pct?.toFixed(1)}% (${fmtR$(a.preco_anterior)}→${fmtR$(a.preco_atual)})`).join('\n')}`
+        : '',
+      buyerRanking.length > 0
+        ? `\nRanking compradores (variação média):\n${buyerRanking.slice(0,5).map((b,i)=>`${i+1}. ${b.nome}: ${b.varMedia.toFixed(1)}% · ${b.total} compras`).join('\n')}`
+        : '',
+      predicoes.length > 0
+        ? `\nPrevisões de alta:\n${predicoes.filter(p=>p.tendencia==='alta').slice(0,5).map(p=>`- ${p.nome}: atual ${fmtR$(p.preco_atual)} → previsão ${fmtR$(p.previsao30d)}`).join('\n')}`
+        : '',
+    ].join('\n')
+
+    try {
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${geminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: ctx }] },
+            contents: [
+              ...chatMsgs.map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text }] })),
+              { role: 'user', parts: [{ text: pergunta }] }
+            ]
+          })
+        }
+      )
+      const data = await resp.json()
+      const aiText = resp.ok
+        ? (data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sem resposta.')
+        : `❌ ${data.error?.message?.slice(0, 200)}`
+      setChatMsgs(prev => [...prev, { role: 'ai', text: aiText, ts: new Date() }])
+    } catch (e) {
+      setChatMsgs(prev => [...prev, { role: 'ai', text: '❌ Erro de conexão com Gemini.', ts: new Date() }])
+    } finally {
+      setChatLoading(false)
+    }
+  }
 
   // ── Pesquisa de Mercado ──────────────────────────────────────
   const [pesqApiKey,    setPesqApiKey]    = useState(() => localStorage.getItem('goog_api_key') || '')
@@ -1172,6 +1248,178 @@ export default function ComprasAgentePage() {
                 })}
               </div>
             </>
+          )}
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════ */}
+      {/* TAB: IA ANALÍTICA                                        */}
+      {/* ════════════════════════════════════════════════════════ */}
+      {tab === 'ia' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* Header */}
+          <div style={{
+            background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 50%, #DB2777 100%)',
+            borderRadius: 12, padding: '14px 18px', color: '#fff',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Sparkles size={18} color="#fff" />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 14 }}>IA Analítica — Gemini</div>
+                <div style={{ fontSize: 11, opacity: 0.85 }}>Análise inteligente de compras · Recomendações · Previsões em linguagem natural</div>
+              </div>
+            </div>
+            <button className="btn" style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', fontSize: 11 }}
+              onClick={() => setShowKeyCfg(c => !c)}>
+              <Key size={11} /> {showKeyCfg ? 'Fechar' : 'Configurar Chave'}
+            </button>
+          </div>
+
+          {/* Config chave */}
+          {showKeyCfg && (
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Key size={13} /> Chave da API Gemini (Google AI Studio)
+              </div>
+              <div style={{ padding: '8px 12px', background: 'rgba(79,70,229,0.07)', borderRadius: 8, fontSize: 12, marginBottom: 12 }}>
+                Crie gratuitamente em <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: '#4F46E5', fontWeight: 700 }}>aistudio.google.com/app/apikey</a>
+                {' '}→ "Criar chave de API" → "Criar em novo projeto" · <strong>1.500 req/dia grátis</strong>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input className="inp" style={{ flex: 1, fontSize: 12, fontFamily: 'monospace' }}
+                  placeholder="AIzaSy..." value={geminiKey}
+                  onChange={e => setGeminiKey(e.target.value)} />
+                <button className="btn bp" style={{ fontSize: 11, whiteSpace: 'nowrap' }} onClick={salvarGeminiKey}
+                  disabled={!geminiKey.trim()}>
+                  <CheckCircle size={11} /> Salvar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Aviso sem chave */}
+          {!geminiKey && !showKeyCfg && (
+            <div style={{ padding: '14px 18px', background: 'rgba(79,70,229,0.08)', border: '1px solid rgba(79,70,229,0.2)', borderRadius: 10, display: 'flex', gap: 10, alignItems: 'center' }}>
+              <Sparkles size={18} style={{ color: '#4F46E5', flexShrink: 0 }} />
+              <div style={{ fontSize: 13 }}>
+                <strong style={{ color: '#4F46E5' }}>Configure a chave Gemini</strong> para ativar a IA analítica.
+                {' '}<button className="btn bo bsm" style={{ fontSize: 11, color: '#4F46E5', borderColor: '#4F46E5', marginLeft: 8 }} onClick={() => setShowKeyCfg(true)}>
+                  Configurar agora
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Perguntas rápidas */}
+          {geminiKey && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>⚡ PERGUNTAS RÁPIDAS</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {[
+                  'Quais produtos tiveram maior aumento de preço?',
+                  'Qual comprador está comprando mais caro?',
+                  'Quais produtos devo priorizar na próxima compra?',
+                  'Há produtos com risco de aumento nos próximos 30 dias?',
+                  'Como está a economia potencial e o que fazer?',
+                  'Resuma o desempenho geral das compras',
+                ].map(q => (
+                  <button key={q} className="btn bo bsm"
+                    style={{ fontSize: 11, color: '#4F46E5', borderColor: 'rgba(79,70,229,0.3)', background: 'rgba(79,70,229,0.05)' }}
+                    onClick={() => enviarMensagem(q)}
+                    disabled={chatLoading}>
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Área do chat */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0, background: 'var(--surface)', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)' }}>
+
+            {/* Mensagens */}
+            <div style={{ minHeight: 300, maxHeight: 480, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {chatMsgs.length === 0 ? (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', gap: 10, padding: '40px 0' }}>
+                  <Sparkles size={36} style={{ opacity: 0.3 }} />
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>Olá! Sou o Analista IA de Compras</div>
+                  <div style={{ fontSize: 12, textAlign: 'center', maxWidth: 320 }}>
+                    Faça perguntas sobre suas compras, fornecedores, preços e desempenho dos compradores.
+                    {!geminiKey && <><br/><strong>Configure a chave Gemini para começar.</strong></>}
+                  </div>
+                </div>
+              ) : (
+                chatMsgs.map((msg, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row' }}>
+                    {/* Avatar */}
+                    <div style={{
+                      width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                      background: msg.role === 'user' ? 'var(--bordo)' : 'linear-gradient(135deg,#4F46E5,#DB2777)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {msg.role === 'user'
+                        ? <span style={{ fontSize: 10, color: '#fff', fontWeight: 800 }}>{user?.name?.slice(0,2).toUpperCase() || 'EU'}</span>
+                        : <Sparkles size={12} color="#fff" />}
+                    </div>
+                    {/* Balão */}
+                    <div style={{
+                      maxWidth: '80%', padding: '9px 13px', borderRadius: 10, fontSize: 12, lineHeight: 1.6,
+                      background: msg.role === 'user' ? 'var(--bordo)' : 'var(--bg)',
+                      color: msg.role === 'user' ? '#fff' : 'var(--text)',
+                      border: msg.role === 'ai' ? '1px solid var(--border)' : 'none',
+                      whiteSpace: 'pre-wrap',
+                    }}>
+                      {msg.text}
+                      <div style={{ fontSize: 9, opacity: 0.5, marginTop: 4, textAlign: msg.role === 'user' ? 'right' : 'left' }}>
+                        {msg.ts.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+              {chatLoading && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg,#4F46E5,#DB2777)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Sparkles size={12} color="#fff" />
+                  </div>
+                  <div style={{ padding: '9px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, display: 'flex', gap: 4, alignItems: 'center' }}>
+                    {[0,1,2].map(i => (
+                      <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: '#4F46E5', opacity: 0.6, animation: `pulse 1.2s ease-in-out ${i*0.2}s infinite` }} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Input */}
+            <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+              <input className="inp" style={{ flex: 1, fontSize: 12 }}
+                placeholder={geminiKey ? 'Pergunte sobre suas compras, preços, fornecedores…' : 'Configure a chave Gemini para usar a IA'}
+                value={chatInput}
+                disabled={!geminiKey || chatLoading}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarMensagem() } }} />
+              <button className="btn"
+                style={{ background: 'linear-gradient(135deg,#4F46E5,#7C3AED)', color: '#fff', border: 'none', padding: '0 16px', flexShrink: 0 }}
+                onClick={() => enviarMensagem()}
+                disabled={!geminiKey || !chatInput.trim() || chatLoading}>
+                <Send size={13} />
+              </button>
+            </div>
+          </div>
+
+          {/* Limpar chat */}
+          {chatMsgs.length > 0 && (
+            <div style={{ textAlign: 'right' }}>
+              <button className="btn bo bsm" style={{ fontSize: 10, color: 'var(--muted)' }}
+                onClick={() => setChatMsgs([])}>
+                <Trash2 size={9} /> Limpar conversa
+              </button>
+            </div>
           )}
         </div>
       )}
