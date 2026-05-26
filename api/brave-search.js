@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     url.searchParams.set('q', q)
     url.searchParams.set('count', '6')
     url.searchParams.set('country', 'BR')
-    url.searchParams.set('search_lang', 'pt')
+    url.searchParams.set('search_lang', 'pt-br')
 
     const response = await fetch(url.toString(), {
       headers: {
@@ -41,7 +41,8 @@ export default async function handler(req, res) {
     const data = await response.json()
 
     if (!response.ok) {
-      res.status(response.status).json({ error: data?.message || `HTTP ${response.status}` })
+      // Retorna corpo completo do erro da Brave para diagnóstico
+      res.status(response.status).json({ error: data?.message || `HTTP ${response.status}`, brave_response: data })
       return
     }
 
