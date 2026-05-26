@@ -477,6 +477,7 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
   onVoltar: () => void
   onAtualizar: (l: ComprasLista) => void
 }) {
+  const { user } = useAuth()
   const [itens, setItens] = useState<ComprasListaItem[]>([])
   const [loading, setLoading] = useState(true)
   const [filtroStatus, setFiltroStatus] = useState<'todos' | ListaItemStatus>('todos')
@@ -485,6 +486,9 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
   const [novoTitulo, setNovoTitulo] = useState(lista.titulo)
   const [mudandoStatus, setMudandoStatus] = useState(false)
   const [exportMenu, setExportMenu] = useState(false)
+
+  // Agente: toast de alerta de preço
+  const [alertaPreco, setAlertaPreco] = useState<{ produto: string; variacao: number; nivel: string } | null>(null)
 
   // Item 10 – Aprovação
   const [aprovacao, setAprovacao] = useState<'pendente' | 'aprovado' | 'reprovado'>(
@@ -695,7 +699,7 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
           produto_nome:    updated.produto_nome,
           categoria:       updated.categoria,
           fornecedor_nome: updated.fornecedor_nome,
-          comprador_nome:  null,
+          comprador_nome:  user?.name ?? null,
           quantidade:      updated.quantidade,
           unidade:         updated.unidade,
           preco_atual:     updated.preco_real,
@@ -703,6 +707,15 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
           data_compra:     lista.data_compra ?? new Date().toISOString().slice(0, 10),
           lista_id:        lista.id,
           item_id:         updated.id,
+        }).then(res => {
+          if (res?.auditoria && res.auditoria.nivel_alerta !== 'normal') {
+            setAlertaPreco({
+              produto:  res.auditoria.produto_nome,
+              variacao: res.auditoria.variacao_pct ?? 0,
+              nivel:    res.auditoria.nivel_alerta,
+            })
+            setTimeout(() => setAlertaPreco(null), 7000)
+          }
         }).catch(console.error)
       }
     } catch (e) { console.error(e) }
@@ -1447,6 +1460,26 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
           <CheckCircle2 size={15} />
           Recebimento confirmado!
           {recEstoqueQtd > 0 && ` ${recEstoqueQtd} item(ns) lançado(s) no estoque automaticamente.`}
+        </div>
+      )}
+
+      {/* Toast Agente — alerta de variação de preço */}
+      {alertaPreco && (
+        <div style={{
+          position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)',
+          background: alertaPreco.nivel === 'alto' ? '#DC2626' : '#B45309',
+          color: '#fff', borderRadius: 10, padding: '11px 22px', fontSize: 12, fontWeight: 700,
+          boxShadow: '0 4px 20px rgba(0,0,0,.25)', zIndex: 9998,
+          display: 'flex', alignItems: 'center', gap: 8, maxWidth: 380, textAlign: 'center',
+          cursor: 'pointer',
+        }} onClick={() => document.dispatchEvent(new CustomEvent('amore-nav', { detail: 'compras-agente' }))}>
+          <AlertTriangle size={15} />
+          <div>
+            <div>⚠️ Alerta de Preço — {alertaPreco.produto}</div>
+            <div style={{ fontWeight: 400, fontSize: 11, marginTop: 2 }}>
+              Variação de +{alertaPreco.variacao.toFixed(1)}% detectada · Clique para abrir o Agente
+            </div>
+          </div>
         </div>
       )}
 

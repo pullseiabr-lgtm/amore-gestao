@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Bot, TrendingUp, TrendingDown, AlertTriangle, BarChart3,
   Users, History, FileText, CheckCircle, XCircle, Clock,
-  RefreshCw, Search, ChevronDown, ChevronUp,
+  RefreshCw, Search, ChevronDown, ChevronUp, Download,
   ShieldAlert, Shield, ShieldCheck, Zap, Package,
   DollarSign, Eye, MessageSquare,
 } from 'lucide-react'
@@ -312,6 +312,57 @@ export default function ComprasAgentePage() {
     return true
   })
 
+  // ── Export CSV ───────────────────────────────────────────────
+
+  const exportarCSV = () => {
+    const toS = (v: string | number | null | undefined) =>
+      v == null ? '' : typeof v === 'number' ? String(v).replace('.', ',') : `"${String(v).replace(/"/g, '""')}"`
+    const header = 'Produto;Fornecedor;Comprador;Preço Atual;Preço Anterior;Variação%;Nível;Status;Data'
+    const rows = auditorias.map(a => [
+      toS(a.produto_nome), toS(a.fornecedor_nome), toS(a.comprador_nome),
+      toS(a.preco_atual), toS(a.preco_anterior), toS(a.variacao_pct),
+      a.nivel_alerta, a.status, a.data_compra,
+    ].join(';'))
+    const csv = '﻿' + [header, ...rows].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a   = document.createElement('a')
+    a.href = url; a.download = `auditoria-compras-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url)
+  }
+
+  // ── WhatsApp Report ──────────────────────────────────────────
+
+  const enviarWhatsApp = () => {
+    const hoje = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
+    const linhas = [
+      `🤖 *AGENTE ANALÍTICO DE COMPRAS*`,
+      `📅 ${hoje} · ${loja}`,
+      ``,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `🚨 *ALERTAS*`,
+      `• Nível Alto: *${alertasAlto.length}*`,
+      `• Nível Médio: *${alertasMedio.length}*`,
+      `• Pendentes de justificativa: *${pendJust.length}*`,
+      `• Total auditado: *${auditorias.length}*`,
+      ``,
+      `💰 *ECONOMIA POTENCIAL*`,
+      `• ${fmtR$(economiaPotencial)}`,
+      ``,
+      `📦 *TOP ALERTAS ALTOS*`,
+      ...alertasAlto.slice(0, 3).map(a =>
+        `  ↳ ${a.produto_nome}: ${fmtPct(a.variacao_pct)} (${fmtR$(a.preco_anterior)} → ${fmtR$(a.preco_atual)})`
+      ),
+      ``,
+      `🏆 *MELHOR COMPRADOR*`,
+      buyerRanking[0] ? `  ↳ ${buyerRanking[0].nome} · média ${fmtPct(buyerRanking[0].varMedia)}` : '  ↳ Sem dados',
+      ``,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `_Gerado pelo Amore Gestão V6.0_`,
+    ].join('\n')
+    window.open('https://wa.me/?text=' + encodeURIComponent(linhas), '_blank')
+  }
+
   // ── Justificativa submit ──────────────────────────────────────
 
   const submitJustificativa = async () => {
@@ -386,12 +437,28 @@ export default function ComprasAgentePage() {
             <div style={{ fontSize: 11, opacity: 0.8, marginTop: 1 }}>Auditoria automática · Rastreamento de preços · Performance de compradores</div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {syncMsg && (
             <span style={{ fontSize: 11, background: 'rgba(255,255,255,0.15)', borderRadius: 20, padding: '4px 12px' }}>
               {syncMsg}
             </span>
           )}
+          <button
+            className="btn"
+            style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', fontSize: 12 }}
+            onClick={exportarCSV}
+            title="Exportar auditoria em CSV"
+          >
+            <Download size={12} /> CSV
+          </button>
+          <button
+            className="btn"
+            style={{ background: 'rgba(37,211,102,0.25)', color: '#fff', border: '1px solid rgba(37,211,102,0.4)', fontSize: 12 }}
+            onClick={enviarWhatsApp}
+            title="Enviar relatório via WhatsApp"
+          >
+            <MessageSquare size={12} /> WhatsApp
+          </button>
           <button
             className="btn"
             style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', fontSize: 12 }}
