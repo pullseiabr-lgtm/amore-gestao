@@ -157,69 +157,74 @@ export default function App() {
 
         {/* ── Botão flutuante Liz ── */}
         {page !== 'agente-liz' && (
-          <button
+          <div
             onClick={() => navigate('agente-liz')}
             title="Falar com Liz"
             style={{
               position: 'fixed',
               bottom: 24,
               right: 24,
-              height: 52,
-              borderRadius: 999,
-              background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
-              border: 'none',
-              cursor: 'pointer',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              gap: 8,
-              padding: '0 18px 0 14px',
-              boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
+              gap: 5,
+              cursor: 'pointer',
               zIndex: 9999,
-              transition: 'transform .15s, box-shadow .15s',
-            }}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.06)'
-              ;(e.currentTarget as HTMLButtonElement).style.boxShadow = '0 6px 28px rgba(124,58,237,0.7)'
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'
-              ;(e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 20px rgba(124,58,237,0.5)'
             }}
           >
-            {/* Avatar */}
-            <span style={{
-              width: 32,
-              height: 32,
-              borderRadius: '50%',
-              background: 'rgba(255,255,255,0.2)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 18,
-              flexShrink: 0,
-              position: 'relative',
-            }}>
+            {/* Círculo roxo */}
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 26,
+                boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
+                transition: 'transform .15s, box-shadow .15s',
+                position: 'relative',
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLDivElement).style.transform = 'scale(1.12)'
+                ;(e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 28px rgba(124,58,237,0.7)'
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLDivElement).style.transform = 'scale(1)'
+                ;(e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 20px rgba(124,58,237,0.5)'
+              }}
+            >
               🤖
               {/* Ponto verde online */}
               <span style={{
                 position: 'absolute',
-                bottom: 0,
-                right: 0,
-                width: 9,
-                height: 9,
+                top: 2,
+                right: 2,
+                width: 12,
+                height: 12,
                 borderRadius: '50%',
                 background: '#22c55e',
-                border: '1.5px solid #fff',
+                border: '2px solid #fff',
                 animation: 'liz-pulse 2s ease-in-out infinite',
               }} />
-            </span>
+            </div>
 
-            {/* Nome + subtítulo */}
-            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.2 }}>
-              <span style={{ color: '#fff', fontWeight: 700, fontSize: 14, letterSpacing: 0.3 }}>Liz</span>
-              <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: 10 }}>Agente IA • online</span>
+            {/* Nome abaixo */}
+            <span style={{
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: 12,
+              letterSpacing: 0.5,
+              background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+              padding: '2px 10px',
+              borderRadius: 999,
+              boxShadow: '0 2px 8px rgba(124,58,237,0.4)',
+            }}>
+              Liz
             </span>
-          </button>
+          </div>
         )}
 
         <style>{`
