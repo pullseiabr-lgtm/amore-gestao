@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap, Activity, Bot } from 'lucide-react'
+import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap, Activity, Bot, Calendar } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 
@@ -17,6 +17,9 @@ const MENU_TOP: NavItem[] = [
   { id: 'dashboard',   label: 'Dashboard',         icon: <LayoutDashboard size={13} /> },
   { id: 'agente-liz',  label: 'Liz — Agente IA',   icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🤖</span> },
   { id: 'tarefas',     label: 'Central de Tarefas', icon: <ClipboardList size={13} /> },
+  { id: 'enxoval',        label: 'Controle Enxoval',   icon: <Package size={13} /> },
+  { id: 'planejamento',  label: 'Planejamento',       icon: <Calendar size={13} /> },
+  { id: 'atas',          label: 'Atas de Reunião',    icon: <FileText size={13} /> },
   { id: 'pendencias',  label: 'Pendências & OS',    icon: <FileText size={13} />, badge: '7' },
   { id: 'gamificacao', label: 'Gamificação',         icon: <Trophy size={13} /> },
   { id: 'marketing',   label: 'Marketing 360°',     icon: <Megaphone size={13} /> },
@@ -31,11 +34,12 @@ const PRODUTOS_SUBMENU: NavItem[] = [
 
 // Sub-itens do grupo Compras & Estoque
 const COMPRAS_SUBMENU: NavItem[] = [
-  { id: 'compras',                label: 'Lista de Compras',   icon: <ShoppingCart size={12} /> },
-  { id: 'requisicoes',            label: 'Requisições',        icon: <ClipboardList size={12} /> },
-  { id: 'req-automaticas',        label: 'Req. Automáticas',   icon: <Zap size={12} /> },
-  { id: 'estoque',                label: 'Estoque',            icon: <Package size={12} /> },
-  { id: 'fornecedores',           label: 'Fornecedores',       icon: <Building2 size={12} /> },
+  { id: 'lista-padrao',           label: '📋 Lista Padronizada', icon: <ShoppingCart size={12} /> },
+  { id: 'compras',                label: 'Compras (histórico)', icon: <ShoppingCart size={12} /> },
+  { id: 'requisicoes',            label: 'Requisições',         icon: <ClipboardList size={12} /> },
+  { id: 'req-automaticas',        label: 'Req. Automáticas',    icon: <Zap size={12} /> },
+  { id: 'estoque',                label: 'Estoque',             icon: <Package size={12} /> },
+  { id: 'fornecedores',           label: 'Fornecedores',        icon: <Building2 size={12} /> },
   { id: 'compras-agente',         label: '🤖 Agente de Compras', icon: <Bot size={12} /> },
 ]
 

@@ -812,6 +812,195 @@ export interface TarefaHistorico {
   created_at: string
 }
 
+// ── Lista de Compras Padronizada ─────────────────────────────
+
+export type ListaPadraoStatus  = 'rascunho' | 'revisao' | 'aprovada' | 'em_compra' | 'concluida' | 'cancelada'
+export type ListaPadraoPeriodo = 'semanal' | 'quinzenal' | 'mensal' | 'avulso'
+
+export interface ListaPadrao {
+  id: string
+  loja: string
+  titulo: string
+  periodo: ListaPadraoPeriodo
+  referencia: string
+  status: ListaPadraoStatus
+  total_estimado: number
+  total_real: number
+  criado_por: string | null
+  aprovado_por: string | null
+  aprovado_at: string | null
+  obs_aprovacao: string | null
+  observacoes: string | null
+  created_at: string
+  updated_at: string
+  // joined
+  itens?: ListaPadraoItem[]
+}
+
+export interface ListaPadraoItem {
+  id: string
+  loja: string
+  lista_id: string
+  produto_nome: string
+  categoria: string
+  unidade: string
+  quantidade: number
+  preco_referencia: number | null
+  preco_digitado: number | null
+  preco_minimo: number | null
+  preco_maximo: number | null
+  variacao_pct: number | null
+  alerta_preco: boolean
+  fornecedor: string | null
+  urgente: boolean
+  comprado: boolean
+  obs: string | null
+  created_at: string
+}
+
+export interface ListaHistoricoPreco {
+  id: string
+  loja: string
+  produto_nome: string
+  unidade: string
+  preco: number
+  fornecedor: string | null
+  lista_id: string | null
+  referencia: string | null
+  created_at: string
+}
+
+// ── Ata de Reunião ────────────────────────────────────────────
+
+export type AtaTipo   = 'operacional' | 'estrategica' | 'feedback' | 'treinamento' | 'outro'
+export type AtaStatus = 'rascunho' | 'finalizada' | 'aprovada'
+export type AtaAcaoStatus = 'pendente' | 'em_andamento' | 'concluido' | 'cancelado'
+
+export interface AtaReuniao {
+  id: string
+  loja: string
+  titulo: string
+  data_reuniao: string
+  hora_inicio: string | null
+  hora_fim: string | null
+  local_reuniao: string | null
+  tipo: AtaTipo
+  participantes: string[] | null
+  pauta: string | null
+  decisoes: string | null
+  proximos_passos: string | null
+  observacoes: string | null
+  status: AtaStatus
+  aprovada_por: string | null
+  aprovada_at: string | null
+  arquivo_url: string | null
+  arquivo_nome: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  // joined
+  acoes?: AtaAcao[]
+}
+
+export interface AtaAcao {
+  id: string
+  loja: string
+  ata_id: string
+  descricao: string
+  responsavel: string
+  prazo: string | null
+  status: AtaAcaoStatus
+  tarefa_id: string | null
+  observacoes: string | null
+  created_at: string
+}
+
+// ── Planejamento Operacional ─────────────────────────────────
+
+export type PlanejamentoTipo      = 'reuniao' | 'evento_especial' | 'turno' | 'rotina' | 'meta' | 'treinamento' | 'outro'
+export type PlanejamentoStatus    = 'planejado' | 'em_andamento' | 'concluido' | 'cancelado'
+export type PlanejamentoPrioridade = 'baixa' | 'media' | 'alta' | 'urgente'
+export type PlanejamentoRecorrencia = 'diario' | 'semanal' | 'quinzenal' | 'mensal'
+
+export interface PlanejamentoEvento {
+  id: string
+  loja: string
+  titulo: string
+  descricao: string | null
+  tipo: PlanejamentoTipo
+  data_inicio: string
+  data_fim: string | null
+  hora_inicio: string | null
+  hora_fim: string | null
+  dia_todo: boolean
+  setor: string | null
+  responsavel: string | null
+  status: PlanejamentoStatus
+  prioridade: PlanejamentoPrioridade
+  cor: string
+  recorrente: boolean
+  recorrencia: PlanejamentoRecorrencia | null
+  observacoes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PlanejamentoMeta {
+  id: string
+  loja: string
+  titulo: string
+  setor: string
+  indicador: string
+  meta_valor: number
+  valor_atual: number
+  unidade: string
+  periodo_ref: string
+  status: 'em_andamento' | 'atingida' | 'nao_atingida'
+  observacoes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+// ── Enxoval Operacional ──────────────────────────────────────
+
+export type EnxovalMovTipo   = 'solicitacao' | 'saida' | 'devolucao' | 'perda' | 'entrada'
+export type EnxovalMovStatus = 'pendente' | 'aprovado' | 'recusado' | 'concluido'
+
+export interface EnxovalItem {
+  id: string
+  loja: string
+  nome: string
+  categoria: string
+  unidade: string
+  estoque_atual: number
+  estoque_minimo: number
+  ativo: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface EnxovalMovimentacao {
+  id: string
+  loja: string
+  item_id: string
+  tipo: EnxovalMovTipo
+  quantidade: number
+  setor_destino: string | null
+  responsavel: string
+  aprovado_por: string | null
+  status: EnxovalMovStatus
+  avarias: number
+  perdas: number
+  divergencias: string | null
+  observacoes: string | null
+  created_by: string | null
+  created_at: string
+  // joined
+  item?: EnxovalItem
+}
+
 // ── Market Analytics & Supplier Intelligence ─────────────────
 
 export interface MarketPriceHistory {

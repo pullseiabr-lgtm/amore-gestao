@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco } from '../types/database'
 
 const db = supabase as any
 
@@ -1683,4 +1683,171 @@ export async function insertComprasPesquisaMercado(
 
 export async function deleteComprasPesquisaMercado(id: string): Promise<void> {
   await sdkCall<null>(db.from('compras_pesquisa_mercado').delete().eq('id', id))
+}
+
+// ── Lista de Compras Padronizada ─────────────────────────────
+
+export async function fetchListasPadrao(loja: string): Promise<ListaPadrao[]> {
+  return sdkCall<ListaPadrao[]>(
+    db.from('lista_padrao')
+      .select('*, itens:lista_padrao_itens(*)')
+      .eq('loja', loja)
+      .order('created_at', { ascending: false })
+      .limit(200),
+  ).then(d => d ?? []).catch(() => [])
+}
+
+export async function insertListaPadrao(l: Omit<ListaPadrao, 'id' | 'created_at' | 'updated_at' | 'itens'>): Promise<ListaPadrao> {
+  return sdkCall<ListaPadrao>(db.from('lista_padrao').insert(l).select().single())
+}
+
+export async function updateListaPadrao(id: string, upd: Partial<Omit<ListaPadrao, 'id' | 'created_at' | 'itens'>>): Promise<void> {
+  await sdkCall<null>(db.from('lista_padrao').update({ ...upd, updated_at: new Date().toISOString() }).eq('id', id))
+}
+
+export async function deleteListaPadrao(id: string): Promise<void> {
+  await sdkCall<null>(db.from('lista_padrao').delete().eq('id', id))
+}
+
+export async function insertListaPadraoItem(item: Omit<ListaPadraoItem, 'id' | 'created_at'>): Promise<ListaPadraoItem> {
+  return sdkCall<ListaPadraoItem>(db.from('lista_padrao_itens').insert(item).select().single())
+}
+
+export async function updateListaPadraoItem(id: string, upd: Partial<ListaPadraoItem>): Promise<void> {
+  await sdkCall<null>(db.from('lista_padrao_itens').update(upd).eq('id', id))
+}
+
+export async function deleteListaPadraoItem(id: string): Promise<void> {
+  await sdkCall<null>(db.from('lista_padrao_itens').delete().eq('id', id))
+}
+
+export async function fetchListaHistoricoPrecos(loja: string, produtoNome?: string): Promise<ListaHistoricoPreco[]> {
+  let q = db.from('lista_historico_precos').select('*').eq('loja', loja).order('created_at', { ascending: false }).limit(500)
+  if (produtoNome) q = q.ilike('produto_nome', `%${produtoNome}%`)
+  return sdkCall<ListaHistoricoPreco[]>(q).then(d => d ?? []).catch(() => [])
+}
+
+export async function insertListaHistoricoPreco(h: Omit<ListaHistoricoPreco, 'id' | 'created_at'>): Promise<void> {
+  await sdkCall<null>(db.from('lista_historico_precos').insert(h))
+}
+
+// ── Ata de Reunião ────────────────────────────────────────────
+
+export async function fetchAtas(loja: string): Promise<AtaReuniao[]> {
+  return sdkCall<AtaReuniao[]>(
+    db.from('atas_reuniao')
+      .select('*, acoes:atas_acoes(*)')
+      .eq('loja', loja)
+      .order('data_reuniao', { ascending: false })
+      .limit(200),
+  ).then(d => d ?? []).catch(() => [])
+}
+
+export async function insertAta(a: Omit<AtaReuniao, 'id' | 'created_at' | 'updated_at' | 'acoes'>): Promise<AtaReuniao> {
+  return sdkCall<AtaReuniao>(db.from('atas_reuniao').insert(a).select().single())
+}
+
+export async function updateAta(id: string, upd: Partial<Omit<AtaReuniao, 'id' | 'created_at' | 'acoes'>>): Promise<void> {
+  await sdkCall<null>(db.from('atas_reuniao').update({ ...upd, updated_at: new Date().toISOString() }).eq('id', id))
+}
+
+export async function deleteAta(id: string): Promise<void> {
+  await sdkCall<null>(db.from('atas_reuniao').delete().eq('id', id))
+}
+
+export async function insertAtaAcao(a: Omit<AtaAcao, 'id' | 'created_at'>): Promise<AtaAcao> {
+  return sdkCall<AtaAcao>(db.from('atas_acoes').insert(a).select().single())
+}
+
+export async function updateAtaAcao(id: string, upd: Partial<AtaAcao>): Promise<void> {
+  await sdkCall<null>(db.from('atas_acoes').update(upd).eq('id', id))
+}
+
+export async function deleteAtaAcao(id: string): Promise<void> {
+  await sdkCall<null>(db.from('atas_acoes').delete().eq('id', id))
+}
+
+// ── Planejamento Operacional ─────────────────────────────────
+
+export async function fetchPlanejamentoEventos(loja: string, mesRef?: string): Promise<PlanejamentoEvento[]> {
+  let q = db.from('planejamento_eventos').select('*').eq('loja', loja).order('data_inicio', { ascending: true }).limit(500)
+  if (mesRef) {
+    const [y, m] = mesRef.split('-')
+    const start = `${y}-${m}-01`
+    const end   = new Date(+y, +m, 0).toISOString().slice(0, 10)
+    q = q.gte('data_inicio', start).lte('data_inicio', end)
+  }
+  return sdkCall<PlanejamentoEvento[]>(q).then(d => d ?? []).catch(() => [])
+}
+
+export async function insertPlanejamentoEvento(e: Omit<PlanejamentoEvento, 'id' | 'created_at' | 'updated_at'>): Promise<PlanejamentoEvento> {
+  return sdkCall<PlanejamentoEvento>(db.from('planejamento_eventos').insert(e).select().single())
+}
+
+export async function updatePlanejamentoEvento(id: string, upd: Partial<Omit<PlanejamentoEvento, 'id' | 'created_at'>>): Promise<void> {
+  await sdkCall<null>(db.from('planejamento_eventos').update({ ...upd, updated_at: new Date().toISOString() }).eq('id', id))
+}
+
+export async function deletePlanejamentoEvento(id: string): Promise<void> {
+  await sdkCall<null>(db.from('planejamento_eventos').delete().eq('id', id))
+}
+
+export async function fetchPlanejamentoMetas(loja: string, periodoRef?: string): Promise<PlanejamentoMeta[]> {
+  let q = db.from('planejamento_metas').select('*').eq('loja', loja).order('created_at', { ascending: false }).limit(200)
+  if (periodoRef) q = q.eq('periodo_ref', periodoRef)
+  return sdkCall<PlanejamentoMeta[]>(q).then(d => d ?? []).catch(() => [])
+}
+
+export async function insertPlanejamentoMeta(m: Omit<PlanejamentoMeta, 'id' | 'created_at' | 'updated_at'>): Promise<PlanejamentoMeta> {
+  return sdkCall<PlanejamentoMeta>(db.from('planejamento_metas').insert(m).select().single())
+}
+
+export async function updatePlanejamentoMeta(id: string, upd: Partial<Omit<PlanejamentoMeta, 'id' | 'created_at'>>): Promise<void> {
+  await sdkCall<null>(db.from('planejamento_metas').update({ ...upd, updated_at: new Date().toISOString() }).eq('id', id))
+}
+
+export async function deletePlanejamentoMeta(id: string): Promise<void> {
+  await sdkCall<null>(db.from('planejamento_metas').delete().eq('id', id))
+}
+
+// ── Enxoval Operacional ──────────────────────────────────────
+
+export async function fetchEnxovalItens(loja: string): Promise<EnxovalItem[]> {
+  return sdkCall<EnxovalItem[]>(
+    db.from('enxoval_itens').select('*').eq('loja', loja).order('nome', { ascending: true }),
+  ).then(d => d ?? []).catch(() => [])
+}
+
+export async function insertEnxovalItem(item: Omit<EnxovalItem, 'id' | 'created_at' | 'updated_at'>): Promise<EnxovalItem> {
+  return sdkCall<EnxovalItem>(db.from('enxoval_itens').insert(item).select().single())
+}
+
+export async function updateEnxovalItem(id: string, upd: Partial<Omit<EnxovalItem, 'id' | 'created_at'>>): Promise<void> {
+  await sdkCall<null>(db.from('enxoval_itens').update({ ...upd, updated_at: new Date().toISOString() }).eq('id', id))
+}
+
+export async function deleteEnxovalItem(id: string): Promise<void> {
+  await sdkCall<null>(db.from('enxoval_itens').delete().eq('id', id))
+}
+
+export async function fetchEnxovalMovimentacoes(loja: string, limit = 300): Promise<EnxovalMovimentacao[]> {
+  return sdkCall<EnxovalMovimentacao[]>(
+    db.from('enxoval_movimentacoes')
+      .select('*, item:enxoval_itens(*)')
+      .eq('loja', loja)
+      .order('created_at', { ascending: false })
+      .limit(limit),
+  ).then(d => d ?? []).catch(() => [])
+}
+
+export async function insertEnxovalMovimentacao(m: Omit<EnxovalMovimentacao, 'id' | 'created_at' | 'item'>): Promise<EnxovalMovimentacao> {
+  return sdkCall<EnxovalMovimentacao>(db.from('enxoval_movimentacoes').insert(m).select().single())
+}
+
+export async function updateEnxovalMovimentacao(id: string, upd: Partial<Omit<EnxovalMovimentacao, 'id' | 'created_at' | 'item'>>): Promise<void> {
+  await sdkCall<null>(db.from('enxoval_movimentacoes').update(upd).eq('id', id))
+}
+
+export async function deleteEnxovalMovimentacao(id: string): Promise<void> {
+  await sdkCall<null>(db.from('enxoval_movimentacoes').delete().eq('id', id))
 }
