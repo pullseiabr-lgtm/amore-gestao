@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico } from '../types/database'
 
 const db = supabase as any
 
@@ -1421,6 +1421,51 @@ export async function fetchMarketAlerts(apenasNaoLidos = false): Promise<MarketA
   let q = db.from('market_alerts').select('*').order('created_at', { ascending: false }).limit(200)
   if (apenasNaoLidos) q = q.eq('lido', false)
   return sdkCall<MarketAlert[]>(q).then(d => d ?? []).catch(() => [])
+}
+
+// ── Tarefas Operacionais ─────────────────────────────────────
+
+export async function fetchTarefas(loja: string): Promise<Tarefa[]> {
+  return sdkCall<Tarefa[]>(
+    db.from('tarefas')
+      .select('*, checklist:tarefas_checklist(*), comentarios:tarefas_comentarios(*), historico:tarefas_historico(*)')
+      .eq('loja', loja)
+      .order('created_at', { ascending: false })
+      .limit(500),
+  ).then(d => d ?? []).catch(() => [])
+}
+
+export async function insertTarefa(t: Omit<Tarefa, 'id' | 'created_at' | 'updated_at' | 'checklist' | 'comentarios' | 'historico'>): Promise<Tarefa> {
+  return sdkCall<Tarefa>(db.from('tarefas').insert(t).select().single())
+}
+
+export async function updateTarefa(id: string, upd: Partial<Omit<Tarefa, 'id' | 'created_at' | 'checklist' | 'comentarios' | 'historico'>>): Promise<void> {
+  await sdkCall<null>(db.from('tarefas').update({ ...upd, updated_at: new Date().toISOString() }).eq('id', id))
+}
+
+export async function deleteTarefa(id: string): Promise<void> {
+  await sdkCall<null>(db.from('tarefas').delete().eq('id', id))
+}
+
+// Checklist
+export async function insertTarefaChecklist(item: Omit<TarefaChecklist, 'id' | 'created_at'>): Promise<TarefaChecklist> {
+  return sdkCall<TarefaChecklist>(db.from('tarefas_checklist').insert(item).select().single())
+}
+export async function updateTarefaChecklist(id: string, upd: Partial<TarefaChecklist>): Promise<void> {
+  await sdkCall<null>(db.from('tarefas_checklist').update(upd).eq('id', id))
+}
+export async function deleteTarefaChecklist(id: string): Promise<void> {
+  await sdkCall<null>(db.from('tarefas_checklist').delete().eq('id', id))
+}
+
+// Comentários
+export async function insertTarefaComentario(c: Omit<TarefaComentario, 'id' | 'created_at'>): Promise<TarefaComentario> {
+  return sdkCall<TarefaComentario>(db.from('tarefas_comentarios').insert(c).select().single())
+}
+
+// Histórico
+export async function insertTarefaHistorico(h: Omit<TarefaHistorico, 'id' | 'created_at'>): Promise<void> {
+  await sdkCall<null>(db.from('tarefas_historico').insert(h))
 }
 
 export async function insertMarketAlert(a: Omit<MarketAlert, 'id' | 'created_at'>): Promise<MarketAlert> {

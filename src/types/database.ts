@@ -752,6 +752,66 @@ export interface CozinhaSolicitacao {
   updated_at: string
 }
 
+// ── Tarefas Operacionais ─────────────────────────────────────
+
+export type TarefaStatus     = 'pendente' | 'em_andamento' | 'aguardando_validacao' | 'concluido' | 'cancelado'
+export type TarefaPrioridade = 'baixa' | 'media' | 'alta' | 'urgente'
+export type TarefaSetor      = 'Cozinha' | 'Bar' | 'Salão' | 'Estoque' | 'Compras' | 'Financeiro' | 'RH' | 'Limpeza' | 'Produção' | 'Diretoria' | 'Geral'
+
+export interface Tarefa {
+  id: string
+  loja: string
+  titulo: string
+  descricao: string | null
+  setor: string
+  status: TarefaStatus
+  prioridade: TarefaPrioridade
+  responsavel_nome: string | null
+  solicitante_nome: string
+  prazo: string | null
+  observacoes: string | null
+  precisa_aprovacao: boolean
+  aprovado_por: string | null
+  aprovado_at: string | null
+  obs_aprovacao: string | null
+  reaberta: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  checklist?: TarefaChecklist[]
+  comentarios?: TarefaComentario[]
+  historico?: TarefaHistorico[]
+}
+
+export interface TarefaChecklist {
+  id: string
+  tarefa_id: string
+  descricao: string
+  concluido: boolean
+  concluido_por: string | null
+  concluido_at: string | null
+  created_at: string
+}
+
+export interface TarefaComentario {
+  id: string
+  tarefa_id: string
+  texto: string
+  autor_nome: string
+  created_at: string
+}
+
+export interface TarefaHistorico {
+  id: string
+  tarefa_id: string
+  acao: string
+  campo: string | null
+  valor_anterior: string | null
+  valor_novo: string | null
+  usuario_nome: string
+  created_at: string
+}
+
 // ── Market Analytics & Supplier Intelligence ─────────────────
 
 export interface MarketPriceHistory {
