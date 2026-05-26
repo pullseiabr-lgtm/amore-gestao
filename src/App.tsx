@@ -159,27 +159,26 @@ export default function App() {
         {page !== 'agente-liz' && (
           <button
             onClick={() => navigate('agente-liz')}
-            title="Abrir Liz — Agente IA"
+            title="Falar com Liz"
             style={{
               position: 'fixed',
               bottom: 24,
               right: 24,
-              width: 56,
-              height: 56,
-              borderRadius: '50%',
+              height: 52,
+              borderRadius: 999,
               background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
               border: 'none',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 26,
+              gap: 8,
+              padding: '0 18px 0 14px',
               boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
               zIndex: 9999,
               transition: 'transform .15s, box-shadow .15s',
             }}
             onMouseEnter={e => {
-              (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.12)'
+              (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.06)'
               ;(e.currentTarget as HTMLButtonElement).style.boxShadow = '0 6px 28px rgba(124,58,237,0.7)'
             }}
             onMouseLeave={e => {
@@ -187,19 +186,39 @@ export default function App() {
               ;(e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 20px rgba(124,58,237,0.5)'
             }}
           >
-            🤖
-            {/* Pulsação online */}
+            {/* Avatar */}
             <span style={{
-              position: 'absolute',
-              top: 2,
-              right: 2,
-              width: 12,
-              height: 12,
+              width: 32,
+              height: 32,
               borderRadius: '50%',
-              background: '#22c55e',
-              border: '2px solid #fff',
-              animation: 'liz-pulse 2s ease-in-out infinite',
-            }} />
+              background: 'rgba(255,255,255,0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 18,
+              flexShrink: 0,
+              position: 'relative',
+            }}>
+              🤖
+              {/* Ponto verde online */}
+              <span style={{
+                position: 'absolute',
+                bottom: 0,
+                right: 0,
+                width: 9,
+                height: 9,
+                borderRadius: '50%',
+                background: '#22c55e',
+                border: '1.5px solid #fff',
+                animation: 'liz-pulse 2s ease-in-out infinite',
+              }} />
+            </span>
+
+            {/* Nome + subtítulo */}
+            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.2 }}>
+              <span style={{ color: '#fff', fontWeight: 700, fontSize: 14, letterSpacing: 0.3 }}>Liz</span>
+              <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: 10 }}>Agente IA • online</span>
+            </span>
           </button>
         )}
 
