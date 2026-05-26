@@ -242,7 +242,7 @@ ${reqPendentes.length ? reqPendentes.join('\n') : 'Nenhuma'}
       // Welcome message
       setMsgs([{
         role: 'liz',
-        text: `Olá, ${user?.name?.split(' ')[0] || 'Gestor'}! Sou a **Liz**, sua assistente comercial inteligente. 🤖\n\nJá carreguei o contexto da loja **${loja}** — ${estoqueCritico.length} itens críticos, ${fornecedores.length} fornecedores, ${reqPendentes.length} requisições pendentes.\n\nPosso analisar o sistema, prosperar fornecedores, identificar oportunidades e gerar relatórios. Como posso ajudar?`,
+        text: `Olá, ${user?.name?.split(' ')[0] || 'Gestor'}! Sou a **Liz**, sua assistente comercial inteligente. 🤖\n\nJá carreguei o contexto da loja **${loja}** — ${estoqueCritico.length} itens críticos, ${fornecedores.length} fornecedores, ${reqPendentes.length} requisições pendentes.\n\nPosso analisar o sistema, prospectar fornecedores, identificar oportunidades e gerar relatórios. Como posso ajudar?`,
         ts: Date.now(),
       }])
     } catch (e) {
@@ -267,7 +267,7 @@ SUAS CAPACIDADES:
 - Identificar riscos operacionais e oportunidades de economia
 - Recomendar fornecedores e negociações
 - Gerar relatórios gerenciais como se fosse o gestor da operação
-- Prosperar novos fornecedores via pesquisa de mercado
+- Prospectar novos fornecedores via pesquisa de mercado
 
 CONTEXTO ATUAL DO SISTEMA:
 ${systemCtx}
