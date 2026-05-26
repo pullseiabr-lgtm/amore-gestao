@@ -32,7 +32,7 @@ import type {
   ComprasPesquisaMercado,
 } from '../../types/database'
 
-// ── Google Custom Search helpers ──────────────────────────────
+// ── Brave Search helpers ──────────────────────────────────────
 
 interface GResult { title: string; link: string; snippet: string }
 
@@ -64,21 +64,19 @@ function extrairFornecedor(titulo: string, url: string): string {
   }
 }
 
-async function buscarNoGoogle(produto: string, apiKey: string, cseId: string): Promise<GResult[]> {
+async function buscarNaBrave(produto: string, apiKey: string): Promise<GResult[]> {
   const q = `preço ${produto} atacado distribuidora comprar fornecedor`
-  const url =
-    `https://www.googleapis.com/customsearch/v1` +
-    `?key=${encodeURIComponent(apiKey)}` +
-    `&cx=${encodeURIComponent(cseId)}` +
-    `&q=${encodeURIComponent(q)}` +
-    `&num=6&gl=br&lr=lang_pt`
-  const resp = await fetch(url)
+  // Chama o proxy Vercel em /api/brave-search para evitar bloqueio CORS
+  const params = new URLSearchParams({ q })
+  if (apiKey) params.set('t', apiKey)
+  const resp = await fetch(`/api/brave-search?${params}`)
   const data = await resp.json()
-  if (!resp.ok) throw new Error(data?.error?.message || `Erro HTTP ${resp.status}`)
-  return (data.items || []).map((i: { title: string; link: string; snippet: string }) => ({
+  if (!resp.ok) throw new Error(data?.error || data?.message || `Erro HTTP ${resp.status}`)
+  const items = data?.web?.results || []
+  return items.map((i: { title: string; url: string; description: string }) => ({
     title:   i.title,
-    link:    i.link,
-    snippet: i.snippet,
+    link:    i.url,
+    snippet: i.description || '',
   }))
 }
 
@@ -288,8 +286,7 @@ export default function ComprasAgentePage() {
   }
 
   // ── Pesquisa de Mercado ──────────────────────────────────────
-  const [pesqApiKey,    setPesqApiKey]    = useState(() => localStorage.getItem('goog_api_key') || '')
-  const [pesqCseId,     setPesqCseId]     = useState(() => localStorage.getItem('goog_cse_id')  || '')
+  const [pesqApiKey,    setPesqApiKey]    = useState(() => localStorage.getItem('brave_api_key') || '')
   const [showApiCfg,    setShowApiCfg]    = useState(false)
   const [pesqResultados, setPesqResultados] = useState<Record<string, GResult[]>>({})
   const [pesqLoadings,  setPesqLoadings]  = useState<Record<string, boolean>>({})
@@ -322,17 +319,16 @@ export default function ComprasAgentePage() {
   // ── Handlers: Pesquisa de Mercado ─────────────────────────────
 
   const salvarApiConfig = () => {
-    localStorage.setItem('goog_api_key', pesqApiKey.trim())
-    localStorage.setItem('goog_cse_id',  pesqCseId.trim())
+    localStorage.setItem('brave_api_key', pesqApiKey.trim())
     setShowApiCfg(false)
   }
 
   const pesquisarProduto = async (produtoNome: string) => {
-    if (!pesqApiKey || !pesqCseId) { setShowApiCfg(true); return }
+    if (!pesqApiKey) { setShowApiCfg(true); return }
     setPesqLoadings(p => ({ ...p, [produtoNome]: true }))
     setPesqErros(p => ({ ...p, [produtoNome]: '' }))
     try {
-      const resultados = await buscarNoGoogle(produtoNome, pesqApiKey, pesqCseId)
+      const resultados = await buscarNaBrave(produtoNome, pesqApiKey)
       setPesqResultados(p => ({ ...p, [produtoNome]: resultados }))
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Erro desconhecido'
@@ -343,7 +339,7 @@ export default function ComprasAgentePage() {
   }
 
   const pesquisarTodos = async () => {
-    if (!pesqApiKey || !pesqCseId) { setShowApiCfg(true); return }
+    if (!pesqApiKey) { setShowApiCfg(true); return }
     const produtos = produtosHistorico.slice(0, 10) // limite seguro na API free
     for (const p of produtos) {
       await pesquisarProduto(p.nome)
@@ -1455,7 +1451,7 @@ export default function ComprasAgentePage() {
               </button>
               <button className="btn" style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', fontSize: 11 }}
                 onClick={pesquisarTodos}
-                disabled={!pesqApiKey || !pesqCseId || produtosHistorico.length === 0}>
+                disabled={!pesqApiKey || produtosHistorico.length === 0}>
                 <Search size={11} /> Pesquisar Todos
               </button>
             </div>
@@ -1465,39 +1461,33 @@ export default function ComprasAgentePage() {
           {showApiCfg && (
             <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 14 }}>
               <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Settings2 size={13} /> Configurar Google Custom Search API
+                <Settings2 size={13} /> Configurar Brave Search API
               </div>
 
               {/* Instruções */}
-              <div style={{ padding: '10px 14px', background: 'rgba(15,76,129,0.07)', borderRadius: 8, marginBottom: 14, fontSize: 12, lineHeight: 1.7 }}>
-                <strong>Como configurar (gratuito — 100 buscas/dia):</strong>
+              <div style={{ padding: '10px 14px', background: 'rgba(251,123,45,0.07)', borderRadius: 8, marginBottom: 14, fontSize: 12, lineHeight: 1.7 }}>
+                <strong>Como configurar (gratuito — 2.000 buscas/mês, sem cartão):</strong>
                 <ol style={{ margin: '6px 0 0 16px', padding: 0 }}>
-                  <li>Acesse <a href="https://console.cloud.google.com" target="_blank" rel="noreferrer" style={{ color: '#0F4C81' }}>console.cloud.google.com</a> → Ative a <strong>Custom Search JSON API</strong></li>
-                  <li>Crie uma <strong>Chave de API</strong> (API key) e cole abaixo</li>
-                  <li>Acesse <a href="https://programmablesearchengine.google.com" target="_blank" rel="noreferrer" style={{ color: '#0F4C81' }}>programmablesearchengine.google.com</a> → crie um mecanismo pesquisando em <strong>toda a web</strong></li>
-                  <li>Copie o <strong>ID do mecanismo (cx)</strong> e cole abaixo</li>
+                  <li>Acesse <a href="https://api.search.brave.com/register" target="_blank" rel="noreferrer" style={{ color: '#FB7B2D' }}>api.search.brave.com/register</a></li>
+                  <li>Crie conta com seu e-mail → confirme o e-mail</li>
+                  <li>Clique em <strong>"Free Plan"</strong> → <strong>"Subscribe"</strong></li>
+                  <li>Copie a <strong>API Key</strong> gerada e cole abaixo</li>
                 </ol>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+              <div style={{ marginBottom: 12 }}>
                 <div className="fg">
-                  <label className="fl">Chave de API (API Key)</label>
+                  <label className="fl">Brave Search API Key</label>
                   <input className="inp" style={{ fontSize: 12, fontFamily: 'monospace' }}
-                    placeholder="AIzaSy..." value={pesqApiKey}
+                    placeholder="BSA..." value={pesqApiKey}
                     onChange={e => setPesqApiKey(e.target.value)} />
-                </div>
-                <div className="fg">
-                  <label className="fl">ID do Mecanismo (cx)</label>
-                  <input className="inp" style={{ fontSize: 12, fontFamily: 'monospace' }}
-                    placeholder="a1b2c3d4e5f..." value={pesqCseId}
-                    onChange={e => setPesqCseId(e.target.value)} />
                 </div>
               </div>
 
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <button className="btn bo" style={{ fontSize: 11 }} onClick={() => setShowApiCfg(false)}>Cancelar</button>
                 <button className="btn bp" style={{ fontSize: 11 }} onClick={salvarApiConfig}
-                  disabled={!pesqApiKey.trim() || !pesqCseId.trim()}>
+                  disabled={!pesqApiKey.trim()}>
                   <CheckCircle size={11} /> Salvar Configuração
                 </button>
               </div>
@@ -1505,11 +1495,11 @@ export default function ComprasAgentePage() {
           )}
 
           {/* ── Aviso se API não configurada ─────────────────── */}
-          {(!pesqApiKey || !pesqCseId) && !showApiCfg && (
+          {!pesqApiKey && !showApiCfg && (
             <div style={{ padding: '14px 18px', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 10, marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
               <AlertTriangle size={18} style={{ color: '#B45309', flexShrink: 0 }} />
               <div style={{ fontSize: 13 }}>
-                <strong style={{ color: '#92400E' }}>API do Google não configurada.</strong>
+                <strong style={{ color: '#92400E' }}>Brave Search API não configurada.</strong>
                 {' '}<span style={{ color: '#92400E' }}>Clique em <strong>"Configurar API"</strong> acima para habilitar a pesquisa automática de preços em distribuidoras e atacados.</span>
               </div>
             </div>
@@ -1562,7 +1552,7 @@ export default function ComprasAgentePage() {
                             <button className="btn bo bsm"
                               style={{ fontSize: 10, color: '#0F4C81', borderColor: '#0F4C81' }}
                               onClick={() => pesquisarProduto(prod.nome)}
-                              disabled={loading || !pesqApiKey || !pesqCseId}>
+                              disabled={loading || !pesqApiKey}>
                               {loading
                                 ? <><RefreshCw size={10} className="spin" /> Buscando…</>
                                 : <><Search size={10} /> Pesquisar</>}
