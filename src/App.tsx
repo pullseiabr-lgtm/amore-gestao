@@ -26,6 +26,7 @@ import RupturaPage from './pages/relatorios/RupturaPage'
 import PdvPage from './pages/pdv/PdvPage'
 import MarketPage from './pages/market/MarketPage'
 import ComprasAgentePage from './pages/compras/ComprasAgentePage'
+import AgenteLizPage from './pages/agente/AgenteLizPage'
 
 export type PageId =
   | 'dashboard'
@@ -50,6 +51,7 @@ export type PageId =
   | 'pdv'
   | 'market'
   | 'compras-agente'
+  | 'agente-liz'
 
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Dashboard',
@@ -74,6 +76,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   pdv: 'PDV — Ponto de Venda',
   market: 'Market Analytics & Supplier Intelligence',
   'compras-agente': 'Agente Analítico de Compras',
+  'agente-liz': 'Liz — Agente Gestora',
 }
 
 function PageContent({ page }: { page: PageId }) {
@@ -100,6 +103,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'pdv':                  return <PdvPage />
     case 'market':               return <MarketPage />
     case 'compras-agente':       return <ComprasAgentePage />
+    case 'agente-liz':           return <AgenteLizPage />
     default: return <DashboardPage />
   }
 }

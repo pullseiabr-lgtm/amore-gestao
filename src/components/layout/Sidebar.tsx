@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap, Activity, Bot } from 'lucide-react'
+import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap, Activity, Bot, Sparkles } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 
@@ -15,6 +15,7 @@ export interface NavItem {
 // Itens simples do menu
 const MENU_TOP: NavItem[] = [
   { id: 'dashboard',   label: 'Dashboard',       icon: <LayoutDashboard size={13} /> },
+  { id: 'agente-liz',  label: '✨ Liz — Agente IA', icon: <Sparkles size={13} /> },
   { id: 'pendencias',  label: 'Pendências & OS',  icon: <FileText size={13} />, badge: '7' },
   { id: 'gamificacao', label: 'Gamificação',       icon: <Trophy size={13} /> },
   { id: 'marketing',   label: 'Marketing 360°',   icon: <Megaphone size={13} /> },
