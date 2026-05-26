@@ -4,7 +4,8 @@ import {
   Users, History, FileText, CheckCircle, XCircle, Clock,
   RefreshCw, Search, ChevronDown, ChevronUp, Download,
   ShieldAlert, Shield, ShieldCheck, Zap, Package,
-  DollarSign, Eye, MessageSquare,
+  DollarSign, Eye, MessageSquare, Globe, ExternalLink,
+  Settings2, Trash2, Star,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLoja } from '../../contexts/LojaContext'
@@ -18,6 +19,9 @@ import {
   fetchComprasListas,
   fetchComprasListaItens,
   registrarEAnalisarCompra,
+  fetchComprasPesquisaMercado,
+  insertComprasPesquisaMercado,
+  deleteComprasPesquisaMercado,
 } from '../../lib/db'
 import type {
   ComprasHistoricoPreco,
@@ -25,7 +29,58 @@ import type {
   ComprasJustificativa,
   MotivoJustificativa,
   NivelAlertaCompra,
+  ComprasPesquisaMercado,
 } from '../../types/database'
+
+// ── Google Custom Search helpers ──────────────────────────────
+
+interface GResult { title: string; link: string; snippet: string }
+
+function extrairPreco(texto: string): number | null {
+  // Patterns: R$ 12,50 / R$ 12.50 / R$12,50 / 12,50 reais
+  const patterns = [
+    /R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/,
+    /R\$\s*(\d{1,6}(?:,\d{1,2})?)/,
+    /(\d{1,3}(?:\.\d{3})*,\d{2})\s*(?:reais?|BRL)/i,
+  ]
+  for (const p of patterns) {
+    const m = texto.match(p)
+    if (m) {
+      const raw = m[1].replace(/\./g, '').replace(',', '.')
+      const v = parseFloat(raw)
+      if (!isNaN(v) && v > 0 && v < 100000) return v
+    }
+  }
+  return null
+}
+
+function extrairFornecedor(titulo: string, url: string): string {
+  try {
+    const host = new URL(url).hostname.replace('www.', '').split('.')[0]
+    // capitaliza primeira letra
+    return host.charAt(0).toUpperCase() + host.slice(1)
+  } catch {
+    return titulo.split(' ')[0] ?? '—'
+  }
+}
+
+async function buscarNoGoogle(produto: string, apiKey: string, cseId: string): Promise<GResult[]> {
+  const q = `preço ${produto} atacado distribuidora comprar fornecedor`
+  const url =
+    `https://www.googleapis.com/customsearch/v1` +
+    `?key=${encodeURIComponent(apiKey)}` +
+    `&cx=${encodeURIComponent(cseId)}` +
+    `&q=${encodeURIComponent(q)}` +
+    `&num=6&gl=br&lr=lang_pt`
+  const resp = await fetch(url)
+  const data = await resp.json()
+  if (!resp.ok) throw new Error(data?.error?.message || `Erro HTTP ${resp.status}`)
+  return (data.items || []).map((i: { title: string; link: string; snippet: string }) => ({
+    title:   i.title,
+    link:    i.link,
+    snippet: i.snippet,
+  }))
+}
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -111,14 +166,15 @@ function MiniBar({ value, max, color }: { value: number; max: number; color: str
 
 // ── Tabs ──────────────────────────────────────────────────────
 
-type Tab = 'painel' | 'compradores' | 'historico' | 'justificativas' | 'previsoes'
+type Tab = 'painel' | 'compradores' | 'historico' | 'justificativas' | 'previsoes' | 'pesquisa'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'painel',          label: 'Painel',          icon: <BarChart3 size={12} /> },
-  { id: 'compradores',     label: 'Compradores',      icon: <Users size={12} /> },
-  { id: 'historico',       label: 'Histórico',        icon: <History size={12} /> },
-  { id: 'justificativas',  label: 'Justificativas',   icon: <MessageSquare size={12} /> },
-  { id: 'previsoes',       label: 'Previsões',        icon: <Zap size={12} /> },
+  { id: 'painel',          label: 'Painel',              icon: <BarChart3 size={12} /> },
+  { id: 'compradores',     label: 'Compradores',          icon: <Users size={12} /> },
+  { id: 'historico',       label: 'Histórico',            icon: <History size={12} /> },
+  { id: 'justificativas',  label: 'Justificativas',       icon: <MessageSquare size={12} /> },
+  { id: 'previsoes',       label: 'Previsões',            icon: <Zap size={12} /> },
+  { id: 'pesquisa',        label: 'Pesquisa de Mercado',  icon: <Globe size={12} /> },
 ]
 
 // ── Main Component ────────────────────────────────────────────
@@ -155,25 +211,95 @@ export default function ComprasAgentePage() {
   // detail expand
   const [expandedAudit, setExpandedAudit] = useState<string | null>(null)
 
+  // ── Pesquisa de Mercado ──────────────────────────────────────
+  const [pesqApiKey,    setPesqApiKey]    = useState(() => localStorage.getItem('goog_api_key') || '')
+  const [pesqCseId,     setPesqCseId]     = useState(() => localStorage.getItem('goog_cse_id')  || '')
+  const [showApiCfg,    setShowApiCfg]    = useState(false)
+  const [pesqResultados, setPesqResultados] = useState<Record<string, GResult[]>>({})
+  const [pesqLoadings,  setPesqLoadings]  = useState<Record<string, boolean>>({})
+  const [pesqErros,     setPesqErros]     = useState<Record<string, string>>({})
+  const [pesqSalvos,    setPesqSalvos]    = useState<ComprasPesquisaMercado[]>([])
+  const [pesqBusca,     setPesqBusca]     = useState('')
+
   const load = useCallback(async () => {
     setLoading(true)
     const lojaParam = loja === 'Todas as Lojas' ? undefined : loja
     const timer = setTimeout(() => setLoading(false), 8000)
     try {
-      const [h, a, j] = await Promise.all([
+      const [h, a, j, ps] = await Promise.all([
         fetchComprasHistoricoPreco(lojaParam).catch(() => [] as ComprasHistoricoPreco[]),
         fetchComprasAuditoria(lojaParam).catch(() => [] as ComprasAuditoria[]),
         fetchComprasJustificativas().catch(() => [] as ComprasJustificativa[]),
+        fetchComprasPesquisaMercado(lojaParam).catch(() => [] as ComprasPesquisaMercado[]),
       ])
       clearTimeout(timer)
       setHistorico(h)
       setAuditorias(a)
       setJustificativas(j)
+      setPesqSalvos(ps)
     } catch { /* silent */ } finally {
       clearTimeout(timer)
       setLoading(false)
     }
   }, [loja])
+
+  // ── Handlers: Pesquisa de Mercado ─────────────────────────────
+
+  const salvarApiConfig = () => {
+    localStorage.setItem('goog_api_key', pesqApiKey.trim())
+    localStorage.setItem('goog_cse_id',  pesqCseId.trim())
+    setShowApiCfg(false)
+  }
+
+  const pesquisarProduto = async (produtoNome: string) => {
+    if (!pesqApiKey || !pesqCseId) { setShowApiCfg(true); return }
+    setPesqLoadings(p => ({ ...p, [produtoNome]: true }))
+    setPesqErros(p => ({ ...p, [produtoNome]: '' }))
+    try {
+      const resultados = await buscarNoGoogle(produtoNome, pesqApiKey, pesqCseId)
+      setPesqResultados(p => ({ ...p, [produtoNome]: resultados }))
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Erro desconhecido'
+      setPesqErros(p => ({ ...p, [produtoNome]: msg }))
+    } finally {
+      setPesqLoadings(p => ({ ...p, [produtoNome]: false }))
+    }
+  }
+
+  const pesquisarTodos = async () => {
+    if (!pesqApiKey || !pesqCseId) { setShowApiCfg(true); return }
+    const produtos = produtosHistorico.slice(0, 10) // limite seguro na API free
+    for (const p of produtos) {
+      await pesquisarProduto(p.nome)
+    }
+  }
+
+  const salvarReferencia = async (produto: string, r: GResult) => {
+    const lojaParam = loja === 'Todas as Lojas' ? 'Geral' : loja
+    const preco = extrairPreco(r.title + ' ' + r.snippet)
+    const fornecedor = extrairFornecedor(r.title, r.link)
+    try {
+      const salvo = await insertComprasPesquisaMercado({
+        produto_nome:          produto,
+        query_usada:           `preço ${produto} atacado distribuidora`,
+        titulo_resultado:      r.title,
+        url_resultado:         r.link,
+        snippet:               r.snippet,
+        preco_extraido:        preco,
+        fornecedor_encontrado: fornecedor,
+        data_pesquisa:         new Date().toISOString().slice(0, 10),
+        loja:                  lojaParam,
+      })
+      setPesqSalvos(prev => [salvo, ...prev])
+    } catch (e) { console.error(e) }
+  }
+
+  const excluirReferencia = async (id: string) => {
+    try {
+      await deleteComprasPesquisaMercado(id)
+      setPesqSalvos(prev => prev.filter(p => p.id !== id))
+    } catch (e) { console.error(e) }
+  }
 
   useEffect(() => { load() }, [load])
 
@@ -1047,6 +1173,290 @@ export default function ComprasAgentePage() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════ */}
+      {/* TAB: PESQUISA DE MERCADO                                 */}
+      {/* ════════════════════════════════════════════════════════ */}
+      {tab === 'pesquisa' && (
+        <div>
+
+          {/* ── Cabeçalho explicativo ─────────────────────────── */}
+          <div style={{
+            background: 'linear-gradient(135deg, #0F4C81 0%, #1a6fb5 100%)',
+            borderRadius: 10, padding: '14px 18px', marginBottom: 14,
+            color: '#fff', display: 'flex', justifyContent: 'space-between',
+            alignItems: 'center', flexWrap: 'wrap', gap: 10,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Globe size={18} color="#fff" />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 14 }}>Pesquisa de Preços no Mercado</div>
+                <div style={{ fontSize: 11, opacity: 0.8, marginTop: 1 }}>
+                  Busca automática via Google · Distribuidoras · Atacados · Fornecedores
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn" style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', fontSize: 11 }}
+                onClick={() => setShowApiCfg(c => !c)}>
+                <Settings2 size={11} /> {showApiCfg ? 'Fechar Config' : 'Configurar API'}
+              </button>
+              <button className="btn" style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', fontSize: 11 }}
+                onClick={pesquisarTodos}
+                disabled={!pesqApiKey || !pesqCseId || produtosHistorico.length === 0}>
+                <Search size={11} /> Pesquisar Todos
+              </button>
+            </div>
+          </div>
+
+          {/* ── Painel de configuração da API ─────────────────── */}
+          {showApiCfg && (
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Settings2 size={13} /> Configurar Google Custom Search API
+              </div>
+
+              {/* Instruções */}
+              <div style={{ padding: '10px 14px', background: 'rgba(15,76,129,0.07)', borderRadius: 8, marginBottom: 14, fontSize: 12, lineHeight: 1.7 }}>
+                <strong>Como configurar (gratuito — 100 buscas/dia):</strong>
+                <ol style={{ margin: '6px 0 0 16px', padding: 0 }}>
+                  <li>Acesse <a href="https://console.cloud.google.com" target="_blank" rel="noreferrer" style={{ color: '#0F4C81' }}>console.cloud.google.com</a> → Ative a <strong>Custom Search JSON API</strong></li>
+                  <li>Crie uma <strong>Chave de API</strong> (API key) e cole abaixo</li>
+                  <li>Acesse <a href="https://programmablesearchengine.google.com" target="_blank" rel="noreferrer" style={{ color: '#0F4C81' }}>programmablesearchengine.google.com</a> → crie um mecanismo pesquisando em <strong>toda a web</strong></li>
+                  <li>Copie o <strong>ID do mecanismo (cx)</strong> e cole abaixo</li>
+                </ol>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                <div className="fg">
+                  <label className="fl">Chave de API (API Key)</label>
+                  <input className="inp" style={{ fontSize: 12, fontFamily: 'monospace' }}
+                    placeholder="AIzaSy..." value={pesqApiKey}
+                    onChange={e => setPesqApiKey(e.target.value)} />
+                </div>
+                <div className="fg">
+                  <label className="fl">ID do Mecanismo (cx)</label>
+                  <input className="inp" style={{ fontSize: 12, fontFamily: 'monospace' }}
+                    placeholder="a1b2c3d4e5f..." value={pesqCseId}
+                    onChange={e => setPesqCseId(e.target.value)} />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button className="btn bo" style={{ fontSize: 11 }} onClick={() => setShowApiCfg(false)}>Cancelar</button>
+                <button className="btn bp" style={{ fontSize: 11 }} onClick={salvarApiConfig}
+                  disabled={!pesqApiKey.trim() || !pesqCseId.trim()}>
+                  <CheckCircle size={11} /> Salvar Configuração
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Aviso se API não configurada ─────────────────── */}
+          {(!pesqApiKey || !pesqCseId) && !showApiCfg && (
+            <div style={{ padding: '14px 18px', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 10, marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center' }}>
+              <AlertTriangle size={18} style={{ color: '#B45309', flexShrink: 0 }} />
+              <div style={{ fontSize: 13 }}>
+                <strong style={{ color: '#92400E' }}>API do Google não configurada.</strong>
+                {' '}<span style={{ color: '#92400E' }}>Clique em <strong>"Configurar API"</strong> acima para habilitar a pesquisa automática de preços em distribuidoras e atacados.</span>
+              </div>
+            </div>
+          )}
+
+          {/* ── Layout 2 colunas: produtos | salvos ─────────── */}
+          <div className="g2" style={{ alignItems: 'flex-start' }}>
+
+            {/* Coluna esquerda: produtos para pesquisar */}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--muted)', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>📦 PRODUTOS RASTREADOS ({produtosHistorico.length})</span>
+                <div style={{ position: 'relative' }}>
+                  <Search size={11} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+                  <input className="inp" style={{ paddingLeft: 24, fontSize: 11, width: 160 }}
+                    placeholder="Filtrar produto…" value={pesqBusca}
+                    onChange={e => setPesqBusca(e.target.value)} />
+                </div>
+              </div>
+
+              {produtosHistorico.length === 0 ? (
+                <div className="card" style={{ textAlign: 'center', padding: '30px 0' }}>
+                  <Package size={28} style={{ color: 'var(--muted)', opacity: 0.4, marginBottom: 8 }} />
+                  <div style={{ color: 'var(--muted)', fontSize: 13 }}>Nenhum produto no histórico</div>
+                  <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 4 }}>Sincronize as compras primeiro</div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {produtosHistorico
+                    .filter(p => !pesqBusca || p.nome.toLowerCase().includes(pesqBusca.toLowerCase()))
+                    .slice(0, 20)
+                    .map(prod => {
+                      const resultados = pesqResultados[prod.nome] || []
+                      const loading    = pesqLoadings[prod.nome]
+                      const erro       = pesqErros[prod.nome]
+                      const jaTemRef   = pesqSalvos.some(s => s.produto_nome.toLowerCase() === prod.nome.toLowerCase())
+                      return (
+                        <div key={prod.nome} className="card" style={{ padding: '10px 14px' }}>
+                          {/* Header do produto */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: resultados.length > 0 ? 10 : 0 }}>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+                                {prod.nome}
+                                {jaTemRef && <span title="Referência salva"><Star size={10} style={{ color: '#F59E0B', fill: '#F59E0B' }} /></span>}
+                              </div>
+                              <div style={{ fontSize: 10, color: 'var(--muted)' }}>
+                                Interno: {fmtR$(prod.preco_atual)} · {prod.ocorrencias} compras
+                              </div>
+                            </div>
+                            <button className="btn bo bsm"
+                              style={{ fontSize: 10, color: '#0F4C81', borderColor: '#0F4C81' }}
+                              onClick={() => pesquisarProduto(prod.nome)}
+                              disabled={loading || !pesqApiKey || !pesqCseId}>
+                              {loading
+                                ? <><RefreshCw size={10} className="spin" /> Buscando…</>
+                                : <><Search size={10} /> Pesquisar</>}
+                            </button>
+                          </div>
+
+                          {/* Erro */}
+                          {erro && (
+                            <div style={{ fontSize: 11, color: 'var(--danger)', padding: '5px 8px', background: '#FEE2E2', borderRadius: 6, marginTop: 6 }}>
+                              ❌ {erro}
+                            </div>
+                          )}
+
+                          {/* Resultados do Google */}
+                          {resultados.length > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {resultados.map((r, idx) => {
+                                const preco = extrairPreco(r.title + ' ' + r.snippet)
+                                const forn  = extrairFornecedor(r.title, r.link)
+                                return (
+                                  <div key={idx} style={{
+                                    padding: '8px 10px', borderRadius: 8,
+                                    border: '1px solid var(--border)',
+                                    background: preco ? 'rgba(16,185,129,0.04)' : 'var(--bg)',
+                                  }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontWeight: 600, fontSize: 11, color: '#0F4C81', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{r.title}</span>
+                                          <a href={r.link} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>
+                                            <ExternalLink size={9} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+                                          </a>
+                                        </div>
+                                        <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2, lineHeight: 1.4 }}>
+                                          {forn} · {r.snippet.slice(0, 120)}{r.snippet.length > 120 ? '…' : ''}
+                                        </div>
+                                      </div>
+                                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                        {preco ? (
+                                          <div style={{ fontSize: 13, fontWeight: 800, color: preco < prod.preco_atual ? 'var(--success)' : 'var(--danger)' }}>
+                                            {fmtR$(preco)}
+                                            {preco < prod.preco_atual && (
+                                              <div style={{ fontSize: 9, color: 'var(--success)', fontWeight: 600 }}>
+                                                -{((1 - preco / prod.preco_atual) * 100).toFixed(0)}% vs interno
+                                              </div>
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <div style={{ fontSize: 10, color: 'var(--muted)' }}>preço não<br/>identificado</div>
+                                        )}
+                                        <button className="btn bo bsm"
+                                          style={{ fontSize: 9, marginTop: 4, padding: '2px 7px', color: 'var(--success)', borderColor: 'var(--success)' }}
+                                          onClick={() => salvarReferencia(prod.nome, r)}>
+                                          <Star size={9} /> Salvar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                </div>
+              )}
+            </div>
+
+            {/* Coluna direita: referências salvas */}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
+                ⭐ REFERÊNCIAS SALVAS ({pesqSalvos.length})
+              </div>
+              {pesqSalvos.length === 0 ? (
+                <div className="card" style={{ textAlign: 'center', padding: '30px 0' }}>
+                  <Star size={28} style={{ color: 'var(--muted)', opacity: 0.4, marginBottom: 8 }} />
+                  <div style={{ color: 'var(--muted)', fontSize: 13 }}>Nenhuma referência salva ainda</div>
+                  <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 4 }}>
+                    Pesquise um produto e clique em "Salvar" no resultado
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {pesqSalvos.map(s => {
+                    const prodInterno = produtosHistorico.find(p =>
+                      p.nome.toLowerCase() === s.produto_nome.toLowerCase()
+                    )
+                    const diff = prodInterno && s.preco_extraido
+                      ? ((s.preco_extraido - prodInterno.preco_atual) / prodInterno.preco_atual) * 100
+                      : null
+                    return (
+                      <div key={s.id} className="card" style={{ padding: '10px 14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 12 }}>{s.produto_nome}</div>
+                            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
+                              {s.fornecedor_encontrado} · {fmtData(s.data_pesquisa)}
+                            </div>
+                            {s.titulo_resultado && (
+                              <div style={{ fontSize: 10, color: '#0F4C81', marginTop: 3, display: 'flex', alignItems: 'center', gap: 3 }}>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{s.titulo_resultado}</span>
+                                {s.url_resultado && (
+                                  <a href={s.url_resultado} target="_blank" rel="noreferrer">
+                                    <ExternalLink size={8} />
+                                  </a>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            {s.preco_extraido ? (
+                              <>
+                                <div style={{ fontSize: 14, fontWeight: 800, color: diff !== null && diff < 0 ? 'var(--success)' : diff !== null && diff > 5 ? 'var(--danger)' : 'var(--text)' }}>
+                                  {fmtR$(s.preco_extraido)}
+                                </div>
+                                {diff !== null && (
+                                  <div style={{ fontSize: 9, fontWeight: 700, color: diff < 0 ? 'var(--success)' : 'var(--danger)' }}>
+                                    {diff > 0 ? '+' : ''}{diff.toFixed(1)}% vs interno
+                                  </div>
+                                )}
+                                {prodInterno && (
+                                  <div style={{ fontSize: 9, color: 'var(--muted)' }}>Interno: {fmtR$(prodInterno.preco_atual)}</div>
+                                )}
+                              </>
+                            ) : (
+                              <div style={{ fontSize: 10, color: 'var(--muted)' }}>Sem preço</div>
+                            )}
+                            <button className="btn" style={{ fontSize: 9, padding: '2px 6px', marginTop: 5, background: 'transparent', border: '1px solid var(--border)', color: 'var(--muted)' }}
+                              onClick={() => excluirReferencia(s.id)}
+                              title="Remover referência">
+                              <Trash2 size={9} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

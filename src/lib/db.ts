@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado } from '../types/database'
 
 const db = supabase as any
 
@@ -1614,4 +1614,28 @@ export async function registrarEAnalisarCompra(opts: {
   }).catch(e => { console.error('audit insert', e); return undefined })
 
   return { historico, auditoria }
+}
+
+// ── Pesquisa de Mercado (Google Custom Search) ────────────────
+
+export async function fetchComprasPesquisaMercado(
+  loja?: string,
+  produto?: string,
+): Promise<ComprasPesquisaMercado[]> {
+  let q = db.from('compras_pesquisa_mercado').select('*').order('data_pesquisa', { ascending: false }).limit(200)
+  if (loja)    q = q.eq('loja', loja)
+  if (produto) q = q.ilike('produto_nome', `%${produto}%`)
+  return sdkCall<ComprasPesquisaMercado[]>(q)
+}
+
+export async function insertComprasPesquisaMercado(
+  p: Omit<ComprasPesquisaMercado, 'id' | 'created_at'>,
+): Promise<ComprasPesquisaMercado> {
+  return sdkCall<ComprasPesquisaMercado>(
+    db.from('compras_pesquisa_mercado').insert(p).select().single()
+  )
+}
+
+export async function deleteComprasPesquisaMercado(id: string): Promise<void> {
+  await sdkCall<null>(db.from('compras_pesquisa_mercado').delete().eq('id', id))
 }

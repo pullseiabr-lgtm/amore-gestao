@@ -375,6 +375,20 @@ export interface ComprasJustificativa {
   created_at: string
 }
 
+export interface ComprasPesquisaMercado {
+  id: string
+  produto_nome: string
+  query_usada: string | null
+  titulo_resultado: string | null
+  url_resultado: string | null
+  snippet: string | null
+  preco_extraido: number | null
+  fornecedor_encontrado: string | null
+  data_pesquisa: string
+  loja: string
+  created_at: string
+}
+
 // ── Fornecedores ─────────────────────────────────────────────
 
 export interface FornecedorAvaliacao {
