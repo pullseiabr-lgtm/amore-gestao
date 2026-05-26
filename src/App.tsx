@@ -154,6 +154,61 @@ export default function App() {
             <PageContent page={page} />
           </main>
         </div>
+
+        {/* ── Botão flutuante Liz ── */}
+        {page !== 'agente-liz' && (
+          <button
+            onClick={() => navigate('agente-liz')}
+            title="Abrir Liz — Agente IA"
+            style={{
+              position: 'fixed',
+              bottom: 24,
+              right: 24,
+              width: 56,
+              height: 56,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 26,
+              boxShadow: '0 4px 20px rgba(124,58,237,0.5)',
+              zIndex: 9999,
+              transition: 'transform .15s, box-shadow .15s',
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.12)'
+              ;(e.currentTarget as HTMLButtonElement).style.boxShadow = '0 6px 28px rgba(124,58,237,0.7)'
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'
+              ;(e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 20px rgba(124,58,237,0.5)'
+            }}
+          >
+            🤖
+            {/* Pulsação online */}
+            <span style={{
+              position: 'absolute',
+              top: 2,
+              right: 2,
+              width: 12,
+              height: 12,
+              borderRadius: '50%',
+              background: '#22c55e',
+              border: '2px solid #fff',
+              animation: 'liz-pulse 2s ease-in-out infinite',
+            }} />
+          </button>
+        )}
+
+        <style>{`
+          @keyframes liz-pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.3); opacity: .7; }
+          }
+        `}</style>
       </div>
     </LojaProvider>
   )

@@ -137,9 +137,13 @@ export default function AgenteLizPage() {
   const { loja } = useLoja()
   const { user } = useAuth()
 
-  // Config
-  const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem('liz_gemini_key') || '')
-  const [braveKey,  setBraveKey]  = useState(() => localStorage.getItem('liz_brave_key')  || '')
+  // Config — mesmas chaves do ComprasAgentePage para não pedir config de novo
+  const [geminiKey, setGeminiKey] = useState(
+    () => localStorage.getItem('gemini_api_key') || (import.meta.env.VITE_GEMINI_API_KEY as string) || ''
+  )
+  const [braveKey, setBraveKey] = useState(
+    () => localStorage.getItem('brave_api_key') || (import.meta.env.VITE_BRAVE_API_KEY as string) || ''
+  )
   const [showConfig, setShowConfig] = useState(false)
 
   // Tabs
@@ -171,10 +175,10 @@ export default function AgenteLizPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [msgs])
 
-  // Save keys
+  // Save keys — mesma key do ComprasAgentePage para compartilhar
   useEffect(() => {
-    if (geminiKey) localStorage.setItem('liz_gemini_key', geminiKey)
-    if (braveKey)  localStorage.setItem('liz_brave_key',  braveKey)
+    if (geminiKey) localStorage.setItem('gemini_api_key', geminiKey)
+    if (braveKey)  localStorage.setItem('brave_api_key',  braveKey)
   }, [geminiKey, braveKey])
 
   // Load system context on mount

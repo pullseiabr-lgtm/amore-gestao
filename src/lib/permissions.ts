@@ -24,6 +24,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionsMap> = {
     ruptura:            { view: true, create: true, edit: true, delete: true, export: true },
     market:             { view: true, create: true, edit: true, delete: true, export: true },
     'compras-agente':   { view: true, create: true, edit: true, delete: true, export: true },
+    'agente-liz':       { view: true, create: true, edit: true, delete: true, export: true },
   },
   admin: {
     dashboard:          { view: true, create: true, edit: true, delete: true, export: true },
@@ -46,6 +47,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionsMap> = {
     ruptura:            { view: true, create: true, edit: true, delete: true, export: true },
     market:             { view: true, create: true, edit: true, delete: true, export: true },
     'compras-agente':   { view: true, create: true, edit: true, delete: true, export: true },
+    'agente-liz':       { view: true, create: true, edit: true, delete: true, export: true },
   },
   manager: {
     dashboard:          { view: true, create: false, edit: false, delete: false, export: true },
@@ -68,6 +70,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionsMap> = {
     ruptura:            { view: true, create: true,  edit: true,  delete: false, export: true },
     market:             { view: true, create: true,  edit: true,  delete: false, export: true },
     'compras-agente':   { view: true, create: true,  edit: true,  delete: false, export: true },
+    'agente-liz':       { view: true, create: true,  edit: true,  delete: false, export: true },
   },
   user: {
     dashboard:          { view: true,  create: false, edit: false, delete: false, export: false },
@@ -88,6 +91,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionsMap> = {
     ruptura:            { view: true,  create: true,  edit: false, delete: false, export: false },
     market:             { view: true,  create: false, edit: false, delete: false, export: false },
     'compras-agente':   { view: true,  create: false, edit: false, delete: false, export: false },
+    'agente-liz':       { view: true,  create: false, edit: false, delete: false, export: false },
   },
   viewer: {
     dashboard:          { view: true,  create: false, edit: false, delete: false, export: false },
@@ -105,5 +109,6 @@ export const ROLE_PERMISSIONS: Record<string, PermissionsMap> = {
     ruptura:            { view: true,  create: false, edit: false, delete: false, export: false },
     market:             { view: true,  create: false, edit: false, delete: false, export: false },
     'compras-agente':   { view: true,  create: false, edit: false, delete: false, export: false },
+    'agente-liz':       { view: true,  create: false, edit: false, delete: false, export: false },
   },
 }
