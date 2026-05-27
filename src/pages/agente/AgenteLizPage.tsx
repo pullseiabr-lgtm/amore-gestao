@@ -77,14 +77,55 @@ async function chamarGemini(
 // ── Brave Search helper ──────────────────────────────────────────
 interface BraveResult { title: string; url: string; description: string }
 
+// Sites de marketplace que não são fornecedores reais
+const NOISE_DOMAINS = ['mercadolivre', 'amazon', 'shopee', 'americanas', 'magalu', 'ifood', 'rappi', 'ubereat']
+
+function isNoiseDomain(url: string) {
+  try { return NOISE_DOMAINS.some(d => new URL(url).hostname.includes(d)) }
+  catch { return false }
+}
+
+// Gera variações de busca do mais específico para o mais genérico
+function gerarTermosBusca(query: string): string[] {
+  const base = query.trim()
+  const palavras = base.toLowerCase().split(/\s+/)
+
+  const queries: string[] = [
+    // 1ª tentativa: busca direta, sem qualificadores excessivos
+    `distribuidora atacado ${base}`,
+    // 2ª tentativa: adiciona "food service" para atrair fornecedores B2B
+    `fornecedor ${base} food service restaurante`,
+  ]
+
+  // Se o termo tem 3+ palavras (ex: "filé de peito de frango"),
+  // tenta com as últimas 2 palavras mais significativas como fallback
+  if (palavras.length >= 3) {
+    const genericTerm = palavras.slice(-2).join(' ')
+    queries.push(`distribuidora atacado ${genericTerm}`)
+    queries.push(`fornecedor ${genericTerm} atacado CNPJ`)
+  } else if (palavras.length === 2) {
+    queries.push(`fornecedor atacado ${base} CNPJ`)
+  }
+
+  return queries
+}
+
 async function buscarFornecedores(query: string, braveKey: string): Promise<BraveResult[]> {
-  const q = `fornecedor distribuidora atacado ${query} contato telefone CNPJ`
-  const params = new URLSearchParams({ q })
-  if (braveKey) params.set('t', braveKey)
-  const r = await fetch(`/api/brave-search?${params}`)
-  const data = await r.json()
-  if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`)
-  return data?.web?.results || []
+  const termos = gerarTermosBusca(query)
+
+  for (const q of termos) {
+    const params = new URLSearchParams({ q })
+    if (braveKey) params.set('t', braveKey)
+    const r = await fetch(`/api/brave-search?${params}`)
+    const data = await r.json()
+    if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`)
+    const results: BraveResult[] = data?.web?.results || []
+    const filtered = results.filter(res => res.url && !isNoiseDomain(res.url))
+    if (filtered.length > 0) return filtered
+    // Resultado vazio → tenta próxima variação de query
+  }
+
+  return []
 }
 
 function extrairTelefone(texto: string): string | null {
@@ -169,6 +210,7 @@ export default function AgenteLizPage() {
   const [buscando, setBuscando] = useState(false)
   const [registrando, setRegistrando] = useState(false)
   const [registradoMsg, setRegistradoMsg] = useState('')
+  const [buscaErro, setBuscaErro] = useState('')
 
   // Inteligência
   const [insights, setInsights] = useState<InsightBlock[]>([])
@@ -345,15 +387,29 @@ INSTRUÇÕES:
     setBuscando(true)
     setProspectos([])
     setRegistradoMsg('')
+    setBuscaErro('')
     try {
       const results = await buscarFornecedores(buscaQuery, braveKey)
-      const prospects = results
-        .filter(r => r.url && !r.url.includes('mercadolivre') && !r.url.includes('amazon'))
-        .slice(0, 8)
-        .map(r => prospectFromResult(r, buscaQuery))
-      setProspectos(prospects)
+      if (results.length === 0) {
+        setBuscaErro(
+          `Nenhum fornecedor encontrado para "${buscaQuery}". ` +
+          `Tente termos mais genéricos — ex: "frango congelado" em vez de "filé de peito de frango", ` +
+          `ou "laticínios" em vez de "muçarela fatiada".`
+        )
+      } else {
+        setProspectos(results.slice(0, 8).map(r => prospectFromResult(r, buscaQuery)))
+      }
     } catch (e: any) {
-      setProspectos([])
+      const msg: string = e.message || 'Erro desconhecido'
+      if (msg.includes('401') || msg.includes('403') || msg.toLowerCase().includes('unauthorized')) {
+        setBuscaErro('❌ Brave Search: chave de API inválida ou expirada. Clique em "Config" e verifique a chave.')
+      } else if (msg.includes('429') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('rate limit')) {
+        setBuscaErro('❌ Limite de requisições da Brave Search atingido. Aguarde alguns minutos e tente novamente.')
+      } else if (msg.includes('Failed to fetch') || msg.toLowerCase().includes('network')) {
+        setBuscaErro('❌ Erro de rede ao contatar a API. Verifique sua conexão ou tente novamente.')
+      } else {
+        setBuscaErro(`❌ Erro ao buscar fornecedores: ${msg}`)
+      }
     } finally {
       setBuscando(false)
     }
@@ -1061,7 +1117,24 @@ Seja direto e objetivo. Use emojis para facilitar leitura.
             </>
           )}
 
-          {!buscando && prospectos.length === 0 && buscaQuery && (
+          {!buscando && buscaErro && (
+            <div style={{
+              background: '#fef2f2', border: '1px solid #fca5a5',
+              borderRadius: 10, padding: '14px 16px',
+              fontSize: 13, color: '#991b1b', lineHeight: 1.6,
+              display: 'flex', gap: 10, alignItems: 'flex-start',
+            }}>
+              <AlertTriangle size={16} style={{ color: '#dc2626', flexShrink: 0, marginTop: 1 }} />
+              <div>
+                <strong>Atenção:</strong> {buscaErro}
+                <div style={{ marginTop: 8, fontSize: 12, color: '#b91c1c' }}>
+                  💡 Dica: tente "frango atacado", "laticínios distribuidora", "carnes food service" para melhores resultados.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!buscando && prospectos.length === 0 && buscaQuery && !buscaErro && (
             <div style={{
               textAlign: 'center', padding: 40, color: 'var(--muted)',
               fontSize: 14, border: '1px dashed var(--border)', borderRadius: 10,

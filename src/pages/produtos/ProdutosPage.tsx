@@ -260,7 +260,7 @@ function FormProduto({ loja, produto, onSalvo, onVoltar }: {
     const e: Partial<ProdutoForm> = {}
     if (!form.codigo_interno.trim()) e.codigo_interno = 'Obrigatório'
     if (!form.nome.trim())           e.nome = 'Obrigatório'
-    if (!form.categoria_id)          e.categoria_id = 'Selecione uma categoria'
+    // categoria_id é recomendada mas não bloqueia o salvamento
     if (!form.unidade)               e.unidade = 'Obrigatório'
     setErros(e)
     return Object.keys(e).length === 0
@@ -385,20 +385,24 @@ function FormProduto({ loja, produto, onSalvo, onVoltar }: {
           {/* Categoria */}
           <div className="fg">
             <label className="fl" style={{ display:'flex', justifyContent:'space-between' }}>
-              <span>Categoria <span className="rq">*</span></span>
+              <span>Categoria</span>
               <button onClick={() => setModalCat(true)} style={{ fontSize:10, color:'var(--bordo)', border:'none', background:'none', cursor:'pointer', fontWeight:700 }}>
                 + Nova categoria
               </button>
             </label>
-            <select className={`sel${erros.categoria_id?' err':''}`}
+            <select className="sel"
               value={form.categoria_id}
               onChange={e => selecCateg(e.target.value)}>
-              <option value="">Selecione a categoria</option>
+              <option value="">— Sem categoria —</option>
               {categorias.filter(c => c.ativo).map(c => (
                 <option key={c.id} value={c.id}>{c.nome}</option>
               ))}
             </select>
-            {erros.categoria_id && <span style={{ fontSize:11, color:'var(--danger)' }}>{erros.categoria_id}</span>}
+            {categorias.filter(c => c.ativo).length === 0 && (
+              <span style={{ fontSize:11, color:'var(--muted)' }}>
+                Nenhuma categoria cadastrada. Clique em <strong>+ Nova categoria</strong> para criar.
+              </span>
+            )}
           </div>
 
           {/* Gramatura + Unidade */}
