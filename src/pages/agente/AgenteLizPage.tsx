@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   Send, Search, Plus, Sparkles, Key,
   Phone, Mail, MapPin, CheckCircle,
   Loader2,
   MessageSquare, Settings2, ExternalLink,
-  Globe, Brain, Target,
+  Globe, Brain, Target, ShoppingCart,
+  TrendingUp, TrendingDown, AlertTriangle, PackageX,
 } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -14,7 +15,9 @@ import {
   fetchProdutos,
   fetchComprasListas,
   fetchRequisicoes,
+  fetchListaHistoricoPrecos,
 } from '../../lib/db'
+import type { ListaHistoricoPreco } from '../../types/database'
 
 // ── Types ────────────────────────────────────────────────────────
 interface ChatMsg {
@@ -42,7 +45,7 @@ interface InsightBlock {
   cor: string
 }
 
-type Tab = 'chat' | 'prospeccao' | 'inteligencia'
+type Tab = 'chat' | 'prospeccao' | 'inteligencia' | 'compras-ia'
 
 // ── Gemini helper ────────────────────────────────────────────────
 async function chamarGemini(
@@ -170,6 +173,12 @@ export default function AgenteLizPage() {
   const [insights, setInsights] = useState<InsightBlock[]>([])
   const [gerandoInsights, setGerandoInsights] = useState(false)
 
+  // Compras IA
+  const [rawProdutos, setRawProdutos] = useState<{ nome: string; estoque_atual: number; estoque_minimo: number; unidade: string }[]>([])
+  const [historicoPrecos, setHistoricoPrecos] = useState<ListaHistoricoPreco[]>([])
+  const [comprasIaLoading, setComprasIaLoading] = useState(false)
+  const [comprasIaAnalise, setComprasIaAnalise] = useState('')
+
   // Scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -184,12 +193,15 @@ export default function AgenteLizPage() {
   // Load system context on mount
   const loadContext = useCallback(async () => {
     try {
-      const [fornecedores, produtos, comprasListas, requisicoes] = await Promise.all([
+      const [fornecedores, produtos, comprasListas, requisicoes, historico] = await Promise.all([
         fetchFornecedores(loja).catch(() => []),
         fetchProdutos(loja).catch(() => []),
         fetchComprasListas(loja).catch(() => []),
         fetchRequisicoes(loja).catch(() => []),
+        fetchListaHistoricoPrecos(loja).catch(() => []),
       ])
+      setRawProdutos(produtos as { nome: string; estoque_atual: number; estoque_minimo: number; unidade: string }[])
+      setHistoricoPrecos(historico)
 
       const estoqueCritico = produtos
         .filter(p => p.estoque_atual <= p.estoque_minimo)
@@ -452,6 +464,86 @@ Retorne um array JSON com 5 objetos. Apenas JSON, sem markdown.
     }
   }
 
+  // ── Compras IA ────────────────────────────────────────────────
+  const comprasIaData = useMemo(() => {
+    // Agrupar histórico por produto
+    const porProduto: Record<string, ListaHistoricoPreco[]> = {}
+    historicoPrecos.forEach(h => {
+      if (!porProduto[h.produto_nome]) porProduto[h.produto_nome] = []
+      porProduto[h.produto_nome].push(h)
+    })
+
+    // Desvios de preço: último preço vs média histórica
+    const desvios: { nome: string; ultimo: number; media: number; desvio: number; fornecedor: string | null }[] = []
+    Object.entries(porProduto).forEach(([nome, registros]) => {
+      if (registros.length < 2) return
+      const sorted = [...registros].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      const ultimo = sorted[0].preco
+      const anteriores = sorted.slice(1)
+      const media = anteriores.reduce((s, r) => s + r.preco, 0) / anteriores.length
+      const desvio = media > 0 ? ((ultimo - media) / media) * 100 : 0
+      if (desvio >= 10) {
+        desvios.push({ nome, ultimo, media, desvio, fornecedor: sorted[0].fornecedor })
+      }
+    })
+    desvios.sort((a, b) => b.desvio - a.desvio)
+
+    // Estoque em risco
+    const emRisco = rawProdutos
+      .filter(p => p.estoque_minimo > 0 && p.estoque_atual <= p.estoque_minimo)
+      .sort((a, b) => (a.estoque_atual / Math.max(a.estoque_minimo, 1)) - (b.estoque_atual / Math.max(b.estoque_minimo, 1)))
+
+    const zerados = rawProdutos.filter(p => p.estoque_atual === 0)
+
+    // Sugestões de compra: estoque crítico sem compra nos últimos 7 dias
+    const sete = new Date(); sete.setDate(sete.getDate() - 7)
+    const compradosRecentes = new Set(
+      historicoPrecos
+        .filter(h => new Date(h.created_at) >= sete)
+        .map(h => h.produto_nome.toLowerCase())
+    )
+    const sugestoes = emRisco
+      .filter(p => !compradosRecentes.has(p.nome.toLowerCase()))
+      .slice(0, 10)
+
+    return { desvios: desvios.slice(0, 15), emRisco: emRisco.slice(0, 10), zerados, sugestoes }
+  }, [historicoPrecos, rawProdutos])
+
+  const gerarAnaliseComprasIA = async () => {
+    if (!geminiKey) { setShowConfig(true); return }
+    setComprasIaLoading(true)
+    setComprasIaAnalise('')
+    const { desvios, emRisco, zerados } = comprasIaData
+    const prompt = `
+Analise os dados de compras abaixo e gere um relatório executivo de Inteligência de Compras.
+
+DESVIOS DE PREÇO DETECTADOS (${desvios.length}):
+${desvios.slice(0, 8).map(d => `- ${d.nome}: último R$${d.ultimo.toFixed(2)} vs média R$${d.media.toFixed(2)} (+${d.desvio.toFixed(0)}%)`).join('\n') || 'Nenhum desvio significativo'}
+
+ESTOQUE EM RISCO (${emRisco.length} itens abaixo do mínimo):
+${emRisco.slice(0, 8).map(p => `- ${p.nome}: atual ${p.estoque_atual} / mín ${p.estoque_minimo} ${p.unidade}`).join('\n') || 'Nenhum'}
+
+ESTOQUE ZERADO (${zerados.length} itens):
+${zerados.slice(0, 8).map(p => p.nome).join(', ') || 'Nenhum'}
+
+Gere:
+1. Diagnóstico dos 3 principais riscos
+2. Ações imediatas recomendadas (lista com prioridade)
+3. Oportunidades de negociação
+4. Alerta de possível desperdício ou compra excessiva
+
+Seja direto e objetivo. Use emojis para facilitar leitura.
+    `.trim()
+    try {
+      const resp = await chamarGemini(buildSystemPrompt(), [{ role: 'user', parts: [{ text: prompt }] }], geminiKey)
+      setComprasIaAnalise(resp)
+    } catch (e: any) {
+      setComprasIaAnalise(`❌ Erro: ${e.message}`)
+    } finally {
+      setComprasIaLoading(false)
+    }
+  }
+
   // ── Quick actions ─────────────────────────────────────────────
   const QUICK = [
     { label: '📦 Estoque crítico', q: 'Quais produtos estão em estoque crítico e o que devo fazer urgente?' },
@@ -558,11 +650,12 @@ Retorne um array JSON com 5 objetos. Apenas JSON, sem markdown.
       )}
 
       {/* ── Tabs ── */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: 'var(--card)', borderRadius: 10, padding: 4 }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: 'var(--card)', borderRadius: 10, padding: 4, flexWrap: 'wrap' }}>
         {([
-          { id: 'chat',        icon: <MessageSquare size={14} />, label: '💬 Chat com Liz' },
+          { id: 'chat',        icon: <MessageSquare size={14} />, label: '💬 Chat' },
           { id: 'prospeccao',  icon: <Search size={14} />,        label: '🔍 Prospecção' },
           { id: 'inteligencia',icon: <Brain size={14} />,         label: '📊 Inteligência' },
+          { id: 'compras-ia',  icon: <ShoppingCart size={14} />,  label: '🧠 Compras IA' },
         ] as { id: Tab; icon: React.ReactNode; label: string }[]).map(t => (
           <button
             key={t.id}
@@ -969,6 +1062,120 @@ Retorne um array JSON com 5 objetos. Apenas JSON, sem markdown.
                 Clique em <strong>"Gerar Análise"</strong> para que Liz produza insights gerenciais
                 baseados nos dados reais do sistema.
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════
+          TAB: COMPRAS IA
+      ══════════════════════════════════════════════════ */}
+      {tab === 'compras-ia' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* KPI strip */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+            {[
+              { label: 'Desvios de Preço', val: comprasIaData.desvios.length, color: '#ef4444', icon: <TrendingUp size={18} /> },
+              { label: 'Estoque em Risco', val: comprasIaData.emRisco.length,  color: '#f59e0b', icon: <AlertTriangle size={18} /> },
+              { label: 'Estoque Zerado',   val: comprasIaData.zerados.length,  color: '#dc2626', icon: <PackageX size={18} /> },
+              { label: 'Comprar Urgente',  val: comprasIaData.sugestoes.length,color: '#8b5cf6', icon: <ShoppingCart size={18} /> },
+            ].map(k => (
+              <div key={k.label} style={{ background: 'var(--card)', border: `1px solid ${k.color}30`, borderLeft: `3px solid ${k.color}`, borderRadius: 10, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: k.color }}>{k.val}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{k.label}</div>
+                </div>
+                <div style={{ color: k.color, opacity: 0.5 }}>{k.icon}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Botão análise IA */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              onClick={gerarAnaliseComprasIA}
+              disabled={comprasIaLoading}
+              style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: comprasIaLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 13, opacity: comprasIaLoading ? 0.7 : 1 }}
+            >
+              {comprasIaLoading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Brain size={14} />}
+              {comprasIaLoading ? 'Analisando...' : 'Gerar Análise IA'}
+            </button>
+          </div>
+
+          {/* Análise IA */}
+          {comprasIaAnalise && (
+            <div style={{ background: 'var(--card)', border: '1px solid #7c3aed40', borderLeft: '4px solid #7c3aed', borderRadius: 10, padding: 16, fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>
+              <div style={{ fontWeight: 700, color: '#7c3aed', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Brain size={14} /> Análise de Compras — Liz
+              </div>
+              {comprasIaAnalise}
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            {/* Desvios de Preço */}
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6, color: '#ef4444' }}>
+                <TrendingUp size={14} /> Desvios de Preço (&gt;10%)
+              </div>
+              {comprasIaData.desvios.length === 0
+                ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: '20px 0' }}>Nenhum desvio significativo</div>
+                : comprasIaData.desvios.map((d, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: i < comprasIaData.desvios.length - 1 ? '1px solid var(--border)' : 'none', fontSize: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.nome}</div>
+                      <div style={{ color: 'var(--muted)', fontSize: 11 }}>Média: R${d.media.toFixed(2)} · Último: R${d.ultimo.toFixed(2)}</div>
+                    </div>
+                    <span style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 12, padding: '2px 8px', fontSize: 11, fontWeight: 700, flexShrink: 0, marginLeft: 8 }}>+{d.desvio.toFixed(0)}%</span>
+                  </div>
+                ))
+              }
+            </div>
+
+            {/* Estoque em Risco */}
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6, color: '#f59e0b' }}>
+                <AlertTriangle size={14} /> Estoque em Risco
+              </div>
+              {comprasIaData.emRisco.length === 0
+                ? <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: '20px 0' }}>Estoque normalizado ✅</div>
+                : comprasIaData.emRisco.map((p, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: i < comprasIaData.emRisco.length - 1 ? '1px solid var(--border)' : 'none', fontSize: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nome}</div>
+                      <div style={{ color: 'var(--muted)', fontSize: 11 }}>Mín: {p.estoque_minimo} {p.unidade}</div>
+                    </div>
+                    <span style={{ background: p.estoque_atual === 0 ? '#fee2e2' : '#fef3c7', color: p.estoque_atual === 0 ? '#dc2626' : '#d97706', borderRadius: 12, padding: '2px 8px', fontSize: 11, fontWeight: 700, flexShrink: 0, marginLeft: 8 }}>
+                      {p.estoque_atual === 0 ? 'ZERADO' : `${p.estoque_atual}`}
+                    </span>
+                  </div>
+                ))
+              }
+            </div>
+          </div>
+
+          {/* Sugestões de Compra */}
+          {comprasIaData.sugestoes.length > 0 && (
+            <div style={{ background: 'var(--card)', border: '1px solid #8b5cf640', borderLeft: '4px solid #8b5cf6', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, color: '#8b5cf6', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <ShoppingCart size={14} /> Comprar com Urgência — sem compra nos últimos 7 dias
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {comprasIaData.sugestoes.map((p, i) => (
+                  <span key={i} style={{ background: '#ede9fe', color: '#6d28d9', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 600 }}>
+                    {p.nome} ({p.estoque_atual}/{p.estoque_minimo} {p.unidade})
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {historicoPrecos.length === 0 && rawProdutos.length === 0 && (
+            <div style={{ textAlign: 'center', padding: 48, color: 'var(--muted)', fontSize: 14, border: '1px dashed var(--border)', borderRadius: 10 }}>
+              <TrendingDown size={36} style={{ opacity: 0.3, marginBottom: 8 }} />
+              <div>Nenhum dado de compras encontrado para {loja}</div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>Registre compras na Lista Padronizada para ativar a análise</div>
             </div>
           )}
         </div>

@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   CheckCircle, Circle, Plus, Trash2, Edit3, Check, X,
   ChefHat, ClipboardList, Package, AlertTriangle, Camera,
   Save, RefreshCw, Star, Clock, DollarSign, User,
+  BarChart2, TrendingUp, TrendingDown, Flame,
 } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import {
@@ -80,7 +81,7 @@ const STATUS_PROD = {
   concluido:  { lbl: 'Concluído',  cls: 'bg-g' },
 }
 
-type Tab = 'checklist' | 'producao' | 'desperdicio' | 'ficha' | 'solicitacoes'
+type Tab = 'checklist' | 'producao' | 'desperdicio' | 'ficha' | 'solicitacoes' | 'performance'
 
 // ── Componente Principal ─────────────────────────────────────
 
@@ -233,11 +234,12 @@ export default function CozinhaPage() {
       {/* Tabs */}
       <div className="tabs" style={{ marginBottom: 14 }}>
         {([
-          ['checklist', '✅ Checklists'],
-          ['producao', '🍧 Produção'],
+          ['checklist',   '✅ Checklists'],
+          ['producao',    '🍳 Produção'],
           ['desperdicio', '🗑️ Desperdício'],
-          ['ficha', '📋 Ficha Técnica'],
-          ['solicitacoes', '📋 Solicitações'],
+          ['ficha',       '📋 Ficha Técnica'],
+          ['solicitacoes','📨 Solicitações'],
+          ['performance', '📊 Performance'],
         ] as [Tab, string][]).map(([t, lbl]) => (
           <button key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => setTab(t)}>{lbl}</button>
         ))}
@@ -285,6 +287,9 @@ export default function CozinhaPage() {
           onUpdate={handleUpdateSolicitacao}
           onDelete={handleDeleteSolicitacao}
         />
+      )}
+      {tab === 'performance' && (
+        <PerformanceTab fichas={fichas} producao={producao} desperdicio={desperdicio} />
       )}
     </div>
   )
@@ -1436,6 +1441,120 @@ function SolicitacoesTab({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Tab Performance dos Pratos ────────────────────────────────
+
+type Classificacao = 'campea' | 'atencao' | 'baixa' | 'desperdicio'
+
+const CLASS_CONFIG: Record<Classificacao, { label: string; emoji: string; cor: string; bg: string }> = {
+  campea:      { label: 'Campeão',          emoji: '🏆', cor: '#16a34a', bg: '#dcfce7' },
+  atencao:     { label: 'Atenção',          emoji: '⚠️',  cor: '#d97706', bg: '#fef3c7' },
+  baixa:       { label: 'Baixa Saída',      emoji: '📉', cor: '#6366f1', bg: '#ede9fe' },
+  desperdicio: { label: 'Alto Desperdício', emoji: '🗑️', cor: '#ef4444', bg: '#fee2e2' },
+}
+
+function PerformanceTab({
+  fichas, producao, desperdicio,
+}: {
+  fichas: FichaTecnica[]
+  producao: ProducaoItem[]
+  desperdicio: DespItem[]
+}) {
+  const performance = useMemo(() => {
+    if (fichas.length === 0) return []
+    return fichas.map(f => {
+      const nome = f.nome.toLowerCase()
+      const vezesProduzido = producao.filter(p =>
+        p.prato.toLowerCase().includes(nome) || nome.includes(p.prato.toLowerCase())
+      ).length
+      const despTotal = desperdicio
+        .filter(d => d.item.toLowerCase().includes(nome) || nome.includes(d.item.toLowerCase()))
+        .reduce((s, d) => s + parseFloat(d.qtd || '0'), 0)
+      const custo  = parseFloat(f.custo_total || '0')
+      const margem = parseFloat(f.margem || '0')
+      let classificacao: Classificacao = 'atencao'
+      if (despTotal > 5)                                              classificacao = 'desperdicio'
+      else if (vezesProduzido === 0)                                  classificacao = 'baixa'
+      else if (vezesProduzido >= 3 && despTotal < 2 && margem > 30)  classificacao = 'campea'
+      return { nome: f.nome, vezesProduzido, despTotal, custo, margem, tempoPrep: f.tempo_preparo || '—', classificacao }
+    }).sort((a, b) => {
+      const order: Classificacao[] = ['campea', 'atencao', 'desperdicio', 'baixa']
+      return order.indexOf(a.classificacao) - order.indexOf(b.classificacao)
+    })
+  }, [fichas, producao, desperdicio])
+
+  const counts = {
+    campea:      performance.filter(p => p.classificacao === 'campea').length,
+    atencao:     performance.filter(p => p.classificacao === 'atencao').length,
+    baixa:       performance.filter(p => p.classificacao === 'baixa').length,
+    desperdicio: performance.filter(p => p.classificacao === 'desperdicio').length,
+  }
+
+  if (fichas.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: 60, color: 'var(--muted)', fontSize: 14 }}>
+        <BarChart2 size={40} style={{ opacity: 0.2, marginBottom: 12 }} />
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Nenhuma Ficha Técnica cadastrada</div>
+        <div style={{ fontSize: 13 }}>Cadastre fichas técnicas na aba <strong>Ficha Técnica</strong> para ativar a análise.</div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+        {(Object.entries(CLASS_CONFIG) as [Classificacao, typeof CLASS_CONFIG[Classificacao]][]).map(([k, c]) => (
+          <div key={k} style={{ background: c.bg, border: `1px solid ${c.cor}40`, borderRadius: 10, padding: '12px 14px', textAlign: 'center' }}>
+            <div style={{ fontSize: 22 }}>{c.emoji}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: c.cor }}>{counts[k as Classificacao]}</div>
+            <div style={{ fontSize: 11, color: c.cor, fontWeight: 600 }}>{c.label}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+        {performance.map((p, i) => {
+          const cfg = CLASS_CONFIG[p.classificacao]
+          return (
+            <div key={i} style={{ background: 'var(--card)', border: `1px solid ${cfg.cor}30`, borderLeft: `4px solid ${cfg.cor}`, borderRadius: 10, padding: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, flex: 1, marginRight: 8 }}>{p.nome}</div>
+                <span style={{ background: cfg.bg, color: cfg.cor, borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                  {cfg.emoji} {cfg.label}
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--muted)' }}>
+                  <Flame size={11} style={{ color: '#f59e0b' }} /> Produzido {p.vezesProduzido}×
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--muted)' }}>
+                  <Clock size={11} style={{ color: '#6366f1' }} /> {p.tempoPrep}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--muted)' }}>
+                  <DollarSign size={11} style={{ color: '#16a34a' }} /> R${p.custo.toFixed(2)}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--muted)' }}>
+                  {p.margem >= 40
+                    ? <TrendingUp size={11} style={{ color: '#16a34a' }} />
+                    : <TrendingDown size={11} style={{ color: '#ef4444' }} />
+                  }
+                  Margem {p.margem.toFixed(0)}%
+                </div>
+              </div>
+              {p.despTotal > 0 && (
+                <div style={{ marginTop: 8, background: '#fee2e220', borderRadius: 6, padding: '4px 8px', fontSize: 11, color: '#dc2626', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <AlertTriangle size={10} /> Desperdício: {p.despTotal.toFixed(1)} un.
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center' }}>
+        Classif.: 3+ produções + margem &gt;30% + desperdício &lt;2 = 🏆 Campeão
+      </div>
     </div>
   )
 }
