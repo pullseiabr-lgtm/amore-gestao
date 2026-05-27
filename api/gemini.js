@@ -13,10 +13,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Método não permitido' })
   }
 
-  // Prioridade: env var server-side SEMPRE tem precedência sobre a chave do cliente.
-  // Isso evita que chaves antigas/inválidas no localStorage do browser causem erro.
+  // Prioridade: env var server-side > cliente (evita chave antiga/inválida do localStorage)
+  // VITE_GEMINI_API_KEY é plain type — disponível no process.env em alguns contextos Vercel
   const serverKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY
-  const clientKey = req.query.k
+  const clientKey = req.query.k  // chave enviada pelo browser (do bundle ou localStorage)
   const apiKey = serverKey || clientKey
 
   if (!apiKey) {
