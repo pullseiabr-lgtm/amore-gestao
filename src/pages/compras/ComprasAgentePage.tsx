@@ -212,7 +212,7 @@ export default function ComprasAgentePage() {
 
   // ── IA Analítica (Gemini) ────────────────────────────────────
   interface ChatMsg { role: 'user' | 'ai'; text: string; ts: Date }
-  const [geminiKey,    setGeminiKey]    = useState(() => localStorage.getItem('gemini_api_key') || '')
+  const [geminiKey,    setGeminiKey]    = useState(() => (import.meta.env.VITE_GEMINI_API_KEY as string) || localStorage.getItem('gemini_api_key') || '')
   const [showKeyCfg,   setShowKeyCfg]   = useState(false)
   const [chatMsgs,     setChatMsgs]     = useState<ChatMsg[]>([])
   const [chatInput,    setChatInput]    = useState('')

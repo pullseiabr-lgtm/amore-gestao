@@ -185,9 +185,9 @@ export default function AgenteLizPage() {
   const { loja } = useLoja()
   const { user } = useAuth()
 
-  // Config — mesmas chaves do ComprasAgentePage para não pedir config de novo
+  // Config — env var tem prioridade sobre localStorage (evita chave antiga inválida sobrescrever)
   const [geminiKey, setGeminiKey] = useState(
-    () => localStorage.getItem('gemini_api_key') || (import.meta.env.VITE_GEMINI_API_KEY as string) || ''
+    () => (import.meta.env.VITE_GEMINI_API_KEY as string) || localStorage.getItem('gemini_api_key') || ''
   )
   const [braveKey, setBraveKey] = useState(
     () => localStorage.getItem('brave_api_key') || (import.meta.env.VITE_BRAVE_API_KEY as string) || ''
