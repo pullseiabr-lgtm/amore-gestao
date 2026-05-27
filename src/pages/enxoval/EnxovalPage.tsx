@@ -10,6 +10,7 @@ import { useLoja } from '../../contexts/LojaContext'
 import {
   fetchEnxovalItens, insertEnxovalItem, updateEnxovalItem, deleteEnxovalItem,
   fetchEnxovalMovimentacoes, insertEnxovalMovimentacao, updateEnxovalMovimentacao,
+  insertActivityLog,
 } from '../../lib/db'
 import type { EnxovalItem, EnxovalMovimentacao, EnxovalMovTipo, EnxovalMovStatus } from '../../types/database'
 
@@ -81,6 +82,20 @@ export default function EnxovalPage() {
   const [itemForm, setItemForm] = useState({ ...BLANK_ITEM })
   const [movForm,  setMovForm]  = useState({ ...BLANK_MOV, item_id: '' })
   const [saving, setSaving]     = useState(false)
+
+  /* ── quick movement (always-visible buttons) ── */
+  const quickMov = (tipo: EnxovalMovTipo) => {
+    const ativos = itens.filter(i => i.ativo)
+    if (ativos.length === 0) {
+      setTab('catalogo')
+      setEditItem(null)
+      setItemForm({ ...BLANK_ITEM, loja })
+      setShowItemModal(true)
+      return
+    }
+    setMovForm({ ...BLANK_MOV, tipo, item_id: '', loja, created_by: user?.name || '' })
+    setShowMovModal(true)
+  }
 
   /* ── load ── */
   const load = async () => {
@@ -162,6 +177,8 @@ export default function EnxovalPage() {
         observacoes:   movForm.observacoes || null,
         created_by:    user?.name || null,
       })
+      const nomeItem = itens.find(i => i.id === movForm.item_id)?.nome || movForm.item_id
+      insertActivityLog({ loja, usuario: user?.name || null, modulo: 'Enxoval', acao: MOV_TIPO[movForm.tipo as EnxovalMovTipo].label, entidade: 'enxoval_movimentacao', entidade_id: movForm.item_id || null, descricao: `${MOV_TIPO[movForm.tipo as EnxovalMovTipo].label} de ${movForm.quantidade} × ${nomeItem} por ${movForm.responsavel}` })
       setShowMovModal(false)
       await load()
     } finally { setSaving(false) }
@@ -179,11 +196,13 @@ export default function EnxovalPage() {
       const item = itens.find(i => i.id === mov.item_id)
       if (item) await updateEnxovalItem(item.id, { estoque_atual: item.estoque_atual + mov.quantidade })
     }
+    insertActivityLog({ loja, usuario: user?.name || null, modulo: 'Enxoval', acao: 'aprovar', entidade: 'enxoval_movimentacao', entidade_id: mov.id, descricao: `Aprovada movimentação: ${MOV_TIPO[mov.tipo].label} × ${mov.quantidade} — ${mov.item?.nome || mov.item_id}` })
     await load()
     if (selMov?.id === mov.id) setSelMov(null)
   }
   const recusar = async (mov: EnxovalMovimentacao) => {
     await updateEnxovalMovimentacao(mov.id, { status: 'recusado' })
+    insertActivityLog({ loja, usuario: user?.name || null, modulo: 'Enxoval', acao: 'recusar', entidade: 'enxoval_movimentacao', entidade_id: mov.id, descricao: `Recusada movimentação: ${MOV_TIPO[mov.tipo].label} × ${mov.quantidade} — ${mov.item?.nome || mov.item_id}` })
     await load()
     if (selMov?.id === mov.id) setSelMov(null)
   }
@@ -214,20 +233,33 @@ export default function EnxovalPage() {
             </button>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={load} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <RefreshCw size={14} /> Atualizar
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button onClick={load} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }}>
+            <RefreshCw size={14} />
           </button>
+          {/* ── Botões de movimentação sempre visíveis ── */}
+          {can('enxoval', 'create') && (<>
+            <button onClick={() => quickMov('entrada')}
+              style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: '#6366f125', color: '#6366f1', cursor: 'pointer', fontWeight: 700, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+              📥 Entrada
+            </button>
+            <button onClick={() => quickMov('saida')}
+              style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: '#f59e0b25', color: '#d97706', cursor: 'pointer', fontWeight: 700, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+              📤 Saída
+            </button>
+            <button onClick={() => quickMov('devolucao')}
+              style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: '#10b98125', color: '#059669', cursor: 'pointer', fontWeight: 700, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+              ↩ Devolução
+            </button>
+            <button onClick={() => quickMov('perda')}
+              style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: '#ef444425', color: '#ef4444', cursor: 'pointer', fontWeight: 700, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+              ⚠ Perda
+            </button>
+          </>)}
           {tab === 'catalogo' && can('enxoval', 'create') && (
             <button onClick={openNewItem}
-              style={{ padding: '6px 16px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+              style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
               <Plus size={14} /> Novo Item
-            </button>
-          )}
-          {tab === 'movimentacoes' && can('enxoval', 'create') && (
-            <button onClick={() => openNewMov()}
-              style={{ padding: '6px 16px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Plus size={14} /> Registrar Mov.
             </button>
           )}
         </div>
@@ -324,10 +356,25 @@ export default function EnxovalPage() {
       {/* ── TAB: Movimentações ── */}
       {!loading && tab === 'movimentacoes' && (
         <div style={{ background: 'var(--card-bg)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-          {filteredMovs.length === 0 ? (
+          {itens.filter(i => i.ativo).length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-secondary)' }}>
+              <Package size={40} style={{ marginBottom: 12, opacity: 0.4 }} />
+              <p style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>Catálogo vazio</p>
+              <p style={{ fontSize: 13, opacity: 0.7, marginBottom: 16 }}>Antes de registrar movimentações, cadastre os itens de enxoval</p>
+              {can('enxoval', 'create') && (
+                <button onClick={() => { setTab('catalogo'); openNewItem() }}
+                  style={{ padding: '9px 22px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+                  📦 Ir para Catálogo e Cadastrar
+                </button>
+              )}
+            </div>
+          ) : filteredMovs.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-secondary)' }}>
               <ClipboardList size={36} style={{ marginBottom: 12, opacity: 0.4 }} />
               <p>Nenhuma movimentação encontrada</p>
+              {can('enxoval', 'create') && (
+                <p style={{ fontSize: 12, marginTop: 8 }}>Use os botões <strong>📥 Entrada</strong>, <strong>📤 Saída</strong> ou <strong>↩ Devolução</strong> no topo para registrar</p>
+              )}
             </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>

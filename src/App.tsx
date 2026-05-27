@@ -32,6 +32,7 @@ import EnxovalPage from './pages/enxoval/EnxovalPage'
 import PlanejamentoPage from './pages/planejamento/PlanejamentoPage'
 import AtasPage from './pages/atas/AtasPage'
 import ListaPadraoPage from './pages/lista-padrao/ListaPadraoPage'
+import AlertasPage from './pages/alertas/AlertasPage'
 
 export type PageId =
   | 'dashboard'
@@ -62,6 +63,7 @@ export type PageId =
   | 'planejamento'
   | 'atas'
   | 'lista-padrao'
+  | 'alertas'
 
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Dashboard',
@@ -92,6 +94,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   planejamento: 'Planejamento Operacional',
   atas: 'Atas de Reunião',
   'lista-padrao': 'Lista de Compras Padronizada',
+  alertas: 'Alertas & Rastreabilidade',
 }
 
 function PageContent({ page }: { page: PageId }) {
@@ -124,6 +127,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'planejamento':         return <PlanejamentoPage />
     case 'atas':                 return <AtasPage />
     case 'lista-padrao':         return <ListaPadraoPage />
+    case 'alertas':              return <AlertasPage />
     default: return <DashboardPage />
   }
 }

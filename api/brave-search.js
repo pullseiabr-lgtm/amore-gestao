@@ -1,55 +1,47 @@
-/**
- * Vercel Serverless Function — proxy para Brave Search API
- * Evita bloqueio CORS ao chamar a API diretamente do browser.
- *
- * GET /api/brave-search?q=<query>[&t=<api_key>]
- *   q  → texto da busca
- *   t  → Brave API key do cliente (opcional se BRAVE_API_KEY env var definida)
- */
+// Vercel Serverless Function — proxy para Brave Search API
+// Resolve CORS: o browser não pode chamar api.search.brave.com diretamente
 export default async function handler(req, res) {
-  if (req.method !== 'GET') {
-    res.status(405).json({ error: 'Method not allowed' })
-    return
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end()
   }
 
-  const q     = req.query?.q
-  const token = req.query?.t || process.env.BRAVE_API_KEY
+  const { q, t } = req.query
 
   if (!q) {
-    res.status(400).json({ error: 'Missing q parameter' })
-    return
+    return res.status(400).json({ error: 'Parâmetro q (query) obrigatório' })
   }
-  if (!token) {
-    res.status(503).json({ error: 'Brave API key not configured' })
-    return
+
+  // Chave: prioridade => parâmetro ?t= (passado pelo client) ou variável de ambiente
+  const apiKey = t || process.env.VITE_BRAVE_API_KEY || process.env.BRAVE_API_KEY
+
+  if (!apiKey) {
+    return res.status(500).json({ error: 'Brave API Key não configurada. Informe a chave em Configurações da Liz.' })
   }
 
   try {
-    const url = new URL('https://api.search.brave.com/res/v1/web/search')
-    url.searchParams.set('q', q)
-    url.searchParams.set('count', '6')
-    url.searchParams.set('country', 'BR')
-    url.searchParams.set('search_lang', 'pt-br')
+    const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=10&search_lang=pt&country=BR`
 
-    const response = await fetch(url.toString(), {
+    const upstream = await fetch(url, {
       headers: {
         'Accept': 'application/json',
-        'X-Subscription-Token': token,
+        'Accept-Encoding': 'gzip',
+        'X-Subscription-Token': apiKey,
       },
     })
 
-    const data = await response.json()
-
-    if (!response.ok) {
-      // Retorna corpo completo do erro da Brave para diagnóstico
-      res.status(response.status).json({ error: data?.message || `HTTP ${response.status}`, brave_response: data })
-      return
+    if (!upstream.ok) {
+      const body = await upstream.text()
+      return res.status(upstream.status).json({ error: `Brave API: ${upstream.status} — ${body.slice(0, 200)}` })
     }
 
-    // Cache de 10 minutos (resultados de preço não mudam tão rápido)
-    res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=60')
-    res.status(200).json(data)
+    const data = await upstream.json()
+    return res.status(200).json(data)
   } catch (err) {
-    res.status(500).json({ error: 'Proxy error: ' + err.message })
+    return res.status(500).json({ error: err.message || 'Erro interno no proxy Brave Search' })
   }
 }

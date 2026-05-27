@@ -30,6 +30,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionsMap> = {
     planejamento:       { view: true, create: true, edit: true, delete: true, export: true },
     atas:               { view: true, create: true, edit: true, delete: true, export: true },
     'lista-padrao':     { view: true, create: true, edit: true, delete: true, export: true },
+    alertas:            { view: true, create: true, edit: true, delete: true, export: true },
   },
   admin: {
     dashboard:          { view: true, create: true, edit: true, delete: true, export: true },
@@ -58,6 +59,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionsMap> = {
     planejamento:       { view: true, create: true, edit: true, delete: true, export: true },
     atas:               { view: true, create: true, edit: true, delete: true, export: true },
     'lista-padrao':     { view: true, create: true, edit: true, delete: true, export: true },
+    alertas:            { view: true, create: true, edit: true, delete: true, export: true },
   },
   manager: {
     dashboard:          { view: true, create: false, edit: false, delete: false, export: true },
@@ -86,6 +88,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionsMap> = {
     planejamento:       { view: true, create: true,  edit: true,  delete: false, export: true },
     atas:               { view: true, create: true,  edit: true,  delete: false, export: true },
     'lista-padrao':     { view: true, create: true,  edit: true,  delete: false, export: true },
+    alertas:            { view: true, create: false, edit: true,  delete: false, export: true },
   },
   user: {
     dashboard:          { view: true,  create: false, edit: false, delete: false, export: false },
@@ -110,8 +113,9 @@ export const ROLE_PERMISSIONS: Record<string, PermissionsMap> = {
     tarefas:            { view: true,  create: true,  edit: true,  delete: false, export: false },
     enxoval:            { view: true,  create: true,  edit: false, delete: false, export: false },
     planejamento:       { view: true,  create: true,  edit: false, delete: false, export: false },
-    atas:               { view: true,  create: false, edit: false, delete: false, export: false },
+    atas:               { view: true,  create: true,  edit: true,  delete: false, export: false },
     'lista-padrao':     { view: true,  create: true,  edit: true,  delete: false, export: false },
+    alertas:            { view: true,  create: false, edit: false, delete: false, export: false },
   },
   viewer: {
     dashboard:          { view: true,  create: false, edit: false, delete: false, export: false },
@@ -135,5 +139,6 @@ export const ROLE_PERMISSIONS: Record<string, PermissionsMap> = {
     planejamento:       { view: true,  create: false, edit: false, delete: false, export: false },
     atas:               { view: true,  create: false, edit: false, delete: false, export: false },
     'lista-padrao':     { view: true,  create: false, edit: false, delete: false, export: false },
+    alertas:            { view: true,  create: false, edit: false, delete: false, export: false },
   },
 }

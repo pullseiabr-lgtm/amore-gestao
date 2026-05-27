@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap, Activity, Bot, Calendar } from 'lucide-react'
+import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap, Activity, Bot, Calendar, Bell } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 
@@ -20,6 +20,7 @@ const MENU_TOP: NavItem[] = [
   { id: 'enxoval',        label: 'Controle Enxoval',   icon: <Package size={13} /> },
   { id: 'planejamento',  label: 'Planejamento',       icon: <Calendar size={13} /> },
   { id: 'atas',          label: 'Atas de Reunião',    icon: <FileText size={13} /> },
+  { id: 'alertas',     label: '🔔 Alertas & Rastreab.', icon: <Bell size={13} /> },
   { id: 'pendencias',  label: 'Pendências & OS',    icon: <FileText size={13} />, badge: '7' },
   { id: 'gamificacao', label: 'Gamificação',         icon: <Trophy size={13} /> },
   { id: 'marketing',   label: 'Marketing 360°',     icon: <Megaphone size={13} /> },
@@ -79,7 +80,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
   const isProdutosGroup = (p: string) => p === 'produtos' || p === 'produtos-categorias'
 
   // Abre o dropdown automaticamente se a página ativa for do grupo Compras
-  const isComprasGroup = (p: string) => p === 'compras' || p === 'requisicoes' || p === 'req-automaticas' || p === 'estoque' || p === 'fornecedores' || p === 'compras-agente'
+  const isComprasGroup = (p: string) => p === 'lista-padrao' || p === 'compras' || p === 'requisicoes' || p === 'req-automaticas' || p === 'estoque' || p === 'fornecedores' || p === 'compras-agente'
   const isRelatoriosGroup = (p: string) => p === 'relatorio-cvl' || p === 'ruptura' || p === 'market'
 
   const [produtosOpen, setProdutosOpen] = useState(isProdutosGroup(activePage))

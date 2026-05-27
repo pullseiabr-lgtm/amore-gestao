@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig } from '../types/database'
 
 const db = supabase as any
 
@@ -1850,4 +1850,68 @@ export async function updateEnxovalMovimentacao(id: string, upd: Partial<Omit<En
 
 export async function deleteEnxovalMovimentacao(id: string): Promise<void> {
   await sdkCall<null>(db.from('enxoval_movimentacoes').delete().eq('id', id))
+}
+
+// ── Alertas & Rastreabilidade ─────────────────────────────────────
+
+export async function insertActivityLog(entry: Omit<ActivityLog, 'id' | 'created_at'>): Promise<void> {
+  sdkCall<null>(db.from('audit_log').insert(entry)).catch(() => {}) // fire-and-forget
+}
+
+export async function fetchActivityLog(loja: string, limit = 200): Promise<ActivityLog[]> {
+  return sdkCall<ActivityLog[]>(
+    db.from('audit_log').select('*').eq('loja', loja).order('created_at', { ascending: false }).limit(limit)
+  ).then(d => d ?? []).catch(() => [])
+}
+
+export async function fetchAlertasConfig(loja: string): Promise<AlertasConfig[]> {
+  return sdkCall<AlertasConfig[]>(
+    db.from('alertas_config').select('*').eq('loja', loja)
+  ).then(d => d ?? []).catch(() => [])
+}
+
+export async function upsertAlertasConfig(loja: string, tipo: string, data: { ativo: boolean; threshold: number }): Promise<void> {
+  const token = await getToken()
+  const ctrl  = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 8000)
+  try {
+    await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/alertas_config`,
+      {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: {
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal,resolution=merge-duplicates',
+        },
+        body: JSON.stringify({ loja, tipo, ...data, updated_at: new Date().toISOString() }),
+      },
+    )
+  } finally { clearTimeout(timer) }
+}
+
+// Alert-specific queries
+export async function fetchTarefasAtrasadas(loja: string): Promise<Tarefa[]> {
+  const hoje = new Date().toISOString().slice(0, 10)
+  return sdkCall<Tarefa[]>(
+    db.from('tarefas').select('*').eq('loja', loja).lt('prazo', hoje).order('prazo', { ascending: true }).limit(50)
+  ).then(d => (d ?? []).filter((t: Tarefa) => t.status !== 'concluido' && t.status !== 'cancelado')).catch(() => [])
+}
+
+export async function fetchAtaAcoesAtrasadas(loja: string): Promise<(AtaAcao & { ata_titulo?: string })[]> {
+  const hoje = new Date().toISOString().slice(0, 10)
+  return sdkCall<(AtaAcao & { ata?: { titulo: string } })[]>(
+    db.from('atas_acoes')
+      .select('*, ata:atas_reuniao(titulo)')
+      .eq('loja', loja)
+      .lt('prazo', hoje)
+      .order('prazo', { ascending: true })
+      .limit(50)
+  ).then(d =>
+    (d ?? [])
+      .filter(a => a.status !== 'concluido' && a.status !== 'cancelado')
+      .map(a => ({ ...a, ata_titulo: a.ata?.titulo }))
+  ).catch(() => [])
 }

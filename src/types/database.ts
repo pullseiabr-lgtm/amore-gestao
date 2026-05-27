@@ -63,6 +63,30 @@ export interface TenantSettings {
   updated_at: string
 }
 
+// ── Alertas & Rastreabilidade ────────────────────────────────
+
+export interface ActivityLog {
+  id: string
+  loja: string
+  usuario: string | null
+  modulo: string
+  acao: string
+  entidade: string
+  entidade_id: string | null
+  descricao: string
+  created_at: string
+}
+
+export interface AlertasConfig {
+  id: string
+  loja: string
+  tipo: string
+  ativo: boolean
+  threshold: number
+  created_at: string
+  updated_at: string
+}
+
 // ── Salão ────────────────────────────────────────────────────
 
 export type MesaStatus = 'livre' | 'ocupada' | 'reservada' | 'espera'
