@@ -13,9 +13,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Método não permitido' })
   }
 
-  // Chave: parâmetro ?k= (client-side key) ou variável de ambiente (server-side)
+  // Prioridade: env var server-side SEMPRE tem precedência sobre a chave do cliente.
+  // Isso evita que chaves antigas/inválidas no localStorage do browser causem erro.
+  const serverKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY
   const clientKey = req.query.k
-  const apiKey = clientKey || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY
+  const apiKey = serverKey || clientKey
 
   if (!apiKey) {
     return res.status(500).json({
