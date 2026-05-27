@@ -49,28 +49,31 @@ type Tab = 'chat' | 'prospeccao' | 'inteligencia' | 'compras-ia' | 'whatsapp'
 type WaTipo = 'estoque' | 'compras' | 'auditoria' | 'reuniao'
 
 // ── Gemini helper ────────────────────────────────────────────────
+// Usa proxy server-side /api/gemini (chave segura no Vercel).
+// Se o usuário informar uma chave client-side, ela é enviada como ?k= (fallback).
 async function chamarGemini(
   systemPrompt: string,
   historia: { role: string; parts: { text: string }[] }[],
   apiKey: string,
 ): Promise<string> {
-  const resp = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: historia,
-        generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
-      }),
-    },
-  )
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({}))
-    throw new Error(err?.error?.message || `Gemini HTTP ${resp.status}`)
-  }
+  const params = new URLSearchParams({ model: 'gemini-2.5-flash' })
+  // Só envia a chave client-side se não houver chave server-side configurada
+  if (apiKey) params.set('k', apiKey)
+
+  const resp = await fetch(`/api/gemini?${params}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: historia,
+      generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+    }),
+  })
+
   const data = await resp.json()
+  if (!resp.ok) {
+    throw new Error(data?.error || `Gemini HTTP ${resp.status}`)
+  }
   return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '(sem resposta)'
 }
 

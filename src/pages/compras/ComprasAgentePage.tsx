@@ -259,24 +259,24 @@ export default function ComprasAgentePage() {
     ].join('\n')
 
     try {
-      const resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: ctx }] },
-            contents: [
-              ...chatMsgs.map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text }] })),
-              { role: 'user', parts: [{ text: pergunta }] }
-            ]
-          })
-        }
-      )
+      const params = new URLSearchParams({ model: 'gemini-2.5-flash' })
+      if (geminiKey) params.set('k', geminiKey)
+
+      const resp = await fetch(`/api/gemini?${params}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: ctx }] },
+          contents: [
+            ...chatMsgs.map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text }] })),
+            { role: 'user', parts: [{ text: pergunta }] }
+          ]
+        })
+      })
       const data = await resp.json()
       const aiText = resp.ok
         ? (data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sem resposta.')
-        : `❌ ${data.error?.message?.slice(0, 200)}`
+        : `❌ ${data?.error || data?.error?.message || 'Erro Gemini'}`
       setChatMsgs(prev => [...prev, { role: 'ai', text: aiText, ts: new Date() }])
     } catch (e) {
       setChatMsgs(prev => [...prev, { role: 'ai', text: '❌ Erro de conexão com Gemini.', ts: new Date() }])
