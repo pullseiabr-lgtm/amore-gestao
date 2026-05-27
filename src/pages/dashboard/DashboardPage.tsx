@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle, AlertCircle, TrendingUp, TrendingDown, ShoppingCart, Package, Clock, BarChart2, Zap, Bot, Shield, MessageSquare } from 'lucide-react'
+import { useEffect, useState, useMemo } from 'react'
+import { AlertTriangle, CheckCircle, AlertCircle, TrendingUp, TrendingDown, ShoppingCart, Package, Clock, BarChart2, Zap, Bot, Shield, MessageSquare, ChefHat, Star } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import {
   fetchRupturas, fetchRelatoriosCVL, fetchRequisicoes, fetchProdutos,
-  fetchComprasAuditoria,
+  fetchComprasAuditoria, fetchCozinhaProducao, fetchCozinhaDesperdicio, fetchCozinhaFichas,
   type Ruptura, type RelatorioCVL,
 } from '../../lib/db'
-import type { Requisicao, Produto, ComprasAuditoria } from '../../types/database'
+import type { Requisicao, Produto, ComprasAuditoria, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha } from '../../types/database'
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -56,6 +56,9 @@ export default function DashboardPage() {
   const [produtos,     setProdutos]     = useState<Produto[]>([])
   const [loading,      setLoading]      = useState(true)
   const [auditorias,   setAuditorias]   = useState<ComprasAuditoria[]>([])
+  const [producao,     setProducao]     = useState<CozinhaProducao[]>([])
+  const [desperdicio,  setDesperdicio]  = useState<CozinhaDesperdicio[]>([])
+  const [fichas,       setFichas]       = useState<CozinhaFicha[]>([])
 
   useEffect(() => {
     setLoading(true)
@@ -71,13 +74,19 @@ export default function DashboardPage() {
       fetchRequisicoes(loja),
       lojaParam ? fetchProdutos(lojaParam, { ativo: true }) : Promise.resolve([] as Produto[]),
       fetchComprasAuditoria(lojaParam).catch(() => [] as ComprasAuditoria[]),
-    ]).then(([r, c, q, p, a]) => {
+      fetchCozinhaProducao(lojaParam).catch(() => [] as CozinhaProducao[]),
+      fetchCozinhaDesperdicio(lojaParam).catch(() => [] as CozinhaDesperdicio[]),
+      fetchCozinhaFichas().catch(() => [] as CozinhaFicha[]),
+    ]).then(([r, c, q, p, a, prod, desp, fich]) => {
       clearTimeout(safetyTimer)
-      if (r.status === 'fulfilled') setRupturas(r.value)
-      if (c.status === 'fulfilled') setCvlRels(c.value)
-      if (q.status === 'fulfilled') setRequisicoes(q.value)
-      if (p.status === 'fulfilled') setProdutos(p.value)
-      if (a.status === 'fulfilled') setAuditorias(a.value)
+      if (r.status === 'fulfilled')    setRupturas(r.value)
+      if (c.status === 'fulfilled')    setCvlRels(c.value)
+      if (q.status === 'fulfilled')    setRequisicoes(q.value)
+      if (p.status === 'fulfilled')    setProdutos(p.value)
+      if (a.status === 'fulfilled')    setAuditorias(a.value)
+      if (prod.status === 'fulfilled') setProducao(prod.value)
+      if (desp.status === 'fulfilled') setDesperdicio(desp.value)
+      if (fich.status === 'fulfilled') setFichas(fich.value)
       setLoading(false)
     })
 
@@ -127,13 +136,62 @@ export default function DashboardPage() {
     : assertividade >= 65 ? 'var(--warning)'
     : 'var(--danger)'
 
+  // ── produção + desperdício analytics ───────────────────────
+  const operacaoData = useMemo(() => {
+    const hoje = new Date().toDateString()
+
+    // Produção: hoje
+    const prodHoje      = producao.filter(p => new Date(p.created_at).toDateString() === hoje)
+    const concluidasHoje = prodHoje.filter(p => p.status === 'concluido').length
+    const pendenteHoje   = prodHoje.filter(p => p.status === 'pendente').length
+    const emPreparoHoje  = prodHoje.filter(p => p.status === 'em_preparo').length
+
+    // Tempo médio (hora_inicio → hora_fim) em minutos
+    const tempos = producao
+      .filter(p => p.hora_inicio && p.hora_fim)
+      .map(p => (new Date(p.hora_fim!).getTime() - new Date(p.hora_inicio!).getTime()) / 60000)
+    const tempoMedio = tempos.length > 0 ? tempos.reduce((s, t) => s + t, 0) / tempos.length : 0
+
+    // Prioridade urgente pendente
+    const urgentePendente = producao.filter(p => p.prioridade === 'urgente' && p.status !== 'concluido').length
+
+    // Desperdício: hoje
+    const despHoje = desperdicio.filter(d => new Date(d.created_at).toDateString() === hoje)
+    const custoDespHoje = despHoje.reduce((s, d) => s + (parseFloat(d.custo) || 0), 0)
+
+    // Desperdício: últimos 7 dias
+    const sete = new Date(); sete.setDate(sete.getDate() - 7)
+    const desp7d = desperdicio.filter(d => new Date(d.created_at) >= sete)
+    const custodesp7d = desp7d.reduce((s, d) => s + (parseFloat(d.custo) || 0), 0)
+
+    // Performance dos pratos (ficha × produção)
+    const pratoContagem: Record<string, number> = {}
+    producao.forEach(p => {
+      const key = p.prato.toLowerCase()
+      pratoContagem[key] = (pratoContagem[key] || 0) + 1
+    })
+    const topPratos = Object.entries(pratoContagem)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([nome, total]) => ({ nome, total }))
+
+    return { concluidasHoje, pendenteHoje, emPreparoHoje, tempoMedio, urgentePendente, custoDespHoje, custodesp7d, topPratos, fichaCount: fichas.length }
+  }, [producao, desperdicio, fichas])
+
   const gerarRelatorioWhatsApp = () => {
     const hoje = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
     const lojaStr = loja === 'Todas as Lojas' ? 'Todas as Lojas' : loja
     const linhas = [
-      `📊 *RELATÓRIO DIÁRIO — AMORE GESTÃO*`,
+      `📊 *RELATÓRIO DIÁRIO — AMORE GESTÃO V6.0*`,
       `📅 ${hoje}`,
       `🏪 ${lojaStr}`,
+      ``,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `🍳 *OPERAÇÃO / PRODUÇÃO*`,
+      `• Concluídas hoje: *${operacaoData.concluidasHoje}*`,
+      `• Em preparo: *${operacaoData.emPreparoHoje}* · Pendentes: *${operacaoData.pendenteHoje}*`,
+      operacaoData.urgentePendente > 0 ? `• ⚠️ Urgentes pendentes: *${operacaoData.urgentePendente}*` : `• Sem urgências na produção ✅`,
+      operacaoData.custoDespHoje > 0 ? `• 🗑️ Desperdício hoje: *R$ ${operacaoData.custoDespHoje.toFixed(2)}*` : `• Sem desperdício hoje ✅`,
       ``,
       `━━━━━━━━━━━━━━━━━━━━`,
       `📦 *ESTOQUE*`,
@@ -156,7 +214,7 @@ export default function DashboardPage() {
         : `• Sem dados disponíveis`,
       ``,
       `━━━━━━━━━━━━━━━━━━━━`,
-      `_Gerado automaticamente pelo Amore Gestão V5.0_`,
+      `_Gerado automaticamente pelo Amore Gestão V6.0_`,
     ].join('\n')
     window.open('https://wa.me/?text=' + encodeURIComponent(linhas), '_blank')
   }
@@ -612,6 +670,122 @@ export default function DashboardPage() {
                 )
               })
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Row 5: Dashboard Executivo — Operação ──────────────── */}
+      <div style={{ marginTop: 14 }}>
+        {/* Header */}
+        <div style={{
+          background: 'linear-gradient(135deg, #064e3b 0%, #065f46 100%)',
+          borderRadius: 14, padding: '16px 22px', marginBottom: 12,
+          color: '#fff', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ChefHat size={24} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 800 }}>🍳 Dashboard Executivo — Operação</div>
+              <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>Produção em tempo real · Desperdício · Performance dos pratos</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            {[
+              { lbl: 'Concluídas Hoje',  val: operacaoData.concluidasHoje, color: '#A7F3D0' },
+              { lbl: 'Em Preparo',       val: operacaoData.emPreparoHoje,  color: '#FDE68A' },
+              { lbl: 'Pendentes',        val: operacaoData.pendenteHoje,   color: '#FCA5A5' },
+              { lbl: 'Urgentes',         val: operacaoData.urgentePendente, color: operacaoData.urgentePendente > 0 ? '#FCA5A5' : '#A7F3D0' },
+            ].map(m => (
+              <div key={m.lbl} style={{ textAlign: 'center', minWidth: 60 }}>
+                <div style={{ fontSize: 10, opacity: 0.75, marginBottom: 2 }}>{m.lbl}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: m.color, lineHeight: 1 }}>
+                  {loading ? '…' : m.val}
+                </div>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => document.dispatchEvent(new CustomEvent('amore-nav', { detail: 'cozinha' }))}
+            style={{ background: '#fff', color: '#065f46', fontWeight: 800, fontSize: 12, padding: '8px 18px', borderRadius: 10, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}
+          >
+            <ChefHat size={13} /> Abrir Cozinha
+          </button>
+        </div>
+
+        <div className="g11">
+          {/* Desperdício */}
+          <div className="card">
+            <div className="card-hd">
+              <span className="card-tt">🗑️ Desperdício</span>
+              {!loading && operacaoData.custoDespHoje > 0 && (
+                <span className="badge bg-r">R$ {operacaoData.custoDespHoje.toFixed(0)} hoje</span>
+              )}
+            </div>
+            <div className="card-bd">
+              {loading ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{[1,2,3].map(i => <Skeleton key={i} h={22} />)}</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {[
+                    { lbl: 'Custo desperdício hoje', val: `R$ ${operacaoData.custoDespHoje.toFixed(2)}`, col: operacaoData.custoDespHoje > 0 ? 'var(--danger)' : 'var(--success)' },
+                    { lbl: 'Custo últimos 7 dias',   val: `R$ ${operacaoData.custodesp7d.toFixed(2)}`,  col: operacaoData.custodesp7d > 50 ? 'var(--warning)' : 'var(--success)' },
+                    { lbl: 'Registros de desperdício', val: desperdicio.length, col: 'var(--muted)' },
+                    { lbl: 'Fichas técnicas cadastradas', val: operacaoData.fichaCount, col: 'var(--blue)' },
+                  ].map(m => (
+                    <div key={m.lbl} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: 12, color: 'var(--muted)' }}>{m.lbl}</span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: m.col }}>{m.val}</span>
+                    </div>
+                  ))}
+                  {operacaoData.tempoMedio > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, color: 'var(--muted)' }}>Tempo médio de preparo</span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: operacaoData.tempoMedio > 45 ? 'var(--danger)' : 'var(--success)' }}>
+                        {operacaoData.tempoMedio.toFixed(0)} min
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Top pratos */}
+          <div className="card">
+            <div className="card-hd">
+              <span className="card-tt">⭐ Top Pratos Produzidos</span>
+              {!loading && producao.length > 0 && (
+                <span className="badge bg-g">{producao.length} produzidos</span>
+              )}
+            </div>
+            <div className="card-bd">
+              {loading ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{[1,2,3,4,5].map(i => <Skeleton key={i} h={22} />)}</div>
+              ) : operacaoData.topPratos.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--muted)', fontSize: 13 }}>
+                  <ChefHat size={28} style={{ marginBottom: 6, opacity: 0.3 }} />
+                  <div>Nenhuma produção registrada</div>
+                  <div style={{ fontSize: 11, marginTop: 4 }}>Acesse Cozinha → Produção para registrar</div>
+                </div>
+              ) : (
+                <div className="bc">
+                  {operacaoData.topPratos.map((p, i) => (
+                    <div className="bc-row" key={p.nome}>
+                      <span className="bc-lbl" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        {i === 0 && <Star size={10} style={{ color: '#f59e0b' }} />}
+                        {p.nome}
+                      </span>
+                      <div className="bc-out">
+                        <div className="bc-in" style={{ width: `${(p.total / operacaoData.topPratos[0].total) * 100}%`, background: i === 0 ? '#f59e0b' : 'var(--bordo)' }} />
+                      </div>
+                      <span className="bc-val">{p.total}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

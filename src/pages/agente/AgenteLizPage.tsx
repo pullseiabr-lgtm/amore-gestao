@@ -45,7 +45,8 @@ interface InsightBlock {
   cor: string
 }
 
-type Tab = 'chat' | 'prospeccao' | 'inteligencia' | 'compras-ia'
+type Tab = 'chat' | 'prospeccao' | 'inteligencia' | 'compras-ia' | 'whatsapp'
+type WaTipo = 'estoque' | 'compras' | 'auditoria' | 'reuniao'
 
 // ── Gemini helper ────────────────────────────────────────────────
 async function chamarGemini(
@@ -179,6 +180,11 @@ export default function AgenteLizPage() {
   const [comprasIaLoading, setComprasIaLoading] = useState(false)
   const [comprasIaAnalise, setComprasIaAnalise] = useState('')
 
+  // WhatsApp
+  const [waPhone, setWaPhone] = useState(() => localStorage.getItem('liz_wa_phone') || '')
+  const [waTipo, setWaTipo] = useState<WaTipo>('estoque')
+  const [waMsgCustom, setWaMsgCustom] = useState('')
+
   // Scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -188,7 +194,8 @@ export default function AgenteLizPage() {
   useEffect(() => {
     if (geminiKey) localStorage.setItem('gemini_api_key', geminiKey)
     if (braveKey)  localStorage.setItem('brave_api_key',  braveKey)
-  }, [geminiKey, braveKey])
+    if (waPhone)   localStorage.setItem('liz_wa_phone',   waPhone)
+  }, [geminiKey, braveKey, waPhone])
 
   // Load system context on mount
   const loadContext = useCallback(async () => {
@@ -544,6 +551,110 @@ Seja direto e objetivo. Use emojis para facilitar leitura.
     }
   }
 
+  // ── WhatsApp helpers ──────────────────────────────────────────
+  const gerarMensagemWA = (): string => {
+    const hoje = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
+    const { emRisco, zerados, sugestoes, desvios } = comprasIaData
+
+    if (waTipo === 'estoque') {
+      const linhas = [
+        `🤖 *LIZ — ALERTA DE ESTOQUE*`,
+        `📅 ${hoje}`,
+        `🏪 ${loja}`,
+        `━━━━━━━━━━━━━━━`,
+        ``,
+        zerados.length > 0
+          ? `🔴 *ZERADOS (${zerados.length}):*\n${zerados.slice(0, 6).map(p => `  • ${p.nome}`).join('\n')}`
+          : `✅ Nenhum item zerado`,
+        ``,
+        emRisco.length > 0
+          ? `🟡 *EM RISCO (${emRisco.length}):*\n${emRisco.slice(0, 6).map(p => `  • ${p.nome}: ${p.estoque_atual}/${p.estoque_minimo} ${p.unidade}`).join('\n')}`
+          : `✅ Estoque dentro do mínimo`,
+        ``,
+        sugestoes.length > 0
+          ? `🛒 *COMPRAR URGENTE:*\n${sugestoes.slice(0, 5).map(p => `  • ${p.nome}`).join('\n')}`
+          : ``,
+        ``,
+        `_Gerado via Liz · Amore Gestão_`,
+      ].filter(l => l !== undefined).join('\n')
+      return linhas
+    }
+
+    if (waTipo === 'compras') {
+      const linhas = [
+        `🤖 *LIZ — RELATÓRIO DE COMPRAS*`,
+        `📅 ${hoje}`,
+        `🏪 ${loja}`,
+        `━━━━━━━━━━━━━━━`,
+        ``,
+        desvios.length > 0
+          ? `📈 *DESVIOS DE PREÇO (${desvios.length}):*\n${desvios.slice(0, 5).map(d => `  • ${d.nome}: R$${d.ultimo.toFixed(2)} (+${d.desvio.toFixed(0)}% vs média)`).join('\n')}`
+          : `✅ Sem desvios de preço significativos`,
+        ``,
+        sugestoes.length > 0
+          ? `🛒 *SUGESTÕES URGENTES (${sugestoes.length}):*\n${sugestoes.slice(0, 5).map(p => `  • ${p.nome} (${p.estoque_atual}/${p.estoque_minimo} ${p.unidade})`).join('\n')}`
+          : `✅ Compras em dia`,
+        ``,
+        `📦 Produtos monitorados: *${rawProdutos.length}*`,
+        ``,
+        `_Gerado via Liz · Amore Gestão_`,
+      ].filter(l => l !== undefined).join('\n')
+      return linhas
+    }
+
+    if (waTipo === 'auditoria') {
+      const prodsCriticos = rawProdutos.filter(p => p.estoque_minimo > 0 && p.estoque_atual <= p.estoque_minimo)
+      const linhas = [
+        `🤖 *LIZ — AUDITORIA DO DIA*`,
+        `📅 ${hoje}`,
+        `🏪 ${loja}`,
+        `━━━━━━━━━━━━━━━`,
+        ``,
+        `📊 *RESUMO:*`,
+        `  • Produtos cadastrados: *${rawProdutos.length}*`,
+        `  • Produtos críticos: *${prodsCriticos.length}*`,
+        `  • Itens zerados: *${zerados.length}*`,
+        `  • Desvios de preço: *${desvios.length}*`,
+        ``,
+        emRisco.length > 0
+          ? `⚠️ *AÇÃO NECESSÁRIA — Top 5:*\n${emRisco.slice(0, 5).map(p => `  • ${p.nome}`).join('\n')}`
+          : `✅ Nenhuma ação imediata necessária`,
+        ``,
+        `_Gerado via Liz · Amore Gestão_`,
+      ].join('\n')
+      return linhas
+    }
+
+    // reuniao
+    const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    return [
+      `🤖 *LIZ — CONVITE DE REUNIÃO*`,
+      `📅 ${hoje}`,
+      `🏪 ${loja}`,
+      `━━━━━━━━━━━━━━━`,
+      ``,
+      `Olá! Precisamos alinhar pontos importantes da operação:`,
+      ``,
+      zerados.length > 0 ? `  🔴 ${zerados.length} item(ns) zerado(s) no estoque` : null,
+      emRisco.length > 0 ? `  🟡 ${emRisco.length} produto(s) abaixo do mínimo` : null,
+      desvios.length > 0 ? `  📈 ${desvios.length} desvio(s) de preço detectado(s)` : null,
+      ``,
+      `Por favor, confirme sua presença.`,
+      `Horário atual: ${horaAtual}`,
+      ``,
+      `_Amore Gestão · ${loja}_`,
+    ].filter(Boolean).join('\n')
+  }
+
+  const abrirWhatsApp = () => {
+    const msg = waMsgCustom.trim() || gerarMensagemWA()
+    const phone = waPhone.replace(/\D/g, '')
+    const url = phone
+      ? `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`
+      : `https://wa.me/?text=${encodeURIComponent(msg)}`
+    window.open(url, '_blank')
+  }
+
   // ── Quick actions ─────────────────────────────────────────────
   const QUICK = [
     { label: '📦 Estoque crítico', q: 'Quais produtos estão em estoque crítico e o que devo fazer urgente?' },
@@ -656,6 +767,7 @@ Seja direto e objetivo. Use emojis para facilitar leitura.
           { id: 'prospeccao',  icon: <Search size={14} />,        label: '🔍 Prospecção' },
           { id: 'inteligencia',icon: <Brain size={14} />,         label: '📊 Inteligência' },
           { id: 'compras-ia',  icon: <ShoppingCart size={14} />,  label: '🧠 Compras IA' },
+          { id: 'whatsapp',    icon: <Phone size={14} />,         label: '📱 WhatsApp' },
         ] as { id: Tab; icon: React.ReactNode; label: string }[]).map(t => (
           <button
             key={t.id}
@@ -1178,6 +1290,160 @@ Seja direto e objetivo. Use emojis para facilitar leitura.
               <div style={{ fontSize: 12, marginTop: 4 }}>Registre compras na Lista Padronizada para ativar a análise</div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════
+          TAB: WHATSAPP
+      ══════════════════════════════════════════════════ */}
+      {tab === 'whatsapp' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Header */}
+          <div style={{
+            background: 'linear-gradient(135deg, #065f46 0%, #064e3b 100%)',
+            borderRadius: 10, padding: '16px 20px',
+            display: 'flex', alignItems: 'center', gap: 14, color: '#fff',
+          }}>
+            <div style={{
+              width: 46, height: 46, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.15)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0,
+            }}>📱</div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>Liz — Envio via WhatsApp</div>
+              <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>
+                Gere alertas, relatórios e convites diretamente no WhatsApp — sem API externa
+              </div>
+            </div>
+          </div>
+
+          {/* Phone config + tipo */}
+          <div style={{
+            background: 'var(--card)', border: '1px solid var(--border)',
+            borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 14,
+          }}>
+            <div style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Phone size={14} style={{ color: '#25D366' }} /> Configuração
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                  Número do destinatário (opcional)
+                </label>
+                <input
+                  value={waPhone}
+                  onChange={e => setWaPhone(e.target.value)}
+                  placeholder="55819XXXXXXXX (com DDI)"
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }}
+                />
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                  Se vazio, abre o WhatsApp Web para escolher o contato
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                  Tipo de mensagem
+                </label>
+                <select
+                  value={waTipo}
+                  onChange={e => { setWaTipo(e.target.value as WaTipo); setWaMsgCustom('') }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }}
+                >
+                  <option value="estoque">🔴 Alerta de Estoque</option>
+                  <option value="compras">🛒 Relatório de Compras</option>
+                  <option value="auditoria">📊 Auditoria do Dia</option>
+                  <option value="reuniao">📅 Convocar Reunião</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Preview */}
+          <div style={{
+            background: 'var(--card)', border: '1px solid var(--border)',
+            borderRadius: 10, padding: 16,
+          }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Pré-visualização da mensagem</span>
+              <button
+                onClick={() => setWaMsgCustom(gerarMensagemWA())}
+                style={{
+                  padding: '4px 12px', borderRadius: 6, border: '1px solid var(--border)',
+                  background: 'var(--bg)', fontSize: 12, cursor: 'pointer', color: 'var(--muted)',
+                }}
+              >
+                ↺ Regenerar
+              </button>
+            </div>
+            <textarea
+              value={waMsgCustom || gerarMensagemWA()}
+              onChange={e => setWaMsgCustom(e.target.value)}
+              rows={14}
+              style={{
+                width: '100%', padding: '10px 12px', borderRadius: 8,
+                border: '1px solid var(--border)', background: '#f0fdf4',
+                fontSize: 12, fontFamily: 'monospace', lineHeight: 1.6,
+                resize: 'vertical',
+              }}
+            />
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+              Você pode editar a mensagem antes de enviar. As alterações não afetam os dados do sistema.
+            </div>
+          </div>
+
+          {/* Templates rápidos */}
+          <div style={{
+            background: 'var(--card)', border: '1px solid var(--border)',
+            borderRadius: 10, padding: 14,
+          }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>Envios rápidos por tipo</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {([
+                { tipo: 'estoque' as WaTipo,   emoji: '🔴', label: 'Alerta Estoque',   color: '#ef4444', badge: comprasIaData.zerados.length + comprasIaData.emRisco.length },
+                { tipo: 'compras' as WaTipo,   emoji: '🛒', label: 'Rel. Compras',     color: '#f59e0b', badge: comprasIaData.desvios.length },
+                { tipo: 'auditoria' as WaTipo, emoji: '📊', label: 'Auditoria Dia',    color: '#3b82f6', badge: 0 },
+                { tipo: 'reuniao' as WaTipo,   emoji: '📅', label: 'Reunião',           color: '#8b5cf6', badge: 0 },
+              ]).map(t => (
+                <button
+                  key={t.tipo}
+                  onClick={() => { setWaTipo(t.tipo); setWaMsgCustom('') }}
+                  style={{
+                    padding: '10px 8px', borderRadius: 8,
+                    border: `2px solid ${waTipo === t.tipo ? t.color : 'var(--border)'}`,
+                    background: waTipo === t.tipo ? `${t.color}15` : 'var(--bg)',
+                    cursor: 'pointer', fontSize: 12, fontWeight: waTipo === t.tipo ? 700 : 400,
+                    color: waTipo === t.tipo ? t.color : 'var(--muted)',
+                    textAlign: 'center', position: 'relative',
+                  }}
+                >
+                  <div style={{ fontSize: 18, marginBottom: 4 }}>{t.emoji}</div>
+                  {t.label}
+                  {t.badge > 0 && (
+                    <span style={{
+                      position: 'absolute', top: 4, right: 4,
+                      background: t.color, color: '#fff',
+                      borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700,
+                    }}>{t.badge}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Botão enviar */}
+          <button
+            onClick={abrirWhatsApp}
+            style={{
+              padding: '14px', borderRadius: 10, border: 'none',
+              background: '#25D366', color: '#fff',
+              cursor: 'pointer', fontSize: 15, fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}
+          >
+            <Phone size={18} />
+            {waPhone ? `Enviar via WhatsApp para +${waPhone.replace(/\D/g, '')}` : 'Abrir WhatsApp Web'}
+          </button>
         </div>
       )}
 

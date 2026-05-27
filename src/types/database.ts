@@ -726,6 +726,10 @@ export interface CozinhaProducao {
   executor: string
   hora: string
   status: 'pendente' | 'em_preparo' | 'concluido'
+  prioridade: 'urgente' | 'normal' | 'programado'
+  hora_inicio: string | null
+  hora_fim: string | null
+  praca: string | null
   obs: string
   created_at: string
   updated_at: string

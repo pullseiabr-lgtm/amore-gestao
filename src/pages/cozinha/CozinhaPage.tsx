@@ -25,7 +25,12 @@ interface ProducaoItem {
   id: string; prato: string; qtd: string; loja: string
   solicitante: string; executor: string; hora: string
   status: 'pendente' | 'em_preparo' | 'concluido'
+  prioridade: 'urgente' | 'normal' | 'programado'
+  hora_inicio: string | null
+  hora_fim: string | null
+  praca: string | null
   obs: string
+  created_at?: string
 }
 
 interface DespItem {
@@ -79,6 +84,17 @@ const STATUS_PROD = {
   pendente:   { lbl: 'Pendente',   cls: 'bg-y' },
   em_preparo: { lbl: 'Em preparo', cls: 'bg-b' },
   concluido:  { lbl: 'Concluído',  cls: 'bg-g' },
+}
+const PRIORIDADE_PROD = {
+  urgente:    { lbl: '🔴 Urgente',    cor: '#ef4444', order: 0 },
+  normal:     { lbl: '🟡 Normal',     cor: '#f59e0b', order: 1 },
+  programado: { lbl: '🔵 Programado', cor: '#6366f1', order: 2 },
+}
+const PRACAS = ['Cozinha Quente', 'Cozinha Fria', 'Confeitaria', 'Açaí', 'Bar', 'Geral']
+
+function elapsedMin(createdAt?: string): number {
+  if (!createdAt) return 0
+  return Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000)
 }
 
 type Tab = 'checklist' | 'producao' | 'desperdicio' | 'ficha' | 'solicitacoes' | 'performance'
@@ -550,11 +566,7 @@ function EditItemInline({ txt, onSave, onCancel }: { txt: string; onSave: (v: st
 // ── Tab Produção ──────────────────────────────────────────────
 
 function ProducaoTab({
-  producao,
-  lojaDefault,
-  onAdd,
-  onUpdate,
-  onDelete,
+  producao, lojaDefault, onAdd, onUpdate, onDelete,
 }: {
   producao: ProducaoItem[]
   lojaDefault: string
@@ -566,81 +578,134 @@ function ProducaoTab({
   const [editItem, setEditItem] = useState<ProducaoItem | null>(null)
   const [form, setForm] = useState<Omit<ProducaoItem, 'id'>>({
     prato: '', qtd: '', loja: lojaDefault, solicitante: '', executor: '',
-    hora: new Date().toTimeString().slice(0, 5), status: 'pendente', obs: '',
+    hora: new Date().toTimeString().slice(0, 5), status: 'pendente',
+    prioridade: 'normal', hora_inicio: null, hora_fim: null, praca: null, obs: '',
   })
   const [saving, setSaving] = useState(false)
+  const [, tick] = useState(0)
+
+  // Atualiza o timer a cada 30s
+  useEffect(() => {
+    const iv = setInterval(() => tick(t => t + 1), 30000)
+    return () => clearInterval(iv)
+  }, [])
 
   const openNovo = () => {
     setEditItem(null)
-    setForm({ prato: '', qtd: '', loja: lojaDefault, solicitante: '', executor: '', hora: new Date().toTimeString().slice(0, 5), status: 'pendente', obs: '' })
+    setForm({ prato: '', qtd: '', loja: lojaDefault, solicitante: '', executor: '', hora: new Date().toTimeString().slice(0, 5), status: 'pendente', prioridade: 'normal', hora_inicio: null, hora_fim: null, praca: null, obs: '' })
     setShowModal(true)
   }
-
   const openEdit = (item: ProducaoItem) => {
     setEditItem(item)
-    setForm({ prato: item.prato, qtd: item.qtd, loja: item.loja, solicitante: item.solicitante, executor: item.executor, hora: item.hora, status: item.status, obs: item.obs })
+    setForm({ prato: item.prato, qtd: item.qtd, loja: item.loja, solicitante: item.solicitante, executor: item.executor, hora: item.hora, status: item.status, prioridade: item.prioridade || 'normal', hora_inicio: item.hora_inicio, hora_fim: item.hora_fim, praca: item.praca, obs: item.obs })
     setShowModal(true)
   }
-
   const salvar = async () => {
     if (!form.prato.trim() || saving) return
     setSaving(true)
     try {
-      if (editItem) {
-        await onUpdate(editItem.id, form)
-      } else {
-        await onAdd(form)
-      }
+      if (editItem) await onUpdate(editItem.id, form)
+      else await onAdd(form)
       setShowModal(false)
     } finally { setSaving(false) }
   }
-
   const ciclarStatus = (id: string) => {
-    const prox: Record<ProducaoItem['status'], ProducaoItem['status']> = {
-      pendente: 'em_preparo', em_preparo: 'concluido', concluido: 'pendente',
-    }
     const item = producao.find(p => p.id === id)
     if (!item) return
-    onUpdate(id, { status: prox[item.status] })
+    const prox: Record<ProducaoItem['status'], ProducaoItem['status']> = { pendente: 'em_preparo', em_preparo: 'concluido', concluido: 'pendente' }
+    const updates: Partial<ProducaoItem> = { status: prox[item.status] }
+    if (prox[item.status] === 'em_preparo') updates.hora_inicio = new Date().toISOString()
+    if (prox[item.status] === 'concluido')  updates.hora_fim = new Date().toISOString()
+    onUpdate(id, updates)
   }
 
+  // Ordenar: urgente primeiro, depois normal, depois programado, dentro de cada grupo por hora
+  const sorted = [...producao].sort((a, b) => {
+    const oa = PRIORIDADE_PROD[a.prioridade ?? 'normal'].order
+    const ob = PRIORIDADE_PROD[b.prioridade ?? 'normal'].order
+    if (oa !== ob) return oa - ob
+    return (a.hora || '').localeCompare(b.hora || '')
+  })
+
+  const pendentes  = sorted.filter(p => p.status !== 'concluido')
+  const concluidos = sorted.filter(p => p.status === 'concluido')
+  const atrasados  = pendentes.filter(p => elapsedMin(p.created_at) > 45)
+  const gargalo    = pendentes.filter(p => p.status === 'pendente').length > 5
+
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+      {/* Alertas de gargalo */}
+      {(atrasados.length > 0 || gargalo) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {gargalo && (
+            <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#92400e', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <AlertTriangle size={13} /> <strong>Gargalo detectado</strong> — {pendentes.filter(p => p.status === 'pendente').length} itens pendentes na fila
+            </div>
+          )}
+          {atrasados.length > 0 && (
+            <div style={{ background: '#fee2e2', border: '1px solid #ef4444', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#991b1b', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Clock size={13} /> <strong>{atrasados.length} pedido{atrasados.length > 1 ? 's' : ''} atrasado{atrasados.length > 1 ? 's' : ''}</strong> — em espera há mais de 45 min: {atrasados.map(p => p.prato).join(', ')}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="card">
         <div className="card-hd">
-          <span className="card-tt">🍧 Produção do Dia</span>
-          <button className="btn bp bsm" onClick={openNovo}><Plus size={11} /> Registrar</button>
+          <span className="card-tt">🍳 Fila de Produção</span>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{pendentes.length} pendente{pendentes.length !== 1 ? 's' : ''} · {concluidos.length} concluído{concluidos.length !== 1 ? 's' : ''}</span>
+            <button className="btn bp bsm" onClick={openNovo}><Plus size={11} /> Registrar</button>
+          </div>
         </div>
 
-        {producao.length === 0 ? (
+        {sorted.length === 0 ? (
           <div className="empty" style={{ padding: '40px 0' }}>
             <ChefHat size={36} style={{ opacity: 0.3 }} />
-            <div style={{ marginTop: 10, fontWeight: 600 }}>Nenhuma produção registrada hoje</div>
-            <button className="btn bp bsm" style={{ marginTop: 12 }} onClick={openNovo}><Plus size={11} /> Registrar primeira</button>
+            <div style={{ marginTop: 10, fontWeight: 600 }}>Fila de produção vazia</div>
+            <button className="btn bp bsm" style={{ marginTop: 12 }} onClick={openNovo}><Plus size={11} /> Primeiro item</button>
           </div>
         ) : (
           <div className="tw">
             <table>
               <thead>
                 <tr>
-                  <th>Prato / Item</th><th>Qtd</th><th>Loja</th>
-                  <th>Solicitante</th><th>Executor</th><th>Hora</th><th>Status</th><th></th>
+                  <th>Prioridade</th><th>Prato / Item</th><th>Qtd</th>
+                  <th>Praça</th><th>Executor</th><th>Hora</th><th>Tempo</th><th>Status</th><th></th>
                 </tr>
               </thead>
               <tbody>
-                {producao.map(p => {
-                  const st = STATUS_PROD[p.status]
+                {sorted.map(p => {
+                  const st  = STATUS_PROD[p.status]
+                  const pr  = PRIORIDADE_PROD[p.prioridade ?? 'normal']
+                  const min = elapsedMin(p.created_at)
+                  const atrasado = min > 45 && p.status !== 'concluido'
                   return (
-                    <tr key={p.id}>
+                    <tr key={p.id} style={{ background: atrasado ? '#fee2e210' : undefined }}>
+                      <td>
+                        <span style={{ fontSize: 11, color: pr.cor, fontWeight: 700 }}>{pr.lbl}</span>
+                      </td>
                       <td>
                         <strong style={{ fontSize: 12 }}>{p.prato}</strong>
                         {p.obs && <div style={{ fontSize: 10, color: 'var(--muted)' }}>{p.obs}</div>}
                       </td>
                       <td style={{ fontSize: 12 }}>{p.qtd}</td>
-                      <td style={{ fontSize: 11, color: 'var(--muted)' }}>{p.loja}</td>
-                      <td style={{ fontSize: 11 }}>{p.solicitante || '—'}</td>
+                      <td style={{ fontSize: 11, color: 'var(--muted)' }}>{p.praca || '—'}</td>
                       <td style={{ fontSize: 11, fontWeight: 600 }}>{p.executor || '—'}</td>
                       <td style={{ fontSize: 11 }}>{p.hora}</td>
+                      <td style={{ fontSize: 11 }}>
+                        {p.status !== 'concluido' && min > 0 && (
+                          <span style={{ color: atrasado ? '#ef4444' : 'var(--muted)', fontWeight: atrasado ? 700 : 400 }}>
+                            {atrasado ? '⚠️ ' : ''}{min}min
+                          </span>
+                        )}
+                        {p.status === 'concluido' && p.hora_inicio && p.hora_fim && (
+                          <span style={{ color: '#16a34a', fontSize: 11 }}>
+                            ✓ {Math.floor((new Date(p.hora_fim).getTime() - new Date(p.hora_inicio).getTime()) / 60000)}min
+                          </span>
+                        )}
+                      </td>
                       <td>
                         <span className={`badge ${st.cls}`} style={{ cursor: 'pointer' }} onClick={() => ciclarStatus(p.id)} title="Clique para avançar status">
                           {st.lbl}
@@ -648,8 +713,8 @@ function ProducaoTab({
                       </td>
                       <td>
                         <div className="ab" style={{ gap: 4 }}>
-                          <button className="ib" onClick={() => openEdit(p)} title="Editar"><Edit3 size={12} /></button>
-                          <button className="ib rd" onClick={() => onDelete(p.id)} title="Remover"><Trash2 size={12} /></button>
+                          <button className="ib" onClick={() => openEdit(p)}><Edit3 size={12} /></button>
+                          <button className="ib rd" onClick={() => onDelete(p.id)}><Trash2 size={12} /></button>
                         </div>
                       </td>
                     </tr>
@@ -663,7 +728,7 @@ function ProducaoTab({
 
       {showModal && (
         <div className="ov open" onClick={() => setShowModal(false)}>
-          <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 580 }} onClick={e => e.stopPropagation()}>
             <div className="mhd">
               <span className="mtt">{editItem ? 'Editar Produção' : 'Registrar Produção'}</span>
               <button className="mx" onClick={() => setShowModal(false)}>✕</button>
@@ -671,8 +736,23 @@ function ProducaoTab({
             <div className="mbd">
               <div className="g2">
                 <div className="fg" style={{ gridColumn: '1/-1' }}>
-                  <label className="fl">Prato / Item produzido <span className="rq">*</span></label>
-                  <input className="inp" value={form.prato} onChange={e => setForm(f => ({ ...f, prato: e.target.value }))} placeholder="Ex: Açaí base 300ml, Granola caseira..." autoFocus />
+                  <label className="fl">Prato / Item <span className="rq">*</span></label>
+                  <input className="inp" value={form.prato} onChange={e => setForm(f => ({ ...f, prato: e.target.value }))} placeholder="Ex: Açaí base 300ml..." autoFocus />
+                </div>
+                <div className="fg">
+                  <label className="fl">Prioridade</label>
+                  <select className="sel" value={form.prioridade || 'normal'} onChange={e => setForm(f => ({ ...f, prioridade: e.target.value as ProducaoItem['prioridade'] }))}>
+                    <option value="urgente">🔴 Urgente</option>
+                    <option value="normal">🟡 Normal</option>
+                    <option value="programado">🔵 Programado</option>
+                  </select>
+                </div>
+                <div className="fg">
+                  <label className="fl">Praça</label>
+                  <select className="sel" value={form.praca || ''} onChange={e => setForm(f => ({ ...f, praca: e.target.value || null }))}>
+                    <option value="">— Selecione —</option>
+                    {PRACAS.map(p => <option key={p}>{p}</option>)}
+                  </select>
                 </div>
                 <div className="fg">
                   <label className="fl">Quantidade</label>
@@ -685,11 +765,11 @@ function ProducaoTab({
                   </select>
                 </div>
                 <div className="fg">
-                  <label className="fl">Responsável pela solicitação</label>
+                  <label className="fl">Solicitante</label>
                   <input className="inp" value={form.solicitante} onChange={e => setForm(f => ({ ...f, solicitante: e.target.value }))} placeholder="Nome do solicitante" />
                 </div>
                 <div className="fg">
-                  <label className="fl">Responsável pela execução</label>
+                  <label className="fl">Executor</label>
                   <input className="inp" value={form.executor} onChange={e => setForm(f => ({ ...f, executor: e.target.value }))} placeholder="Nome do executor" />
                 </div>
                 <div className="fg">
