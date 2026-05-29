@@ -84,7 +84,7 @@ export default function ListaPadraoPage() {
   // item form (inline)
   const [newItem, setNewItem] = useState({
     produto_nome: '', categoria: 'Geral', unidade: 'un',
-    quantidade: 1, fornecedor: '', urgente: false, obs: '',
+    quantidade: 1, fornecedor: '', marca: '', urgente: false, obs: '',
   })
 
   const [saving, setSaving] = useState(false)
@@ -212,11 +212,12 @@ export default function ListaPadraoPage() {
         variacao_pct:      null,
         alerta_preco:      false,
         fornecedor:        newItem.fornecedor || null,
+        marca:             newItem.marca || null,
         urgente:           newItem.urgente,
         comprado:          false,
         obs:               newItem.obs || null,
       })
-      setNewItem({ produto_nome: '', categoria: 'Geral', unidade: 'un', quantidade: 1, fornecedor: '', urgente: false, obs: '' })
+      setNewItem({ produto_nome: '', categoria: 'Geral', unidade: 'un', quantidade: 1, fornecedor: '', marca: '', urgente: false, obs: '' })
       await load()
     } finally { setSaving(false) }
   }
@@ -228,7 +229,8 @@ export default function ListaPadraoPage() {
     // save to price history
     await insertListaHistoricoPreco({
       loja, produto_nome: item.produto_nome, unidade: item.unidade,
-      preco, fornecedor: item.fornecedor, lista_id: lista.id, referencia: lista.referencia,
+      preco, fornecedor: item.fornecedor, marca: item.marca ?? null,
+      lista_id: lista.id, referencia: lista.referencia,
     })
     // update lista total_real
     const lista_ = listas.find(l => l.id === lista.id)
@@ -392,7 +394,7 @@ export default function ListaPadraoPage() {
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                           <thead>
                             <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                              {['✓', 'Produto', 'Cat.', 'Qtd', 'Un.', 'Ref.', 'Digitado', 'Var.%', 'Fornecedor', ''].map(h => (
+                              {['✓', 'Produto', 'Cat.', 'Qtd', 'Un.', 'Ref.', 'Digitado', 'Var.%', 'Marca', 'Fornecedor', ''].map(h => (
                                 <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: 'var(--text-secondary)', fontSize: 10, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                               ))}
                             </tr>
@@ -444,6 +446,21 @@ export default function ListaPadraoPage() {
                                       </div>
                                     )}
                                   </td>
+                                  <td style={{ padding: '8px 10px', color: 'var(--text-secondary)' }}>
+                                    {can('lista-padrao', 'edit') && lista.status !== 'concluida' && lista.status !== 'cancelada' ? (
+                                      <input
+                                        defaultValue={item.marca ?? ''}
+                                        placeholder="Marca"
+                                        onBlur={async e => {
+                                          const v = e.target.value.trim()
+                                          if (v !== (item.marca ?? '')) await updateListaPadraoItem(item.id, { marca: v || null })
+                                        }}
+                                        style={{ width: 90, padding: '3px 6px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-primary)', fontSize: 11 }}
+                                      />
+                                    ) : (
+                                      <span>{item.marca || '—'}</span>
+                                    )}
+                                  </td>
                                   <td style={{ padding: '8px 10px', color: 'var(--text-secondary)' }}>{item.fornecedor || '—'}</td>
                                   <td style={{ padding: '8px 10px' }}>
                                     {can('lista-padrao', 'delete') && (
@@ -454,7 +471,7 @@ export default function ListaPadraoPage() {
                               )
                             })}
                             {itens.length === 0 && (
-                              <tr><td colSpan={10} style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 12 }}>Nenhum item adicionado</td></tr>
+                              <tr><td colSpan={11} style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 12 }}>Nenhum item adicionado</td></tr>
                             )}
                           </tbody>
                         </table>
@@ -482,6 +499,9 @@ export default function ListaPadraoPage() {
                             style={{ padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-secondary)', fontSize: 12 }}>
                             {UNIDADES.map(u => <option key={u}>{u}</option>)}
                           </select>
+                          <input value={newItem.marca} onChange={e => setNewItem(p => ({ ...p, marca: e.target.value }))}
+                            placeholder="Marca"
+                            style={{ flex: 1, minWidth: 80, padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-primary)', fontSize: 12 }} />
                           <input value={newItem.fornecedor} onChange={e => setNewItem(p => ({ ...p, fornecedor: e.target.value }))}
                             placeholder="Fornecedor"
                             style={{ flex: 1, minWidth: 100, padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-primary)', fontSize: 12 }} />

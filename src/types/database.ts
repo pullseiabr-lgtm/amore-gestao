@@ -880,6 +880,7 @@ export interface ListaPadraoItem {
   variacao_pct: number | null
   alerta_preco: boolean
   fornecedor: string | null
+  marca: string | null
   urgente: boolean
   comprado: boolean
   obs: string | null
@@ -893,6 +894,7 @@ export interface ListaHistoricoPreco {
   unidade: string
   preco: number
   fornecedor: string | null
+  marca: string | null
   lista_id: string | null
   referencia: string | null
   created_at: string

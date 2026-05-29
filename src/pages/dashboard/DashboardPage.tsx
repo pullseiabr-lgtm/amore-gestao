@@ -4,9 +4,10 @@ import { useLoja } from '../../contexts/LojaContext'
 import {
   fetchRupturas, fetchRelatoriosCVL, fetchRequisicoes, fetchProdutos,
   fetchComprasAuditoria, fetchCozinhaProducao, fetchCozinhaDesperdicio, fetchCozinhaFichas,
+  fetchComprasListas,
   type Ruptura, type RelatorioCVL,
 } from '../../lib/db'
-import type { Requisicao, Produto, ComprasAuditoria, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha } from '../../types/database'
+import type { Requisicao, Produto, ComprasAuditoria, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, ComprasLista } from '../../types/database'
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -59,6 +60,7 @@ export default function DashboardPage() {
   const [producao,     setProducao]     = useState<CozinhaProducao[]>([])
   const [desperdicio,  setDesperdicio]  = useState<CozinhaDesperdicio[]>([])
   const [fichas,       setFichas]       = useState<CozinhaFicha[]>([])
+  const [comprasListas, setComprasListas] = useState<ComprasLista[]>([])
 
   useEffect(() => {
     setLoading(true)
@@ -77,7 +79,8 @@ export default function DashboardPage() {
       fetchCozinhaProducao(lojaParam).catch(() => [] as CozinhaProducao[]),
       fetchCozinhaDesperdicio(lojaParam).catch(() => [] as CozinhaDesperdicio[]),
       fetchCozinhaFichas().catch(() => [] as CozinhaFicha[]),
-    ]).then(([r, c, q, p, a, prod, desp, fich]) => {
+      fetchComprasListas(loja).catch(() => [] as ComprasLista[]),
+    ]).then(([r, c, q, p, a, prod, desp, fich, cl]) => {
       clearTimeout(safetyTimer)
       if (r.status === 'fulfilled')    setRupturas(r.value)
       if (c.status === 'fulfilled')    setCvlRels(c.value)
@@ -87,6 +90,7 @@ export default function DashboardPage() {
       if (prod.status === 'fulfilled') setProducao(prod.value)
       if (desp.status === 'fulfilled') setDesperdicio(desp.value)
       if (fich.status === 'fulfilled') setFichas(fich.value)
+      if (cl.status === 'fulfilled')   setComprasListas(cl.value)
       setLoading(false)
     })
 
@@ -110,6 +114,17 @@ export default function DashboardPage() {
   const reqAprovadas = requisicoes.filter(r =>
     ['aprovada','compra_realizada'].includes(r.status)
   )
+
+  // ── KPIs de Compras (igual ao Foozi Dashboard) ────────────────
+  const mesAtual = new Date().toISOString().slice(0, 7) // "2026-05"
+  const comprasMes = comprasListas.filter(c => {
+    const d = (c.data_compra || c.created_at).slice(0, 7)
+    return d === mesAtual
+  })
+  const totalComprasMes = comprasMes.reduce((s, c) => s + (c.total_real || c.total_estimado || 0), 0)
+  const totalComprasConcluidas = comprasMes.filter(c => c.status === 'concluido').reduce((s, c) => s + (c.total_real || 0), 0)
+  const qtdComprasMes = comprasMes.length
+  const fmtCompras = (v: number) => v >= 1000 ? `R$ ${(v / 1000).toFixed(1)}k` : `R$ ${v.toFixed(0)}`
 
   const produtosCriticos = produtos
     .filter(p => p.estoque_minimo != null && p.estoque_atual != null && p.estoque_atual <= p.estoque_minimo)
@@ -279,6 +294,14 @@ export default function DashboardPage() {
           val={loading ? '…' : requisicoes.length}
           sub={loading ? '' : `${requisicoes.filter(r => r.status === 'concluida').length} concluídas`}
           col="var(--blue)" icon={<ShoppingCart size={16} />}
+          loading={loading}
+        />
+        <KpiCard
+          lbl="Total em Compras (mês)"
+          val={loading ? '…' : fmtCompras(totalComprasMes)}
+          sub={loading ? '' : `${qtdComprasMes} ${qtdComprasMes === 1 ? 'pedido' : 'pedidos'} · ${fmtCompras(totalComprasConcluidas)} concluído`}
+          col="var(--blue)" icon={<ShoppingCart size={16} />}
+          trend={totalComprasMes > 0 ? 'up' : undefined}
           loading={loading}
         />
       </div>
