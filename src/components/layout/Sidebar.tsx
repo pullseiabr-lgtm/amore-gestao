@@ -37,6 +37,7 @@ const PRODUTOS_SUBMENU: NavItem[] = [
 // Sub-itens do grupo Compras & Estoque
 const COMPRAS_SUBMENU: NavItem[] = [
   { id: 'pipeline-suprimentos',   label: '🔀 Pipeline de Suprimentos', icon: <Activity size={12} />, perm: 'requisicoes' },
+  { id: 'dashboard-suprimentos',  label: '📊 Dashboard Suprimentos', icon: <BarChart2 size={12} />, perm: 'requisicoes' },
   { id: 'lista-padrao',           label: '📋 Lista Padronizada', icon: <ShoppingCart size={12} /> },
   { id: 'compras',                label: 'Compras (histórico)', icon: <ShoppingCart size={12} /> },
   { id: 'requisicoes',            label: 'Requisições',         icon: <ClipboardList size={12} /> },
@@ -82,7 +83,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
   const isProdutosGroup = (p: string) => p === 'produtos' || p === 'produtos-categorias'
 
   // Abre o dropdown automaticamente se a página ativa for do grupo Compras
-  const isComprasGroup = (p: string) => p === 'pipeline-suprimentos' || p === 'lista-padrao' || p === 'compras' || p === 'requisicoes' || p === 'req-automaticas' || p === 'estoque' || p === 'fornecedores' || p === 'compras-agente'
+  const isComprasGroup = (p: string) => p === 'pipeline-suprimentos' || p === 'dashboard-suprimentos' || p === 'lista-padrao' || p === 'compras' || p === 'requisicoes' || p === 'req-automaticas' || p === 'estoque' || p === 'fornecedores' || p === 'compras-agente'
   const isRelatoriosGroup = (p: string) => p === 'relatorio-cvl' || p === 'ruptura' || p === 'market'
 
   const [produtosOpen, setProdutosOpen] = useState(isProdutosGroup(activePage))

@@ -238,6 +238,14 @@ export interface Requisicao {
   aprov_diretoria_em?: string | null
   aprov_reprovado_por?: string | null
   aprov_reprovado_motivo?: string | null
+  // ── Validação fiscal tripla ──
+  fiscal_status?: FiscalStatus | null
+  fiscal_nf_numero?: string | null
+  fiscal_nf_valor?: number | null
+  fiscal_mercadoria_ok?: boolean | null
+  fiscal_conferido_por?: string | null
+  fiscal_conferido_em?: string | null
+  fiscal_obs?: string | null
   credito_id: string | null
   centro_custo: string | null
   created_by: string | null
@@ -254,6 +262,7 @@ export interface AprovacaoConfig {
 }
 
 export type NivelAprovacao = 'gestor' | 'financeiro' | 'diretoria'
+export type FiscalStatus = 'pendente' | 'liberado' | 'divergencia' | 'aguardando_correcao'
 
 export interface RequisicaoItem {
   id: string

@@ -3,7 +3,7 @@ import { Loader2, RefreshCw, ArrowRight, Package, AlertTriangle, Settings2, Chec
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { fetchRequisicoes, updateRequisicao, fetchAprovacaoConfig, upsertAprovacaoConfig, insertReqTimeline } from '../../lib/db'
-import type { Requisicao, ReqStatus, ReqPrioridade, AprovacaoConfig, NivelAprovacao } from '../../types/database'
+import type { Requisicao, ReqStatus, ReqPrioridade, AprovacaoConfig, NivelAprovacao, FiscalStatus } from '../../types/database'
 
 // ── Etapas macro do fluxo de suprimentos ─────────────────────
 type EtapaId = 'solicitacao' | 'cotacao' | 'aprovacao' | 'pedido' | 'recebimento' | 'finalizado'
@@ -19,6 +19,14 @@ const ETAPAS: { id: EtapaId; label: string; cor: string; bg: string; status: Req
 
 // Níveis de aprovação exigidos conforme o valor ultrapassa cada limite
 const NIVEL_LABEL: Record<NivelAprovacao, string> = { gestor: 'Gestor', financeiro: 'Financeiro', diretoria: 'Diretoria' }
+
+// Resultados da validação fiscal
+const FISCAL_CFG: Record<FiscalStatus, { label: string; cor: string; bg: string }> = {
+  pendente:             { label: 'Pendente',              cor: '#6b7280', bg: '#f3f4f6' },
+  liberado:             { label: 'Liberado p/ entrada',   cor: '#16a34a', bg: '#dcfce7' },
+  divergencia:          { label: 'Divergência',           cor: '#dc2626', bg: '#fee2e2' },
+  aguardando_correcao:  { label: 'Aguardando correção',   cor: '#d97706', bg: '#ffedd5' },
+}
 
 function niveisExigidos(total: number, cfg: AprovacaoConfig): NivelAprovacao[] {
   const req: NivelAprovacao[] = []
@@ -69,6 +77,9 @@ export default function FluxoSuprimentosPage() {
   // Modal de limites
   const [showLimites, setShowLimites] = useState(false)
   const [limForm, setLimForm] = useState({ limite_gestor: '', limite_financeiro: '', limite_diretoria: '' })
+  // Modal de validação fiscal
+  const [fiscalReq, setFiscalReq] = useState<Requisicao | null>(null)
+  const [fiscalForm, setFiscalForm] = useState({ nf_numero: '', nf_valor: '', mercadoria_ok: true, obs: '' })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -126,6 +137,36 @@ export default function FluxoSuprimentosPage() {
       const nome = user?.name || 'Gestor'
       await updateRequisicao(r.id, { status: 'reprovada', aprov_reprovado_por: nome, aprov_reprovado_motivo: motivo || null })
       try { await insertReqTimeline({ requisicao_id: r.id, tipo: 'reprovacao', descricao: `Reprovada por ${nome}${motivo ? `: ${motivo}` : ''}`, usuario: nome, dados: null }) } catch { /* opcional */ }
+      await load()
+    } finally { setSaving(false) }
+  }
+
+  // ── Validação fiscal tripla ───────────────────────────────
+  const abrirFiscal = (r: Requisicao) => {
+    setFiscalForm({
+      nf_numero: r.fiscal_nf_numero || '',
+      nf_valor: r.fiscal_nf_valor != null ? String(r.fiscal_nf_valor) : '',
+      mercadoria_ok: r.fiscal_mercadoria_ok ?? true,
+      obs: r.fiscal_obs || '',
+    })
+    setFiscalReq(r)
+  }
+  const salvarFiscal = async (resultado: FiscalStatus) => {
+    if (!fiscalReq) return
+    setSaving(true)
+    try {
+      const nome = user?.name || 'Conferente'
+      await updateRequisicao(fiscalReq.id, {
+        fiscal_status: resultado,
+        fiscal_nf_numero: fiscalForm.nf_numero || null,
+        fiscal_nf_valor: fiscalForm.nf_valor ? Number(fiscalForm.nf_valor) : null,
+        fiscal_mercadoria_ok: fiscalForm.mercadoria_ok,
+        fiscal_obs: fiscalForm.obs || null,
+        fiscal_conferido_por: nome,
+        fiscal_conferido_em: new Date().toISOString(),
+      })
+      try { await insertReqTimeline({ requisicao_id: fiscalReq.id, tipo: 'compra', descricao: `Validação fiscal: ${FISCAL_CFG[resultado].label} por ${nome}`, usuario: nome, dados: null }) } catch { /* opcional */ }
+      setFiscalReq(null)
       await load()
     } finally { setSaving(false) }
   }
@@ -317,6 +358,25 @@ export default function FluxoSuprimentosPage() {
                               })()}
                             </div>
                           )}
+
+                          {/* Validação fiscal (somente etapa Recebimento/Fiscal) */}
+                          {etapa.id === 'recebimento' && (
+                            <div onClick={e => e.stopPropagation()} style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+                              {r.fiscal_status && r.fiscal_status !== 'pendente' ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  <span style={{ alignSelf: 'flex-start', fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700, background: FISCAL_CFG[r.fiscal_status].bg, color: FISCAL_CFG[r.fiscal_status].cor }}>
+                                    🧾 {FISCAL_CFG[r.fiscal_status].label}
+                                  </span>
+                                  <button onClick={() => abrirFiscal(r)} style={{ alignSelf: 'flex-start', fontSize: 11, background: 'none', border: 'none', color: 'var(--bordo)', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>revisar conferência</button>
+                                </div>
+                              ) : (
+                                <button onClick={() => abrirFiscal(r)}
+                                  style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--bordo)', background: 'transparent', color: 'var(--bordo)', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>
+                                  🧾 Conferir Fiscal (NF)
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )
@@ -349,6 +409,85 @@ export default function FluxoSuprimentosPage() {
           <AlertTriangle size={14} /> {atrasadas} requisição{atrasadas > 1 ? 'ões' : ''} com prazo de entrega vencido — priorize.
         </div>
       )}
+
+      {/* Modal de validação fiscal tripla */}
+      {fiscalReq && (() => {
+        const pedido = fiscalReq.total_final || fiscalReq.total_estimado || 0
+        const nf = fiscalForm.nf_valor ? Number(fiscalForm.nf_valor) : null
+        const difNf = nf != null ? nf - pedido : null
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div style={{ background: 'var(--card)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Validação Fiscal — REQ-{String(fiscalReq.numero).padStart(4, '0')}</h3>
+                <button onClick={() => setFiscalReq(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={18} /></button>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>Conferência tripla: Pedido × Nota Fiscal × Mercadoria.</div>
+
+              {/* 1. Pedido */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)' }}>1 · PEDIDO</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{fmtR$(pedido)}</div>
+                </div>
+                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)' }}>DIFERENÇA NF</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2, color: difNf == null ? 'var(--muted)' : Math.abs(difNf) < 0.01 ? '#16a34a' : '#dc2626' }}>
+                    {difNf == null ? '—' : (difNf > 0 ? '+' : '') + fmtR$(difNf)}
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Nota Fiscal */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>2 · NOTA FISCAL</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                <input value={fiscalForm.nf_numero} onChange={e => setFiscalForm(f => ({ ...f, nf_numero: e.target.value }))}
+                  placeholder="Número da NF"
+                  style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                <input type="number" step="0.01" min="0" value={fiscalForm.nf_valor} onChange={e => setFiscalForm(f => ({ ...f, nf_valor: e.target.value }))}
+                  placeholder="Valor da NF (R$)"
+                  style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+              </div>
+
+              {/* 3. Mercadoria */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>3 · MERCADORIA</div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                <button onClick={() => setFiscalForm(f => ({ ...f, mercadoria_ok: true }))}
+                  style={{ flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, border: `1px solid ${fiscalForm.mercadoria_ok ? '#16a34a' : 'var(--border)'}`, background: fiscalForm.mercadoria_ok ? '#dcfce7' : 'var(--bg)', color: fiscalForm.mercadoria_ok ? '#15803d' : 'var(--muted)' }}>
+                  ✓ Confere com o pedido
+                </button>
+                <button onClick={() => setFiscalForm(f => ({ ...f, mercadoria_ok: false }))}
+                  style={{ flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, border: `1px solid ${!fiscalForm.mercadoria_ok ? '#dc2626' : 'var(--border)'}`, background: !fiscalForm.mercadoria_ok ? '#fee2e2' : 'var(--bg)', color: !fiscalForm.mercadoria_ok ? '#dc2626' : 'var(--muted)' }}>
+                  ✕ Há divergência
+                </button>
+              </div>
+
+              <textarea value={fiscalForm.obs} onChange={e => setFiscalForm(f => ({ ...f, obs: e.target.value }))}
+                rows={2} placeholder="Observações (impostos, produto, condição de pagamento…)"
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical', marginBottom: 16 }} />
+
+              {/* Resultado */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>RESULTADO DA CONFERÊNCIA</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button onClick={() => salvarFiscal('liberado')} disabled={saving}
+                  style={{ padding: '10px', borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
+                  ✓ Liberado para entrada no estoque
+                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => salvarFiscal('divergencia')} disabled={saving}
+                    style={{ flex: 1, padding: '9px', borderRadius: 8, border: '1px solid #dc2626', background: 'transparent', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                    Divergência encontrada
+                  </button>
+                  <button onClick={() => salvarFiscal('aguardando_correcao')} disabled={saving}
+                    style={{ flex: 1, padding: '9px', borderRadius: 8, border: '1px solid #d97706', background: 'transparent', color: '#d97706', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                    Aguardar correção
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Modal de limites orçamentários */}
       {showLimites && (
