@@ -123,9 +123,9 @@ export default async function handler(req, res) {
     }
   }
 
-  if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID || !process.env.WHATSAPP_RECIPIENTS) {
-    return res.status(500).json({ error: 'Configure WHATSAPP_TOKEN, WHATSAPP_PHONE_ID e WHATSAPP_RECIPIENTS nas variáveis de ambiente da Vercel.' })
-  }
+  // Modo pré-visualização: monta o relatório a partir do Supabase e retorna SEM enviar.
+  // Funciona só com VITE_SUPABASE_* (não precisa das credenciais do WhatsApp).
+  const preview = req.query?.preview === '1' || req.query?.preview === 'true'
 
   const loja = process.env.WHATSAPP_LOJA || ''
   const filtroLoja = loja ? `loja=eq.${encodeURIComponent(loja)}&` : ''
@@ -138,8 +138,21 @@ export default async function handler(req, res) {
     ])
 
     const texto = montarRelatorio(loja, boletos, reqs, tarefas)
-    const destinatarios = process.env.WHATSAPP_RECIPIENTS.split(',').map(s => s.trim().replace(/\D/g, '')).filter(Boolean)
 
+    if (preview) {
+      return res.status(200).json({ preview: true, loja: loja || 'todas', relatorio: texto })
+    }
+
+    // Envio real: exige as credenciais do WhatsApp
+    if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID || !process.env.WHATSAPP_RECIPIENTS) {
+      return res.status(503).json({
+        error: 'Disparo pronto, mas falta configurar o WhatsApp. Adicione WHATSAPP_TOKEN, WHATSAPP_PHONE_ID e WHATSAPP_RECIPIENTS nas variáveis de ambiente da Vercel.',
+        dica: 'Use ?preview=1 para ver o relatório sem enviar.',
+        previa: texto.slice(0, 600),
+      })
+    }
+
+    const destinatarios = process.env.WHATSAPP_RECIPIENTS.split(',').map(s => s.trim().replace(/\D/g, '')).filter(Boolean)
     const resultados = []
     for (const to of destinatarios) {
       const r = await enviarWhatsApp(to, texto)
