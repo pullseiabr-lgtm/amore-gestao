@@ -229,12 +229,31 @@ export interface Requisicao {
   aprovador_nome: string | null
   aprovador_at: string | null
   obs_aprovacao: string | null
+  // ── Aprovação multinível (opcionais — preenchidos no fluxo) ──
+  aprov_gestor_por?: string | null
+  aprov_gestor_em?: string | null
+  aprov_financeiro_por?: string | null
+  aprov_financeiro_em?: string | null
+  aprov_diretoria_por?: string | null
+  aprov_diretoria_em?: string | null
+  aprov_reprovado_por?: string | null
+  aprov_reprovado_motivo?: string | null
   credito_id: string | null
   centro_custo: string | null
   created_by: string | null
   created_at: string
   updated_at: string
 }
+
+export interface AprovacaoConfig {
+  loja: string
+  limite_gestor: number
+  limite_financeiro: number
+  limite_diretoria: number
+  updated_at: string
+}
+
+export type NivelAprovacao = 'gestor' | 'financeiro' | 'diretoria'
 
 export interface RequisicaoItem {
   id: string

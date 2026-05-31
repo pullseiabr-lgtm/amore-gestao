@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig } from '../types/database'
 
 const db = supabase as any
 
@@ -749,6 +749,31 @@ export async function insertRequisicao(r: Omit<Requisicao, 'id' | 'numero' | 'cr
 
 export async function updateRequisicao(id: string, r: Partial<Requisicao>): Promise<Requisicao> {
   return estoquePatch('requisicoes', id, { ...r, updated_at: new Date().toISOString() })
+}
+
+// ── Config de aprovação multinível (limites orçamentários) ──────────────────
+const APROV_CFG_DEFAULT = { limite_gestor: 500, limite_financeiro: 2000, limite_diretoria: 10000 }
+
+export async function fetchAprovacaoConfig(loja: string): Promise<AprovacaoConfig> {
+  try {
+    const rows = await estoqueFetch('compras_aprovacao_config', `loja=eq.${encodeURIComponent(loja)}`)
+    if (rows && rows[0]) return rows[0] as AprovacaoConfig
+  } catch { /* usa default */ }
+  return { loja, ...APROV_CFG_DEFAULT, updated_at: new Date().toISOString() }
+}
+
+export async function upsertAprovacaoConfig(cfg: { loja: string; limite_gestor: number; limite_financeiro: number; limite_diretoria: number }): Promise<void> {
+  const token = await getToken()
+  await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/compras_aprovacao_config?on_conflict=loja`, {
+    method: 'POST',
+    headers: {
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates',
+    },
+    body: JSON.stringify({ ...cfg, updated_at: new Date().toISOString() }),
+  })
 }
 
 export async function deleteRequisicao(id: string): Promise<void> {
