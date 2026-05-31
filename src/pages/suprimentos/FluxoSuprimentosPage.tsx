@@ -28,6 +28,48 @@ const FISCAL_CFG: Record<FiscalStatus, { label: string; cor: string; bg: string 
   aguardando_correcao:  { label: 'Aguardando correção',   cor: '#d97706', bg: '#ffedd5' },
 }
 
+// ── Leitura de Nota Fiscal por foto (Gemini visão) ──────────
+interface NotaFiscalIA {
+  numero?: string; fornecedor?: string; cnpj?: string; data_emissao?: string
+  valor_total?: number; impostos?: number; condicao_pagamento?: string
+  vencimentos?: string[]
+  produtos?: { descricao?: string; quantidade?: number; unidade?: string; valor_unitario?: number; valor_total?: number }[]
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => { const s = String(r.result); resolve(s.slice(s.indexOf(',') + 1)) }
+    r.onerror = reject
+    r.readAsDataURL(file)
+  })
+}
+
+async function lerNotaFiscalIA(base64: string, mime: string): Promise<NotaFiscalIA> {
+  const apiKey = (typeof localStorage !== 'undefined' ? localStorage.getItem('gemini_api_key') : '') || ''
+  const params = new URLSearchParams({ model: 'gemini-2.5-flash' })
+  if (apiKey) params.set('k', apiKey)
+  const prompt = `Você é um leitor de notas fiscais brasileiras (NF-e / NFC-e / DANFE / cupom).
+Analise a imagem e extraia os dados em JSON ESTRITO, sem nenhum texto fora do JSON, neste formato exato:
+{"numero":"","fornecedor":"","cnpj":"","data_emissao":"","valor_total":0,"impostos":0,"condicao_pagamento":"","vencimentos":[],"produtos":[{"descricao":"","quantidade":0,"unidade":"","valor_unitario":0,"valor_total":0}]}
+Use ponto como separador decimal. Datas em DD/MM/AAAA. Se um campo não for encontrado, use string vazia ou 0. Responda APENAS o JSON.`
+  const resp = await fetch(`/api/gemini?${params}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: base64 } }] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 2048 },
+    }),
+  })
+  const data = await resp.json()
+  if (!resp.ok) throw new Error(data?.error || `Gemini HTTP ${resp.status}`)
+  let txt: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  txt = txt.replace(/```json/gi, '').replace(/```/g, '').trim()
+  const s = txt.indexOf('{'); const e = txt.lastIndexOf('}')
+  if (s >= 0 && e > s) txt = txt.slice(s, e + 1)
+  return JSON.parse(txt)
+}
+
 function niveisExigidos(total: number, cfg: AprovacaoConfig): NivelAprovacao[] {
   const req: NivelAprovacao[] = []
   if (total > cfg.limite_gestor) req.push('gestor')
@@ -80,6 +122,10 @@ export default function FluxoSuprimentosPage() {
   // Modal de validação fiscal
   const [fiscalReq, setFiscalReq] = useState<Requisicao | null>(null)
   const [fiscalForm, setFiscalForm] = useState({ nf_numero: '', nf_valor: '', mercadoria_ok: true, obs: '' })
+  // Leitura de NF por foto (IA)
+  const [lendoNF, setLendoNF] = useState(false)
+  const [nfIA, setNfIA] = useState<NotaFiscalIA | null>(null)
+  const [nfErro, setNfErro] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -149,7 +195,26 @@ export default function FluxoSuprimentosPage() {
       mercadoria_ok: r.fiscal_mercadoria_ok ?? true,
       obs: r.fiscal_obs || '',
     })
+    setNfIA(null); setNfErro(''); setLendoNF(false)
     setFiscalReq(r)
+  }
+
+  // ── Captura de NF por foto (GPT/IA) ───────────────────────
+  const onFotoNF = async (file: File | undefined) => {
+    if (!file) return
+    setNfErro(''); setNfIA(null); setLendoNF(true)
+    try {
+      const base64 = await fileToBase64(file)
+      const dados = await lerNotaFiscalIA(base64, file.type || 'image/jpeg')
+      setNfIA(dados)
+      setFiscalForm(f => ({
+        ...f,
+        nf_numero: dados.numero || f.nf_numero,
+        nf_valor: dados.valor_total ? String(dados.valor_total) : f.nf_valor,
+      }))
+    } catch (e) {
+      setNfErro((e as Error).message || 'Não foi possível ler a nota fiscal.')
+    } finally { setLendoNF(false) }
   }
   const salvarFiscal = async (resultado: FiscalStatus) => {
     if (!fiscalReq) return
@@ -440,6 +505,35 @@ export default function FluxoSuprimentosPage() {
 
               {/* 2. Nota Fiscal */}
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>2 · NOTA FISCAL</div>
+
+              {/* Captura por foto (IA) */}
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px', borderRadius: 8, border: '1px dashed var(--bordo)', background: 'var(--bg)', cursor: lendoNF ? 'wait' : 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--bordo)', marginBottom: 10 }}>
+                {lendoNF ? <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> Lendo a nota…</> : <>📷 Ler NF por foto (IA)</>}
+                <input type="file" accept="image/*" capture="environment" disabled={lendoNF}
+                  onChange={e => onFotoNF(e.target.files?.[0])} style={{ display: 'none' }} />
+              </label>
+              {nfErro && <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 10 }}>⚠ {nfErro}</div>}
+
+              {/* Dados extraídos pela IA */}
+              {nfIA && (
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12 }}>
+                  <div style={{ fontWeight: 700, color: '#15803d', marginBottom: 4 }}>🤖 Dados lidos da nota</div>
+                  {nfIA.fornecedor && <div><strong>Fornecedor:</strong> {nfIA.fornecedor}{nfIA.cnpj ? ` · ${nfIA.cnpj}` : ''}</div>}
+                  {nfIA.data_emissao && <div><strong>Emissão:</strong> {nfIA.data_emissao}{nfIA.condicao_pagamento ? ` · ${nfIA.condicao_pagamento}` : ''}</div>}
+                  {nfIA.impostos ? <div><strong>Impostos:</strong> {fmtR$(nfIA.impostos)}</div> : null}
+                  {!!nfIA.produtos?.length && (
+                    <div style={{ marginTop: 4 }}>
+                      <strong>{nfIA.produtos.length} produto(s):</strong>
+                      <div style={{ maxHeight: 90, overflowY: 'auto', marginTop: 2 }}>
+                        {nfIA.produtos.slice(0, 12).map((p, i) => (
+                          <div key={i} style={{ color: 'var(--muted)' }}>• {p.descricao} — {p.quantidade} {p.unidade} {p.valor_total ? `(${fmtR$(p.valor_total)})` : ''}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
                 <input value={fiscalForm.nf_numero} onChange={e => setFiscalForm(f => ({ ...f, nf_numero: e.target.value }))}
                   placeholder="Número da NF"
@@ -448,6 +542,19 @@ export default function FluxoSuprimentosPage() {
                   placeholder="Valor da NF (R$)"
                   style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
               </div>
+
+              {/* Conciliação automática */}
+              {nfIA && difNf != null && (
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 12, padding: '8px 10px', borderRadius: 8,
+                  background: Math.abs(difNf) < 0.01 ? '#dcfce7' : Math.abs(difNf) <= pedido * 0.02 ? '#fef9c3' : '#fee2e2',
+                  color: Math.abs(difNf) < 0.01 ? '#15803d' : Math.abs(difNf) <= pedido * 0.02 ? '#854d0e' : '#dc2626' }}>
+                  {Math.abs(difNf) < 0.01
+                    ? '✓ Conciliação OK — NF confere com o pedido'
+                    : Math.abs(difNf) <= pedido * 0.02
+                      ? `⚠ Pequena diferença (${fmtR$(Math.abs(difNf))}) — necessita aprovação manual`
+                      : `✕ Divergência de ${fmtR$(Math.abs(difNf))} entre NF e pedido`}
+                </div>
+              )}
 
               {/* 3. Mercadoria */}
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>3 · MERCADORIA</div>
