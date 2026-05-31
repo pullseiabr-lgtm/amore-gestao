@@ -782,8 +782,8 @@ export interface CozinhaSolicitacao {
 
 // ── Tarefas Operacionais ─────────────────────────────────────
 
-export type TarefaStatus     = 'pendente' | 'em_andamento' | 'aguardando_validacao' | 'concluido' | 'cancelado'
-export type TarefaPrioridade = 'baixa' | 'media' | 'alta' | 'urgente'
+export type TarefaStatus     = 'pendente' | 'em_andamento' | 'aguardando_validacao' | 'ajustes' | 'concluido' | 'cancelado'
+export type TarefaPrioridade = 'baixa' | 'media' | 'alta' | 'urgente' | 'emergencial'
 export type TarefaSetor      = 'Cozinha' | 'Bar' | 'Salão' | 'Estoque' | 'Compras' | 'Financeiro' | 'RH' | 'Limpeza' | 'Produção' | 'Diretoria' | 'Geral'
 
 export interface Tarefa {
@@ -798,6 +798,18 @@ export interface Tarefa {
   solicitante_nome: string
   prazo: string | null
   observacoes: string | null
+  // ── Padrão ClickUp / Gestão Amore ──
+  objetivo: string | null
+  envolvidos: string | null
+  competencia: string | null
+  data_inicio: string | null
+  entregaveis: string | null
+  anexos: string | null
+  tags: string | null
+  custo_previsto: number | null
+  custo_executado: number | null
+  resultado_esperado: string | null
+  resultado_final: string | null
   precisa_aprovacao: boolean
   aprovado_por: string | null
   aprovado_at: string | null

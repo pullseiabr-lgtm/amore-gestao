@@ -16,21 +16,29 @@ import type { Tarefa, TarefaStatus, TarefaPrioridade, TarefaChecklist, TarefaCom
 
 // ── Constants ────────────────────────────────────────────────
 
-const SETORES = ['Geral','Cozinha','Bar','Salão','Estoque','Compras','Financeiro','RH','Limpeza','Produção','Diretoria']
+const SETORES = ['Geral','Operação','Marketing','Delivery','Eventos','Cozinha','Bar','Salão','Estoque','Compras','Financeiro','Manutenção','RH','Limpeza','Produção','Diretoria']
+
+// Competências — área de habilidade exigida pela tarefa (independente do setor)
+const COMPETENCIAS = ['Gestão','Design','Conteúdo','Audiovisual','Tráfego/Ads','Atendimento','Operacional','Manutenção','Financeiro','Compras','Comercial']
+
+// Tags sugeridas (modelo do template)
+const TAGS_SUGERIDAS = ['marketing','delivery','evento','urgente','manutenção','financeiro','conteúdo','instagram','campanha','fornecedor']
 
 const COLUNAS: { id: TarefaStatus; label: string; cor: string; bg: string }[] = [
-  { id: 'pendente',             label: 'Pendente',             cor: '#6b7280', bg: '#f3f4f6' },
+  { id: 'pendente',             label: 'Backlog',              cor: '#6b7280', bg: '#f3f4f6' },
   { id: 'em_andamento',         label: 'Em Andamento',         cor: '#2563eb', bg: '#eff6ff' },
-  { id: 'aguardando_validacao', label: 'Aguardando Validação', cor: '#d97706', bg: '#fffbeb' },
-  { id: 'concluido',            label: 'Concluído',            cor: '#16a34a', bg: '#f0fdf4' },
+  { id: 'aguardando_validacao', label: 'Aguardando Aprovação', cor: '#d97706', bg: '#fffbeb' },
+  { id: 'ajustes',              label: 'Ajustes',              cor: '#9333ea', bg: '#faf5ff' },
+  { id: 'concluido',            label: 'Finalizado',           cor: '#16a34a', bg: '#f0fdf4' },
   { id: 'cancelado',            label: 'Cancelado',            cor: '#dc2626', bg: '#fef2f2' },
 ]
 
 const PRIORIDADES: { id: TarefaPrioridade; label: string; cor: string }[] = [
-  { id: 'baixa',   label: 'Baixa',   cor: '#6b7280' },
-  { id: 'media',   label: 'Média',   cor: '#2563eb' },
-  { id: 'alta',    label: 'Alta',    cor: '#d97706' },
-  { id: 'urgente', label: 'Urgente', cor: '#dc2626' },
+  { id: 'baixa',       label: 'Baixa',       cor: '#6b7280' },
+  { id: 'media',       label: 'Média',       cor: '#2563eb' },
+  { id: 'alta',        label: 'Alta',        cor: '#d97706' },
+  { id: 'urgente',     label: 'Urgente',     cor: '#dc2626' },
+  { id: 'emergencial', label: 'Emergencial', cor: '#991b1b' },
 ]
 
 function prioLabel(p: TarefaPrioridade) {
@@ -43,6 +51,14 @@ function fmtData(s: string | null) {
   if (!s) return ''
   return new Date(s).toLocaleDateString('pt-BR')
 }
+function fmtMoeda(n: number | null | undefined) {
+  if (n == null) return '—'
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+function parseTags(s: string | null): string[] {
+  if (!s) return []
+  return s.split(/[,\s]+/).map(t => t.replace(/^#/, '').trim()).filter(Boolean)
+}
 function vencido(prazo: string | null) {
   if (!prazo) return false
   return new Date(prazo) < new Date(new Date().toDateString())
@@ -54,6 +70,10 @@ const emptyForm = () => ({
   responsavel_nome: '', solicitante_nome: '', prazo: '', observacoes: '',
   precisa_aprovacao: false,
   checklist: [] as string[],
+  // ── Padrão ClickUp ──
+  objetivo: '', envolvidos: '', competencia: '', data_inicio: '',
+  entregaveis: '', anexos: '', tags: '',
+  custo_previsto: '', resultado_esperado: '',
 })
 
 // ── Main Component ───────────────────────────────────────────
@@ -81,7 +101,9 @@ export default function TarefasPage() {
   const [novoComent, setNovoComent] = useState('')
   const [novoCheckDetalhe, setNovoCheckDetalhe] = useState('')
   const [detalheSaving, setDetalheSaving] = useState(false)
-  const [abaDetalhe, setAbaDetalhe] = useState<'checklist'|'comentarios'|'historico'>('checklist')
+  const [abaDetalhe, setAbaDetalhe] = useState<'checklist'|'comentarios'|'resultado'|'historico'>('checklist')
+  // Edição de resultado/custo no detalhe
+  const [resForm, setResForm] = useState({ resultado_final: '', custo_executado: '' })
 
   // ── Load ─────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -100,6 +122,14 @@ export default function TarefasPage() {
       if (atualizada) setDetalhe(atualizada)
     }
   }, [tarefas]) // eslint-disable-line
+
+  // Sincroniza o form de resultado ao trocar de tarefa no detalhe
+  useEffect(() => {
+    setResForm({
+      resultado_final: detalhe?.resultado_final || '',
+      custo_executado: detalhe?.custo_executado != null ? String(detalhe.custo_executado) : '',
+    })
+  }, [detalhe?.id]) // eslint-disable-line
 
   // ── Filtro ───────────────────────────────────────────────
   const tarefasFiltradas = tarefas.filter(t => {
@@ -126,6 +156,17 @@ export default function TarefasPage() {
         solicitante_nome: form.solicitante_nome || user?.name || '',
         prazo: form.prazo || null,
         observacoes: form.observacoes || null,
+        objetivo: form.objetivo || null,
+        envolvidos: form.envolvidos || null,
+        competencia: form.competencia || null,
+        data_inicio: form.data_inicio || null,
+        entregaveis: form.entregaveis || null,
+        anexos: form.anexos || null,
+        tags: form.tags || null,
+        custo_previsto: form.custo_previsto ? Number(form.custo_previsto) : null,
+        custo_executado: null,
+        resultado_esperado: form.resultado_esperado || null,
+        resultado_final: null,
         precisa_aprovacao: form.precisa_aprovacao,
         aprovado_por: null, aprovado_at: null, obs_aprovacao: null,
         reaberta: false, created_by: user?.id || null,
@@ -207,6 +248,21 @@ export default function TarefasPage() {
     } finally { setDetalheSaving(false) }
   }
 
+  // ── Salvar resultado / custo executado ───────────────────
+  const salvarResultado = async () => {
+    if (!detalhe) return
+    setDetalheSaving(true)
+    try {
+      const custo = resForm.custo_executado ? Number(resForm.custo_executado) : null
+      await updateTarefa(detalhe.id, {
+        resultado_final: resForm.resultado_final || null,
+        custo_executado: custo,
+      })
+      await insertTarefaHistorico({ tarefa_id: detalhe.id, acao: 'Resultado registrado', campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || 'Sistema' })
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+
   // ── Deletar tarefa ───────────────────────────────────────
   const excluirTarefa = async (t: Tarefa) => {
     if (!confirm(`Excluir "${t.titulo}"?`)) return
@@ -220,6 +276,18 @@ export default function TarefasPage() {
     acc[col.id] = tarefasFiltradas.filter(t => t.status === col.id).length
     return acc
   }, {} as Record<TarefaStatus, number>)
+
+  // ── Métricas de gestão ───────────────────────────────────
+  const ativas = tarefasFiltradas.filter(t => t.status !== 'concluido' && t.status !== 'cancelado')
+  const metricas = {
+    total: tarefasFiltradas.length,
+    emAndamento: tarefasFiltradas.filter(t => t.status === 'em_andamento').length,
+    atrasadas: ativas.filter(t => vencido(t.prazo)).length,
+    concluidas: tarefasFiltradas.filter(t => t.status === 'concluido').length,
+    pctConclusao: tarefasFiltradas.length > 0
+      ? Math.round((tarefasFiltradas.filter(t => t.status === 'concluido').length / tarefasFiltradas.length) * 100)
+      : 0,
+  }
 
   // ── Render ───────────────────────────────────────────────
   return (
@@ -248,6 +316,24 @@ export default function TarefasPage() {
           </button>
         </div>
       </div>
+
+      {/* ── Métricas de gestão ── */}
+      {!loading && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {[
+            { lbl: 'Total', val: metricas.total, cor: '#6b7280' },
+            { lbl: 'Em andamento', val: metricas.emAndamento, cor: '#2563eb' },
+            { lbl: 'Atrasadas', val: metricas.atrasadas, cor: '#dc2626' },
+            { lbl: 'Finalizadas', val: metricas.concluidas, cor: '#16a34a' },
+            { lbl: '% Conclusão', val: `${metricas.pctConclusao}%`, cor: '#9333ea' },
+          ].map(m => (
+            <div key={m.lbl} style={{ flex: '1 1 110px', minWidth: 110, background: 'var(--card)', border: '1px solid var(--border)', borderTop: `3px solid ${m.cor}`, borderRadius: 10, padding: '10px 14px' }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: m.cor, lineHeight: 1.1 }}>{m.val}</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{m.lbl}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Filtros ── */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -392,8 +478,16 @@ export default function TarefasPage() {
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Título *</label>
                 <input value={form.titulo} onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))}
-                  placeholder="Descreva a tarefa..."
+                  placeholder="Ex: Criar campanha Dia dos Namorados"
                   style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+              </div>
+
+              {/* Objetivo */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>🎯 Objetivo da tarefa</label>
+                <textarea value={form.objetivo} onChange={e => setForm(f => ({ ...f, objetivo: e.target.value }))}
+                  rows={2} placeholder="Por que será feito e qual o resultado esperado…"
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical' }} />
               </div>
 
               {/* Setor + Prioridade */}
@@ -430,18 +524,101 @@ export default function TarefasPage() {
                 </div>
               </div>
 
-              {/* Prazo */}
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Prazo</label>
-                <input type="date" value={form.prazo} onChange={e => setForm(f => ({ ...f, prazo: e.target.value }))}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+              {/* Competência + Envolvidos */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Competência</label>
+                  <select value={form.competencia} onChange={e => setForm(f => ({ ...f, competencia: e.target.value }))}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }}>
+                    <option value="">—</option>
+                    {COMPETENCIAS.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Envolvidos</label>
+                  <input value={form.envolvidos} onChange={e => setForm(f => ({ ...f, envolvidos: e.target.value }))}
+                    placeholder="Equipe de apoio (separe por vírgula)"
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                </div>
+              </div>
+
+              {/* Data início + Prazo */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>📅 Data de início</label>
+                  <input type="date" value={form.data_inicio} onChange={e => setForm(f => ({ ...f, data_inicio: e.target.value }))}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>⏰ Prazo final</label>
+                  <input type="date" value={form.prazo} onChange={e => setForm(f => ({ ...f, prazo: e.target.value }))}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                </div>
               </div>
 
               {/* Descrição */}
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Descrição</label>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>🧠 Descrição completa</label>
                 <textarea value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))}
-                  rows={3} placeholder="Detalhes da tarefa..."
+                  rows={3} placeholder="O que precisa ser feito, como executar, referências, restrições…"
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical' }} />
+              </div>
+
+              {/* Entregáveis */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>📦 Entregáveis</label>
+                <textarea value={form.entregaveis} onChange={e => setForm(f => ({ ...f, entregaveis: e.target.value }))}
+                  rows={2} placeholder="O que precisa ser entregue (ex: arte feed, vídeo reels, relatório…)"
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical' }} />
+              </div>
+
+              {/* Custo previsto + Resultado esperado */}
+              <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>💰 Custo previsto (R$)</label>
+                  <input type="number" step="0.01" min="0" value={form.custo_previsto} onChange={e => setForm(f => ({ ...f, custo_previsto: e.target.value }))}
+                    placeholder="0,00"
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>📈 Resultado esperado</label>
+                  <input value={form.resultado_esperado} onChange={e => setForm(f => ({ ...f, resultado_esperado: e.target.value }))}
+                    placeholder="Ex: aumentar vendas, gerar alcance…"
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                </div>
+              </div>
+
+              {/* Tags */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>🔥 Tags</label>
+                <input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))}
+                  placeholder="marketing, campanha, instagram…"
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                  {TAGS_SUGERIDAS.map(tg => {
+                    const ativo = parseTags(form.tags).includes(tg)
+                    return (
+                      <button key={tg} type="button"
+                        onClick={() => setForm(f => {
+                          const atuais = parseTags(f.tags)
+                          const novas = ativo ? atuais.filter(x => x !== tg) : [...atuais, tg]
+                          return { ...f, tags: novas.join(', ') }
+                        })}
+                        style={{ fontSize: 11, padding: '2px 8px', borderRadius: 12, cursor: 'pointer',
+                          border: `1px solid ${ativo ? 'var(--bordo)' : 'var(--border)'}`,
+                          background: ativo ? 'var(--bordo)' : 'var(--bg)', color: ativo ? '#fff' : 'var(--muted)' }}>
+                        #{tg}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Anexos */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>📎 Anexos / links</label>
+                <textarea value={form.anexos} onChange={e => setForm(f => ({ ...f, anexos: e.target.value }))}
+                  rows={2} placeholder="Cole links de referências, drives, PDFs (um por linha)…"
                   style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical' }} />
               </div>
 
@@ -567,12 +744,77 @@ export default function TarefasPage() {
                 <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>SOLICITANTE</div>
                 <div style={{ fontSize: 13 }}>{detalhe.solicitante_nome || '—'}</div>
               </div>
+              {/* Data de início */}
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>DATA DE INÍCIO</div>
+                <div style={{ fontSize: 13 }}>{detalhe.data_inicio ? fmtData(detalhe.data_inicio) : '—'}</div>
+              </div>
+              {/* Competência */}
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>COMPETÊNCIA</div>
+                <div style={{ fontSize: 13 }}>{detalhe.competencia || '—'}</div>
+              </div>
             </div>
+
+            {/* Objetivo */}
+            {detalhe.objetivo && (
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, marginBottom: 4 }}>🎯 OBJETIVO</div>
+                <div style={{ fontSize: 13, lineHeight: 1.6 }}>{detalhe.objetivo}</div>
+              </div>
+            )}
 
             {/* Descrição */}
             {detalhe.descricao && (
-              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, lineHeight: 1.6, color: 'var(--text)' }}>
-                {detalhe.descricao}
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, marginBottom: 4 }}>🧠 DESCRIÇÃO</div>
+                <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text)' }}>{detalhe.descricao}</div>
+              </div>
+            )}
+
+            {/* Entregáveis */}
+            {detalhe.entregaveis && (
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, marginBottom: 4 }}>📦 ENTREGÁVEIS</div>
+                <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{detalhe.entregaveis}</div>
+              </div>
+            )}
+
+            {/* Envolvidos + Resultado esperado + Custo previsto */}
+            {(detalhe.envolvidos || detalhe.resultado_esperado || detalhe.custo_previsto != null) && (
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'grid', gap: 10 }}>
+                {detalhe.envolvidos && (
+                  <div><span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>🤝 ENVOLVIDOS: </span><span style={{ fontSize: 13 }}>{detalhe.envolvidos}</span></div>
+                )}
+                {detalhe.resultado_esperado && (
+                  <div><span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>📈 RESULTADO ESPERADO: </span><span style={{ fontSize: 13 }}>{detalhe.resultado_esperado}</span></div>
+                )}
+                {detalhe.custo_previsto != null && (
+                  <div><span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>💰 CUSTO PREVISTO: </span><span style={{ fontSize: 13 }}>{fmtMoeda(detalhe.custo_previsto)}</span></div>
+                )}
+              </div>
+            )}
+
+            {/* Tags */}
+            {parseTags(detalhe.tags).length > 0 && (
+              <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {parseTags(detalhe.tags).map(tg => (
+                  <span key={tg} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 12, background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--muted)' }}>#{tg}</span>
+                ))}
+              </div>
+            )}
+
+            {/* Anexos */}
+            {detalhe.anexos && (
+              <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, marginBottom: 4 }}>📎 ANEXOS / LINKS</div>
+                <div style={{ fontSize: 12, lineHeight: 1.7, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {detalhe.anexos.split(/\n+/).map(s => s.trim()).filter(Boolean).map((linha, i) => (
+                    /^https?:\/\//.test(linha)
+                      ? <a key={i} href={linha} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--bordo)', wordBreak: 'break-all' }}>{linha}</a>
+                      : <span key={i} style={{ wordBreak: 'break-all' }}>{linha}</span>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -599,10 +841,10 @@ export default function TarefasPage() {
 
             {/* Abas: Checklist / Comentários / Histórico */}
             <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
-              {(['checklist', 'comentarios', 'historico'] as const).map(aba => (
+              {(['checklist', 'comentarios', 'resultado', 'historico'] as const).map(aba => (
                 <button key={aba} onClick={() => setAbaDetalhe(aba)}
-                  style={{ flex: 1, padding: '10px 8px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, fontWeight: abaDetalhe === aba ? 700 : 400, color: abaDetalhe === aba ? 'var(--bordo)' : 'var(--muted)', borderBottom: abaDetalhe === aba ? '2px solid var(--bordo)' : '2px solid transparent' }}>
-                  {aba === 'checklist' ? `✓ Checklist (${detalhe.checklist?.length ?? 0})` : aba === 'comentarios' ? `💬 Comentários (${detalhe.comentarios?.length ?? 0})` : `📋 Histórico`}
+                  style={{ flex: 1, padding: '10px 6px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 11.5, fontWeight: abaDetalhe === aba ? 700 : 400, color: abaDetalhe === aba ? 'var(--bordo)' : 'var(--muted)', borderBottom: abaDetalhe === aba ? '2px solid var(--bordo)' : '2px solid transparent' }}>
+                  {aba === 'checklist' ? `✓ Checklist (${detalhe.checklist?.length ?? 0})` : aba === 'comentarios' ? `💬 Coment. (${detalhe.comentarios?.length ?? 0})` : aba === 'resultado' ? `📊 Resultado` : `📋 Histórico`}
                 </button>
               ))}
             </div>
@@ -666,6 +908,64 @@ export default function TarefasPage() {
                     <MessageSquare size={14} />
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* Aba Resultado */}
+            {abaDetalhe === 'resultado' && (
+              <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {/* Orçamento */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>💰 CUSTO PREVISTO</label>
+                    <div style={{ fontSize: 14, fontWeight: 600, padding: '8px 10px', borderRadius: 7, background: 'var(--bg)', border: '1px solid var(--border)' }}>{fmtMoeda(detalhe.custo_previsto)}</div>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>💸 CUSTO EXECUTADO (R$)</label>
+                    <input type="number" step="0.01" min="0" value={resForm.custo_executado}
+                      onChange={e => setResForm(r => ({ ...r, custo_executado: e.target.value }))}
+                      placeholder="0,00"
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 14, fontWeight: 600 }} />
+                  </div>
+                </div>
+
+                {/* Variação de orçamento */}
+                {detalhe.custo_previsto != null && resForm.custo_executado !== '' && (
+                  (() => {
+                    const prev = detalhe.custo_previsto ?? 0
+                    const exec = Number(resForm.custo_executado)
+                    const dif = exec - prev
+                    const acima = dif > 0
+                    return (
+                      <div style={{ fontSize: 12, color: acima ? '#dc2626' : '#16a34a', fontWeight: 600 }}>
+                        {acima ? '▲ Acima do previsto em ' : dif < 0 ? '▼ Abaixo do previsto em ' : '✓ No orçamento — '}
+                        {dif !== 0 ? fmtMoeda(Math.abs(dif)) : ''}
+                      </div>
+                    )
+                  })()
+                )}
+
+                {/* Resultado esperado (referência) */}
+                {detalhe.resultado_esperado && (
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                    📈 <strong>Esperado:</strong> {detalhe.resultado_esperado}
+                  </div>
+                )}
+
+                {/* Resultado final */}
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>📊 RESULTADO FINAL</label>
+                  <textarea value={resForm.resultado_final}
+                    onChange={e => setResForm(r => ({ ...r, resultado_final: e.target.value }))}
+                    rows={5} placeholder="Números, observações, aprendizados, feedback, métricas obtidas…"
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical', lineHeight: 1.5 }} />
+                </div>
+
+                <button onClick={salvarResultado} disabled={detalheSaving}
+                  style={{ alignSelf: 'flex-start', padding: '9px 18px', borderRadius: 8, border: 'none', background: detalheSaving ? 'var(--border)' : 'var(--bordo)', color: '#fff', cursor: detalheSaving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {detalheSaving ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle2 size={14} />}
+                  Salvar Resultado
+                </button>
               </div>
             )}
 
@@ -735,6 +1035,9 @@ function KanbanCard({ tarefa, onClick, onMover, colunas }: {
           {tarefa.precisa_aprovacao && !tarefa.aprovado_at && (
             <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: 4, padding: '1px 6px', fontSize: 10 }}>⏳ Aprovação</span>
           )}
+          {parseTags(tarefa.tags).slice(0, 2).map(tg => (
+            <span key={tg} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 6px', fontSize: 10, color: 'var(--muted)' }}>#{tg}</span>
+          ))}
         </div>
 
         {/* Responsável + prazo */}
