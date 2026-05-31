@@ -29,15 +29,24 @@ function fmtRl(v) {
 }
 
 async function sb(table, query) {
-  const url = `${process.env.VITE_SUPABASE_URL}/rest/v1/${table}?${query}`
-  const res = await fetch(url, {
-    headers: {
-      apikey: process.env.VITE_SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}`,
-    },
-  })
-  if (!res.ok) return []
-  return res.json()
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 7000)
+  try {
+    const url = `${process.env.VITE_SUPABASE_URL}/rest/v1/${table}?${query}`
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        apikey: process.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+    })
+    if (!res.ok) return []
+    return res.json()
+  } catch {
+    return []
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 function montarRelatorio(loja, boletos, reqs, tarefas) {
@@ -123,9 +132,29 @@ export default async function handler(req, res) {
     }
   }
 
+  // Ping: confirma que a função carrega/executa, sem tocar em nada externo.
+  if (req.query?.ping === '1') {
+    return res.status(200).json({ ok: true, ts: Date.now() })
+  }
+  // Diag: mostra QUAIS variáveis de ambiente estão presentes (sem revelar valores).
+  if (req.query?.diag === '1') {
+    return res.status(200).json({
+      VITE_SUPABASE_URL: !!process.env.VITE_SUPABASE_URL,
+      VITE_SUPABASE_ANON_KEY: !!process.env.VITE_SUPABASE_ANON_KEY,
+      WHATSAPP_TOKEN: !!process.env.WHATSAPP_TOKEN,
+      WHATSAPP_PHONE_ID: !!process.env.WHATSAPP_PHONE_ID,
+      WHATSAPP_RECIPIENTS: !!process.env.WHATSAPP_RECIPIENTS,
+      CRON_SECRET: !!process.env.CRON_SECRET,
+    })
+  }
+
   // Modo pré-visualização: monta o relatório a partir do Supabase e retorna SEM enviar.
   // Funciona só com VITE_SUPABASE_* (não precisa das credenciais do WhatsApp).
   const preview = req.query?.preview === '1' || req.query?.preview === 'true'
+
+  if (!process.env.VITE_SUPABASE_URL || !process.env.VITE_SUPABASE_ANON_KEY) {
+    return res.status(500).json({ error: 'Variáveis VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY não disponíveis no runtime da função. Verifique no projeto Vercel (Settings > Environment Variables, marcadas para Production).' })
+  }
 
   const loja = process.env.WHATSAPP_LOJA || ''
   const filtroLoja = loja ? `loja=eq.${encodeURIComponent(loja)}&` : ''
