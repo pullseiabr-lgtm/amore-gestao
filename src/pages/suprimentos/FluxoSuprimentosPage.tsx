@@ -3,7 +3,21 @@ import { Loader2, RefreshCw, ArrowRight, Package, AlertTriangle, Settings2, Chec
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { fetchRequisicoes, updateRequisicao, fetchAprovacaoConfig, upsertAprovacaoConfig, insertReqTimeline } from '../../lib/db'
-import type { Requisicao, ReqStatus, ReqPrioridade, AprovacaoConfig, NivelAprovacao, FiscalStatus } from '../../types/database'
+import type { Requisicao, ReqStatus, ReqPrioridade, AprovacaoConfig, NivelAprovacao, FiscalStatus, PedidoStatus } from '../../types/database'
+
+// Gera os campos do pedido de compra (somente se ainda não gerado)
+function camposPedido(r: Requisicao): Partial<Requisicao> {
+  if (r.pedido_numero) return {}
+  return { pedido_numero: `PC-${String(r.numero).padStart(4, '0')}`, pedido_status: 'emitido', pedido_gerado_em: new Date().toISOString() }
+}
+const PEDIDO_CFG: Record<PedidoStatus, { label: string; cor: string }> = {
+  emitido:            { label: 'Emitido',             cor: '#6b7280' },
+  enviado:            { label: 'Enviado fornecedor',  cor: '#2563eb' },
+  aguardando_entrega: { label: 'Aguardando entrega',  cor: '#d97706' },
+  entregue_parcial:   { label: 'Entregue parcial',    cor: '#9333ea' },
+  entregue:           { label: 'Entregue total',      cor: '#16a34a' },
+  finalizado:         { label: 'Finalizado',          cor: '#15803d' },
+}
 
 // ── Etapas macro do fluxo de suprimentos ─────────────────────
 type EtapaId = 'solicitacao' | 'cotacao' | 'aprovacao' | 'pedido' | 'recebimento' | 'finalizado'
@@ -154,7 +168,7 @@ export default function FluxoSuprimentosPage() {
       const exigidos = niveisExigidos(r.total_final || r.total_estimado || 0, cfg)
       const aprovadoAgora = (n: NivelAprovacao) => n === nivel || nivelAprovado(r, n)
       const tudoAprovado = exigidos.every(aprovadoAgora)
-      if (tudoAprovado) { upd.status = 'aprovada'; upd.aprovador_nome = nome; upd.aprovador_at = agora }
+      if (tudoAprovado) { upd.status = 'aprovada'; upd.aprovador_nome = nome; upd.aprovador_at = agora; Object.assign(upd, camposPedido(r)) }
       else { upd.status = 'parcialmente_aprovada' }
 
       await updateRequisicao(r.id, upd)
@@ -168,8 +182,18 @@ export default function FluxoSuprimentosPage() {
     setSaving(true)
     try {
       const nome = user?.name || 'Comprador'
-      await updateRequisicao(r.id, { status: 'aprovada', aprovador_nome: nome, aprovador_at: new Date().toISOString() })
-      try { await insertReqTimeline({ requisicao_id: r.id, tipo: 'aprovacao', descricao: `Aprovada por ${nome} (comprador)`, usuario: nome, dados: null }) } catch { /* opcional */ }
+      await updateRequisicao(r.id, { status: 'aprovada', aprovador_nome: nome, aprovador_at: new Date().toISOString(), ...camposPedido(r) })
+      try { await insertReqTimeline({ requisicao_id: r.id, tipo: 'aprovacao', descricao: `Aprovada por ${nome} (comprador) — pedido ${camposPedido(r).pedido_numero || 'gerado'}`, usuario: nome, dados: null }) } catch { /* opcional */ }
+      await load()
+    } finally { setSaving(false) }
+  }
+
+  // ── Avançar status do pedido de compra ───────────────────
+  const mudarPedidoStatus = async (r: Requisicao, st: PedidoStatus) => {
+    setSaving(true)
+    try {
+      await updateRequisicao(r.id, { pedido_status: st })
+      try { await insertReqTimeline({ requisicao_id: r.id, tipo: 'compra', descricao: `Pedido ${r.pedido_numero}: ${PEDIDO_CFG[st].label}`, usuario: user?.name || 'Sistema', dados: null }) } catch { /* opcional */ }
       await load()
     } finally { setSaving(false) }
   }
@@ -421,6 +445,26 @@ export default function FluxoSuprimentosPage() {
                                   </div>
                                 )
                               })()}
+                            </div>
+                          )}
+
+                          {/* Pedido de compra (somente etapa Pedido/Compra) */}
+                          {etapa.id === 'pedido' && (
+                            <div onClick={e => e.stopPropagation()} style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+                              {r.pedido_numero ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--bordo)' }}>📄 {r.pedido_numero}</span>
+                                    <span style={{ fontSize: 10, fontWeight: 600, color: PEDIDO_CFG[r.pedido_status || 'emitido'].cor }}>{PEDIDO_CFG[r.pedido_status || 'emitido'].label}</span>
+                                  </div>
+                                  <select value={r.pedido_status || 'emitido'} onChange={ev => mudarPedidoStatus(r, ev.target.value as PedidoStatus)} disabled={saving}
+                                    style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 11 }}>
+                                    {(Object.keys(PEDIDO_CFG) as PedidoStatus[]).map(k => <option key={k} value={k}>{PEDIDO_CFG[k].label}</option>)}
+                                  </select>
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: 11, color: 'var(--muted)' }}>Pedido será gerado na aprovação</div>
+                              )}
                             </div>
                           )}
 

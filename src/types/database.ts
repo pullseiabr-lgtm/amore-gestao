@@ -246,6 +246,10 @@ export interface Requisicao {
   fiscal_conferido_por?: string | null
   fiscal_conferido_em?: string | null
   fiscal_obs?: string | null
+  // ── Pedido de compra (gerado na aprovação) ──
+  pedido_numero?: string | null
+  pedido_status?: PedidoStatus | null
+  pedido_gerado_em?: string | null
   credito_id: string | null
   centro_custo: string | null
   created_by: string | null
@@ -263,6 +267,7 @@ export interface AprovacaoConfig {
 
 export type NivelAprovacao = 'gestor' | 'financeiro' | 'diretoria'
 export type FiscalStatus = 'pendente' | 'liberado' | 'divergencia' | 'aguardando_correcao'
+export type PedidoStatus = 'emitido' | 'enviado' | 'aguardando_entrega' | 'entregue_parcial' | 'entregue' | 'finalizado'
 
 export type BoletoStatus = 'pendente' | 'pago' | 'vencido' | 'cancelado'
 

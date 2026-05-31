@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Loader2, RefreshCw, ShoppingCart, Package, FileCheck2, TrendingDown, Clock, AlertTriangle, Truck } from 'lucide-react'
+import { Loader2, RefreshCw, ShoppingCart, Package, FileCheck2, TrendingDown, Clock, AlertTriangle, Truck, FileText, Receipt } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
-import { fetchRequisicoes, fetchEstoqueProdutos, fetchEstoquePerdas, fetchRupturas } from '../../lib/db'
-import type { Requisicao, EstoqueProduto, EstoquePerda } from '../../types/database'
+import { fetchRequisicoes, fetchEstoqueProdutos, fetchEstoquePerdas, fetchRupturas, fetchBoletos } from '../../lib/db'
+import type { Requisicao, EstoqueProduto, EstoquePerda, Boleto } from '../../types/database'
 
 const fmtR$ = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const diasEntre = (a: string, b: string) => Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000))
@@ -18,18 +18,20 @@ export default function DashboardSuprimentosPage() {
   const [prods, setProds] = useState<EstoqueProduto[]>([])
   const [perdas, setPerdas] = useState<EstoquePerda[]>([])
   const [rupturas, setRupturas] = useState<unknown[]>([])
+  const [boletos, setBoletos] = useState<Boleto[]>([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [r, p, pe, ru] = await Promise.all([
+      const [r, p, pe, ru, bo] = await Promise.all([
         fetchRequisicoes(loja),
         fetchEstoqueProdutos(loja),
         fetchEstoquePerdas(loja).catch(() => []),
         fetchRupturas(loja).catch(() => []),
+        fetchBoletos(loja).catch(() => []),
       ])
-      setReqs(r); setProds(p); setPerdas(pe); setRupturas(ru)
+      setReqs(r); setProds(p); setPerdas(pe); setRupturas(ru); setBoletos(bo)
     } finally { setLoading(false) }
   }, [loja])
 
@@ -60,6 +62,16 @@ export default function DashboardSuprimentosPage() {
   const valorEstoque = prods.reduce((a, p) => a + (p.nivel_atual * (p.preco_unitario || 0)), 0)
   const valorPerdas = perdas.reduce((a, p) => a + (p.valor_estimado || 0), 0)
   const rupturasMes = rupturas.length
+
+  // ── Pedidos & Financeiro ─────────────────────────────────
+  const pedidosAbertos = reqs.filter(r => r.pedido_numero && r.pedido_status && r.pedido_status !== 'entregue' && r.pedido_status !== 'finalizado').length
+  const notasPendentes = reqs.filter(r => (r.status === 'prestacao_pendente' || r.status === 'em_auditoria') && (!r.fiscal_status || r.fiscal_status === 'pendente')).length
+  const hojeStr = new Date(new Date().toDateString()).getTime()
+  const venceEmDias = (d: string | null) => d ? Math.round((new Date(d + 'T00:00:00').getTime() - hojeStr) / 86400000) : null
+  const boletoEfetivoPendente = (b: Boleto) => b.status !== 'pago' && b.status !== 'cancelado'
+  const boletosVencendo = boletos.filter(b => { const d = venceEmDias(b.data_vencimento); return boletoEfetivoPendente(b) && d != null && d >= 0 && d <= 3 }).length
+  const boletosVencidos = boletos.filter(b => { const d = venceEmDias(b.data_vencimento); return boletoEfetivoPendente(b) && d != null && d < 0 }).length
+  const totalAPagar = boletos.filter(boletoEfetivoPendente).reduce((a, b) => a + b.valor, 0)
 
   const Card = ({ icon, lbl, val, sub, cor }: { icon: React.ReactNode; lbl: string; val: string | number; sub?: string; cor: string }) => (
     <div style={{ flex: '1 1 180px', minWidth: 170, background: 'var(--card)', border: '1px solid var(--border)', borderTop: `3px solid ${cor}`, borderRadius: 12, padding: '14px 16px' }}>
@@ -115,11 +127,20 @@ export default function DashboardSuprimentosPage() {
             <Card icon={<Truck size={15} />} lbl="Índice de erro" val={`${idxErro}%`} sub="divergência / conferidas" cor="#d97706" />
           </Secao>
 
-          {(emRuptura > 0 || divergencias > 0 || vencendo > 0) && (
+          <Secao titulo="📄 Pedidos & Financeiro">
+            <Card icon={<FileText size={15} />} lbl="Pedidos em aberto" val={pedidosAbertos} sub="emitidos não entregues" cor="#2563eb" />
+            <Card icon={<FileCheck2 size={15} />} lbl="Notas aguard. conferência" val={notasPendentes} sub="em recebimento sem validação" cor="#d97706" />
+            <Card icon={<Receipt size={15} />} lbl="Total a pagar (boletos)" val={fmtR$(totalAPagar)} sub={`${boletosVencendo} vencendo em 3d`} cor="#9333ea" />
+            <Card icon={<AlertTriangle size={15} />} lbl="Boletos vencidos" val={boletosVencidos} sub="exige ação financeira" cor="#dc2626" />
+          </Secao>
+
+          {(emRuptura > 0 || divergencias > 0 || vencendo > 0 || boletosVencidos > 0 || boletosVencendo > 0) && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {emRuptura > 0 && <div style={{ fontSize: 12.5, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px' }}>⚠ {emRuptura} produto(s) em ruptura — priorize reposição.</div>}
               {vencendo > 0 && <div style={{ fontSize: 12.5, color: '#ea580c', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '8px 12px' }}>⏳ {vencendo} produto(s) próximos do vencimento.</div>}
               {divergencias > 0 && <div style={{ fontSize: 12.5, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px' }}>🧾 {divergencias} nota(s) fiscal(is) com divergência pendente.</div>}
+              {boletosVencidos > 0 && <div style={{ fontSize: 12.5, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px' }}>💸 {boletosVencidos} boleto(s) vencido(s) — ação financeira necessária.</div>}
+              {boletosVencendo > 0 && <div style={{ fontSize: 12.5, color: '#d97706', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 12px' }}>📅 {boletosVencendo} boleto(s) vencem em até 3 dias.</div>}
             </div>
           )}
         </>
