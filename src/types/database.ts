@@ -782,12 +782,14 @@ export interface CozinhaSolicitacao {
 
 // ── Tarefas Operacionais ─────────────────────────────────────
 
-export type TarefaStatus     = 'pendente' | 'em_andamento' | 'aguardando_validacao' | 'ajustes' | 'concluido' | 'cancelado'
-export type TarefaPrioridade = 'baixa' | 'media' | 'alta' | 'urgente' | 'emergencial'
+export type TarefaStatus     = 'pendente' | 'em_andamento' | 'aguardando_retorno' | 'aguardando_fornecedor' | 'concluido' | 'cancelado'
+export type TarefaPrioridade = 'baixa' | 'media' | 'alta' | 'urgente'
+export type TarefaResultado  = 'resolvido' | 'resolvido_parcial' | 'pendente_ajuste' | 'nao_concluido'
 export type TarefaSetor      = 'Cozinha' | 'Bar' | 'Salão' | 'Estoque' | 'Compras' | 'Financeiro' | 'RH' | 'Limpeza' | 'Produção' | 'Diretoria' | 'Geral'
 
 export interface Tarefa {
   id: string
+  numero?: number
   loja: string
   titulo: string
   descricao: string | null
@@ -817,6 +819,12 @@ export interface Tarefa {
   prazo_extensao_data: string | null
   prazo_extensao_motivo: string | null
   prazo_extensao_status: 'pendente' | 'aprovado' | 'negado' | null
+  // ── Template operacional ──
+  data_solicitacao: string | null
+  resultado_status: TarefaResultado | null
+  validado_por: string | null
+  validado_em: string | null
+  observacao_final: string | null
   precisa_aprovacao: boolean
   aprovado_por: string | null
   aprovado_at: string | null
