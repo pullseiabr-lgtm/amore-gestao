@@ -11,8 +11,8 @@ import { useLoja } from '../../contexts/LojaContext'
 import {
   fetchComprasListas, insertComprasLista, updateComprasLista, deleteComprasLista,
   fetchComprasListaItens, insertComprasListaItem, updateComprasListaItem, deleteComprasListaItem,
-  fetchItensComprasDashboard, fetchEstoqueProdutos, insertEstoqueMovimentacao,
-  atualizarCustoMedioPorNome, atualizarUltimoPrecoCompraPorNome, fetchFornecedores,
+  fetchItensComprasDashboard, fetchEstoqueProdutos, darEntradaEstoquePorNome,
+  atualizarUltimoPrecoCompraPorNome, fetchFornecedores,
   registrarEAnalisarCompra,
 } from '../../lib/db'
 import type { ComprasLista, ComprasListaItem, ListaStatus, ListaItemStatus, EstoqueProduto, Fornecedor } from '../../types/database'
@@ -845,41 +845,27 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
       const itensParaEstoque = recConferencia.filter(c => CONF_STATUS[c.status_conf].entraEstoque)
       const nfMotivo = recNf.trim() ? ` | NF: ${recNf.trim()}` : ''
 
-      const entradas = itensParaEstoque.map(conf => {
+      // Entrada COMPLETA: movimentação + incremento de saldo (nivel_atual) + custo médio
+      await Promise.all(itensParaEstoque.map(conf => {
         const loteInfo  = conf.numero_lote    ? ` | Lote: ${conf.numero_lote}`                : ''
         const valInfo   = conf.data_validade  ? ` | Val: ${fmtData(conf.data_validade)}`      : ''
-        return insertEstoqueMovimentacao({
+        const item  = itens.find(i => i.id === conf.item_id)
+        const preco = recAtualizarPrecos ? (item?.preco_real ?? item?.preco_estimado ?? null) : null
+        return darEntradaEstoquePorNome({
+          nome: conf.produto_nome,
           loja: lista.loja || 'Todas as Lojas',
-          produto_id: null,
-          produto_nome: conf.produto_nome,
-          tipo: 'entrada',
           quantidade: conf.quantidade_recebida,
+          preco,
           unidade: conf.unidade,
+          dataValidade: conf.data_validade || null,
+          numeroLote: conf.numero_lote || null,
           motivo: `Entrada via Compras: ${lista.titulo}${nfMotivo}${loteInfo}${valInfo} | Conf. por: ${recNome}`,
-          created_by: recNome,
+          usuario: recNome,
         }).catch(() => null)
-      })
-      await Promise.all(entradas)
+      }))
 
-      // ── Custo médio ponderado ──────────────────────────────────
+      // ── Atualiza último preço de compra no catálogo de produtos ──
       if (recAtualizarPrecos) {
-        await Promise.all(itensParaEstoque.map(conf => {
-          const item  = itens.find(i => i.id === conf.item_id)
-          const preco = item?.preco_real ?? item?.preco_estimado
-          if (preco && preco > 0) {
-            return atualizarCustoMedioPorNome(
-              conf.produto_nome,
-              lista.loja || 'Todas as Lojas',
-              conf.quantidade_recebida,
-              preco,
-              conf.data_validade || null,
-              conf.numero_lote   || null,
-            ).catch(() => null)
-          }
-          return Promise.resolve()
-        }))
-
-        // ── Atualiza último preço de compra no catálogo de produtos ──
         await Promise.all(itensParaEstoque.map(conf => {
           const item  = itens.find(i => i.id === conf.item_id)
           const preco = item?.preco_real ?? item?.preco_estimado

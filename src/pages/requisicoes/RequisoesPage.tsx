@@ -14,10 +14,13 @@ import {
   fetchReqTimeline, insertReqTimeline,
   fetchEstoqueProdutos, darEntradaEstoquePorNome,
   fetchFinCreditos, insertFinCredito,
+  fetchRequisicaoCotacoes, insertRequisicaoCotacao, updateRequisicaoCotacao, deleteRequisicaoCotacao,
+  fetchFornecedores,
 } from '../../lib/db'
 import type {
   Requisicao, RequisicaoItem, ReqStatus, ReqPrioridade,
   EstoqueProduto, FinCredito, FinFormaPagamento, ReqTimeline,
+  RequisicaoCotacao, Fornecedor,
 } from '../../types/database'
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -527,21 +530,74 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   const [itens, setItens] = useState<RequisicaoItem[]>([])
   const [tl, setTl] = useState<ReqTimeline[]>([])
   const [loading, setLoading] = useState(true)
-  const [subTab, setSubTab] = useState<'produtos'|'aprovacao'|'financeiro'|'timeline'>('produtos')
+  const [subTab, setSubTab] = useState<'produtos'|'cotacao'|'aprovacao'|'financeiro'|'timeline'>('produtos')
   const [mAprov, setMAprov] = useState(false)
   const [mCred, setMCred] = useState(false)
   const [credVinc, setCredVinc] = useState<FinCredito|null>(null)
+  // Cotação
+  const [cotacoes, setCotacoes] = useState<RequisicaoCotacao[]>([])
+  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
+  const [cotForm, setCotForm] = useState({ fornecedor_nome:'', total:'', prazo_entrega:'', observacoes:'' })
+  const [savingCot, setSavingCot] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [is, t] = await Promise.all([fetchRequisicaoItens(req.id), fetchReqTimeline(req.id)])
-    setItens(is); setTl(t); setLoading(false)
+    const [is, t, cot] = await Promise.all([fetchRequisicaoItens(req.id), fetchReqTimeline(req.id), fetchRequisicaoCotacoes(req.id).catch(()=>[])])
+    setItens(is); setTl(t); setCotacoes(cot); setLoading(false)
   }, [req.id])
+
+  useEffect(() => { fetchFornecedores(loja).then(setFornecedores).catch(()=>{}) }, [loja])
 
   useEffect(() => { load() }, [load])
   useEffect(() => { if (req.credito_id) setCredVinc(creditos.find(c=>c.id===req.credito_id)||null) }, [req.credito_id, creditos])
 
   const tEntry = async (tipo: string, desc: string) => { await insertReqTimeline({ requisicao_id:req.id, tipo, descricao:desc, usuario:userName, dados:null }) }
+
+  // ── Cotação ───────────────────────────────────────────────
+  const addCotacao = async () => {
+    if (!cotForm.fornecedor_nome.trim() || !cotForm.total) return
+    setSavingCot(true)
+    try {
+      await insertRequisicaoCotacao({
+        requisicao_id: req.id,
+        fornecedor_nome: cotForm.fornecedor_nome.trim(),
+        status: 'respondida',
+        total: Number(cotForm.total) || 0,
+        prazo_entrega: cotForm.prazo_entrega ? Number(cotForm.prazo_entrega) : null,
+        observacoes: cotForm.observacoes || null,
+      })
+      // Move a requisição para "Em Cotação" se ainda estiver no início
+      if (req.status === 'rascunho' || req.status === 'enviada' || req.status === 'em_analise') {
+        const u = await updateRequisicao(req.id, { status:'em_cotacao' })
+        onAtualizar(u)
+      }
+      await tEntry('compra', `Cotação adicionada: ${cotForm.fornecedor_nome.trim()} — ${fmtR$(Number(cotForm.total)||0)}`)
+      setCotForm({ fornecedor_nome:'', total:'', prazo_entrega:'', observacoes:'' })
+      await load()
+    } finally { setSavingCot(false) }
+  }
+
+  const aprovarCotacao = async (c: RequisicaoCotacao) => {
+    setSavingCot(true)
+    try {
+      // Marca a escolhida como aprovada e as demais como rejeitadas
+      await Promise.all(cotacoes.map(x =>
+        updateRequisicaoCotacao(x.id, { status: x.id === c.id ? 'aprovada' : 'rejeitada' })
+      ))
+      // Aplica o fornecedor vencedor aos itens da requisição
+      await Promise.all(itens.filter(i => !i.bloqueado && i.status !== 'cancelado').map(i =>
+        updateRequisicaoItem(i.id, { fornecedor_nome: c.fornecedor_nome })
+      ))
+      await tEntry('compra', `Cotação aprovada: ${c.fornecedor_nome} — ${fmtR$(c.total||0)}${c.prazo_entrega ? ` · ${c.prazo_entrega}d` : ''}`)
+      toast(`Cotação de ${c.fornecedor_nome} aprovada!`)
+      await load()
+    } finally { setSavingCot(false) }
+  }
+
+  const delCotacao = async (id: string) => {
+    await deleteRequisicaoCotacao(id)
+    await load()
+  }
 
   const handleEnviar = async () => {
     const u = await updateRequisicao(req.id, { status:'enviada' })
@@ -647,7 +703,7 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   const canFinal   = s==='compra_realizada'||s==='prestacao_pendente'||s==='em_auditoria'
   const canCancel  = !['concluida','cancelada','compra_realizada'].includes(s)
 
-  const TABS = [{ id:'produtos', l:'🛒 Produtos' },{ id:'aprovacao', l:'✅ Aprovação' },{ id:'financeiro', l:'💳 Financeiro' },{ id:'timeline', l:'📅 Histórico' }] as const
+  const TABS = [{ id:'produtos', l:'🛒 Produtos' },{ id:'cotacao', l:`💰 Cotação${cotacoes.length?` (${cotacoes.length})`:''}` },{ id:'aprovacao', l:'✅ Aprovação' },{ id:'financeiro', l:'💳 Financeiro' },{ id:'timeline', l:'📅 Histórico' }] as const
 
   return (
     <div>
@@ -723,6 +779,79 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
             <span>Bloqueados: <strong style={{ color:'#DC2626' }}>{itens.filter(i=>i.bloqueado).length}</strong></span>
           </div>}
         </div>}
+
+        {/* COTAÇÃO */}
+        {subTab==='cotacao'&&(()=>{
+          const validas = cotacoes.filter(c=>c.status!=='rejeitada')
+          const menorTotal = validas.length ? Math.min(...validas.map(c=>c.total??Infinity)) : null
+          const menorPrazo = validas.filter(c=>c.prazo_entrega!=null).length ? Math.min(...validas.filter(c=>c.prazo_entrega!=null).map(c=>c.prazo_entrega as number)) : null
+          const COT_BADGE: Record<string,{l:string;c:string;bg:string}> = {
+            aguardando:{l:'Aguardando',c:'#B45309',bg:'#FEF3C7'}, respondida:{l:'Respondida',c:'#0369A1',bg:'#E0F2FE'},
+            aprovada:{l:'✓ Aprovada',c:'#15803D',bg:'#DCFCE7'}, rejeitada:{l:'Rejeitada',c:'#6B7280',bg:'#F3F4F6'},
+          }
+          return <div>
+            {/* Nova cotação */}
+            <div className="card" style={{ marginBottom:12 }}>
+              <div className="card-header"><span className="card-tt">Nova Cotação de Fornecedor</span></div>
+              <div style={{ padding:'12px 14px', display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:10, alignItems:'end' }}>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, color:'var(--muted)', display:'block', marginBottom:4 }}>Fornecedor *</label>
+                  <input list="forn-list" value={cotForm.fornecedor_nome} onChange={e=>setCotForm(f=>({...f,fornecedor_nome:e.target.value}))} placeholder="Nome do fornecedor"
+                    style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', background:'var(--bg)', fontSize:13 }} />
+                  <datalist id="forn-list">{fornecedores.map(f=><option key={f.id} value={f.nome} />)}</datalist>
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, color:'var(--muted)', display:'block', marginBottom:4 }}>Valor total (R$) *</label>
+                  <input type="number" step="0.01" min="0" value={cotForm.total} onChange={e=>setCotForm(f=>({...f,total:e.target.value}))} placeholder="0,00"
+                    style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', background:'var(--bg)', fontSize:13 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, color:'var(--muted)', display:'block', marginBottom:4 }}>Prazo (dias)</label>
+                  <input type="number" min="0" value={cotForm.prazo_entrega} onChange={e=>setCotForm(f=>({...f,prazo_entrega:e.target.value}))} placeholder="dias"
+                    style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', background:'var(--bg)', fontSize:13 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, color:'var(--muted)', display:'block', marginBottom:4 }}>Observações</label>
+                  <input value={cotForm.observacoes} onChange={e=>setCotForm(f=>({...f,observacoes:e.target.value}))} placeholder="frete, condição…"
+                    style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1px solid var(--border)', background:'var(--bg)', fontSize:13 }} />
+                </div>
+                <button className="btn" onClick={addCotacao} disabled={savingCot||!cotForm.fornecedor_nome.trim()||!cotForm.total} style={{ padding:'9px 14px' }}>
+                  <Plus size={14}/> Adicionar
+                </button>
+              </div>
+            </div>
+
+            {/* Comparativo */}
+            {cotacoes.length===0 && <div style={{ padding:24, textAlign:'center', color:'var(--muted)', fontSize:13 }}>Nenhuma cotação ainda. Adicione fornecedores para comparar preços e prazos.</div>}
+            {cotacoes.map(c=>{
+              const badge = COT_BADGE[c.status] || COT_BADGE.respondida
+              const isMenorPreco = menorTotal!=null && (c.total??Infinity)===menorTotal && c.status!=='rejeitada'
+              const isMenorPrazo = menorPrazo!=null && c.prazo_entrega===menorPrazo && c.status!=='rejeitada'
+              return <div key={c.id} className="card" style={{ marginBottom:8, border: c.status==='aprovada'?'1px solid #86EFAC':'1px solid var(--border)' }}>
+                <div style={{ padding:'11px 14px', display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                  <div style={{ flex:1, minWidth:160 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                      <strong style={{ fontSize:14 }}>{c.fornecedor_nome}</strong>
+                      <span style={{ fontSize:10, fontWeight:700, padding:'1px 7px', borderRadius:10, background:badge.bg, color:badge.c }}>{badge.l}</span>
+                      {isMenorPreco && <span style={{ fontSize:10, fontWeight:700, padding:'1px 7px', borderRadius:10, background:'#DCFCE7', color:'#15803D' }}>🏆 Menor preço</span>}
+                      {isMenorPrazo && <span style={{ fontSize:10, fontWeight:700, padding:'1px 7px', borderRadius:10, background:'#E0F2FE', color:'#0369A1' }}>⚡ Melhor prazo</span>}
+                    </div>
+                    {c.observacoes && <div style={{ fontSize:11, color:'var(--muted)', marginTop:3 }}>{c.observacoes}</div>}
+                  </div>
+                  <div style={{ textAlign:'right' }}>
+                    <div style={{ fontSize:16, fontWeight:800, color:isMenorPreco?'#15803D':'var(--text)' }}>{fmtR$(c.total||0)}</div>
+                    <div style={{ fontSize:11, color:'var(--muted)' }}>{c.prazo_entrega!=null?`${c.prazo_entrega} dias`:'prazo —'}</div>
+                  </div>
+                  <div style={{ display:'flex', gap:6 }}>
+                    {c.status!=='aprovada' && <button className="btn" onClick={()=>aprovarCotacao(c)} disabled={savingCot} style={{ background:'#15803D', padding:'6px 12px', fontSize:12 }}><Check size={12}/> Aprovar</button>}
+                    <button className="ib rd" onClick={()=>delCotacao(c.id)} style={{ padding:'5px 9px' }}><Trash2 size={13}/></button>
+                  </div>
+                </div>
+              </div>
+            })}
+            {validas.length>1 && menorTotal!=null && <div style={{ padding:'8px 4px', fontSize:12, color:'var(--muted)' }}>💡 Economia potencial vs maior cotação: <strong style={{ color:'#15803D' }}>{fmtR$(Math.max(...validas.map(c=>c.total??0))-menorTotal)}</strong></div>}
+          </div>
+        })()}
 
         {/* APROVAÇÃO */}
         {subTab==='aprovacao'&&<div>
