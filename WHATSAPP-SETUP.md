@@ -45,10 +45,20 @@ Vercel → projeto **amore** → **Settings → Environment Variables** (marque 
 | `CRON_SECRET` | um segredo qualquer (protege o endpoint). Ex: `amore-2026-xyz` | recomendada |
 | `WHATSAPP_LOJA` | nome da loja para filtrar. Vazio = todas as lojas | opcional |
 | `WHATSAPP_TEMPLATE` | nome do template aprovado (para envio fora da janela de 24h) | opcional |
+| `VITE_SUPABASE_URL` | URL do projeto Supabase (a função lê os dados daqui) | ✅ |
+| `VITE_SUPABASE_ANON_KEY` | anon key do Supabase (pública, já usada pelo app) | ✅ |
 
-Já devem existir (não mexer): `VITE_GEMINI_API_KEY`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+> ⚠️ Importante: confirmado via `?diag=1` que `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`
+> **NÃO** estão disponíveis no runtime das funções deste projeto — por isso precisam ser
+> adicionadas aqui. Pegue os valores em: Supabase → Project Settings → **API**
+> (Project URL e a chave **anon/public**). A chave do Gemini (`VITE_GEMINI_API_KEY`) já existe.
 
 Depois de salvar → **Deployments → Redeploy**.
+
+### Diagnóstico rápido (sem enviar nada)
+- `…/api/disparo-diario?ping=1` → deve responder `{"ok":true}` (função viva)
+- `…/api/disparo-diario?diag=1` → mostra quais variáveis já estão presentes (true/false)
+- `…/api/disparo-diario?preview=1` → mostra o relatório com dados reais (após Supabase configurado)
 
 ---
 
