@@ -16,7 +16,7 @@ import type { Tarefa, TarefaStatus, TarefaPrioridade, TarefaChecklist, TarefaCom
 
 // ── Constants ────────────────────────────────────────────────
 
-const SETORES = ['Geral','Operação','Marketing','Delivery','Eventos','Cozinha','Bar','Salão','Estoque','Compras','Financeiro','Manutenção','RH','Limpeza','Produção','Diretoria']
+const SETORES = ['Geral','Cozinha','Marketing','Compras','Salão','Administrativo','Financeiro','Estoque','Operação','Delivery','Eventos','Bar','Manutenção','RH','Limpeza','Produção','Diretoria']
 
 // Competências — área de habilidade exigida pela tarefa (independente do setor)
 const COMPETENCIAS = ['Gestão','Design','Conteúdo','Audiovisual','Tráfego/Ads','Atendimento','Operacional','Manutenção','Financeiro','Compras','Comercial']
@@ -58,6 +58,23 @@ function fmtMoeda(n: number | null | undefined) {
 function parseTags(s: string | null): string[] {
   if (!s) return []
   return s.split(/[,\s]+/).map(t => t.replace(/^#/, '').trim()).filter(Boolean)
+}
+function fmtDataHora(s: string | null) {
+  if (!s) return '—'
+  return new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+// Período entre início e fim (ou até agora) em formato legível
+function periodoExecucao(ini: string | null, fim: string | null): string {
+  if (!ini) return '—'
+  const a = new Date(ini).getTime()
+  const b = fim ? new Date(fim).getTime() : Date.now()
+  const ms = Math.max(0, b - a)
+  const dias = Math.floor(ms / 86400000)
+  const horas = Math.floor((ms % 86400000) / 3600000)
+  const mins = Math.floor((ms % 3600000) / 60000)
+  if (dias > 0) return `${dias}d ${horas}h`
+  if (horas > 0) return `${horas}h ${mins}min`
+  return `${mins}min`
 }
 function vencido(prazo: string | null) {
   if (!prazo) return false
@@ -101,9 +118,11 @@ export default function TarefasPage() {
   const [novoComent, setNovoComent] = useState('')
   const [novoCheckDetalhe, setNovoCheckDetalhe] = useState('')
   const [detalheSaving, setDetalheSaving] = useState(false)
-  const [abaDetalhe, setAbaDetalhe] = useState<'checklist'|'comentarios'|'resultado'|'historico'>('checklist')
-  // Edição de resultado/custo no detalhe
-  const [resForm, setResForm] = useState({ resultado_final: '', custo_executado: '' })
+  const [abaDetalhe, setAbaDetalhe] = useState<'checklist'|'comentarios'|'execucao'|'historico'>('checklist')
+  // Edição de execução/resultado no detalhe
+  const [resForm, setResForm] = useState({ resultado_final: '', custo_executado: '', dificuldades: '' })
+  // Solicitação de mais prazo
+  const [extForm, setExtForm] = useState({ data: '', motivo: '' })
 
   // ── Load ─────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -123,12 +142,14 @@ export default function TarefasPage() {
     }
   }, [tarefas]) // eslint-disable-line
 
-  // Sincroniza o form de resultado ao trocar de tarefa no detalhe
+  // Sincroniza o form de resultado/execução ao trocar de tarefa no detalhe
   useEffect(() => {
     setResForm({
       resultado_final: detalhe?.resultado_final || '',
       custo_executado: detalhe?.custo_executado != null ? String(detalhe.custo_executado) : '',
+      dificuldades: detalhe?.dificuldades || '',
     })
+    setExtForm({ data: '', motivo: '' })
   }, [detalhe?.id]) // eslint-disable-line
 
   // ── Filtro ───────────────────────────────────────────────
@@ -167,6 +188,12 @@ export default function TarefasPage() {
         custo_executado: null,
         resultado_esperado: form.resultado_esperado || null,
         resultado_final: null,
+        dificuldades: null,
+        iniciado_em: null,
+        concluido_em: null,
+        prazo_extensao_data: null,
+        prazo_extensao_motivo: null,
+        prazo_extensao_status: null,
         precisa_aprovacao: form.precisa_aprovacao,
         aprovado_por: null, aprovado_at: null, obs_aprovacao: null,
         reaberta: false, created_by: user?.id || null,
@@ -248,7 +275,7 @@ export default function TarefasPage() {
     } finally { setDetalheSaving(false) }
   }
 
-  // ── Salvar resultado / custo executado ───────────────────
+  // ── Salvar execução: dificuldades, custo e resultado ─────
   const salvarResultado = async () => {
     if (!detalhe) return
     setDetalheSaving(true)
@@ -257,8 +284,58 @@ export default function TarefasPage() {
       await updateTarefa(detalhe.id, {
         resultado_final: resForm.resultado_final || null,
         custo_executado: custo,
+        dificuldades: resForm.dificuldades || null,
       })
-      await insertTarefaHistorico({ tarefa_id: detalhe.id, acao: 'Resultado registrado', campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || 'Sistema' })
+      await insertTarefaHistorico({ tarefa_id: detalhe.id, acao: 'Execução/resultado registrado', campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || 'Sistema' })
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+
+  // ── Iniciar / concluir execução (marca período real) ─────
+  const iniciarExecucao = async (t: Tarefa) => {
+    setDetalheSaving(true)
+    try {
+      await updateTarefa(t.id, { iniciado_em: new Date().toISOString(), status: t.status === 'pendente' ? 'em_andamento' : t.status })
+      await insertTarefaHistorico({ tarefa_id: t.id, acao: 'Execução iniciada', campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || 'Sistema' })
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+  const concluirExecucao = async (t: Tarefa) => {
+    setDetalheSaving(true)
+    try {
+      await updateTarefa(t.id, { concluido_em: new Date().toISOString() })
+      await insertTarefaHistorico({ tarefa_id: t.id, acao: 'Execução concluída', campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || 'Sistema' })
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+
+  // ── Solicitar mais prazo (responsável) ───────────────────
+  const solicitarExtensao = async () => {
+    if (!detalhe || !extForm.data) return
+    setDetalheSaving(true)
+    try {
+      await updateTarefa(detalhe.id, {
+        prazo_extensao_data: extForm.data,
+        prazo_extensao_motivo: extForm.motivo || null,
+        prazo_extensao_status: 'pendente',
+      })
+      await insertTarefaHistorico({ tarefa_id: detalhe.id, acao: 'Solicitou prazo adicional', campo: 'prazo', valor_anterior: detalhe.prazo, valor_novo: extForm.data, usuario_nome: user?.name || 'Sistema' })
+      setExtForm({ data: '', motivo: '' })
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+
+  // ── Responder solicitação de prazo (gestor) ──────────────
+  const responderExtensao = async (t: Tarefa, aprovar: boolean) => {
+    setDetalheSaving(true)
+    try {
+      if (aprovar) {
+        await updateTarefa(t.id, { prazo: t.prazo_extensao_data, prazo_extensao_status: 'aprovado' })
+        await insertTarefaHistorico({ tarefa_id: t.id, acao: 'Prazo adicional APROVADO', campo: 'prazo', valor_anterior: t.prazo, valor_novo: t.prazo_extensao_data, usuario_nome: user?.name || 'Gestor' })
+      } else {
+        await updateTarefa(t.id, { prazo_extensao_status: 'negado' })
+        await insertTarefaHistorico({ tarefa_id: t.id, acao: 'Prazo adicional NEGADO', campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || 'Gestor' })
+      }
       await load()
     } finally { setDetalheSaving(false) }
   }
@@ -841,10 +918,10 @@ export default function TarefasPage() {
 
             {/* Abas: Checklist / Comentários / Histórico */}
             <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
-              {(['checklist', 'comentarios', 'resultado', 'historico'] as const).map(aba => (
+              {(['checklist', 'comentarios', 'execucao', 'historico'] as const).map(aba => (
                 <button key={aba} onClick={() => setAbaDetalhe(aba)}
                   style={{ flex: 1, padding: '10px 6px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 11.5, fontWeight: abaDetalhe === aba ? 700 : 400, color: abaDetalhe === aba ? 'var(--bordo)' : 'var(--muted)', borderBottom: abaDetalhe === aba ? '2px solid var(--bordo)' : '2px solid transparent' }}>
-                  {aba === 'checklist' ? `✓ Checklist (${detalhe.checklist?.length ?? 0})` : aba === 'comentarios' ? `💬 Coment. (${detalhe.comentarios?.length ?? 0})` : aba === 'resultado' ? `📊 Resultado` : `📋 Histórico`}
+                  {aba === 'checklist' ? `✓ Checklist (${detalhe.checklist?.length ?? 0})` : aba === 'comentarios' ? `💬 Coment. (${detalhe.comentarios?.length ?? 0})` : aba === 'execucao' ? `🚀 Execução` : `📋 Histórico`}
                 </button>
               ))}
             </div>
@@ -911,10 +988,93 @@ export default function TarefasPage() {
               </div>
             )}
 
-            {/* Aba Resultado */}
-            {abaDetalhe === 'resultado' && (
-              <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* Orçamento */}
+            {/* Aba Execução */}
+            {abaDetalhe === 'execucao' && (
+              <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                {/* ── Período de execução ── */}
+                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>⏱ PERÍODO DE EXECUÇÃO</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                    <span style={{ color: 'var(--muted)' }}>Início real:</span>
+                    <strong>{fmtDataHora(detalhe.iniciado_em)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                    <span style={{ color: 'var(--muted)' }}>Conclusão:</span>
+                    <strong>{fmtDataHora(detalhe.concluido_em)}</strong>
+                  </div>
+                  {detalhe.iniciado_em && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
+                      <span style={{ color: 'var(--muted)' }}>Tempo {detalhe.concluido_em ? 'usado' : 'decorrido'}:</span>
+                      <strong style={{ color: 'var(--bordo)' }}>{periodoExecucao(detalhe.iniciado_em, detalhe.concluido_em)}</strong>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    {!detalhe.iniciado_em && (
+                      <button onClick={() => iniciarExecucao(detalhe)} disabled={detalheSaving}
+                        style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: 'none', background: '#2563eb', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                        ▶ Iniciar execução
+                      </button>
+                    )}
+                    {detalhe.iniciado_em && !detalhe.concluido_em && (
+                      <button onClick={() => concluirExecucao(detalhe)} disabled={detalheSaving}
+                        style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: 'none', background: '#16a34a', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                        ■ Marcar conclusão
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── Solicitação de prazo adicional ── */}
+                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>📅 PRAZO</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 8 }}>
+                    <span style={{ color: 'var(--muted)' }}>Prazo atual:</span>
+                    <strong style={{ color: vencido(detalhe.prazo) ? '#dc2626' : 'var(--text)' }}>{detalhe.prazo ? fmtData(detalhe.prazo) : 'Sem prazo'}</strong>
+                  </div>
+
+                  {/* Solicitação pendente → gestor responde */}
+                  {detalhe.prazo_extensao_status === 'pendente' ? (
+                    <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: 10 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e' }}>⏳ Prazo adicional solicitado: {fmtData(detalhe.prazo_extensao_data)}</div>
+                      {detalhe.prazo_extensao_motivo && <div style={{ fontSize: 12, color: '#92400e', marginTop: 4 }}>Motivo: {detalhe.prazo_extensao_motivo}</div>}
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <button onClick={() => responderExtensao(detalhe, true)} disabled={detalheSaving}
+                          style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: 'none', background: '#16a34a', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>✓ Aprovar novo prazo</button>
+                        <button onClick={() => responderExtensao(detalhe, false)} disabled={detalheSaving}
+                          style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #dc2626', background: 'transparent', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>✕ Negar</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {detalhe.prazo_extensao_status === 'aprovado' && <div style={{ fontSize: 11, color: '#16a34a', marginBottom: 8 }}>✓ Última extensão de prazo aprovada</div>}
+                      {detalhe.prazo_extensao_status === 'negado' && <div style={{ fontSize: 11, color: '#dc2626', marginBottom: 8 }}>✕ Última solicitação de prazo negada</div>}
+                      {/* Responsável solicita mais prazo */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8 }}>
+                        <input type="date" value={extForm.data} onChange={e => setExtForm(f => ({ ...f, data: e.target.value }))}
+                          style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }} />
+                        <input value={extForm.motivo} onChange={e => setExtForm(f => ({ ...f, motivo: e.target.value }))}
+                          placeholder="Motivo do novo prazo…"
+                          style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }} />
+                      </div>
+                      <button onClick={solicitarExtensao} disabled={detalheSaving || !extForm.data}
+                        style={{ marginTop: 8, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', cursor: extForm.data ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>
+                        Solicitar mais prazo
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* ── Dificuldades na execução ── */}
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>⚠️ DIFICULDADES / DEFICIÊNCIAS NA EXECUÇÃO</label>
+                  <textarea value={resForm.dificuldades}
+                    onChange={e => setResForm(r => ({ ...r, dificuldades: e.target.value }))}
+                    rows={3} placeholder="O que dificultou ou impediu a execução? Gargalos, faltas, dependências…"
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical', lineHeight: 1.5 }} />
+                </div>
+
+                {/* ── Orçamento ── */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>💰 CUSTO PREVISTO</label>
@@ -928,8 +1088,6 @@ export default function TarefasPage() {
                       style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 14, fontWeight: 600 }} />
                   </div>
                 </div>
-
-                {/* Variação de orçamento */}
                 {detalhe.custo_previsto != null && resForm.custo_executado !== '' && (
                   (() => {
                     const prev = detalhe.custo_previsto ?? 0
@@ -945,26 +1103,24 @@ export default function TarefasPage() {
                   })()
                 )}
 
-                {/* Resultado esperado (referência) */}
+                {/* ── Resultado ── */}
                 {detalhe.resultado_esperado && (
                   <div style={{ fontSize: 12, color: 'var(--muted)' }}>
                     📈 <strong>Esperado:</strong> {detalhe.resultado_esperado}
                   </div>
                 )}
-
-                {/* Resultado final */}
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>📊 RESULTADO FINAL</label>
                   <textarea value={resForm.resultado_final}
                     onChange={e => setResForm(r => ({ ...r, resultado_final: e.target.value }))}
-                    rows={5} placeholder="Números, observações, aprendizados, feedback, métricas obtidas…"
+                    rows={4} placeholder="Números, observações, aprendizados, feedback, métricas obtidas…"
                     style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical', lineHeight: 1.5 }} />
                 </div>
 
                 <button onClick={salvarResultado} disabled={detalheSaving}
                   style={{ alignSelf: 'flex-start', padding: '9px 18px', borderRadius: 8, border: 'none', background: detalheSaving ? 'var(--border)' : 'var(--bordo)', color: '#fff', cursor: detalheSaving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                   {detalheSaving ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle2 size={14} />}
-                  Salvar Resultado
+                  Salvar Execução
                 </button>
               </div>
             )}
@@ -1034,6 +1190,9 @@ function KanbanCard({ tarefa, onClick, onMover, colunas }: {
           <span style={{ background: prioCor(tarefa.prioridade) + '20', color: prioCor(tarefa.prioridade), borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>{prioLabel(tarefa.prioridade)}</span>
           {tarefa.precisa_aprovacao && !tarefa.aprovado_at && (
             <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: 4, padding: '1px 6px', fontSize: 10 }}>⏳ Aprovação</span>
+          )}
+          {tarefa.prazo_extensao_status === 'pendente' && (
+            <span style={{ background: '#fef9c3', color: '#854d0e', borderRadius: 4, padding: '1px 6px', fontSize: 10 }}>📅 Prazo+</span>
           )}
           {parseTags(tarefa.tags).slice(0, 2).map(tg => (
             <span key={tg} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 6px', fontSize: 10, color: 'var(--muted)' }}>#{tg}</span>

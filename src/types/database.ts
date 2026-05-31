@@ -810,6 +810,13 @@ export interface Tarefa {
   custo_executado: number | null
   resultado_esperado: string | null
   resultado_final: string | null
+  // ── Governança de execução ──
+  dificuldades: string | null
+  iniciado_em: string | null
+  concluido_em: string | null
+  prazo_extensao_data: string | null
+  prazo_extensao_motivo: string | null
+  prazo_extensao_status: 'pendente' | 'aprovado' | 'negado' | null
   precisa_aprovacao: boolean
   aprovado_por: string | null
   aprovado_at: string | null
