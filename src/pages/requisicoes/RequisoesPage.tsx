@@ -12,7 +12,7 @@ import {
   fetchRequisicoes, insertRequisicao, updateRequisicao, deleteRequisicao,
   fetchRequisicaoItens, insertRequisicaoItem, updateRequisicaoItem, deleteRequisicaoItem,
   fetchReqTimeline, insertReqTimeline,
-  fetchEstoqueProdutos,
+  fetchEstoqueProdutos, darEntradaEstoquePorNome,
   fetchFinCreditos, insertFinCredito,
 } from '../../lib/db'
 import type {
@@ -581,12 +581,39 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
 
   const handleConfirmarEntrega = async () => {
     if (!confRecebNome.trim()) return
+
+    // ── Entrada automática no estoque dos itens aprovados (recebidos) ──
+    const recebidos = itens.filter(i => !i.bloqueado && i.status !== 'cancelado')
+    const naoCadastrados: string[] = []
+    let entraram = 0
+    for (const it of recebidos) {
+      const qtd   = it.quantidade_aprovada ?? it.quantidade
+      const preco = it.preco_final ?? it.preco_cotado ?? it.preco_referencia ?? null
+      if (!qtd || qtd <= 0) continue
+      const ok = await darEntradaEstoquePorNome({
+        nome: it.produto_nome,
+        loja,
+        quantidade: qtd,
+        preco,
+        unidade: it.unidade,
+        motivo: `Entrada via requisição REQ-${String(req.numero).padStart(4,'0')} | conf. ${confRecebNome}`,
+        usuario: confRecebNome,
+      })
+      if (ok) entraram++; else naoCadastrados.push(it.produto_nome)
+    }
+
+    const avisoEstoque = entraram > 0 ? `\n[ESTOQUE: ${entraram} item(ns) deram entrada automática]` : ''
+    const avisoFalta   = naoCadastrados.length ? `\n[ESTOQUE: não cadastrados (movimentação registrada, sem saldo): ${naoCadastrados.join(', ')}]` : ''
+
     const u = await updateRequisicao(req.id, {
       status:'concluida',
-      observacoes: (req.observacoes||'') + `\n[ENTREGUE: por ${confRecebNome} em ${new Date(confRecebHorario).toLocaleString('pt-BR')}${confRecebObs ? ' | ' + confRecebObs : ''}]`
+      observacoes: (req.observacoes||'') + `\n[ENTREGUE: por ${confRecebNome} em ${new Date(confRecebHorario).toLocaleString('pt-BR')}${confRecebObs ? ' | ' + confRecebObs : ''}]${avisoEstoque}${avisoFalta}`
     })
-    await tEntry('finalizacao',`Entrega confirmada por ${confRecebNome}`)
-    onAtualizar(u); toast('Entrega confirmada!'); setShowConfReceb(false); load()
+    await tEntry('finalizacao',`Entrega confirmada por ${confRecebNome}${entraram > 0 ? ` — ${entraram} item(ns) deram entrada no estoque` : ''}`)
+    onAtualizar(u)
+    toast(entraram > 0 ? `Entrega confirmada! ${entraram} item(ns) no estoque.` : 'Entrega confirmada!')
+    if (naoCadastrados.length) alert(`Atenção: ${naoCadastrados.length} produto(s) não estão no cadastro de Estoque, então não tiveram saldo atualizado (apenas a movimentação foi registrada):\n\n${naoCadastrados.join('\n')}\n\nCadastre-os em Estoque para o saldo ser atualizado automaticamente.`)
+    setShowConfReceb(false); load()
   }
 
   const handleCriarCred = async (c: Partial<FinCredito>) => {

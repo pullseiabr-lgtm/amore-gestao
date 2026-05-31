@@ -653,6 +653,62 @@ export async function insertEstoqueMovimentacao(m: Omit<EstoqueMovimentacao, 'id
   return estoquePost('estoque_movimentacoes', m)
 }
 
+// Entrada COMPLETA no estoque por nome: registra movimentação + incrementa nivel_atual
+// + atualiza custo médio ponderado + validade/lote. Retorna se o produto existia no catálogo.
+export async function darEntradaEstoquePorNome(p: {
+  nome: string
+  loja: string
+  quantidade: number
+  preco?: number | null
+  unidade?: string
+  dataValidade?: string | null
+  numeroLote?: string | null
+  motivo: string
+  usuario: string
+}): Promise<boolean> {
+  try {
+    const { data } = await db.from('estoque_produtos')
+      .select('id, nivel_atual, preco_unitario')
+      .ilike('nome', p.nome.trim())
+      .in('loja', [p.loja, 'Todas as Lojas'])
+      .eq('ativo', true)
+      .maybeSingle()
+
+    // Sempre registra a movimentação de entrada (rastreabilidade)
+    await insertEstoqueMovimentacao({
+      loja: p.loja,
+      produto_id: (data as { id?: string } | null)?.id ?? null,
+      produto_nome: p.nome,
+      tipo: 'entrada',
+      quantidade: p.quantidade,
+      unidade: p.unidade || 'un',
+      motivo: p.motivo,
+      created_by: p.usuario,
+    } as Omit<EstoqueMovimentacao, 'id' | 'created_at'>).catch(() => null)
+
+    if (!data) return false  // produto não cadastrado no estoque — só ficou a movimentação
+
+    const d = data as { id: string; nivel_atual: number; preco_unitario: number }
+    const nivelAtual = d.nivel_atual ?? 0
+    const precoAtual = d.preco_unitario ?? (p.preco ?? 0)
+    const novoNivel  = nivelAtual + p.quantidade
+
+    const patch: Record<string, unknown> = { nivel_atual: novoNivel, updated_at: new Date().toISOString() }
+    if (p.preco && p.preco > 0) {
+      const custoMedio = novoNivel > 0 ? (nivelAtual * precoAtual + p.quantidade * p.preco) / novoNivel : p.preco
+      patch.preco_unitario = Math.round(custoMedio * 100) / 100
+    }
+    if (p.dataValidade) patch.data_validade = p.dataValidade
+    if (p.numeroLote)   patch.numero_lote   = p.numeroLote
+
+    await db.from('estoque_produtos').update(patch).eq('id', d.id)
+    return true
+  } catch (e) {
+    console.warn('darEntradaEstoquePorNome:', e)
+    return false
+  }
+}
+
 // ── Estoque — Contagens ─────────────────────────────────────
 
 export async function fetchEstoqueContagens(loja?: string): Promise<EstoqueContagem[]> {
