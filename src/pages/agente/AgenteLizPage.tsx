@@ -16,8 +16,10 @@ import {
   fetchComprasListas,
   fetchRequisicoes,
   fetchListaHistoricoPrecos,
+  fetchBoletos,
+  fetchTarefas,
 } from '../../lib/db'
-import type { ListaHistoricoPreco } from '../../types/database'
+import type { ListaHistoricoPreco, Requisicao, Boleto, Tarefa } from '../../types/database'
 
 // ── Types ────────────────────────────────────────────────────────
 interface ChatMsg {
@@ -46,7 +48,7 @@ interface InsightBlock {
 }
 
 type Tab = 'chat' | 'prospeccao' | 'inteligencia' | 'compras-ia' | 'whatsapp'
-type WaTipo = 'estoque' | 'compras' | 'auditoria' | 'reuniao'
+type WaTipo = 'estoque' | 'compras' | 'auditoria' | 'reuniao' | 'operacional'
 
 // ── Gemini helper ────────────────────────────────────────────────
 // Usa proxy server-side /api/gemini (chave segura no Vercel).
@@ -229,6 +231,10 @@ export default function AgenteLizPage() {
   const [waPhone, setWaPhone] = useState(() => localStorage.getItem('liz_wa_phone') || '')
   const [waTipo, setWaTipo] = useState<WaTipo>('estoque')
   const [waMsgCustom, setWaMsgCustom] = useState('')
+  // Dados operacionais (relatório diário)
+  const [opReqs, setOpReqs] = useState<Requisicao[]>([])
+  const [opBoletos, setOpBoletos] = useState<Boleto[]>([])
+  const [opTarefas, setOpTarefas] = useState<Tarefa[]>([])
 
   // Scroll chat
   useEffect(() => {
@@ -245,15 +251,20 @@ export default function AgenteLizPage() {
   // Load system context on mount
   const loadContext = useCallback(async () => {
     try {
-      const [fornecedores, produtos, comprasListas, requisicoes, historico] = await Promise.all([
+      const [fornecedores, produtos, comprasListas, requisicoes, historico, boletos, tarefas] = await Promise.all([
         fetchFornecedores(loja).catch(() => []),
         fetchProdutos(loja).catch(() => []),
         fetchComprasListas(loja).catch(() => []),
         fetchRequisicoes(loja).catch(() => []),
         fetchListaHistoricoPrecos(loja).catch(() => []),
+        fetchBoletos(loja).catch(() => []),
+        fetchTarefas(loja).catch(() => []),
       ])
       setRawProdutos(produtos as { nome: string; estoque_atual: number; estoque_minimo: number; unidade: string }[])
       setHistoricoPrecos(historico)
+      setOpReqs(requisicoes as Requisicao[])
+      setOpBoletos(boletos as Boleto[])
+      setOpTarefas(tarefas as Tarefa[])
 
       const estoqueCritico = produtos
         .filter(p => p.estoque_atual <= p.estoque_minimo)
@@ -682,6 +693,56 @@ Seja direto e objetivo. Use emojis para facilitar leitura.
         `_Gerado via Liz · Amore Gestão_`,
       ].join('\n')
       return linhas
+    }
+
+    if (waTipo === 'operacional') {
+      const hojeISO = new Date().toISOString().slice(0, 10)
+      const diaRef = new Date(new Date().toDateString()).getTime()
+      const diasAte = (d: string | null) => d ? Math.round((new Date(d + 'T00:00:00').getTime() - diaRef) / 86400000) : null
+      const fmtData = (d: string | null) => d ? new Date(d + (d.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('pt-BR') : '—'
+      const fmtRl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+      // Boletos a vencer em até 2 dias + vencidos
+      const boletoPend = (b: Boleto) => b.status !== 'pago' && b.status !== 'cancelado'
+      const boletosAvisar = opBoletos.filter(b => { const d = diasAte(b.data_vencimento); return boletoPend(b) && d != null && d >= 0 && d <= 2 })
+      const boletosVencidos = opBoletos.filter(b => { const d = diasAte(b.data_vencimento); return boletoPend(b) && d != null && d < 0 })
+      // Recebimentos confirmados hoje (entrada no estoque)
+      const recebidosHoje = opReqs.filter(r => r.status === 'concluida' && (r.updated_at || '').slice(0, 10) === hojeISO)
+      // Pedidos em aberto
+      const pedidosAbertos = opReqs.filter(r => r.pedido_numero && r.pedido_status && r.pedido_status !== 'entregue' && r.pedido_status !== 'finalizado')
+      // Entregas de tarefas — prazo hoje ou atrasado, não concluídas
+      const tarefasPrazo = opTarefas.filter(t => t.status !== 'concluido' && t.status !== 'cancelado' && t.prazo && (diasAte(t.prazo) ?? 1) <= 0)
+
+      return [
+        `🤖 *LIZ — RELATÓRIO OPERACIONAL DIÁRIO*`,
+        `📅 ${hoje}`,
+        `🏪 ${loja}`,
+        `━━━━━━━━━━━━━━━`,
+        ``,
+        `💸 *BOLETOS*`,
+        boletosVencidos.length ? `  🔴 ${boletosVencidos.length} vencido(s): ${fmtRl(boletosVencidos.reduce((a, b) => a + b.valor, 0))}` : null,
+        boletosAvisar.length
+          ? `  ⏳ Vencem em até 2 dias:\n${boletosAvisar.slice(0, 6).map(b => `    • ${b.fornecedor || b.beneficiario || 'Boleto'} — ${fmtRl(b.valor)} (venc. ${fmtData(b.data_vencimento)})`).join('\n')}`
+          : (boletosVencidos.length ? null : `  ✅ Nenhum boleto vencendo nos próximos 2 dias`),
+        ``,
+        `📦 *RECEBIMENTOS DE HOJE* (entrada no estoque)`,
+        recebidosHoje.length
+          ? recebidosHoje.slice(0, 8).map(r => `    • REQ-${String(r.numero).padStart(4, '0')}: ${r.titulo}`).join('\n')
+          : `  — Nenhum recebimento confirmado hoje`,
+        ``,
+        `📄 *PEDIDOS EM ABERTO* (${pedidosAbertos.length})`,
+        pedidosAbertos.length
+          ? pedidosAbertos.slice(0, 8).map(r => `    • ${r.pedido_numero}: ${r.titulo} — ${fmtRl(r.total_final || r.total_estimado || 0)}`).join('\n')
+          : `  ✅ Nenhum pedido pendente`,
+        ``,
+        `✅ *ENTREGAS DE TAREFAS* (prazo hoje/atrasadas: ${tarefasPrazo.length})`,
+        tarefasPrazo.length
+          ? tarefasPrazo.slice(0, 8).map(t => { const d = diasAte(t.prazo); return `    • ${t.titulo}${t.responsavel_nome ? ` (${t.responsavel_nome})` : ''}${d != null && d < 0 ? ` ⚠ ${-d}d atrás` : ' · hoje'}` }).join('\n')
+          : `  ✅ Sem tarefas em atraso`,
+        ``,
+        `━━━━━━━━━━━━━━━`,
+        `_Gerado via Liz · Amore Gestão_`,
+      ].filter(l => l !== null && l !== undefined).join('\n')
     }
 
     // reuniao
@@ -1426,6 +1487,7 @@ Seja direto e objetivo. Use emojis para facilitar leitura.
                   onChange={e => { setWaTipo(e.target.value as WaTipo); setWaMsgCustom('') }}
                   style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }}
                 >
+                  <option value="operacional">📋 Relatório Operacional Diário</option>
                   <option value="estoque">🔴 Alerta de Estoque</option>
                   <option value="compras">🛒 Relatório de Compras</option>
                   <option value="auditoria">📊 Auditoria do Dia</option>
@@ -1474,8 +1536,9 @@ Seja direto e objetivo. Use emojis para facilitar leitura.
             borderRadius: 10, padding: 14,
           }}>
             <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>Envios rápidos por tipo</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 8 }}>
               {([
+                { tipo: 'operacional' as WaTipo, emoji: '📋', label: 'Rel. Operacional', color: '#16a34a', badge: opReqs.filter(r => r.pedido_numero && r.pedido_status && r.pedido_status !== 'entregue' && r.pedido_status !== 'finalizado').length },
                 { tipo: 'estoque' as WaTipo,   emoji: '🔴', label: 'Alerta Estoque',   color: '#ef4444', badge: comprasIaData.zerados.length + comprasIaData.emRisco.length },
                 { tipo: 'compras' as WaTipo,   emoji: '🛒', label: 'Rel. Compras',     color: '#f59e0b', badge: comprasIaData.desvios.length },
                 { tipo: 'auditoria' as WaTipo, emoji: '📊', label: 'Auditoria Dia',    color: '#3b82f6', badge: 0 },
