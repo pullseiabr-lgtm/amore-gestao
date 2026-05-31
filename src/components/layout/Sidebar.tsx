@@ -10,6 +10,7 @@ export interface NavItem {
   badge?: string
   adminOnly?: boolean
   superAdminOnly?: boolean
+  perm?: string   // chave de permissão alternativa (quando difere do id de rota)
 }
 
 // Itens simples do menu
@@ -35,6 +36,7 @@ const PRODUTOS_SUBMENU: NavItem[] = [
 
 // Sub-itens do grupo Compras & Estoque
 const COMPRAS_SUBMENU: NavItem[] = [
+  { id: 'pipeline-suprimentos',   label: '🔀 Pipeline de Suprimentos', icon: <Activity size={12} />, perm: 'requisicoes' },
   { id: 'lista-padrao',           label: '📋 Lista Padronizada', icon: <ShoppingCart size={12} /> },
   { id: 'compras',                label: 'Compras (histórico)', icon: <ShoppingCart size={12} /> },
   { id: 'requisicoes',            label: 'Requisições',         icon: <ClipboardList size={12} /> },
@@ -80,7 +82,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
   const isProdutosGroup = (p: string) => p === 'produtos' || p === 'produtos-categorias'
 
   // Abre o dropdown automaticamente se a página ativa for do grupo Compras
-  const isComprasGroup = (p: string) => p === 'lista-padrao' || p === 'compras' || p === 'requisicoes' || p === 'req-automaticas' || p === 'estoque' || p === 'fornecedores' || p === 'compras-agente'
+  const isComprasGroup = (p: string) => p === 'pipeline-suprimentos' || p === 'lista-padrao' || p === 'compras' || p === 'requisicoes' || p === 'req-automaticas' || p === 'estoque' || p === 'fornecedores' || p === 'compras-agente'
   const isRelatoriosGroup = (p: string) => p === 'relatorio-cvl' || p === 'ruptura' || p === 'market'
 
   const [produtosOpen, setProdutosOpen] = useState(isProdutosGroup(activePage))
@@ -193,7 +195,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
               {/* Sub-itens */}
               {comprasOpen && (
                 <div style={{ overflow: 'hidden' }}>
-                  {COMPRAS_SUBMENU.filter(m => can(m.id, 'view')).map(m => (
+                  {COMPRAS_SUBMENU.filter(m => can(m.perm ?? m.id, 'view')).map(m => (
                     <div
                       key={m.id}
                       className={`nav-item${activePage === m.id ? ' active' : ''}`}
