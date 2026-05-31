@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig, Boleto } from '../types/database'
 
 const db = supabase as any
 
@@ -830,6 +830,24 @@ export async function upsertAprovacaoConfig(cfg: { loja: string; limite_gestor: 
     },
     body: JSON.stringify({ ...cfg, updated_at: new Date().toISOString() }),
   })
+}
+
+// ── Central de Boletos ──────────────────────────────────────────────────────
+export async function fetchBoletos(loja: string): Promise<Boleto[]> {
+  return sdkCall<Boleto[]>(
+    db.from('boletos').select('*')
+      .eq('loja', loja)
+      .order('data_vencimento', { ascending: true, nullsFirst: false }),
+  ).then(d => d ?? []).catch(() => [])
+}
+export async function insertBoleto(b: Omit<Boleto, 'id' | 'created_at' | 'updated_at'>): Promise<Boleto> {
+  return sdkCall<Boleto>(db.from('boletos').insert(b).select().single())
+}
+export async function updateBoleto(id: string, upd: Partial<Boleto>): Promise<void> {
+  await sdkCall<null>(db.from('boletos').update({ ...upd, updated_at: new Date().toISOString() }).eq('id', id))
+}
+export async function deleteBoleto(id: string): Promise<void> {
+  await sdkCall<null>(db.from('boletos').delete().eq('id', id))
 }
 
 export async function deleteRequisicao(id: string): Promise<void> {

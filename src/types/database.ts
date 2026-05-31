@@ -264,6 +264,30 @@ export interface AprovacaoConfig {
 export type NivelAprovacao = 'gestor' | 'financeiro' | 'diretoria'
 export type FiscalStatus = 'pendente' | 'liberado' | 'divergencia' | 'aguardando_correcao'
 
+export type BoletoStatus = 'pendente' | 'pago' | 'vencido' | 'cancelado'
+
+export interface Boleto {
+  id: string
+  loja: string
+  nota_fiscal_numero: string | null
+  fornecedor: string | null
+  cnpj: string | null
+  banco: string | null
+  beneficiario: string | null
+  valor: number
+  data_emissao: string | null
+  data_vencimento: string | null
+  codigo_barras: string | null
+  linha_digitavel: string | null
+  status: BoletoStatus
+  data_pagamento: string | null
+  comprovante_obs: string | null
+  observacao: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface RequisicaoItem {
   id: string
   requisicao_id: string

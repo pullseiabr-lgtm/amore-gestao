@@ -57,6 +57,7 @@ const RELATORIOS_SUBMENU: NavItem[] = [
 const MENU_BOTTOM: NavItem[] = [
   { id: 'pdv',        label: 'PDV — Caixa',   icon: <Monitor size={13} /> },
   { id: 'financeiro', label: 'Financeiro',    icon: <DollarSign size={13} /> },
+  { id: 'boletos',    label: '🧾 Central de Boletos', icon: <DollarSign size={13} />, perm: 'financeiro' },
   { id: 'cozinha',    label: 'Cozinha',       icon: <ChefHat size={13} /> },
   { id: 'salao',      label: 'Salão',         icon: <Coffee size={13} /> },
 ]
@@ -251,7 +252,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
           )}
 
           {/* Itens inferiores */}
-          {MENU_BOTTOM.filter(m => can(m.id, 'view')).map(m => (
+          {MENU_BOTTOM.filter(m => can(m.perm ?? m.id, 'view')).map(m => (
             <div
               key={m.id}
               className={`nav-item${activePage === m.id ? ' active' : ''}`}
