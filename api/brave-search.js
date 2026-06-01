@@ -17,7 +17,10 @@ export default async function handler(req, res) {
   }
 
   // Chave: prioridade => parâmetro ?t= (passado pelo client) ou variável de ambiente
-  const apiKey = t || process.env.VITE_BRAVE_API_KEY || process.env.BRAVE_API_KEY
+  // Sanitiza: remove BOM (U+FEFF), espaços e qualquer caractere fora do ASCII imprimível,
+  // pois headers HTTP (ByteString) não aceitam caracteres > 255.
+  const apiKey = (t || process.env.VITE_BRAVE_API_KEY || process.env.BRAVE_API_KEY || '')
+    .replace(/[^\x21-\x7E]/g, '')
 
   if (!apiKey) {
     return res.status(500).json({ error: 'Brave API Key não configurada. Informe a chave em Configurações da Liz.' })

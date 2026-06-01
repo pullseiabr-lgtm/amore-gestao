@@ -17,7 +17,8 @@ export default async function handler(req, res) {
   // VITE_GEMINI_API_KEY é plain type — disponível no process.env em alguns contextos Vercel
   const serverKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY
   const clientKey = req.query.k  // chave enviada pelo browser (do bundle ou localStorage)
-  const apiKey = serverKey || clientKey
+  // Sanitiza: remove BOM (U+FEFF), espaços e caracteres não-ASCII que invalidam a chave
+  const apiKey = (serverKey || clientKey || '').replace(/[^\x21-\x7E]/g, '')
 
   if (!apiKey) {
     return res.status(500).json({
