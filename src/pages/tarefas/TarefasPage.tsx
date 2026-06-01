@@ -13,6 +13,7 @@ import {
   insertTarefaComentario, insertTarefaHistorico,
 } from '../../lib/db'
 import type { Tarefa, TarefaStatus, TarefaPrioridade, TarefaResultado, TarefaChecklist, TarefaComentario } from '../../types/database'
+import { AnexoUploader, AnexoLinks } from '../../components/ui/AnexoUploader'
 
 // ── Constants ────────────────────────────────────────────────
 
@@ -681,6 +682,9 @@ export default function TarefasPage() {
                   rows={2} placeholder="Informações adicionais..."
                   style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical' }} />
               </div>
+
+              {/* Anexos */}
+              <AnexoUploader value={form.anexos} onChange={v => setForm(f => ({ ...f, anexos: v || '' }))} pasta="tarefas" />
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
@@ -787,6 +791,14 @@ export default function TarefasPage() {
               <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, marginBottom: 4 }}>📝 DESCRIÇÃO DA TAREFA</div>
                 <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text)', whiteSpace: 'pre-wrap' }}>{detalhe.descricao}</div>
+              </div>
+            )}
+
+            {/* Anexos */}
+            {detalhe.anexos && (
+              <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, marginBottom: 6 }}>📎 ANEXOS</div>
+                <AnexoLinks value={detalhe.anexos} />
               </div>
             )}
 

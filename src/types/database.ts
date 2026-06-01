@@ -194,6 +194,7 @@ export interface Pendencia {
   status: 'pendente' | 'em_andamento' | 'concluido'
   responsible: string | null
   cost: number | null
+  anexos?: string | null
   created_by: string
   updated_by: string | null
   created_at: string
@@ -246,6 +247,7 @@ export interface Requisicao {
   fiscal_conferido_por?: string | null
   fiscal_conferido_em?: string | null
   fiscal_obs?: string | null
+  fiscal_anexo?: string | null
   // ── Pedido de compra (gerado na aprovação) ──
   pedido_numero?: string | null
   pedido_status?: PedidoStatus | null

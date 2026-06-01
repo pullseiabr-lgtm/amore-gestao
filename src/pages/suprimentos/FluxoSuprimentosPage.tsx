@@ -3,6 +3,7 @@ import { Loader2, RefreshCw, ArrowRight, Package, AlertTriangle, Settings2, Chec
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { fetchRequisicoes, updateRequisicao, fetchAprovacaoConfig, upsertAprovacaoConfig, insertReqTimeline } from '../../lib/db'
+import { AnexoUploader } from '../../components/ui/AnexoUploader'
 import type { Requisicao, ReqStatus, ReqPrioridade, AprovacaoConfig, NivelAprovacao, FiscalStatus, PedidoStatus } from '../../types/database'
 
 // Gera os campos do pedido de compra (somente se ainda não gerado)
@@ -135,7 +136,7 @@ export default function FluxoSuprimentosPage() {
   const [limForm, setLimForm] = useState({ limite_gestor: '', limite_financeiro: '', limite_diretoria: '' })
   // Modal de validação fiscal
   const [fiscalReq, setFiscalReq] = useState<Requisicao | null>(null)
-  const [fiscalForm, setFiscalForm] = useState({ nf_numero: '', nf_valor: '', mercadoria_ok: true, obs: '' })
+  const [fiscalForm, setFiscalForm] = useState({ nf_numero: '', nf_valor: '', mercadoria_ok: true, obs: '', anexo: '' as string | null })
   // Leitura de NF por foto (IA)
   const [lendoNF, setLendoNF] = useState(false)
   const [nfIA, setNfIA] = useState<NotaFiscalIA | null>(null)
@@ -218,6 +219,7 @@ export default function FluxoSuprimentosPage() {
       nf_valor: r.fiscal_nf_valor != null ? String(r.fiscal_nf_valor) : '',
       mercadoria_ok: r.fiscal_mercadoria_ok ?? true,
       obs: r.fiscal_obs || '',
+      anexo: r.fiscal_anexo || '',
     })
     setNfIA(null); setNfErro(''); setLendoNF(false)
     setFiscalReq(r)
@@ -251,6 +253,7 @@ export default function FluxoSuprimentosPage() {
         fiscal_nf_valor: fiscalForm.nf_valor ? Number(fiscalForm.nf_valor) : null,
         fiscal_mercadoria_ok: fiscalForm.mercadoria_ok,
         fiscal_obs: fiscalForm.obs || null,
+        fiscal_anexo: fiscalForm.anexo || null,
         fiscal_conferido_por: nome,
         fiscal_conferido_em: new Date().toISOString(),
       })
@@ -615,7 +618,12 @@ export default function FluxoSuprimentosPage() {
 
               <textarea value={fiscalForm.obs} onChange={e => setFiscalForm(f => ({ ...f, obs: e.target.value }))}
                 rows={2} placeholder="Observações (impostos, produto, condição de pagamento…)"
-                style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical', marginBottom: 16 }} />
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical', marginBottom: 12 }} />
+
+              {/* Anexo da nota fiscal */}
+              <div style={{ marginBottom: 16 }}>
+                <AnexoUploader value={fiscalForm.anexo} onChange={v => setFiscalForm(f => ({ ...f, anexo: v }))} pasta="notas-fiscais" label="📎 Anexar Nota Fiscal (foto/PDF)" />
+              </div>
 
               {/* Resultado */}
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>RESULTADO DA CONFERÊNCIA</div>

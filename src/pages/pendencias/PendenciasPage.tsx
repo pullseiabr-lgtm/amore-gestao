@@ -5,6 +5,7 @@ import Confirm from '../../components/ui/Confirm'
 import { useToast } from '../../hooks/useToast'
 import { useAuth } from '../../contexts/AuthContext'
 import { fetchPendencias, insertPendencia, updatePendencia, deletePendencia } from '../../lib/db'
+import { AnexoUploader } from '../../components/ui/AnexoUploader'
 import type { Pendencia } from '../../types/database'
 
 const OS_ITEMS = [
@@ -22,7 +23,7 @@ const STATUS_MAP = { pendente: { lbl: 'Pendente', cls: 'bg-gr' }, em_andamento: 
 
 type MainTab = 'pend' | 'os' | 'manut'
 
-const EMPTY_FORM = { title: '', description: '', loja: 'Amore CD', priority: 'media' as Pendencia['priority'], status: 'pendente' as Pendencia['status'], responsible: '', cost: '' }
+const EMPTY_FORM = { title: '', description: '', loja: 'Amore CD', priority: 'media' as Pendencia['priority'], status: 'pendente' as Pendencia['status'], responsible: '', cost: '', anexos: '' }
 
 export default function PendenciasPage() {
   const { can, user } = useAuth()
@@ -57,7 +58,7 @@ export default function PendenciasPage() {
   const openNew = () => { setEditItem(null); setForm(EMPTY_FORM); setShowForm(true) }
   const openEdit = (p: Pendencia) => {
     setEditItem(p)
-    setForm({ title: p.title, description: p.description || '', loja: p.loja, priority: p.priority, status: p.status, responsible: p.responsible || '', cost: p.cost?.toString() || '' })
+    setForm({ title: p.title, description: p.description || '', loja: p.loja, priority: p.priority, status: p.status, responsible: p.responsible || '', cost: p.cost?.toString() || '', anexos: p.anexos || '' })
     setShowForm(true)
   }
 
@@ -73,6 +74,7 @@ export default function PendenciasPage() {
         status: form.status,
         responsible: form.responsible || null,
         cost: form.cost ? parseFloat(form.cost) : null,
+        anexos: form.anexos || null,
         created_by: user?.name || 'Admin',
         updated_by: user?.name || 'Admin',
       }
@@ -261,6 +263,9 @@ export default function PendenciasPage() {
           <div className="fg" style={{ gridColumn: '1/-1' }}>
             <label className="fl">Custo estimado (R$)</label>
             <input className="inp" type="number" value={form.cost} onChange={e => setForm(p => ({ ...p, cost: e.target.value }))} />
+          </div>
+          <div className="fg" style={{ gridColumn: '1/-1' }}>
+            <AnexoUploader value={form.anexos} onChange={v => setForm(p => ({ ...p, anexos: v || '' }))} pasta="pendencias" label="📎 Evidências / fotos" />
           </div>
         </div>
       </Modal>
