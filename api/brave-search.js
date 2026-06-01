@@ -27,7 +27,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=10&search_lang=pt&country=BR`
+    const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=10&country=br`
 
     const upstream = await fetch(url, {
       headers: {
