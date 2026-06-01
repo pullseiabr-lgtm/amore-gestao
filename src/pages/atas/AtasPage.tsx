@@ -314,6 +314,20 @@ export default function AtasPage() {
                     )}
                   </div>
 
+                  {/* anexos */}
+                  {a.arquivo_url && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 6 }}>📎 Anexos</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {a.arquivo_url.split(/\n+/).map(s => s.trim()).filter(Boolean).map((linha, i) => (
+                          /^https?:\/\//.test(linha)
+                            ? <a key={i} href={linha} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: 'var(--primary)', wordBreak: 'break-all' }}>🔗 {linha}</a>
+                            : <span key={i} style={{ fontSize: 12, color: 'var(--text-primary)', wordBreak: 'break-all' }}>{linha}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* actions list */}
                   <div style={{ marginBottom: 10 }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8 }}>
@@ -508,6 +522,13 @@ export default function AtasPage() {
                     style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-primary)', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }} />
                 </div>
               ))}
+              {/* anexos */}
+              <div>
+                <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>📎 Anexos / links</label>
+                <textarea value={ataForm.arquivo_url || ''} onChange={e => setAtaForm(p => ({ ...p, arquivo_url: e.target.value || null }))} rows={2}
+                  placeholder="Cole links de documentos, imagens, PDFs ou Drive (um por linha)…"
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-primary)', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }} />
+              </div>
               {/* actions */}
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
                 <button onClick={() => setShowAtaModal(false)}
