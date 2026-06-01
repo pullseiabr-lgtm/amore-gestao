@@ -850,6 +850,19 @@ export async function deleteBoleto(id: string): Promise<void> {
   await sdkCall<null>(db.from('boletos').delete().eq('id', id))
 }
 
+// ── Upload de anexos (Supabase Storage, bucket "anexos") ────────────────────
+export async function uploadAnexo(file: File, pasta = 'geral'): Promise<string> {
+  const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '')
+  const path = `${pasta}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+  const { error } = await supabase.storage.from('anexos').upload(path, file, {
+    upsert: false,
+    contentType: file.type || undefined,
+  })
+  if (error) throw new Error(error.message || 'Falha no upload do anexo')
+  const { data } = supabase.storage.from('anexos').getPublicUrl(path)
+  return data.publicUrl
+}
+
 export async function deleteRequisicao(id: string): Promise<void> {
   return restDelete('requisicoes', `id=eq.${id}`)
 }

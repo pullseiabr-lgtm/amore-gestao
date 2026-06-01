@@ -9,7 +9,7 @@ import { useLoja } from '../../contexts/LojaContext'
 import {
   fetchAtas, insertAta, updateAta, deleteAta,
   insertAtaAcao, updateAtaAcao, deleteAtaAcao,
-  insertTarefa,
+  insertTarefa, uploadAnexo,
 } from '../../lib/db'
 import type { AtaReuniao, AtaAcao, AtaTipo, AtaStatus, AtaAcaoStatus } from '../../types/database'
 
@@ -66,6 +66,21 @@ export default function AtasPage() {
 
   const [newAcao,   setNewAcao]   = useState({ descricao: '', responsavel: '', prazo: '' })
   const [expandAta, setExpandAta] = useState<string | null>(null)
+  const [uploadingAnexo, setUploadingAnexo] = useState(false)
+
+  const handleUploadAnexo = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setUploadingAnexo(true)
+    try {
+      const urls: string[] = []
+      for (const f of Array.from(files)) {
+        try { urls.push(await uploadAnexo(f, 'atas')) } catch (e) { alert('Falha ao enviar ' + f.name + ': ' + (e as Error).message) }
+      }
+      if (urls.length) {
+        setAtaForm(p => ({ ...p, arquivo_url: [p.arquivo_url, urls.join('\n')].filter(Boolean).join('\n') }))
+      }
+    } finally { setUploadingAnexo(false) }
+  }
   const [saving, setSaving]       = useState(false)
 
   const load = async () => {
@@ -524,9 +539,14 @@ export default function AtasPage() {
               ))}
               {/* anexos */}
               <div>
-                <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>📎 Anexos / links</label>
+                <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>📎 Anexos</label>
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px', borderRadius: 8, border: '1px dashed var(--primary)', background: 'var(--bg-secondary,#f9fafb)', cursor: uploadingAnexo ? 'wait' : 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--primary)', marginBottom: 6 }}>
+                  {uploadingAnexo ? '⏳ Enviando…' : '📤 Enviar arquivo / foto (do celular)'}
+                  <input type="file" accept="image/*,application/pdf" multiple capture="environment" disabled={uploadingAnexo}
+                    onChange={e => handleUploadAnexo(e.target.files)} style={{ display: 'none' }} />
+                </label>
                 <textarea value={ataForm.arquivo_url || ''} onChange={e => setAtaForm(p => ({ ...p, arquivo_url: e.target.value || null }))} rows={2}
-                  placeholder="Cole links de documentos, imagens, PDFs ou Drive (um por linha)…"
+                  placeholder="Arquivos enviados aparecem aqui. Também pode colar links (Drive/PDF), um por linha…"
                   style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-primary)', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }} />
               </div>
               {/* actions */}
