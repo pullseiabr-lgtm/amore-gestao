@@ -10,6 +10,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { fetchMktCampanhas, insertMktCampanha, updateMktCampanha, deleteMktCampanha } from '../../lib/db'
 import type { MktCampanha } from '../../lib/db'
 import AssistenteCampanhaIA from './AssistenteCampanhaIA'
+import CalendarioCampanhas from './CalendarioCampanhas'
 
 // ── Tipos ─────────────────────────────────────────────────────
 
@@ -283,7 +284,7 @@ export default function MarketingPage() {
   const { toast, ToastEl } = useToastLocal()
   const [campanhas, setCampanhas] = useState<MktCampanha[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'lista' | 'form' | 'ia'>('lista')
+  const [view, setView] = useState<'lista' | 'form' | 'ia' | 'calendario'>('lista')
   const [editando, setEditando] = useState<MktCampanha | null>(null)
   const [busca, setBusca] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
@@ -366,6 +367,19 @@ export default function MarketingPage() {
         <AssistenteCampanhaIA
           lojaAtual={lojaReal}
           onSalvo={handleSalvo}
+          onVoltar={() => setView('lista')}
+        />
+      </>
+    )
+  }
+
+  if (view === 'calendario') {
+    return (
+      <>
+        {ToastEl}
+        <CalendarioCampanhas
+          campanhas={campanhas}
+          onNova={() => setView('ia')}
           onVoltar={() => setView('lista')}
         />
       </>
@@ -458,6 +472,7 @@ export default function MarketingPage() {
           <span className="card-tt"><Send size={13} style={{ display: 'inline', marginRight: 4 }} />Campanhas de Marketing</span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn bo bsm" onClick={load} disabled={loading}><RefreshCw size={11} /></button>
+            <button className="btn bo bsm" onClick={() => setView('calendario')}>📅 Calendário</button>
             <button className="btn bsm" onClick={() => setView('ia')}
               style={{ background: 'linear-gradient(135deg,#7c3aed,#a855f7)', color: '#fff', border: 'none' }}>
               ✨ Criar com IA
