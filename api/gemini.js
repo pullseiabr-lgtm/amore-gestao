@@ -27,8 +27,9 @@ export default async function handler(req, res) {
   }
 
   const requested = req.query.model || 'gemini-2.5-flash'
-  // Modelo pedido + 1 fallback (caso o principal esteja sobrecarregado). Mantido curto p/ não estourar o timeout.
-  const modelos = [requested, 'gemini-2.0-flash'].filter((m, i, a) => a.indexOf(m) === i)
+  // Modelo pedido + 1 fallback com quota disponível (lite), caso o principal esteja sobrecarregado.
+  // Mantido curto p/ não estourar o timeout da função.
+  const modelos = [requested, 'gemini-2.5-flash-lite'].filter((m, i, a) => a.indexOf(m) === i)
   const body = req.body
   const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
