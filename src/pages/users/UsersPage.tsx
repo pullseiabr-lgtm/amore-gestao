@@ -184,12 +184,24 @@ export default function UsersPage() {
   }
 
   const togglePerm = (mod: string, action: keyof ModulePermission) => {
+    setPermMap(prev => {
+      const cur = prev[mod] || { view: false, create: false, edit: false, delete: false, export: false }
+      const novo = !cur[action]
+      let updated = { ...cur, [action]: novo }
+      // Desmarcar "Ver" remove todas as ações (módulo some do menu)
+      if (action === 'view' && !novo) updated = { view: false, create: false, edit: false, delete: false, export: false }
+      // Marcar qualquer ação garante "Ver" (para o módulo aparecer)
+      else if (action !== 'view' && novo) updated = { ...updated, view: true }
+      return { ...prev, [mod]: updated }
+    })
+  }
+
+  const toggleModuloTodos = (mod: string, ligar: boolean) => {
     setPermMap(prev => ({
       ...prev,
-      [mod]: {
-        ...(prev[mod] || { view: false, create: false, edit: false, delete: false, export: false }),
-        [action]: !(prev[mod]?.[action]),
-      }
+      [mod]: ligar
+        ? { view: true, create: true, edit: true, delete: true, export: true }
+        : { view: false, create: false, edit: false, delete: false, export: false },
     }))
   }
 
@@ -650,7 +662,6 @@ export default function UsersPage() {
                 <tbody>
                   {(() => {
                     const grupos = [...new Set(MODULES.map(m => m.grupo))]
-                    const isSuper = permTarget.role === 'super_admin'
                     return grupos.flatMap(grupo => [
                       <tr key={`g-${grupo}`} style={{ background: '#F9FAFB' }}>
                         <td colSpan={6} style={{ fontSize: 10, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', padding: '5px 8px' }}>
@@ -659,17 +670,23 @@ export default function UsersPage() {
                       </tr>,
                       ...MODULES.filter(m => m.grupo === grupo).map(m => {
                         const p = permMap[m.id] || { view: false, create: false, edit: false, delete: false, export: false }
+                        const todos = p.view && p.create && p.edit && p.delete && p.export
                         return (
                           <tr key={m.id}>
-                            <td style={{ paddingLeft: 16 }}>{m.label}</td>
+                            <td style={{ paddingLeft: 16 }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }} title="Marcar/desmarcar tudo neste módulo">
+                                <input type="checkbox" className="pck" checked={todos} onChange={e => toggleModuloTodos(m.id, e.target.checked)} />
+                                <span style={{ fontWeight: p.view ? 700 : 400 }}>{m.label}</span>
+                              </label>
+                            </td>
                             {ACTIONS.map(a => (
-                              <td key={a.key}>
+                              <td key={a.key} style={{ textAlign: 'center', cursor: 'pointer' }} onClick={() => togglePerm(m.id, a.key)}>
                                 <input
                                   type="checkbox"
                                   className="pck"
-                                  checked={isSuper ? true : Boolean(p[a.key])}
-                                  disabled={isSuper || (a.key !== 'view' && !permMap[m.id]?.view)}
+                                  checked={Boolean(p[a.key])}
                                   onChange={() => togglePerm(m.id, a.key)}
+                                  onClick={e => e.stopPropagation()}
                                 />
                               </td>
                             ))}
