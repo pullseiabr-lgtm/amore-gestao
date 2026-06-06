@@ -90,7 +90,7 @@ export default function UsersPage() {
 
   const [showForm, setShowForm] = useState(false)
   const [editingUser, setEditingUser] = useState<Profile | null>(null)
-  const [form, setForm] = useState({ name: '', email: '', telefone: '', role: 'user' as UserRole, loja: '', status: 'active' as UserStatus, password: '', password2: '', template: '' })
+  const [form, setForm] = useState({ name: '', email: '', role: 'user' as UserRole, loja: '', status: 'active' as UserStatus, password: '', password2: '', template: '' })
   const [formErr, setFormErr] = useState('')
 
   const [showPerm, setShowPerm] = useState(false)
@@ -126,14 +126,14 @@ export default function UsersPage() {
 
   const openNew = () => {
     setEditingUser(null)
-    setForm({ name: '', email: '', telefone: '', role: 'user', loja: '', status: 'active', password: '', password2: '', template: '' })
+    setForm({ name: '', email: '', role: 'user', loja: '', status: 'active', password: '', password2: '', template: '' })
     setFormErr('')
     setShowForm(true)
   }
 
   const openEdit = (u: Profile) => {
     setEditingUser(u)
-    setForm({ name: u.name, email: u.email, telefone: (u as any).telefone || '', role: u.role, loja: u.loja || '', status: u.status, password: '', password2: '', template: '' })
+    setForm({ name: u.name, email: u.email, role: u.role, loja: u.loja || '', status: u.status, password: '', password2: '', template: '' })
     setFormErr('')
     setShowForm(true)
   }
