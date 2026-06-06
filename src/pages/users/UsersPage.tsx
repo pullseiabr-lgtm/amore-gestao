@@ -10,24 +10,45 @@ import { supabase } from '../../lib/supabase'
 import type { Profile, UserRole, UserStatus, PermissionsMap, ModulePermission } from '../../types/database'
 
 const MODULES = [
-  { id: 'dashboard',        label: 'Dashboard',           grupo: 'Geral' },
-  { id: 'pendencias',       label: 'Pendências & OS',     grupo: 'Geral' },
-  { id: 'gamificacao',      label: 'Gamificação',         grupo: 'Geral' },
-  { id: 'marketing',        label: 'Marketing 360°',      grupo: 'Geral' },
-  { id: 'vendas',           label: 'Vendas',              grupo: 'Geral' },
-  { id: 'pdv',              label: 'PDV — Caixa',         grupo: 'Geral' },
-  { id: 'financeiro',       label: 'Financeiro',          grupo: 'Financeiro' },
-  { id: 'compras',          label: 'Lista de Compras',    grupo: 'Compras & Estoque' },
-  { id: 'requisicoes',      label: 'Requisições',         grupo: 'Compras & Estoque' },
-  { id: 'estoque',          label: 'Estoque',             grupo: 'Compras & Estoque' },
-  { id: 'fornecedores',     label: 'Fornecedores',        grupo: 'Compras & Estoque' },
-  { id: 'produtos',         label: 'Produtos',            grupo: 'Compras & Estoque' },
-  { id: 'relatorio-cvl',    label: 'Compra vs Lista',     grupo: 'Relatórios' },
-  { id: 'ruptura',          label: 'Ruptura de Pedidos',  grupo: 'Relatórios' },
-  { id: 'cozinha',          label: 'Cozinha',             grupo: 'Operacional' },
-  { id: 'salao',            label: 'Salão',               grupo: 'Operacional' },
-  { id: 'usuarios',         label: 'Usuários',            grupo: 'Administração' },
-  { id: 'configuracoes',    label: 'White Label',         grupo: 'Administração' },
+  // ── Geral / Operação ──
+  { id: 'dashboard',            label: 'Dashboard',                 grupo: 'Geral' },
+  { id: 'vendas',               label: 'Vendas',                    grupo: 'Geral' },
+  { id: 'pdv',                  label: 'PDV — Ponto de Venda',      grupo: 'Geral' },
+  { id: 'cozinha',              label: 'Cozinha',                   grupo: 'Geral' },
+  { id: 'salao',                label: 'Salão',                     grupo: 'Geral' },
+  { id: 'gamificacao',          label: 'Gamificação',               grupo: 'Geral' },
+  // ── Tarefas & Planejamento ──
+  { id: 'tarefas',              label: 'Central de Tarefas',        grupo: 'Tarefas & Planejamento' },
+  { id: 'pendencias',           label: 'Pendências & OS',           grupo: 'Tarefas & Planejamento' },
+  { id: 'planejamento',         label: 'Planejamento Operacional',  grupo: 'Tarefas & Planejamento' },
+  { id: 'atas',                 label: 'Atas de Reunião',           grupo: 'Tarefas & Planejamento' },
+  // ── Marketing & IA ──
+  { id: 'marketing',            label: 'Marketing',                 grupo: 'Marketing & IA' },
+  { id: 'agente-liz',           label: 'Liz — Agente IA',           grupo: 'Marketing & IA' },
+  { id: 'market',               label: 'Market Analytics',          grupo: 'Marketing & IA' },
+  // ── Compras & Suprimentos ──
+  { id: 'compras',              label: 'Compras / Lista',           grupo: 'Compras & Suprimentos' },
+  { id: 'requisicoes',          label: 'Requisições de Compra',     grupo: 'Compras & Suprimentos' },
+  { id: 'req-automaticas',      label: 'Requisições Automáticas',   grupo: 'Compras & Suprimentos' },
+  { id: 'pipeline-suprimentos', label: 'Pipeline de Suprimentos',   grupo: 'Compras & Suprimentos' },
+  { id: 'dashboard-suprimentos',label: 'Dashboard de Suprimentos',  grupo: 'Compras & Suprimentos' },
+  { id: 'lista-padrao',         label: 'Lista de Compras Padrão',   grupo: 'Compras & Suprimentos' },
+  { id: 'compras-agente',       label: 'Agente de Compras',         grupo: 'Compras & Suprimentos' },
+  { id: 'fornecedores',         label: 'Fornecedores',              grupo: 'Compras & Suprimentos' },
+  // ── Estoque & Produtos ──
+  { id: 'estoque',              label: 'Estoque',                   grupo: 'Estoque & Produtos' },
+  { id: 'produtos',             label: 'Produtos',                  grupo: 'Estoque & Produtos' },
+  { id: 'produtos-categorias',  label: 'Categorias de Produtos',    grupo: 'Estoque & Produtos' },
+  { id: 'ruptura',              label: 'Ruptura de Pedidos',        grupo: 'Estoque & Produtos' },
+  { id: 'enxoval',              label: 'Controle de Enxoval',       grupo: 'Estoque & Produtos' },
+  { id: 'alertas',              label: 'Alertas & Rastreabilidade', grupo: 'Estoque & Produtos' },
+  { id: 'relatorio-cvl',        label: 'Compra vs Lista',           grupo: 'Estoque & Produtos' },
+  // ── Financeiro ──
+  { id: 'financeiro',           label: 'Financeiro',                grupo: 'Financeiro' },
+  { id: 'boletos',              label: 'Central de Boletos',        grupo: 'Financeiro' },
+  // ── Administração ──
+  { id: 'usuarios',             label: 'Usuários',                  grupo: 'Administração' },
+  { id: 'configuracoes',        label: 'Configurações',             grupo: 'Administração' },
 ]
 
 const LOJAS_DISPONIVEIS = ['Todas', 'Amore CD', 'Amore Paiva', 'Flow CD']
