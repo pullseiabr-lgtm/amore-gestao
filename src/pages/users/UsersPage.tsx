@@ -31,7 +31,6 @@ const MODULES = [
 ]
 
 const LOJAS_DISPONIVEIS = ['Todas', 'Amore CD', 'Amore Paiva', 'Flow CD']
-const SETORES_DISPONIVEIS = ['Todos', 'Cozinha', 'Salão', 'Estoque', 'Financeiro', 'Compras', 'PDV']
 
 const ACTIONS: { key: keyof ModulePermission; label: string }[] = [
   { key: 'view', label: 'Ver' },
@@ -181,13 +180,6 @@ export default function UsersPage() {
     setPermRestricoes(prev => ({
       ...prev,
       lojas: prev.lojas.includes(loja) ? prev.lojas.filter(l => l !== loja) : [...prev.lojas, loja],
-    }))
-  }
-
-  const toggleRestricaoSetor = (setor: string) => {
-    setPermRestricoes(prev => ({
-      ...prev,
-      setores: prev.setores.includes(setor) ? prev.setores.filter(s => s !== setor) : [...prev.setores, setor],
     }))
   }
 
@@ -633,7 +625,7 @@ export default function UsersPage() {
           <>
             <div className="al al-b" style={{ marginBottom: 12 }}>
               <Shield size={13} />
-              <span>Permissões sobrescritas aqui prevalecem sobre o papel <strong>{roleInfo(permTarget.role).label}</strong>. Restrições de loja e setor limitam o que o usuário pode visualizar.</span>
+              <span>Marque o que este usuário pode acessar. A coluna <strong>Ver</strong> define o que aparece no menu dele; as demais liberam <strong>Criar / Editar / Excluir / Exportar</strong> em cada módulo. As marcações aqui prevalecem sobre o papel <strong>{roleInfo(permTarget.role).label}</strong>.</span>
             </div>
 
             {/* ── Aplicar modelo pronto ── */}
@@ -715,30 +707,6 @@ export default function UsersPage() {
               </div>
             </div>
 
-            {/* ── Restrições por Setor ── */}
-            <div className="card" style={{ borderColor: 'var(--border)' }}>
-              <div className="card-hd">
-                <span className="card-tt" style={{ fontSize: 12 }}>🏢 Restrição por Setor</span>
-                <span className="badge bg-p" style={{ fontSize: 10 }}>
-                  {permRestricoes.setores.length === 0 ? 'Todos os setores' : `${permRestricoes.setores.length} setor(es)`}
-                </span>
-              </div>
-              <div style={{ padding: '10px 14px' }}>
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
-                  Restrinja o usuário a setores específicos. Deixe desmarcado para sem restrição de setor.
-                </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {SETORES_DISPONIVEIS.filter(s => s !== 'Todos').map(setor => (
-                    <label key={setor} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                      <input type="checkbox" className="pck"
-                        checked={permRestricoes.setores.includes(setor)}
-                        onChange={() => toggleRestricaoSetor(setor)} />
-                      {setor}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
           </>
         )}
       </Modal>
