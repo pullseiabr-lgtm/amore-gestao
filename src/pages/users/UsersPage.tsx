@@ -4,7 +4,7 @@ import Modal from '../../components/ui/Modal'
 import Confirm from '../../components/ui/Confirm'
 import { useToast } from '../../hooks/useToast'
 import { useAuth } from '../../contexts/AuthContext'
-import { ROLE_PERMISSIONS } from '../../lib/permissions'
+import { ROLE_PERMISSIONS, PERMISSION_TEMPLATES, TEMPLATE_BY_ID } from '../../lib/permissions'
 import { fetchProfiles, updateProfile, upsertProfile, fetchAuditLogs } from '../../lib/db'
 import { supabase } from '../../lib/supabase'
 import type { Profile, UserRole, UserStatus, PermissionsMap, ModulePermission } from '../../types/database'
@@ -73,7 +73,7 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 }
 
-type Tab = 'users' | 'roles' | 'prov' | 'audit'
+type Tab = 'users' | 'roles' | 'templates' | 'prov' | 'audit'
 
 export default function UsersPage() {
   const { user: me, can } = useAuth()
@@ -90,7 +90,7 @@ export default function UsersPage() {
 
   const [showForm, setShowForm] = useState(false)
   const [editingUser, setEditingUser] = useState<Profile | null>(null)
-  const [form, setForm] = useState({ name: '', email: '', role: 'user' as UserRole, loja: '', status: 'active' as UserStatus, password: '', password2: '' })
+  const [form, setForm] = useState({ name: '', email: '', telefone: '', role: 'user' as UserRole, loja: '', status: 'active' as UserStatus, password: '', password2: '', template: '' })
   const [formErr, setFormErr] = useState('')
 
   const [showPerm, setShowPerm] = useState(false)
@@ -126,14 +126,14 @@ export default function UsersPage() {
 
   const openNew = () => {
     setEditingUser(null)
-    setForm({ name: '', email: '', role: 'user', loja: '', status: 'active', password: '', password2: '' })
+    setForm({ name: '', email: '', telefone: '', role: 'user', loja: '', status: 'active', password: '', password2: '', template: '' })
     setFormErr('')
     setShowForm(true)
   }
 
   const openEdit = (u: Profile) => {
     setEditingUser(u)
-    setForm({ name: u.name, email: u.email, role: u.role, loja: u.loja || '', status: u.status, password: '', password2: '' })
+    setForm({ name: u.name, email: u.email, telefone: (u as any).telefone || '', role: u.role, loja: u.loja || '', status: u.status, password: '', password2: '', template: '' })
     setFormErr('')
     setShowForm(true)
   }
@@ -168,6 +168,13 @@ export default function UsersPage() {
     setPermMap({ ...ROLE_PERMISSIONS[permTarget.role] || {} })
     setPermRestricoes({ lojas: [], setores: [] })
     toast('Permissões resetadas para o padrão do papel.')
+  }
+
+  const aplicarModelo = (templateId: string) => {
+    const t = TEMPLATE_BY_ID[templateId]
+    if (!t) return
+    setPermMap({ ...t.perms })
+    toast(`Modelo "${t.label}" aplicado — revise e clique em Salvar.`)
   }
 
   const toggleRestricaoLoja = (loja: string) => {
@@ -220,7 +227,7 @@ export default function UsersPage() {
           id: uid, email: form.email, name: form.name,
           role: form.role, loja: form.loja || null, status: form.status,
           avatar_color: col, initials: ini,
-          permissions_override: null,
+          permissions_override: form.template ? TEMPLATE_BY_ID[form.template].perms : null,
           created_at: new Date().toISOString(), last_login: null,
           created_by: me?.id || null,
         })
@@ -264,7 +271,7 @@ export default function UsersPage() {
   return (
     <div>
       <div className="tabs" id="tUser">
-        {([['users', '👥 Usuários'], ['roles', '🔑 Papéis'], ['prov', '⏳ Provisórios'], ['audit', '📋 Audit Log']] as [Tab, string][]).map(([id, lbl]) => (
+        {([['users', '👥 Usuários'], ['roles', '🔑 Papéis'], ['templates', '🧩 Modelos'], ['prov', '⏳ Provisórios'], ['audit', '📋 Audit Log']] as [Tab, string][]).map(([id, lbl]) => (
           <button key={id} className={`tab${tab === id ? ' active' : ''}`} onClick={() => setTab(id)}>{lbl}</button>
         ))}
       </div>
@@ -438,6 +445,42 @@ export default function UsersPage() {
         </div>
       )}
 
+      {/* ── MODELOS (Gerenciador de Permissões) ── */}
+      {tab === 'templates' && (
+        <div>
+          <div className="al al-b" style={{ marginBottom: 14 }}>
+            <Shield size={13} />
+            <span>Modelos prontos de permissão. Aplique um modelo ao <strong>criar um usuário</strong> ou no <strong>editor de permissões</strong> (ícone de escudo). O modelo preenche as permissões por módulo e ação — você ainda pode ajustar manualmente antes de salvar.</span>
+          </div>
+          <div className="cc-grid">
+            {PERMISSION_TEMPLATES.map(t => {
+              const visiveis = Object.entries(t.perms).filter(([, p]) => p.view)
+              const labelDe = (id: string) => MODULES.find(m => m.id === id)?.label || id
+              return (
+                <div className="cc" key={t.id}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 8, background: 'var(--bordo-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>{t.emoji}</div>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 13.5 }}>{t.label}</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{visiveis.length} módulo(s) visível(is)</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text)', marginBottom: 10 }}>{t.descricao}</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {visiveis.slice(0, 10).map(([id, p]) => (
+                      <span key={id} className={`badge ${p.create || p.edit || p.delete ? 'bg-b' : 'bg-g'}`} style={{ fontSize: 9.5 }} title={`Ver${p.create ? ' · Criar' : ''}${p.edit ? ' · Editar' : ''}${p.delete ? ' · Excluir' : ''}${p.export ? ' · Export' : ''}`}>
+                        {labelDe(id)}
+                      </span>
+                    ))}
+                    {visiveis.length > 10 && <span className="badge bg-gr" style={{ fontSize: 9.5 }}>+{visiveis.length - 10}</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── PROVISÓRIOS ── */}
       {tab === 'prov' && (
         <div>
@@ -519,7 +562,7 @@ export default function UsersPage() {
             <label className="fl">Nome completo <span className="rq">*</span></label>
             <input className="inp" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
           </div>
-          <div className="fg" style={{ gridColumn: '1/-1' }}>
+          <div className="fg">
             <label className="fl">E-mail <span className="rq">*</span></label>
             <input className="inp" type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} disabled={!!editingUser} />
           </div>
@@ -546,6 +589,16 @@ export default function UsersPage() {
               {['Amore CD', 'Amore Paiva', 'Flow CD'].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
+          {!editingUser && (
+            <div className="fg" style={{ gridColumn: '1/-1' }}>
+              <label className="fl">🧩 Modelo de permissões <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(opcional)</span></label>
+              <select className="sel" value={form.template} onChange={e => setForm(p => ({ ...p, template: e.target.value }))}>
+                <option value="">Usar permissões padrão do papel</option>
+                {PERMISSION_TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.emoji} {t.label} — {t.descricao}</option>)}
+              </select>
+              {form.template && <span className="fhint">As permissões do modelo serão aplicadas a este usuário (ajustáveis depois no escudo).</span>}
+            </div>
+          )}
           {!editingUser && (
             <>
               <div className="fg">
@@ -581,6 +634,16 @@ export default function UsersPage() {
             <div className="al al-b" style={{ marginBottom: 12 }}>
               <Shield size={13} />
               <span>Permissões sobrescritas aqui prevalecem sobre o papel <strong>{roleInfo(permTarget.role).label}</strong>. Restrições de loja e setor limitam o que o usuário pode visualizar.</span>
+            </div>
+
+            {/* ── Aplicar modelo pronto ── */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap', padding: '10px 12px', background: 'var(--bordo-bg)', borderRadius: 9, border: '1px solid var(--bordo-l)' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--bordo)' }}>🧩 Aplicar modelo:</span>
+              <select className="sel" style={{ flex: 1, minWidth: 200 }} defaultValue="" onChange={e => { if (e.target.value) { aplicarModelo(e.target.value); e.target.value = '' } }}>
+                <option value="">Selecione um modelo pronto…</option>
+                {PERMISSION_TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.emoji} {t.label}</option>)}
+              </select>
+              <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>Preenche as caixas abaixo — revise e salve.</span>
             </div>
 
             {/* ── Módulos agrupados ── */}

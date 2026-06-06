@@ -1,4 +1,4 @@
-import type { PermissionsMap } from '../types/database'
+import type { PermissionsMap, ModulePermission } from '../types/database'
 
 // Tabela de permissões por papel — mantida aqui (fora de AuthContext)
 // para que o Vite React Fast Refresh não invalide o módulo de context.
@@ -159,3 +159,99 @@ export const ROLE_PERMISSIONS: Record<string, PermissionsMap> = {
     alertas:              { view: true,  create: false, edit: false, delete: false, export: false },
   },
 }
+
+// ─────────────────────────────────────────────────────────────
+// GERENCIADOR DE PERMISSÕES — Modelos Prontos (templates)
+// O admin aplica um modelo ao criar/editar um usuário. O modelo
+// preenche o permissions_override (granular, por módulo e ação).
+// ─────────────────────────────────────────────────────────────
+
+const ALL_MODULE_IDS = Object.keys(ROLE_PERMISSIONS.super_admin)
+const FULL: ModulePermission = { view: true, create: true, edit: true, delete: true, export: true }
+const OFF: ModulePermission = { view: false, create: false, edit: false, delete: false, export: false }
+const VIEW: ModulePermission = { view: true, create: false, edit: false, delete: false, export: false }
+
+/** Monta um PermissionsMap completo a partir de um spec enxuto.
+ *  spec: { moduloId: 'full' | 'view' | Partial<ModulePermission> } — o que não for citado fica OFF. */
+function mk(spec: Record<string, 'full' | 'view' | Partial<ModulePermission>>): PermissionsMap {
+  const map: PermissionsMap = {}
+  for (const id of ALL_MODULE_IDS) map[id] = { ...OFF }
+  for (const [id, s] of Object.entries(spec)) {
+    if (!(id in map)) continue
+    map[id] = s === 'full' ? { ...FULL } : s === 'view' ? { ...VIEW } : { ...VIEW, ...s }
+  }
+  return map
+}
+
+export interface PermissionTemplate {
+  id: string
+  label: string
+  emoji: string
+  descricao: string
+  perms: PermissionsMap
+}
+
+export const PERMISSION_TEMPLATES: PermissionTemplate[] = [
+  {
+    id: 'caixa', label: 'Caixa', emoji: '💳',
+    descricao: 'Operação de PDV e registro de vendas.',
+    perms: mk({ dashboard: 'view', pdv: { view: true, create: true, edit: true }, vendas: { view: true, create: true } }),
+  },
+  {
+    id: 'atendente', label: 'Atendente / Garçom', emoji: '🧑‍🍳',
+    descricao: 'Atendimento de salão e abertura de comandas.',
+    perms: mk({ dashboard: 'view', salao: { view: true, create: true, edit: true }, pdv: { view: true, create: true }, cozinha: 'view' }),
+  },
+  {
+    id: 'cozinha', label: 'Cozinha', emoji: '🍳',
+    descricao: 'Acompanha e atualiza os pedidos da cozinha.',
+    perms: mk({ dashboard: 'view', cozinha: { view: true, create: true, edit: true }, estoque: 'view' }),
+  },
+  {
+    id: 'estoquista', label: 'Estoquista', emoji: '📦',
+    descricao: 'Entradas, saídas, contagem e requisições.',
+    perms: mk({ dashboard: 'view', estoque: { view: true, create: true, edit: true }, produtos: { view: true, create: true, edit: true }, requisicoes: { view: true, create: true }, ruptura: 'view', enxoval: { view: true, create: true, edit: true }, alertas: 'view' }),
+  },
+  {
+    id: 'financeiro', label: 'Financeiro', emoji: '💰',
+    descricao: 'Contas, boletos, fluxo de caixa e relatórios.',
+    perms: mk({ dashboard: { view: true, export: true }, financeiro: 'full', vendas: { view: true, export: true }, compras: 'view', 'relatorio-cvl': { view: true, export: true } }),
+  },
+  {
+    id: 'marketing', label: 'Marketing', emoji: '✨',
+    descricao: 'Campanhas, agente Liz e inteligência de mercado.',
+    perms: mk({ dashboard: 'view', marketing: 'full', 'agente-liz': 'full', market: 'view' }),
+  },
+  {
+    id: 'compras', label: 'Comprador', emoji: '🛒',
+    descricao: 'Requisições, cotações, pedidos e fornecedores.',
+    perms: mk({ dashboard: 'view', compras: 'full', requisicoes: 'full', 'req-automaticas': { view: true, create: true, edit: true }, fornecedores: { view: true, create: true, edit: true }, 'lista-padrao': { view: true, create: true, edit: true }, 'relatorio-cvl': { view: true, export: true }, 'compras-agente': 'view', estoque: 'view' }),
+  },
+  {
+    id: 'gerente', label: 'Gerente da Unidade', emoji: '🧑‍💼',
+    descricao: 'Gerencia a operação da loja (sem Usuários/Config).',
+    perms: mk({
+      dashboard: { view: true, export: true }, vendas: 'full', pdv: 'full', estoque: 'full', produtos: 'full',
+      'produtos-categorias': { view: true, create: true, edit: true }, compras: 'full', requisicoes: 'full',
+      fornecedores: { view: true, create: true, edit: true }, financeiro: { view: true, export: true },
+      cozinha: 'full', salao: 'full', marketing: { view: true, create: true, edit: true }, gamificacao: { view: true, create: true, edit: true },
+      tarefas: 'full', pendencias: 'full', planejamento: { view: true, create: true, edit: true }, atas: { view: true, create: true, edit: true },
+      ruptura: 'view', 'relatorio-cvl': { view: true, export: true }, alertas: 'view', enxoval: { view: true, create: true, edit: true }, 'agente-liz': 'view',
+    }),
+  },
+  {
+    id: 'franqueado', label: 'Franqueado', emoji: '👑',
+    descricao: 'Visão gerencial da unidade (leitura + relatórios).',
+    perms: mk({
+      dashboard: { view: true, export: true }, vendas: { view: true, export: true }, financeiro: { view: true, export: true },
+      estoque: 'view', compras: 'view', gamificacao: 'view', 'relatorio-cvl': { view: true, export: true }, marketing: 'view',
+    }),
+  },
+  {
+    id: 'operacional', label: 'Operacional', emoji: '🔧',
+    descricao: 'Somente execução: tarefas e consultas básicas.',
+    perms: mk({ dashboard: 'view', tarefas: { view: true, create: true, edit: true }, pendencias: { view: true, create: true }, estoque: 'view', cozinha: 'view', salao: 'view' }),
+  },
+]
+
+export const TEMPLATE_BY_ID = Object.fromEntries(PERMISSION_TEMPLATES.map(t => [t.id, t]))

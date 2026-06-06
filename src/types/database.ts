@@ -18,6 +18,7 @@ export interface Profile {
   id: string
   email: string
   name: string
+  telefone?: string | null
   role: UserRole
   loja: string | null
   status: UserStatus
