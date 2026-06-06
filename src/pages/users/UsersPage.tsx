@@ -92,10 +92,8 @@ export default function UsersPage() {
   const [form, setForm] = useState({ name: '', email: '', role: 'user' as UserRole, loja: '', status: 'active' as UserStatus, password: '', password2: '', template: '' })
   const [formErr, setFormErr] = useState('')
 
-  const [showPerm, setShowPerm] = useState(false)
-  const [permTarget, setPermTarget] = useState<Profile | null>(null)
   const [permMap, setPermMap] = useState<PermissionsMap>({})
-  const [permRestricoes, setPermRestricoes] = useState<{ lojas: string[]; setores: string[] }>({ lojas: [], setores: [] })
+  const [permRestricoes, setPermRestricoes] = useState<{ lojas: string[] }>({ lojas: [] })
 
   const [confirmDelete, setConfirmDelete] = useState<Profile | null>(null)
 
@@ -126,6 +124,8 @@ export default function UsersPage() {
   const openNew = () => {
     setEditingUser(null)
     setForm({ name: '', email: '', role: 'user', loja: '', status: 'active', password: '', password2: '', template: '' })
+    setPermMap({ ...(ROLE_PERMISSIONS['user'] || {}) })
+    setPermRestricoes({ lojas: [] })
     setFormErr('')
     setShowForm(true)
   }
@@ -133,47 +133,27 @@ export default function UsersPage() {
   const openEdit = (u: Profile) => {
     setEditingUser(u)
     setForm({ name: u.name, email: u.email, role: u.role, loja: u.loja || '', status: u.status, password: '', password2: '', template: '' })
+    const override = (u.permissions_override || {}) as any
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { __restricoes__: restr, ...cleanOverride } = override
+    setPermMap({ ...(ROLE_PERMISSIONS[u.role] || {}), ...cleanOverride })
+    setPermRestricoes({ lojas: (restr && restr.lojas) || [] })
     setFormErr('')
     setShowForm(true)
   }
 
-  const openPerm = (u: Profile) => {
-    setPermTarget(u)
-    const base = ROLE_PERMISSIONS[u.role] || {}
-    const override = (u.permissions_override || {}) as any
-    const restricoes = override.__restricoes__ || { lojas: [], setores: [] }
-    setPermRestricoes(restricoes)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { __restricoes__: _r, ...cleanOverride } = override
-    setPermMap({ ...base, ...cleanOverride })
-    setShowPerm(true)
-  }
-
-  const savePerm = async () => {
-    if (!permTarget) return
-    try {
-      const overrideToSave: any = { ...permMap, __restricoes__: permRestricoes }
-      await updateProfile(permTarget.id, { permissions_override: overrideToSave })
-      setUsers(prev => prev.map(u => u.id === permTarget.id ? { ...u, permissions_override: overrideToSave } : u))
-      setShowPerm(false)
-      toast(`Permissões de ${permTarget.name} atualizadas!`)
-    } catch {
-      toast('Erro ao salvar permissões.', 'error')
-    }
-  }
-
-  const resetPermToRole = () => {
-    if (!permTarget) return
-    setPermMap({ ...ROLE_PERMISSIONS[permTarget.role] || {} })
-    setPermRestricoes({ lojas: [], setores: [] })
-    toast('Permissões resetadas para o padrão do papel.')
+  // Rebaseia as permissões do formulário para o padrão do papel selecionado
+  const resetPermParaPapel = (role: UserRole) => {
+    setPermMap({ ...(ROLE_PERMISSIONS[role] || {}) })
+    setPermRestricoes({ lojas: [] })
   }
 
   const aplicarModelo = (templateId: string) => {
     const t = TEMPLATE_BY_ID[templateId]
     if (!t) return
     setPermMap({ ...t.perms })
-    toast(`Modelo "${t.label}" aplicado — revise e clique em Salvar.`)
+    setForm(p => ({ ...p, template: templateId }))
+    toast(`Modelo "${t.label}" aplicado — revise as marcações e salve.`)
   }
 
   const toggleRestricaoLoja = (loja: string) => {
@@ -212,10 +192,12 @@ export default function UsersPage() {
     setSaving(true)
     setFormErr('')
     try {
+      const overridePerms: any = { ...permMap, __restricoes__: permRestricoes }
       if (editingUser) {
         const updated = await updateProfile(editingUser.id, {
           name: form.name, role: form.role,
           loja: form.loja || null, status: form.status,
+          permissions_override: overridePerms,
         })
         setUsers(prev => prev.map(u => u.id === editingUser.id ? updated : u))
         toast(`Usuário ${form.name} atualizado!`)
@@ -231,7 +213,7 @@ export default function UsersPage() {
           id: uid, email: form.email, name: form.name,
           role: form.role, loja: form.loja || null, status: form.status,
           avatar_color: col, initials: ini,
-          permissions_override: form.template ? TEMPLATE_BY_ID[form.template].perms : null,
+          permissions_override: overridePerms,
           created_at: new Date().toISOString(), last_login: null,
           created_by: me?.id || null,
         })
@@ -275,7 +257,7 @@ export default function UsersPage() {
   return (
     <div>
       <div className="tabs" id="tUser">
-        {([['users', '👥 Usuários'], ['roles', '🔑 Papéis'], ['templates', '🧩 Modelos'], ['prov', '⏳ Provisórios'], ['audit', '📋 Audit Log']] as [Tab, string][]).map(([id, lbl]) => (
+        {([['users', '👥 Usuários'], ['roles', '🔑 Papéis'], ['prov', '⏳ Provisórios'], ['audit', '📋 Audit Log']] as [Tab, string][]).map(([id, lbl]) => (
           <button key={id} className={`tab${tab === id ? ' active' : ''}`} onClick={() => setTab(id)}>{lbl}</button>
         ))}
       </div>
@@ -334,11 +316,8 @@ export default function UsersPage() {
                         <td style={{ fontSize: 10, color: 'var(--muted)' }}>{formatDate(u.last_login)}</td>
                         <td>
                           <div className="ab">
-                            {can('usuarios', 'edit') && (
-                              <button className="ib" title="Permissões" onClick={() => openPerm(u)}><Shield size={11} /></button>
-                            )}
                             {canEdit && (
-                              <button className="ib" title="Editar" onClick={() => openEdit(u)}><Edit2 size={11} /></button>
+                              <button className="ib" title="Editar (dados + permissões)" onClick={() => openEdit(u)}><Edit2 size={11} /></button>
                             )}
                             {canDel && (
                               <button className="ib rd" title="Excluir" onClick={() => setConfirmDelete(u)}><Trash2 size={11} /></button>
@@ -449,42 +428,6 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* ── MODELOS (Gerenciador de Permissões) ── */}
-      {tab === 'templates' && (
-        <div>
-          <div className="al al-b" style={{ marginBottom: 14 }}>
-            <Shield size={13} />
-            <span>Modelos prontos de permissão. Aplique um modelo ao <strong>criar um usuário</strong> ou no <strong>editor de permissões</strong> (ícone de escudo). O modelo preenche as permissões por módulo e ação — você ainda pode ajustar manualmente antes de salvar.</span>
-          </div>
-          <div className="cc-grid">
-            {PERMISSION_TEMPLATES.map(t => {
-              const visiveis = Object.entries(t.perms).filter(([, p]) => p.view)
-              const labelDe = (id: string) => MODULES.find(m => m.id === id)?.label || id
-              return (
-                <div className="cc" key={t.id}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
-                    <div style={{ width: 38, height: 38, borderRadius: 8, background: 'var(--bordo-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>{t.emoji}</div>
-                    <div>
-                      <div style={{ fontWeight: 800, fontSize: 13.5 }}>{t.label}</div>
-                      <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{visiveis.length} módulo(s) visível(is)</div>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--text)', marginBottom: 10 }}>{t.descricao}</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {visiveis.slice(0, 10).map(([id, p]) => (
-                      <span key={id} className={`badge ${p.create || p.edit || p.delete ? 'bg-b' : 'bg-g'}`} style={{ fontSize: 9.5 }} title={`Ver${p.create ? ' · Criar' : ''}${p.edit ? ' · Editar' : ''}${p.delete ? ' · Excluir' : ''}${p.export ? ' · Export' : ''}`}>
-                        {labelDe(id)}
-                      </span>
-                    ))}
-                    {visiveis.length > 10 && <span className="badge bg-gr" style={{ fontSize: 9.5 }}>+{visiveis.length - 10}</span>}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
       {/* ── PROVISÓRIOS ── */}
       {tab === 'prov' && (
         <div>
@@ -572,7 +515,7 @@ export default function UsersPage() {
           </div>
           <div className="fg">
             <label className="fl">Papel</label>
-            <select className="sel" value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value as UserRole }))}>
+            <select className="sel" value={form.role} onChange={e => { const nr = e.target.value as UserRole; setForm(p => ({ ...p, role: nr, template: '' })); resetPermParaPapel(nr) }}>
               {ROLES.filter(r => isSuperAdmin ? true : r.value !== 'super_admin').map(r => (
                 <option key={r.value} value={r.value}>{r.label}</option>
               ))}
@@ -593,16 +536,69 @@ export default function UsersPage() {
               {['Amore CD', 'Amore Paiva', 'Flow CD'].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
-          {!editingUser && (
-            <div className="fg" style={{ gridColumn: '1/-1' }}>
-              <label className="fl">🧩 Modelo de permissões <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(opcional)</span></label>
-              <select className="sel" value={form.template} onChange={e => setForm(p => ({ ...p, template: e.target.value }))}>
-                <option value="">Usar permissões padrão do papel</option>
-                {PERMISSION_TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.emoji} {t.label} — {t.descricao}</option>)}
-              </select>
-              {form.template && <span className="fhint">As permissões do modelo serão aplicadas a este usuário (ajustáveis depois no escudo).</span>}
+          {/* ── Permissões (dentro do cadastro) ── */}
+          <div className="fg" style={{ gridColumn: '1/-1', marginTop: 4 }}>
+            <label className="fl" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Shield size={13} /> Permissões — marque o que este usuário acessa</label>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
+              A coluna <strong>Ver</strong> define o que aparece no menu; as demais liberam Criar / Editar / Excluir / Exportar.
             </div>
-          )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap', padding: '8px 10px', background: 'var(--bordo-bg)', borderRadius: 8, border: '1px solid var(--bordo-l)' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--bordo)' }}>🧩 Modelo:</span>
+              <select className="sel" style={{ flex: 1, minWidth: 180 }} value={form.template} onChange={e => { if (e.target.value) aplicarModelo(e.target.value); else setForm(p => ({ ...p, template: '' })) }}>
+                <option value="">Personalizado</option>
+                {PERMISSION_TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.emoji} {t.label}</option>)}
+              </select>
+              <button type="button" className="btn bo bsm" onClick={() => { resetPermParaPapel(form.role); setForm(p => ({ ...p, template: '' })) }}>Padrão do papel</button>
+            </div>
+            <div className="tw" style={{ marginBottom: 12, maxHeight: 320, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+              <table className="pt">
+                <thead>
+                  <tr>
+                    <th style={{ minWidth: 150 }}>Módulo</th>
+                    {ACTIONS.map(a => <th key={a.key}>{a.label}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const grupos = [...new Set(MODULES.map(m => m.grupo))]
+                    return grupos.flatMap(grupo => [
+                      <tr key={`g-${grupo}`} style={{ background: '#F9FAFB' }}>
+                        <td colSpan={6} style={{ fontSize: 10, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', padding: '5px 8px' }}>{grupo}</td>
+                      </tr>,
+                      ...MODULES.filter(m => m.grupo === grupo).map(m => {
+                        const p = permMap[m.id] || { view: false, create: false, edit: false, delete: false, export: false }
+                        const todos = p.view && p.create && p.edit && p.delete && p.export
+                        return (
+                          <tr key={m.id}>
+                            <td style={{ paddingLeft: 14 }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }} title="Marcar/desmarcar tudo neste módulo">
+                                <input type="checkbox" className="pck" checked={todos} onChange={e => toggleModuloTodos(m.id, e.target.checked)} />
+                                <span style={{ fontWeight: p.view ? 700 : 400 }}>{m.label}</span>
+                              </label>
+                            </td>
+                            {ACTIONS.map(a => (
+                              <td key={a.key} style={{ textAlign: 'center', cursor: 'pointer' }} onClick={() => togglePerm(m.id, a.key)}>
+                                <input type="checkbox" className="pck" checked={Boolean(p[a.key])} onChange={() => togglePerm(m.id, a.key)} onClick={e => e.stopPropagation()} />
+                              </td>
+                            ))}
+                          </tr>
+                        )
+                      }),
+                    ])
+                  })()}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>🏪 Restringir a loja(s) <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(vazio = todas)</span></div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {LOJAS_DISPONIVEIS.filter(l => l !== 'Todas').map(loja => (
+                <label key={loja} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                  <input type="checkbox" className="pck" checked={permRestricoes.lojas.includes(loja)} onChange={() => toggleRestricaoLoja(loja)} />
+                  {loja}
+                </label>
+              ))}
+            </div>
+          </div>
           {!editingUser && (
             <>
               <div className="fg">
@@ -617,115 +613,6 @@ export default function UsersPage() {
             </>
           )}
         </div>
-      </Modal>
-
-      {/* ── MODAL PERMISSÕES ── */}
-      <Modal
-        open={showPerm}
-        onClose={() => setShowPerm(false)}
-        title={permTarget ? `Permissões — ${permTarget.name}` : 'Permissões'}
-        size="xl"
-        footer={
-          <>
-            <button className="btn bo" onClick={resetPermToRole}>Resetar para padrão do papel</button>
-            <button className="btn bo" onClick={() => setShowPerm(false)}>Cancelar</button>
-            <button className="btn bp" onClick={savePerm}>Salvar permissões</button>
-          </>
-        }
-      >
-        {permTarget && (
-          <>
-            <div className="al al-b" style={{ marginBottom: 12 }}>
-              <Shield size={13} />
-              <span>Marque o que este usuário pode acessar. A coluna <strong>Ver</strong> define o que aparece no menu dele; as demais liberam <strong>Criar / Editar / Excluir / Exportar</strong> em cada módulo. As marcações aqui prevalecem sobre o papel <strong>{roleInfo(permTarget.role).label}</strong>.</span>
-            </div>
-
-            {/* ── Aplicar modelo pronto ── */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap', padding: '10px 12px', background: 'var(--bordo-bg)', borderRadius: 9, border: '1px solid var(--bordo-l)' }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--bordo)' }}>🧩 Aplicar modelo:</span>
-              <select className="sel" style={{ flex: 1, minWidth: 200 }} defaultValue="" onChange={e => { if (e.target.value) { aplicarModelo(e.target.value); e.target.value = '' } }}>
-                <option value="">Selecione um modelo pronto…</option>
-                {PERMISSION_TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.emoji} {t.label}</option>)}
-              </select>
-              <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>Preenche as caixas abaixo — revise e salve.</span>
-            </div>
-
-            {/* ── Módulos agrupados ── */}
-            <div className="tw" style={{ marginBottom: 18 }}>
-              <table className="pt">
-                <thead>
-                  <tr>
-                    <th style={{ minWidth: 160 }}>Módulo</th>
-                    {ACTIONS.map(a => <th key={a.key}>{a.label}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    const grupos = [...new Set(MODULES.map(m => m.grupo))]
-                    return grupos.flatMap(grupo => [
-                      <tr key={`g-${grupo}`} style={{ background: '#F9FAFB' }}>
-                        <td colSpan={6} style={{ fontSize: 10, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', padding: '5px 8px' }}>
-                          {grupo}
-                        </td>
-                      </tr>,
-                      ...MODULES.filter(m => m.grupo === grupo).map(m => {
-                        const p = permMap[m.id] || { view: false, create: false, edit: false, delete: false, export: false }
-                        const todos = p.view && p.create && p.edit && p.delete && p.export
-                        return (
-                          <tr key={m.id}>
-                            <td style={{ paddingLeft: 16 }}>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }} title="Marcar/desmarcar tudo neste módulo">
-                                <input type="checkbox" className="pck" checked={todos} onChange={e => toggleModuloTodos(m.id, e.target.checked)} />
-                                <span style={{ fontWeight: p.view ? 700 : 400 }}>{m.label}</span>
-                              </label>
-                            </td>
-                            {ACTIONS.map(a => (
-                              <td key={a.key} style={{ textAlign: 'center', cursor: 'pointer' }} onClick={() => togglePerm(m.id, a.key)}>
-                                <input
-                                  type="checkbox"
-                                  className="pck"
-                                  checked={Boolean(p[a.key])}
-                                  onChange={() => togglePerm(m.id, a.key)}
-                                  onClick={e => e.stopPropagation()}
-                                />
-                              </td>
-                            ))}
-                          </tr>
-                        )
-                      }),
-                    ])
-                  })()}
-                </tbody>
-              </table>
-            </div>
-
-            {/* ── Restrições por Loja ── */}
-            <div className="card" style={{ marginBottom: 14, borderColor: 'var(--border)' }}>
-              <div className="card-hd">
-                <span className="card-tt" style={{ fontSize: 12 }}>🏪 Restrição por Unidade (Loja)</span>
-                <span className="badge bg-b" style={{ fontSize: 10 }}>
-                  {permRestricoes.lojas.length === 0 ? 'Acesso a todas' : `${permRestricoes.lojas.length} loja(s)`}
-                </span>
-              </div>
-              <div style={{ padding: '10px 14px' }}>
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
-                  Deixe todos desmarcados para acesso a <strong>todas as lojas</strong>. Marque apenas as lojas que este usuário pode acessar.
-                </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {LOJAS_DISPONIVEIS.filter(l => l !== 'Todas').map(loja => (
-                    <label key={loja} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                      <input type="checkbox" className="pck"
-                        checked={permRestricoes.lojas.includes(loja)}
-                        onChange={() => toggleRestricaoLoja(loja)} />
-                      {loja}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-          </>
-        )}
       </Modal>
 
       {/* ── MODAL PROV ── */}
