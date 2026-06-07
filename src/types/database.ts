@@ -295,6 +295,30 @@ export interface Boleto {
   updated_at: string
 }
 
+// ── Central de Notificações (Fase 6) ────────────────────────────────────────
+export type NotificacaoTipo   = 'tarefa' | 'compra' | 'cotacao' | 'relatorio' | 'estoque' | 'manual'
+export type NotificacaoStatus = 'enviado' | 'falha' | 'pendente'
+export type NotificacaoCanal  = 'whatsapp' | 'email' | 'sistema'
+
+export interface Notificacao {
+  id: string
+  loja: string | null
+  canal: NotificacaoCanal
+  tipo: NotificacaoTipo
+  modulo: string | null
+  titulo: string | null
+  mensagem: string | null
+  destinatario_nome: string | null
+  destinatario_telefone: string | null
+  setor: string | null
+  referencia_id: string | null
+  status: NotificacaoStatus
+  erro: string | null
+  lida: boolean
+  created_by: string | null
+  created_at: string
+}
+
 export interface RequisicaoItem {
   id: string
   requisicao_id: string

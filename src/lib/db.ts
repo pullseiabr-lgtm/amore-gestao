@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig, Boleto } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig, Boleto, Notificacao } from '../types/database'
 
 const db = supabase as any
 
@@ -848,6 +848,22 @@ export async function updateBoleto(id: string, upd: Partial<Boleto>): Promise<vo
 }
 export async function deleteBoleto(id: string): Promise<void> {
   await sdkCall<null>(db.from('boletos').delete().eq('id', id))
+}
+
+// ── Central de Notificações (Fase 6) ────────────────────────────────────────
+export async function fetchNotificacoes(loja?: string, limit = 200): Promise<Notificacao[]> {
+  let q = db.from('notificacoes').select('*').order('created_at', { ascending: false }).limit(limit)
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
+  return sdkCall<Notificacao[]>(q).then(d => d ?? []).catch(() => [])
+}
+export async function insertNotificacao(n: Partial<Notificacao>): Promise<Notificacao | null> {
+  return sdkCall<Notificacao>(db.from('notificacoes').insert(n).select().single()).catch(() => null)
+}
+export async function marcarNotificacaoLida(id: string, lida = true): Promise<void> {
+  await sdkCall<null>(db.from('notificacoes').update({ lida }).eq('id', id)).catch(() => {})
+}
+export async function deleteNotificacao(id: string): Promise<void> {
+  await sdkCall<null>(db.from('notificacoes').delete().eq('id', id)).catch(() => {})
 }
 
 // ── Upload de anexos (Supabase Storage, bucket "anexos") ────────────────────

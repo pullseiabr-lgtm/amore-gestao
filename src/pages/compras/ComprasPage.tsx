@@ -183,7 +183,11 @@ function NovaListaForm({ loja, onSalvo, onCancelar, itensIniciais }: {
     const cfg = getZapiCfg()
     await Promise.all(compradores.map(c => {
       const fone = (c?.permissions_override as any)?.__perfil__?.whatsapp || ''
-      return enviarWhatsApp(fone, msg, cfg)
+      return enviarWhatsApp(fone, msg, cfg, {
+        tipo: 'compra', modulo: 'compras', titulo: `Nova lista: ${lista.titulo}`,
+        setor: 'Compras', loja: lista.loja, destinatario_nome: c?.name || null,
+        referencia_id: lista.id, created_by: user?.name || null,
+      })
     }))
   }
 
@@ -648,7 +652,10 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
   // Fase 4 — envio automático via Z-API (direto ao número do fornecedor)
   const dispararWAauto = async (forn: Fornecedor, itensPend: ComprasListaItem[]): Promise<boolean> => {
     const fone = forn.whatsapp || forn.telefone || forn.contato_telefone || ''
-    const ok = await enviarWhatsApp(fone, txtCotacaoWA(itensPend), zapiCfgCot)
+    const ok = await enviarWhatsApp(fone, txtCotacaoWA(itensPend), zapiCfgCot, {
+      tipo: 'cotacao', modulo: 'compras', titulo: `Cotação: ${lista.titulo}`,
+      loja: lista.loja, destinatario_nome: forn.nome, referencia_id: lista.id, created_by: user?.name || null,
+    })
     if (ok) registrarCotacao('whatsapp', itensPend.length)
     return ok
   }

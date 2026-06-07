@@ -3,7 +3,22 @@
 // A config do Z-API fica em localStorage 'zapi_cfg' (definida na tela Liz → WhatsApp).
 // O envio passa pelo proxy /api/zapi-send para evitar CORS.
 
+import { insertNotificacao } from './db'
+import type { NotificacaoTipo } from '../types/database'
+
 export type ZapiCfg = { instance?: string; token?: string; clientToken?: string; recipients?: string }
+
+// Metadados opcionais para registrar a notificação na Central (tabela notificacoes).
+export type NotifyMeta = {
+  tipo?: NotificacaoTipo
+  modulo?: string
+  titulo?: string
+  setor?: string | null
+  loja?: string | null
+  destinatario_nome?: string | null
+  referencia_id?: string | null
+  created_by?: string | null
+}
 
 export function getZapiCfg(): ZapiCfg {
   try { return JSON.parse(localStorage.getItem('zapi_cfg') || '{}') } catch { return {} }
@@ -33,16 +48,42 @@ export function perfisDoSetor(profiles: any[], setor: string): any[] {
 }
 
 // Envia uma mensagem de texto para um número via Z-API. Retorna true se ok.
-export async function enviarWhatsApp(phone: string, message: string, cfg?: ZapiCfg): Promise<boolean> {
+// Se `meta` for informado, registra a notificação na Central (tabela notificacoes).
+export async function enviarWhatsApp(phone: string, message: string, cfg?: ZapiCfg, meta?: NotifyMeta): Promise<boolean> {
+  const c = cfg || getZapiCfg()
+  const fone = soDigitos(phone)
+  let ok = false
+  let erro: string | null = null
   try {
-    const c = cfg || getZapiCfg()
-    const fone = soDigitos(phone)
-    if (!c.instance || !c.token || !fone || !message) return false
-    const r = await fetch('/api/zapi-send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instance: c.instance, token: c.token, clientToken: c.clientToken, phone: fone, message }),
-    })
-    return r.ok
-  } catch { return false }
+    if (!c.instance || !c.token || !fone || !message) { erro = 'config/numero/mensagem ausente'; }
+    else {
+      const r = await fetch('/api/zapi-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instance: c.instance, token: c.token, clientToken: c.clientToken, phone: fone, message }),
+      })
+      ok = r.ok
+      if (!r.ok) erro = `HTTP ${r.status}`
+    }
+  } catch (e: any) { erro = e?.message || 'erro de rede' }
+
+  // Registro na Central de Notificações (não bloqueia o retorno)
+  if (meta) {
+    insertNotificacao({
+      canal: 'whatsapp',
+      tipo: meta.tipo || 'manual',
+      modulo: meta.modulo || null,
+      titulo: meta.titulo || null,
+      mensagem: message,
+      destinatario_nome: meta.destinatario_nome ?? null,
+      destinatario_telefone: fone || null,
+      setor: meta.setor ?? null,
+      loja: meta.loja ?? null,
+      referencia_id: meta.referencia_id ?? null,
+      status: ok ? 'enviado' : 'falha',
+      erro,
+      created_by: meta.created_by ?? null,
+    }).catch(() => {})
+  }
+  return ok
 }

@@ -12,6 +12,7 @@ import {
   insertTarefaChecklist, updateTarefaChecklist, deleteTarefaChecklist,
   insertTarefaComentario, insertTarefaHistorico, fetchProfiles,
 } from '../../lib/db'
+import { enviarWhatsApp, getZapiCfg } from '../../lib/notify'
 import type { Tarefa, TarefaStatus, TarefaPrioridade, TarefaResultado, TarefaChecklist, TarefaComentario } from '../../types/database'
 import { AnexoUploader, AnexoLinks } from '../../components/ui/AnexoUploader'
 
@@ -129,16 +130,17 @@ export default function TarefasPage() {
   }
 
   // Envia notificação de tarefa via Z-API (usa a config salva na Liz → WhatsApp)
-  const notificarTarefaWhats = async (titulo: string, responsavel: string, prazo: string) => {
-    try {
-      const cfg = JSON.parse(localStorage.getItem('zapi_cfg') || '{}')
-      const phone = whatsappDoResponsavel(responsavel)
-      if (!cfg.instance || !cfg.token || !phone) return false
-      const prazoBR = prazo ? new Date(prazo + 'T12:00:00').toLocaleDateString('pt-BR') : 'sem prazo definido'
-      const msg = `🆕 *Nova tarefa atribuída*\n\n📋 *${titulo}*\n👤 Responsável: ${responsavel}\n⏰ Prazo: ${prazoBR}\n\nAcesse o painel para mais detalhes.\n_Amore Gestão_`
-      const r = await fetch('/api/zapi-send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ instance: cfg.instance, token: cfg.token, clientToken: cfg.clientToken, phone, message: msg }) })
-      return r.ok
-    } catch { return false }
+  // e registra na Central de Notificações.
+  const notificarTarefaWhats = async (titulo: string, responsavel: string, prazo: string, setor?: string) => {
+    const cfg = getZapiCfg()
+    const phone = whatsappDoResponsavel(responsavel)
+    if (!cfg.instance || !cfg.token || !phone) return false
+    const prazoBR = prazo ? new Date(prazo + 'T12:00:00').toLocaleDateString('pt-BR') : 'sem prazo definido'
+    const msg = `🆕 *Nova tarefa atribuída*\n\n📋 *${titulo}*\n👤 Responsável: ${responsavel}\n⏰ Prazo: ${prazoBR}\n\nAcesse o painel para mais detalhes.\n_Amore Gestão_`
+    return enviarWhatsApp(phone, msg, cfg, {
+      tipo: 'tarefa', modulo: 'tarefas', titulo, setor: setor || null,
+      loja, destinatario_nome: responsavel, created_by: user?.name || null,
+    })
   }
 
   // Modal detalhe
@@ -241,7 +243,7 @@ export default function TarefasPage() {
       await insertTarefaHistorico({ tarefa_id: nova.id, acao: 'Tarefa criada', campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || 'Sistema' })
       // Notificação WhatsApp ao responsável (se ativado e houver número cadastrado)
       if (form.enviarWhats && form.responsavel_nome) {
-        await notificarTarefaWhats(form.titulo.trim(), form.responsavel_nome, form.prazo)
+        await notificarTarefaWhats(form.titulo.trim(), form.responsavel_nome, form.prazo, form.setor)
       }
       setShowForm(false)
       setForm(emptyForm())

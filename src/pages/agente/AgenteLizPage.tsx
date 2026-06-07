@@ -311,7 +311,12 @@ export default function AgenteLizPage() {
     setRelEnviando(true); setRelStatus('')
     const msg = gerarRelatorioSetor(relSetor)
     let ok = 0
-    for (const n of nums) { if (await enviarWhatsApp(n, msg, cfg)) ok++ }
+    for (const n of nums) {
+      if (await enviarWhatsApp(n, msg, cfg, {
+        tipo: 'relatorio', modulo: 'liz', titulo: `Relatório do setor ${relSetor}`,
+        setor: relSetor, loja, created_by: user?.name || null,
+      })) ok++
+    }
     setRelEnviando(false)
     setRelStatus(`✅ Relatório enviado para ${ok}/${nums.length} pessoa(s) do setor ${relSetor}.`)
     setTimeout(() => setRelStatus(''), 6000)

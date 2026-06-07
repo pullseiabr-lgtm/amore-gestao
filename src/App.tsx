@@ -31,6 +31,7 @@ import MarketPage from './pages/market/MarketPage'
 import ComprasAgentePage from './pages/compras/ComprasAgentePage'
 import AgenteLizPage from './pages/agente/AgenteLizPage'
 import AgenteCMVPage from './pages/agente/AgenteCMVPage'
+import NotificacoesPage from './pages/notificacoes/NotificacoesPage'
 import TarefasPage from './pages/tarefas/TarefasPage'
 import EnxovalPage from './pages/enxoval/EnxovalPage'
 import PlanejamentoPage from './pages/planejamento/PlanejamentoPage'
@@ -72,6 +73,7 @@ export type PageId =
   | 'atas'
   | 'lista-padrao'
   | 'alertas'
+  | 'notificacoes'
 
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Dashboard',
@@ -107,6 +109,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   atas: 'Atas de Reunião',
   'lista-padrao': 'Lista de Compras Padronizada',
   alertas: 'Alertas & Rastreabilidade',
+  notificacoes: 'Central de Notificações',
 }
 
 function PageContent({ page }: { page: PageId }) {
@@ -138,6 +141,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'compras-agente':       return <ComprasAgentePage />
     case 'agente-liz':           return <AgenteLizPage />
     case 'agente-cmv':           return <AgenteCMVPage />
+    case 'notificacoes':         return <NotificacoesPage />
     case 'tarefas':              return <TarefasPage />
     case 'enxoval':              return <EnxovalPage />
     case 'planejamento':         return <PlanejamentoPage />

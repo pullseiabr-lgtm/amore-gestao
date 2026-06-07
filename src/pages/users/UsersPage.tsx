@@ -22,6 +22,7 @@ const MODULES = [
   { id: 'pendencias',           label: 'Pendências & OS',           grupo: 'Tarefas & Planejamento' },
   { id: 'planejamento',         label: 'Planejamento Operacional',  grupo: 'Tarefas & Planejamento' },
   { id: 'atas',                 label: 'Atas de Reunião',           grupo: 'Tarefas & Planejamento' },
+  { id: 'notificacoes',         label: 'Central de Notificações',   grupo: 'Tarefas & Planejamento' },
   // ── Marketing & IA ──
   { id: 'marketing',            label: 'Marketing',                 grupo: 'Marketing & IA' },
   { id: 'agente-liz',           label: 'Liz — Agente IA',           grupo: 'Marketing & IA' },
