@@ -111,7 +111,7 @@ export default function UsersPage() {
 
   const [showForm, setShowForm] = useState(false)
   const [editingUser, setEditingUser] = useState<Profile | null>(null)
-  const [form, setForm] = useState({ name: '', email: '', role: 'user' as UserRole, loja: '', status: 'active' as UserStatus, password: '', password2: '', template: '' })
+  const [form, setForm] = useState({ name: '', email: '', cargo: '', setor: '', whatsapp: '', whatsapp2: '', role: 'user' as UserRole, loja: '', status: 'active' as UserStatus, password: '', password2: '', template: '' })
   const [formErr, setFormErr] = useState('')
 
   const [permMap, setPermMap] = useState<PermissionsMap>({})
@@ -145,7 +145,7 @@ export default function UsersPage() {
 
   const openNew = () => {
     setEditingUser(null)
-    setForm({ name: '', email: '', role: 'user', loja: '', status: 'active', password: '', password2: '', template: '' })
+    setForm({ name: '', email: '', cargo: '', setor: '', whatsapp: '', whatsapp2: '', role: 'user', loja: '', status: 'active', password: '', password2: '', template: '' })
     setPermMap({ ...(ROLE_PERMISSIONS['user'] || {}) })
     setPermRestricoes({ lojas: [] })
     setFormErr('')
@@ -154,10 +154,11 @@ export default function UsersPage() {
 
   const openEdit = (u: Profile) => {
     setEditingUser(u)
-    setForm({ name: u.name, email: u.email, role: u.role, loja: u.loja || '', status: u.status, password: '', password2: '', template: '' })
     const override = (u.permissions_override || {}) as any
+    const perfil = override.__perfil__ || {}
+    setForm({ name: u.name, email: u.email, cargo: perfil.cargo || '', setor: perfil.setor || '', whatsapp: perfil.whatsapp || '', whatsapp2: perfil.whatsapp2 || '', role: u.role, loja: u.loja || '', status: u.status, password: '', password2: '', template: '' })
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { __restricoes__: restr, ...cleanOverride } = override
+    const { __restricoes__: restr, __perfil__: _pf, ...cleanOverride } = override
     setPermMap({ ...(ROLE_PERMISSIONS[u.role] || {}), ...cleanOverride })
     setPermRestricoes({ lojas: (restr && restr.lojas) || [] })
     setFormErr('')
@@ -214,7 +215,7 @@ export default function UsersPage() {
     setSaving(true)
     setFormErr('')
     try {
-      const overridePerms: any = { ...permMap, __restricoes__: permRestricoes }
+      const overridePerms: any = { ...permMap, __restricoes__: permRestricoes, __perfil__: { cargo: form.cargo || null, setor: form.setor || null, whatsapp: (form.whatsapp || '').replace(/\D/g, '') || null, whatsapp2: (form.whatsapp2 || '').replace(/\D/g, '') || null } }
       if (editingUser) {
         const updated = await updateProfile(editingUser.id, {
           name: form.name, role: form.role,
@@ -534,6 +535,22 @@ export default function UsersPage() {
           <div className="fg">
             <label className="fl">E-mail <span className="rq">*</span></label>
             <input className="inp" type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} disabled={!!editingUser} />
+          </div>
+          <div className="fg">
+            <label className="fl">Cargo</label>
+            <input className="inp" value={form.cargo} onChange={e => setForm(p => ({ ...p, cargo: e.target.value }))} placeholder="Ex: Comprador" />
+          </div>
+          <div className="fg">
+            <label className="fl">Setor</label>
+            <input className="inp" value={form.setor} onChange={e => setForm(p => ({ ...p, setor: e.target.value }))} placeholder="Ex: Compras" />
+          </div>
+          <div className="fg">
+            <label className="fl">📱 WhatsApp principal</label>
+            <input className="inp" value={form.whatsapp} onChange={e => setForm(p => ({ ...p, whatsapp: e.target.value }))} placeholder="5581999999999" />
+          </div>
+          <div className="fg">
+            <label className="fl">WhatsApp secundário</label>
+            <input className="inp" value={form.whatsapp2} onChange={e => setForm(p => ({ ...p, whatsapp2: e.target.value }))} placeholder="(opcional)" />
           </div>
           <div className="fg">
             <label className="fl">Papel</label>
