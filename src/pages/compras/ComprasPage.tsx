@@ -13,8 +13,9 @@ import {
   fetchComprasListaItens, insertComprasListaItem, updateComprasListaItem, deleteComprasListaItem,
   fetchItensComprasDashboard, fetchEstoqueProdutos, darEntradaEstoquePorNome,
   atualizarUltimoPrecoCompraPorNome, fetchFornecedores,
-  registrarEAnalisarCompra,
+  registrarEAnalisarCompra, fetchProfiles,
 } from '../../lib/db'
+import { perfisDoSetor, enviarWhatsApp, getZapiCfg } from '../../lib/notify'
 import type { ComprasLista, ComprasListaItem, ListaStatus, ListaItemStatus, EstoqueProduto, Fornecedor } from '../../types/database'
 
 // ── Constantes ───────────────────────────────────────────────
@@ -166,6 +167,26 @@ function NovaListaForm({ loja, onSalvo, onCancelar, itensIniciais }: {
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
+  // Fase 3 — aviso ao comprador (setor "Compras") via WhatsApp
+  const [avisarComprador, setAvisarComprador] = useState(true)
+  const [compradores, setCompradores] = useState<any[]>([])
+  useEffect(() => {
+    fetchProfiles().then(ps => setCompradores(perfisDoSetor(ps, 'Compras'))).catch(() => {})
+  }, [])
+
+  const zapiPronto = !!(getZapiCfg().instance && getZapiCfg().token)
+
+  const notificarCompradores = async (lista: ComprasLista, qtdItens: number) => {
+    if (!avisarComprador || !zapiPronto || !compradores.length) return
+    const dataBR = (lista.data_compra ? new Date(lista.data_compra + 'T12:00:00') : new Date()).toLocaleDateString('pt-BR')
+    const msg = `🛒 *Nova lista de compras*\n\n📋 *${lista.titulo}*\n🏪 Loja: ${lista.loja || '—'}\n📅 Data: ${dataBR}\n📦 Itens: ${qtdItens || 0}\n\nAcesse o painel → Compras para conferir e cotar.\n_Amore Gestão_`
+    const cfg = getZapiCfg()
+    await Promise.all(compradores.map(c => {
+      const fone = (c?.permissions_override as any)?.__perfil__?.whatsapp || ''
+      return enviarWhatsApp(fone, msg, cfg)
+    }))
+  }
+
   useEffect(() => {
     if (itensIniciais?.length) {
       setTitulo(`Reposição crítica — ${new Date().toLocaleDateString('pt-BR')}`)
@@ -203,6 +224,8 @@ function NovaListaForm({ loja, onSalvo, onCancelar, itensIniciais }: {
           })
         ))
       }
+      // Fase 3 — avisa o(s) comprador(es) no WhatsApp
+      await notificarCompradores(lista, itensIniciais?.length || 0)
       onSalvo(lista)
     } catch (e) { console.error(e); setErr('Erro ao salvar') }
     setSaving(false)
@@ -249,6 +272,17 @@ function NovaListaForm({ loja, onSalvo, onCancelar, itensIniciais }: {
           style={{ resize: 'vertical' }}
         />
       </div>
+
+      {/* Fase 3 — aviso ao comprador */}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18, fontSize: 12, cursor: 'pointer', userSelect: 'none' }}>
+        <input type="checkbox" checked={avisarComprador} onChange={e => setAvisarComprador(e.target.checked)} />
+        <span>📲 Avisar comprador no WhatsApp ao criar</span>
+        {!zapiPronto
+          ? <span style={{ color: 'var(--muted)', fontWeight: 700 }}>⚠ configure o Z-API em Liz → WhatsApp</span>
+          : compradores.length
+            ? <span style={{ color: 'var(--success)', fontWeight: 700 }}>✅ {compradores.length} comprador(es)</span>
+            : <span style={{ color: 'var(--warning, #B45309)', fontWeight: 700 }}>⚠ nenhum usuário no setor "Compras" com WhatsApp</span>}
+      </label>
 
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button className="btn bo" onClick={onCancelar}>Cancelar</button>
