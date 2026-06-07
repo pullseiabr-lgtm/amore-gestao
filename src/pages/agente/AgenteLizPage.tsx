@@ -231,6 +231,27 @@ export default function AgenteLizPage() {
   const [waPhone, setWaPhone] = useState(() => localStorage.getItem('liz_wa_phone') || '')
   const [waTipo, setWaTipo] = useState<WaTipo>('estoque')
   const [waMsgCustom, setWaMsgCustom] = useState('')
+  // ── Envio via Z-API (gateway WhatsApp por QR) ──
+  const [zapiCfg, setZapiCfg] = useState<{ instance?: string; token?: string; clientToken?: string; recipients?: string }>(() => { try { return JSON.parse(localStorage.getItem('zapi_cfg') || '{}') } catch { return {} } })
+  const [zapiStatus, setZapiStatus] = useState('')
+  const [zapiSending, setZapiSending] = useState(false)
+  const salvarZapiCfg = () => { localStorage.setItem('zapi_cfg', JSON.stringify(zapiCfg)); setZapiStatus('Config salva ✓'); setTimeout(() => setZapiStatus(''), 2000) }
+  const enviarZapiAgora = async () => {
+    const msg = (waMsgCustom.trim() || gerarMensagemWA())
+    if (!zapiCfg.instance || !zapiCfg.token) { setZapiStatus('Informe Instância e Token do Z-API.'); return }
+    const nums = (zapiCfg.recipients || '').split(',').map(s => s.replace(/\D/g, '')).filter(Boolean)
+    if (!nums.length) { setZapiStatus('Informe ao menos um número.'); return }
+    setZapiSending(true); setZapiStatus('Enviando…')
+    let ok = 0
+    for (const phone of nums) {
+      try {
+        const r = await fetch('/api/zapi-send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ instance: zapiCfg.instance, token: zapiCfg.token, clientToken: zapiCfg.clientToken, phone, message: msg }) })
+        if (r.ok) ok++
+      } catch { /* segue */ }
+    }
+    setZapiStatus(`Enviado para ${ok}/${nums.length} número(s) ✓`)
+    setZapiSending(false)
+  }
   // Dados operacionais (relatório diário)
   const [opReqs, setOpReqs] = useState<Requisicao[]>([])
   const [opBoletos, setOpBoletos] = useState<Boleto[]>([])
@@ -1527,6 +1548,23 @@ Seja direto e objetivo. Use emojis para facilitar leitura.
             />
             <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
               Você pode editar a mensagem antes de enviar. As alterações não afetam os dados do sistema.
+            </div>
+          </div>
+
+          {/* ── Enviar agora via Z-API ── */}
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>📲 Enviar agora no WhatsApp (Z-API)</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>Cole as credenciais do Z-API (conectado por QR) e os números, salve uma vez, e envie a mensagem acima na hora.</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+              <input className="inp" placeholder="ID da Instância" value={zapiCfg.instance || ''} onChange={e => setZapiCfg(c => ({ ...c, instance: e.target.value }))} />
+              <input className="inp" placeholder="Token da Instância" value={zapiCfg.token || ''} onChange={e => setZapiCfg(c => ({ ...c, token: e.target.value }))} />
+              <input className="inp" placeholder="Client-Token (opcional)" value={zapiCfg.clientToken || ''} onChange={e => setZapiCfg(c => ({ ...c, clientToken: e.target.value }))} />
+              <input className="inp" placeholder="Números: 5581999999999, ..." value={zapiCfg.recipients || ''} onChange={e => setZapiCfg(c => ({ ...c, recipients: e.target.value }))} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn bo bsm" onClick={salvarZapiCfg}>Salvar config</button>
+              <button className="btn bp" onClick={enviarZapiAgora} disabled={zapiSending}>{zapiSending ? 'Enviando…' : '📲 Enviar agora'}</button>
+              {zapiStatus && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--bordo)' }}>{zapiStatus}</span>}
             </div>
           </div>
 
