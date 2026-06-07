@@ -120,6 +120,20 @@ async function enviarWhatsApp(to, texto) {
   return { ok: res.ok, status: res.status, data }
 }
 
+// Envio via Z-API (gateway por QR Code). Mais simples que a Meta.
+// Vars: ZAPI_INSTANCE, ZAPI_TOKEN, (opcional) ZAPI_CLIENT_TOKEN, ZAPI_RECIPIENTS
+async function enviarZapi(to, texto) {
+  const inst = process.env.ZAPI_INSTANCE
+  const token = process.env.ZAPI_TOKEN
+  const headers = { 'Content-Type': 'application/json' }
+  if (process.env.ZAPI_CLIENT_TOKEN) headers['Client-Token'] = process.env.ZAPI_CLIENT_TOKEN
+  const res = await fetch(`https://api.z-api.io/instances/${inst}/token/${token}/send-text`, {
+    method: 'POST', headers, body: JSON.stringify({ phone: to, message: texto }),
+  })
+  const data = await res.json().catch(() => ({}))
+  return { ok: res.ok, status: res.status, data }
+}
+
 export default async function handler(req, res) {
   // Proteção: a Vercel envia "Authorization: Bearer <CRON_SECRET>" nos crons.
   // Permite também ?secret= para teste manual.
@@ -145,6 +159,10 @@ export default async function handler(req, res) {
       WHATSAPP_PHONE_ID: !!process.env.WHATSAPP_PHONE_ID,
       WHATSAPP_RECIPIENTS: !!process.env.WHATSAPP_RECIPIENTS,
       CRON_SECRET: !!process.env.CRON_SECRET,
+      ZAPI_INSTANCE: !!process.env.ZAPI_INSTANCE,
+      ZAPI_TOKEN: !!process.env.ZAPI_TOKEN,
+      ZAPI_RECIPIENTS: !!process.env.ZAPI_RECIPIENTS,
+      provedor: (process.env.ZAPI_INSTANCE && process.env.ZAPI_TOKEN) ? 'z-api' : 'meta',
     })
   }
 
@@ -172,23 +190,30 @@ export default async function handler(req, res) {
       return res.status(200).json({ preview: true, loja: loja || 'todas', relatorio: texto })
     }
 
-    // Envio real: exige as credenciais do WhatsApp
-    if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID || !process.env.WHATSAPP_RECIPIENTS) {
+    // Provedor: Z-API (se configurado) tem prioridade; senão, Meta Cloud API.
+    const usaZapi = !!(process.env.ZAPI_INSTANCE && process.env.ZAPI_TOKEN)
+    const recipientsRaw = process.env.ZAPI_RECIPIENTS || process.env.WHATSAPP_RECIPIENTS || ''
+
+    if (usaZapi) {
+      if (!recipientsRaw) {
+        return res.status(503).json({ error: 'Z-API conectado, mas falta ZAPI_RECIPIENTS (números destinatários). Adicione nas variáveis de ambiente da Vercel.', dica: 'Use ?preview=1 para ver o relatório.', previa: texto.slice(0, 600) })
+      }
+    } else if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID || !process.env.WHATSAPP_RECIPIENTS) {
       return res.status(503).json({
-        error: 'Disparo pronto, mas falta configurar o WhatsApp. Adicione WHATSAPP_TOKEN, WHATSAPP_PHONE_ID e WHATSAPP_RECIPIENTS nas variáveis de ambiente da Vercel.',
+        error: 'Disparo pronto, mas falta configurar o WhatsApp. Configure o Z-API (ZAPI_INSTANCE, ZAPI_TOKEN, ZAPI_RECIPIENTS) ou a Meta (WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_RECIPIENTS) na Vercel.',
         dica: 'Use ?preview=1 para ver o relatório sem enviar.',
         previa: texto.slice(0, 600),
       })
     }
 
-    const destinatarios = process.env.WHATSAPP_RECIPIENTS.split(',').map(s => s.trim().replace(/\D/g, '')).filter(Boolean)
+    const destinatarios = recipientsRaw.split(',').map(s => s.trim().replace(/\D/g, '')).filter(Boolean)
     const resultados = []
     for (const to of destinatarios) {
-      const r = await enviarWhatsApp(to, texto)
+      const r = usaZapi ? await enviarZapi(to, texto) : await enviarWhatsApp(to, texto)
       resultados.push({ to, ok: r.ok, status: r.status, erro: r.ok ? undefined : (r.data?.error?.message || r.data) })
     }
 
-    return res.status(200).json({ enviados: resultados.filter(r => r.ok).length, total: destinatarios.length, resultados, previa: texto.slice(0, 400) })
+    return res.status(200).json({ provedor: usaZapi ? 'z-api' : 'meta', enviados: resultados.filter(r => r.ok).length, total: destinatarios.length, resultados, previa: texto.slice(0, 400) })
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Erro no disparo diário' })
   }
