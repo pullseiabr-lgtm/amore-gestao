@@ -10,7 +10,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import {
   fetchTarefas, insertTarefa, updateTarefa, deleteTarefa,
   insertTarefaChecklist, updateTarefaChecklist, deleteTarefaChecklist,
-  insertTarefaComentario, insertTarefaHistorico,
+  insertTarefaComentario, insertTarefaHistorico, fetchProfiles,
 } from '../../lib/db'
 import type { Tarefa, TarefaStatus, TarefaPrioridade, TarefaResultado, TarefaChecklist, TarefaComentario } from '../../types/database'
 import { AnexoUploader, AnexoLinks } from '../../components/ui/AnexoUploader'
@@ -89,6 +89,7 @@ const emptyForm = () => ({
   responsavel_nome: '', solicitante_nome: '',
   data_solicitacao: hojeISO(), prazo: '', observacoes: '',
   precisa_aprovacao: false,
+  enviarWhats: true,
   checklist: [] as string[],
   // setores que apoiam a execução
   envolvidos: '',
@@ -116,6 +117,29 @@ export default function TarefasPage() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [novoCheckItem, setNovoCheckItem] = useState('')
+  const [profiles, setProfiles] = useState<any[]>([])
+  useEffect(() => { fetchProfiles().then(setProfiles).catch(() => {}) }, [])
+
+  // Busca o WhatsApp de um usuário pelo nome (guardado em permissions_override.__perfil__)
+  const whatsappDoResponsavel = (nome: string): string => {
+    if (!nome) return ''
+    const u = profiles.find(p => (p.name || '').trim().toLowerCase() === nome.trim().toLowerCase())
+    const perfil = (u?.permissions_override as any)?.__perfil__
+    return (perfil?.whatsapp || '').replace(/\D/g, '')
+  }
+
+  // Envia notificação de tarefa via Z-API (usa a config salva na Liz → WhatsApp)
+  const notificarTarefaWhats = async (titulo: string, responsavel: string, prazo: string) => {
+    try {
+      const cfg = JSON.parse(localStorage.getItem('zapi_cfg') || '{}')
+      const phone = whatsappDoResponsavel(responsavel)
+      if (!cfg.instance || !cfg.token || !phone) return false
+      const prazoBR = prazo ? new Date(prazo + 'T12:00:00').toLocaleDateString('pt-BR') : 'sem prazo definido'
+      const msg = `🆕 *Nova tarefa atribuída*\n\n📋 *${titulo}*\n👤 Responsável: ${responsavel}\n⏰ Prazo: ${prazoBR}\n\nAcesse o painel para mais detalhes.\n_Amore Gestão_`
+      const r = await fetch('/api/zapi-send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ instance: cfg.instance, token: cfg.token, clientToken: cfg.clientToken, phone, message: msg }) })
+      return r.ok
+    } catch { return false }
+  }
 
   // Modal detalhe
   const [detalhe, setDetalhe] = useState<Tarefa | null>(null)
@@ -215,6 +239,10 @@ export default function TarefasPage() {
       }
       // Histórico
       await insertTarefaHistorico({ tarefa_id: nova.id, acao: 'Tarefa criada', campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || 'Sistema' })
+      // Notificação WhatsApp ao responsável (se ativado e houver número cadastrado)
+      if (form.enviarWhats && form.responsavel_nome) {
+        await notificarTarefaWhats(form.titulo.trim(), form.responsavel_nome, form.prazo)
+      }
       setShowForm(false)
       setForm(emptyForm())
       await load()
@@ -607,6 +635,11 @@ export default function TarefasPage() {
                   <input value={form.responsavel_nome} onChange={e => setForm(f => ({ ...f, responsavel_nome: e.target.value }))}
                     placeholder="Quem irá executar"
                     style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11.5, cursor: 'pointer', color: 'var(--muted)' }}>
+                    <input type="checkbox" checked={form.enviarWhats} onChange={e => setForm(f => ({ ...f, enviarWhats: e.target.checked }))} />
+                    📲 Avisar no WhatsApp ao salvar
+                    {form.responsavel_nome && (whatsappDoResponsavel(form.responsavel_nome) ? <span style={{ color: 'var(--success)', fontWeight: 700 }}>✅ nº ok</span> : <span style={{ color: 'var(--warning)', fontWeight: 700 }}>⚠ sem nº no cadastro</span>)}
+                  </label>
                 </div>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Solicitante da tarefa</label>
