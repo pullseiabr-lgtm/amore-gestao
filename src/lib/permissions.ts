@@ -166,6 +166,11 @@ export const ROLE_PERMISSIONS: Record<string, PermissionsMap> = {
 // preenche o permissions_override (granular, por módulo e ação).
 // ─────────────────────────────────────────────────────────────
 
+// Novo módulo "Agente de Precificação & CMV" — espelha o acesso do agente-liz em todos os papéis
+for (const r of Object.keys(ROLE_PERMISSIONS)) {
+  ROLE_PERMISSIONS[r]['agente-cmv'] = ROLE_PERMISSIONS[r]['agente-liz'] || { view: false, create: false, edit: false, delete: false, export: false }
+}
+
 const ALL_MODULE_IDS = Object.keys(ROLE_PERMISSIONS.super_admin)
 const FULL: ModulePermission = { view: true, create: true, edit: true, delete: true, export: true }
 const OFF: ModulePermission = { view: false, create: false, edit: false, delete: false, export: false }

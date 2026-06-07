@@ -17,6 +17,7 @@ export interface NavItem {
 const MENU_TOP: NavItem[] = [
   { id: 'dashboard',   label: 'Dashboard',         icon: <LayoutDashboard size={13} /> },
   { id: 'agente-liz',  label: 'Liz — Agente IA',   icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🤖</span> },
+  { id: 'agente-cmv',  label: 'Precificação & CMV', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>💰</span> },
   { id: 'tarefas',     label: 'Central de Tarefas', icon: <ClipboardList size={13} /> },
   { id: 'enxoval',        label: 'Controle Enxoval',   icon: <Package size={13} /> },
   { id: 'planejamento',  label: 'Planejamento',       icon: <Calendar size={13} /> },

@@ -30,6 +30,7 @@ import PdvPage from './pages/pdv/PdvPage'
 import MarketPage from './pages/market/MarketPage'
 import ComprasAgentePage from './pages/compras/ComprasAgentePage'
 import AgenteLizPage from './pages/agente/AgenteLizPage'
+import AgenteCMVPage from './pages/agente/AgenteCMVPage'
 import TarefasPage from './pages/tarefas/TarefasPage'
 import EnxovalPage from './pages/enxoval/EnxovalPage'
 import PlanejamentoPage from './pages/planejamento/PlanejamentoPage'
@@ -64,6 +65,7 @@ export type PageId =
   | 'market'
   | 'compras-agente'
   | 'agente-liz'
+  | 'agente-cmv'
   | 'tarefas'
   | 'enxoval'
   | 'planejamento'
@@ -98,6 +100,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   market: 'Market Analytics & Supplier Intelligence',
   'compras-agente': 'Agente Analítico de Compras',
   'agente-liz': 'Liz — Agente Gestora',
+  'agente-cmv': 'Agente de Precificação & CMV',
   tarefas: 'Central de Tarefas',
   enxoval: 'Controle de Enxoval',
   planejamento: 'Planejamento Operacional',
@@ -134,6 +137,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'market':               return <MarketPage />
     case 'compras-agente':       return <ComprasAgentePage />
     case 'agente-liz':           return <AgenteLizPage />
+    case 'agente-cmv':           return <AgenteCMVPage />
     case 'tarefas':              return <TarefasPage />
     case 'enxoval':              return <EnxovalPage />
     case 'planejamento':         return <PlanejamentoPage />
