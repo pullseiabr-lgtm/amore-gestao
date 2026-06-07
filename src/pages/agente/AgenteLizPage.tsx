@@ -18,7 +18,9 @@ import {
   fetchListaHistoricoPrecos,
   fetchBoletos,
   fetchTarefas,
+  fetchProfiles,
 } from '../../lib/db'
+import { enviarWhatsApp, getZapiCfg, soDigitos } from '../../lib/notify'
 import type { ListaHistoricoPreco, Requisicao, Boleto, Tarefa } from '../../types/database'
 
 // ── Types ────────────────────────────────────────────────────────
@@ -256,6 +258,64 @@ export default function AgenteLizPage() {
   const [opReqs, setOpReqs] = useState<Requisicao[]>([])
   const [opBoletos, setOpBoletos] = useState<Boleto[]>([])
   const [opTarefas, setOpTarefas] = useState<Tarefa[]>([])
+
+  // Fase 5 — Relatório por setor
+  const [profiles, setProfiles] = useState<any[]>([])
+  const [relSetor, setRelSetor] = useState('')
+  const [relEnviando, setRelEnviando] = useState(false)
+  const [relStatus, setRelStatus] = useState('')
+  useEffect(() => { fetchProfiles().then(setProfiles).catch(() => {}) }, [])
+
+  // Setores disponíveis (das tarefas + dos perfis de usuário)
+  const setoresDisponiveis = useMemo(() => {
+    const s = new Set<string>()
+    opTarefas.forEach(t => { if (t.setor) s.add(t.setor.trim()) })
+    profiles.forEach(p => { const st = (p?.permissions_override as any)?.__perfil__?.setor; if (st) s.add(String(st).trim()) })
+    return [...s].filter(Boolean).sort((a, b) => a.localeCompare(b))
+  }, [opTarefas, profiles])
+
+  // Monta o texto do relatório de um setor
+  const gerarRelatorioSetor = (setor: string): string => {
+    const hoje = new Date().toISOString().slice(0, 10)
+    const doSetor = opTarefas.filter(t => (t.setor || '').trim().toLowerCase() === setor.trim().toLowerCase())
+    const abertas = doSetor.filter(t => t.status !== 'concluido' && t.status !== 'cancelado')
+    const atrasadas = abertas.filter(t => t.prazo && t.prazo < hoje)
+    const concluidas = doSetor.filter(t => t.status === 'concluido')
+    const STAT: Record<string, string> = { pendente: '🕓', em_andamento: '🔧', aguardando_retorno: '⏳', aguardando_fornecedor: '📦', concluido: '✅', cancelado: '✖' }
+    const linhas = abertas.slice(0, 20).map(t => {
+      const atras = t.prazo && t.prazo < hoje ? ' ⚠ ATRASADA' : ''
+      const prazoBR = t.prazo ? new Date(t.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : 's/ prazo'
+      const resp = t.responsavel_nome ? ` — ${t.responsavel_nome}` : ''
+      return `${STAT[t.status] || '•'} ${t.titulo}${resp} (${prazoBR})${atras}`
+    }).join('\n') || '  (sem tarefas em aberto)'
+    const dataBR = new Date().toLocaleDateString('pt-BR')
+    return `📊 *RELATÓRIO — SETOR ${setor.toUpperCase()}*\n${dataBR}\n\n` +
+      `Abertas: ${abertas.length} | Atrasadas: ${atrasadas.length} | Concluídas: ${concluidas.length}\n\n` +
+      `*Tarefas em aberto:*\n${linhas}\n\n_Amore Gestão — Liz_`
+  }
+
+  // Números dos usuários do setor (cadastro de usuário → __perfil__)
+  const numerosDoSetor = (setor: string): string[] => {
+    return profiles
+      .filter(p => ((p?.permissions_override as any)?.__perfil__?.setor || '').trim().toLowerCase() === setor.trim().toLowerCase())
+      .map(p => soDigitos((p?.permissions_override as any)?.__perfil__?.whatsapp))
+      .filter(Boolean)
+  }
+
+  const enviarRelatorioSetor = async () => {
+    if (!relSetor) { setRelStatus('Escolha um setor.'); return }
+    const cfg = getZapiCfg()
+    if (!cfg.instance || !cfg.token) { setRelStatus('Configure o Z-API abaixo (Instância e Token).'); return }
+    const nums = numerosDoSetor(relSetor)
+    if (!nums.length) { setRelStatus(`Nenhum usuário do setor "${relSetor}" tem WhatsApp cadastrado.`); return }
+    setRelEnviando(true); setRelStatus('')
+    const msg = gerarRelatorioSetor(relSetor)
+    let ok = 0
+    for (const n of nums) { if (await enviarWhatsApp(n, msg, cfg)) ok++ }
+    setRelEnviando(false)
+    setRelStatus(`✅ Relatório enviado para ${ok}/${nums.length} pessoa(s) do setor ${relSetor}.`)
+    setTimeout(() => setRelStatus(''), 6000)
+  }
 
   // Scroll chat
   useEffect(() => {
@@ -1549,6 +1609,30 @@ Seja direto e objetivo. Use emojis para facilitar leitura.
             <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
               Você pode editar a mensagem antes de enviar. As alterações não afetam os dados do sistema.
             </div>
+          </div>
+
+          {/* ── Fase 5 — Relatório por Setor ── */}
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>📊 Relatório por Setor (automático via Z-API)</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
+              Gera um resumo das tarefas do setor (abertas, atrasadas, concluídas) e envia direto para todos os usuários daquele setor que têm WhatsApp no cadastro.
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+              <select className="inp" style={{ minWidth: 180 }} value={relSetor} onChange={e => setRelSetor(e.target.value)}>
+                <option value="">— Escolha o setor —</option>
+                {setoresDisponiveis.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <button className="btn bp" onClick={enviarRelatorioSetor} disabled={relEnviando || !relSetor}>
+                {relEnviando ? 'Enviando…' : '📲 Enviar relatório'}
+              </button>
+              {relSetor && <span style={{ fontSize: 11, color: 'var(--muted)' }}>{numerosDoSetor(relSetor).length} destinatário(s)</span>}
+              {relStatus && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--bordo)' }}>{relStatus}</span>}
+            </div>
+            {relSetor && (
+              <pre style={{ background: '#f0fdf4', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', fontSize: 11, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, maxHeight: 200, overflowY: 'auto' }}>
+                {gerarRelatorioSetor(relSetor)}
+              </pre>
+            )}
           </div>
 
           {/* ── Enviar agora via Z-API ── */}

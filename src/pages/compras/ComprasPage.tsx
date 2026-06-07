@@ -566,6 +566,12 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
   const [fornecedoresBD, setFornecedoresBD] = useState<Fornecedor[]>([])
   const [fornsSelecionados, setFornsSelecionados] = useState<Set<string>>(new Set())
   const [loadingFornBD, setLoadingFornBD] = useState(false)
+  // Fase 4 — envio automático de cotação via Z-API (sem abrir o WhatsApp Web)
+  const zapiCfgCot = getZapiCfg()
+  const zapiProntoCot = !!(zapiCfgCot.instance && zapiCfgCot.token)
+  const [cotZapiAuto, setCotZapiAuto] = useState(zapiProntoCot)
+  const [cotEnviando, setCotEnviando] = useState(false)
+  const [cotFeedback, setCotFeedback] = useState('')
 
   // Fechar histórico ao clicar fora (click-outside)
   useEffect(() => {
@@ -639,14 +645,35 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
     registrarCotacao('email', itensPend.length)
   }
 
-  const dispararParaTodos = () => {
+  // Fase 4 — envio automático via Z-API (direto ao número do fornecedor)
+  const dispararWAauto = async (forn: Fornecedor, itensPend: ComprasListaItem[]): Promise<boolean> => {
+    const fone = forn.whatsapp || forn.telefone || forn.contato_telefone || ''
+    const ok = await enviarWhatsApp(fone, txtCotacaoWA(itensPend), zapiCfgCot)
+    if (ok) registrarCotacao('whatsapp', itensPend.length)
+    return ok
+  }
+
+  const dispararParaTodos = async () => {
     const itensPend = itens.filter(i => i.status === 'pendente')
-    fornecedoresBD
+    const alvos = fornecedoresBD
       .filter(f => fornsSelecionados.has(f.id))
-      .forEach(f => {
-        const temWA = !!(f.whatsapp || f.telefone || f.contato_telefone)
-        if (temWA) dispararWA(f, itensPend)
-      })
+      .filter(f => !!(f.whatsapp || f.telefone || f.contato_telefone))
+
+    // Modo automático: envia direto pelo Z-API, sem abrir abas
+    if (cotZapiAuto && zapiProntoCot) {
+      setCotEnviando(true); setCotFeedback('')
+      let ok = 0
+      for (const f of alvos) {
+        if (await dispararWAauto(f, itensPend)) ok++
+      }
+      setCotEnviando(false)
+      setCotFeedback(`✅ Cotação enviada para ${ok}/${alvos.length} fornecedor(es) via Z-API.`)
+      setTimeout(() => setCotFeedback(''), 6000)
+      return
+    }
+
+    // Modo manual: abre o WhatsApp Web para cada fornecedor
+    alvos.forEach(f => dispararWA(f, itensPend))
   }
 
   const abrirModalResposta = () => {
@@ -1514,11 +1541,26 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
             <div className="mbd" style={{ maxHeight: '78vh', overflowY: 'auto' }}>
 
               {/* Preview da mensagem */}
-              <div style={{ marginBottom: 18 }}>
+              <div style={{ marginBottom: 14 }}>
                 <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--bordo)', marginBottom: 8 }}>📋 Mensagem que será enviada ({itens.filter(i => i.status === 'pendente').length} itens pendentes)</div>
                 <pre style={{ background: 'var(--cream,#fdf8f0)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', fontSize: 11.5, lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text)', margin: 0 }}>
                   {txtCotacaoWA(itens.filter(i => i.status === 'pendente'))}
                 </pre>
+              </div>
+
+              {/* Fase 4 — modo de envio */}
+              <div style={{ marginBottom: 16, padding: '10px 12px', borderRadius: 8, background: zapiProntoCot ? '#ECFDF5' : '#F3F4F6', border: `1px solid ${zapiProntoCot ? '#A7F3D0' : 'var(--border)'}` }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: zapiProntoCot ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
+                  <input type="checkbox" checked={cotZapiAuto && zapiProntoCot} disabled={!zapiProntoCot}
+                    onChange={e => setCotZapiAuto(e.target.checked)} />
+                  <span>⚡ Envio automático (Z-API) — manda direto ao número, sem abrir o WhatsApp Web</span>
+                </label>
+                {!zapiProntoCot && (
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, paddingLeft: 24 }}>
+                    Configure o Z-API em <strong>Liz → WhatsApp</strong> para liberar o envio automático. Por ora, abre o WhatsApp Web.
+                  </div>
+                )}
+                {cotFeedback && <div style={{ fontSize: 12, color: '#15803D', marginTop: 6, paddingLeft: 24, fontWeight: 700 }}>{cotFeedback}</div>}
               </div>
 
               {/* Lista de fornecedores */}
@@ -1579,11 +1621,22 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
                     <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
                       <button
                         className="btn bo bsm"
-                        disabled={!temWA || itensPend.length === 0}
-                        onClick={() => { dispararWA(f, itensPend); setFornsSelecionados(prev => new Set([...prev, f.id])) }}
+                        disabled={!temWA || itensPend.length === 0 || cotEnviando}
+                        onClick={async () => {
+                          setFornsSelecionados(prev => new Set([...prev, f.id]))
+                          if (cotZapiAuto && zapiProntoCot) {
+                            setCotEnviando(true)
+                            const ok = await dispararWAauto(f, itensPend)
+                            setCotEnviando(false)
+                            setCotFeedback(ok ? `✅ Enviado para ${f.nome} via Z-API.` : `⚠ Falha ao enviar para ${f.nome}.`)
+                            setTimeout(() => setCotFeedback(''), 6000)
+                          } else {
+                            dispararWA(f, itensPend)
+                          }
+                        }}
                         title={temWA ? `Enviar WhatsApp para ${f.whatsapp || f.telefone}` : 'Sem WhatsApp cadastrado'}
                         style={{ color: temWA ? '#16A34A' : 'var(--muted)', borderColor: temWA ? '#16A34A' : 'var(--border)', fontSize: 11, padding: '4px 8px' }}>
-                        📱 WA
+                        {cotZapiAuto && zapiProntoCot ? '⚡ WA' : '📱 WA'}
                       </button>
                       <button
                         className="btn bo bsm"
@@ -1605,10 +1658,12 @@ function ListaDetalhe({ lista, onVoltar, onAtualizar }: {
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn bo bsm" onClick={() => setShowDispararCot(false)}>Fechar</button>
                 <button className="btn bsm"
-                  disabled={fornsSelecionados.size === 0 || itens.filter(i => i.status === 'pendente').length === 0}
+                  disabled={fornsSelecionados.size === 0 || itens.filter(i => i.status === 'pendente').length === 0 || cotEnviando}
                   onClick={dispararParaTodos}
                   style={{ background: '#16A34A', color: '#fff', border: 'none', fontWeight: 700 }}>
-                  📱 Disparar WA para todos ({fornsSelecionados.size})
+                  {cotEnviando
+                    ? <><Loader size={12} className="spin" /> Enviando...</>
+                    : `${cotZapiAuto && zapiProntoCot ? '⚡ Enviar' : '📱 Disparar WA'} para todos (${fornsSelecionados.size})`}
                 </button>
               </div>
             </div>
