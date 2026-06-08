@@ -501,7 +501,7 @@ export default function TarefasPage() {
           KANBAN
       ══════════════════════════════ */}
       {!loading && view === 'kanban' && (
-        <div style={{ display: 'flex', gap: 12, overflowX: 'auto', flex: 1, minHeight: 0, paddingBottom: 8 }}>
+        <div style={{ display: 'flex', gap: 12, overflowX: 'auto', flex: 1, minHeight: 0, minWidth: 0, paddingBottom: 8 }}>
           {COLUNAS.map(col => {
             const cards = tarefasFiltradas.filter(t => t.status === col.id)
             return (

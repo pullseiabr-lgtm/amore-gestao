@@ -75,7 +75,7 @@ a { text-decoration: none; color: inherit; }
 .lo-btn:hover { color: #E8D5D5; background: rgba(255,255,255,.07); }
 
 /* MAIN */
-.main-content { margin-left: 248px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
+.main-content { margin-left: 248px; flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 100vh; }
 .topbar { background: #fff; border-bottom: 1px solid var(--border); padding: 0 20px; height: 54px; display: flex; align-items: center; gap: 9px; position: sticky; top: 0; z-index: 50; }
 .tb-title { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; font-size: 14.5px; flex: 1; }
 .tb-sel { padding: 5px 9px; border: 1px solid var(--border); border-radius: 6px; font-size: 11.5px; background: #fff; outline: none; cursor: pointer; }
@@ -84,7 +84,7 @@ a { text-decoration: none; color: inherit; }
 .tb-btn.primary { background: var(--bordo); color: #fff; border-color: var(--bordo); }
 .tb-btn.primary:hover { background: var(--bordo-l); }
 .tb-btn svg { width: 11px; height: 11px; }
-.page-content { padding: 18px 20px 96px; flex: 1; }
+.page-content { padding: 18px 20px 96px; flex: 1; min-width: 0; }
 
 /* HAMBURGER */
 .hamburger-btn { display: none; background: none; border: none; padding: 6px; border-radius: 6px; color: var(--text); align-items: center; justify-content: center; }
