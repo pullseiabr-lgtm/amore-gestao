@@ -20,7 +20,7 @@ import {
   fetchTarefas,
   fetchProfiles,
 } from '../../lib/db'
-import { enviarWhatsApp, getZapiCfg, soDigitos } from '../../lib/notify'
+import { enviarWhatsApp, getZapiCfg, soDigitos, carregarZapiCfgRemoto, salvarZapiCfgRemoto } from '../../lib/notify'
 import type { ListaHistoricoPreco, Requisicao, Boleto, Tarefa } from '../../types/database'
 
 // ── Types ────────────────────────────────────────────────────────
@@ -237,7 +237,14 @@ export default function AgenteLizPage() {
   const [zapiCfg, setZapiCfg] = useState<{ instance?: string; token?: string; clientToken?: string; recipients?: string }>(() => { try { return JSON.parse(localStorage.getItem('zapi_cfg') || '{}') } catch { return {} } })
   const [zapiStatus, setZapiStatus] = useState('')
   const [zapiSending, setZapiSending] = useState(false)
-  const salvarZapiCfg = () => { localStorage.setItem('zapi_cfg', JSON.stringify(zapiCfg)); setZapiStatus('Config salva ✓'); setTimeout(() => setZapiStatus(''), 2000) }
+  // Carrega a config compartilhada do banco ao abrir (vale para qualquer computador)
+  useEffect(() => { carregarZapiCfgRemoto().then(c => { if (c && (c.instance || c.token)) setZapiCfg(c) }).catch(() => {}) }, [])
+  const salvarZapiCfg = async () => {
+    setZapiStatus('Salvando…')
+    try { await salvarZapiCfgRemoto(zapiCfg); setZapiStatus('Config salva no banco ✓ (vale para todos os dispositivos)') }
+    catch { localStorage.setItem('zapi_cfg', JSON.stringify(zapiCfg)); setZapiStatus('Salvo localmente (falha ao salvar no banco)') }
+    setTimeout(() => setZapiStatus(''), 3500)
+  }
   const enviarZapiAgora = async () => {
     const msg = (waMsgCustom.trim() || gerarMensagemWA())
     if (!zapiCfg.instance || !zapiCfg.token) { setZapiStatus('Informe Instância e Token do Z-API.'); return }

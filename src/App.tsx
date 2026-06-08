@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from './contexts/AuthContext'
+import { carregarZapiCfgRemoto } from './lib/notify'
 import { useTheme } from './contexts/ThemeContext'
 import { LojaProvider } from './contexts/LojaContext'
 import LoginPage from './pages/auth/LoginPage'
@@ -161,6 +162,12 @@ export default function App() {
   useEffect(() => {
     document.title = theme.company_name || 'Amore Gestão'
   }, [theme.company_name])
+
+  // Sincroniza a config do Z-API (WhatsApp) a partir do banco — assim qualquer
+  // computador já tem as credenciais salvas, sem reconfigurar por navegador.
+  useEffect(() => {
+    if (user) carregarZapiCfgRemoto().catch(() => {})
+  }, [user])
 
   // Custom event from dashboard agent button
   useEffect(() => {

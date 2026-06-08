@@ -3,7 +3,7 @@
 // A config do Z-API fica em localStorage 'zapi_cfg' (definida na tela Liz → WhatsApp).
 // O envio passa pelo proxy /api/zapi-send para evitar CORS.
 
-import { insertNotificacao } from './db'
+import { insertNotificacao, fetchAppConfig, saveAppConfig } from './db'
 import type { NotificacaoTipo } from '../types/database'
 
 export type ZapiCfg = { instance?: string; token?: string; clientToken?: string; recipients?: string }
@@ -22,6 +22,27 @@ export type NotifyMeta = {
 
 export function getZapiCfg(): ZapiCfg {
   try { return JSON.parse(localStorage.getItem('zapi_cfg') || '{}') } catch { return {} }
+}
+
+const ZAPI_CFG_KEY = 'zapi'
+
+// Carrega a config do Z-API do banco (compartilhada entre todos os dispositivos)
+// e atualiza o cache local. Deve ser chamada ao iniciar o app.
+export async function carregarZapiCfgRemoto(): Promise<ZapiCfg> {
+  try {
+    const remoto = await fetchAppConfig<ZapiCfg>(ZAPI_CFG_KEY)
+    if (remoto && (remoto.instance || remoto.token)) {
+      localStorage.setItem('zapi_cfg', JSON.stringify(remoto))
+      return remoto
+    }
+  } catch { /* ignora — usa o cache local */ }
+  return getZapiCfg()
+}
+
+// Salva a config do Z-API no banco (vale para qualquer computador) e no cache local.
+export async function salvarZapiCfgRemoto(cfg: ZapiCfg): Promise<void> {
+  localStorage.setItem('zapi_cfg', JSON.stringify(cfg))
+  await saveAppConfig(ZAPI_CFG_KEY, cfg)
 }
 
 // Extrai apenas dígitos de um telefone (formato aceito pelo Z-API).

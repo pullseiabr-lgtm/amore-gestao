@@ -866,6 +866,19 @@ export async function deleteNotificacao(id: string): Promise<void> {
   await sdkCall<null>(db.from('notificacoes').delete().eq('id', id)).catch(() => {})
 }
 
+// ── Configuração global (chave/valor) ───────────────────────────────────────
+export async function fetchAppConfig<T = any>(chave: string): Promise<T | null> {
+  try {
+    const row = await sdkCall<{ valor: T }>(db.from('app_config').select('valor').eq('chave', chave).single())
+    return row?.valor ?? null
+  } catch { return null }
+}
+export async function saveAppConfig(chave: string, valor: any): Promise<void> {
+  await sdkCall<null>(
+    db.from('app_config').upsert({ chave, valor, updated_at: new Date().toISOString() }, { onConflict: 'chave' })
+  ).catch(() => {})
+}
+
 // ── Upload de anexos (Supabase Storage, bucket "anexos") ────────────────────
 export async function uploadAnexo(file: File, pasta = 'geral'): Promise<string> {
   const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '')
