@@ -51,7 +51,12 @@ function prioCor(p: TarefaPrioridade) {
 }
 function fmtData(s: string | null) {
   if (!s) return ''
-  return new Date(s).toLocaleDateString('pt-BR')
+  // Formata SEMPRE como dia/mês/ano, sem depender de fuso (evita ordem trocada e "um dia atrás")
+  const iso = String(s).slice(0, 10)               // pega YYYY-MM-DD
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`           // dia/mês/ano
+  const d = new Date(s)
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('pt-BR')
 }
 function fmtMoeda(n: number | null | undefined) {
   if (n == null) return '—'
