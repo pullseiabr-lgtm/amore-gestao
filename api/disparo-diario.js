@@ -49,7 +49,7 @@ async function sb(table, query) {
   }
 }
 
-function montarRelatorio(loja, boletos, reqs, tarefas) {
+function montarRelatorio(loja, boletos, reqs, tarefas, estoque = []) {
   const hojeISO = new Date().toISOString().slice(0, 10)
   const hojeBR = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
 
@@ -59,6 +59,7 @@ function montarRelatorio(loja, boletos, reqs, tarefas) {
   const recebidosHoje = reqs.filter(r => r.status === 'concluida' && String(r.updated_at || '').slice(0, 10) === hojeISO)
   const pedidosAbertos = reqs.filter(r => r.pedido_numero && r.pedido_status && r.pedido_status !== 'entregue' && r.pedido_status !== 'finalizado')
   const tarefasPrazo = tarefas.filter(t => t.status !== 'concluido' && t.status !== 'cancelado' && t.prazo && (diasAte(t.prazo) ?? 1) <= 0)
+  const estoqueBaixo = (estoque || []).filter(p => Number(p.nivel_atual) <= Number(p.nivel_minimo) && Number(p.nivel_minimo) > 0)
 
   const linhas = [
     `🤖 *LIZ — RELATÓRIO OPERACIONAL DIÁRIO*`,
@@ -86,6 +87,11 @@ function montarRelatorio(loja, boletos, reqs, tarefas) {
     tarefasPrazo.length
       ? tarefasPrazo.slice(0, 8).map(t => { const d = diasAte(t.prazo); return `    • ${t.titulo}${t.responsavel_nome ? ` (${t.responsavel_nome})` : ''}${d != null && d < 0 ? ` ⚠ ${-d}d atrás` : ' · hoje'}` }).join('\n')
       : `  ✅ Sem tarefas em atraso`,
+    ``,
+    `⚠️ *ESTOQUE BAIXO* (${estoqueBaixo.length})`,
+    estoqueBaixo.length
+      ? estoqueBaixo.slice(0, 10).map(p => `    • ${p.nome}: ${p.nivel_atual} (mín. ${p.nivel_minimo})`).join('\n')
+      : `  ✅ Nenhum produto abaixo do mínimo`,
     ``,
     `━━━━━━━━━━━━━━━`,
     `_Gerado automaticamente pela Liz · Amore Gestão_`,
@@ -198,13 +204,14 @@ export default async function handler(req, res) {
   const filtroLoja = loja ? `loja=eq.${encodeURIComponent(loja)}&` : ''
 
   try {
-    const [boletos, reqs, tarefas] = await Promise.all([
+    const [boletos, reqs, tarefas, estoque] = await Promise.all([
       sb('boletos', `${filtroLoja}select=*`),
       sb('requisicoes', `${filtroLoja}select=*`),
       sb('tarefas', `${filtroLoja}select=*`),
+      sb('estoque_produtos', `${filtroLoja}ativo=eq.true&select=nome,nivel_atual,nivel_minimo`),
     ])
 
-    const texto = montarRelatorio(loja, boletos, reqs, tarefas)
+    const texto = montarRelatorio(loja, boletos, reqs, tarefas, estoque)
 
     if (preview) {
       return res.status(200).json({ preview: true, loja: loja || 'todas', relatorio: texto })

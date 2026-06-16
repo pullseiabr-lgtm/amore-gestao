@@ -15,8 +15,9 @@ import {
   fetchEstoqueProdutos, darEntradaEstoquePorNome,
   fetchFinCreditos, insertFinCredito,
   fetchRequisicaoCotacoes, insertRequisicaoCotacao, updateRequisicaoCotacao, deleteRequisicaoCotacao,
-  fetchFornecedores,
+  fetchFornecedores, fetchProfiles,
 } from '../../lib/db'
+import { enviarWhatsApp, perfisDoSetor, soDigitos } from '../../lib/notify'
 import type {
   Requisicao, RequisicaoItem, ReqStatus, ReqPrioridade,
   EstoqueProduto, FinCredito, FinFormaPagamento, ReqTimeline,
@@ -668,6 +669,30 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
     await tEntry('finalizacao',`Entrega confirmada por ${confRecebNome}${entraram > 0 ? ` — ${entraram} item(ns) deram entrada no estoque` : ''}`)
     onAtualizar(u)
     toast(entraram > 0 ? `Entrega confirmada! ${entraram} item(ns) no estoque.` : 'Entrega confirmada!')
+
+    // ── Notificação WhatsApp: PEDIDO RECEBIDO (Compras + Gerência) ──
+    try {
+      const linhasItens = recebidos
+        .filter(i => (i.quantidade_aprovada ?? i.quantidade) > 0)
+        .map(i => `• ${i.produto_nome}: +${i.quantidade_aprovada ?? i.quantidade}${i.unidade ? ' ' + i.unidade : ''}`)
+        .join('\n')
+      const hora = new Date(confRecebHorario).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      const msg = `📦 *PEDIDO RECEBIDO*\n\n` +
+        `Requisição: REQ-${String(req.numero).padStart(4, '0')}\n` +
+        `Data: ${new Date(confRecebHorario).toLocaleDateString('pt-BR')}\n\n` +
+        `*Itens Recebidos:*\n${linhasItens || '—'}\n\n` +
+        (entraram > 0 ? `✅ Estoque atualizado (${entraram} item(ns)).\n` : '') +
+        `👤 Conferente: ${confRecebNome}\n🕐 Horário: ${hora}\n\n_Painel AmoreFood_`
+
+      const profiles = await fetchProfiles()
+      const alvos = [...perfisDoSetor(profiles, 'Compras'), ...perfisDoSetor(profiles, 'Gerência'), ...perfisDoSetor(profiles, 'Gerente')]
+      const fones = Array.from(new Set(alvos.map(pf => soDigitos((pf?.permissions_override as any)?.__perfil__?.whatsapp)).filter(Boolean)))
+      await Promise.all(fones.map(f => enviarWhatsApp(f, msg, undefined, {
+        tipo: 'compra', modulo: 'requisicoes', titulo: `Pedido recebido REQ-${String(req.numero).padStart(4, '0')}`,
+        loja, created_by: confRecebNome,
+      })))
+    } catch { /* notificação best-effort, não bloqueia a entrada */ }
+
     if (naoCadastrados.length) alert(`Atenção: ${naoCadastrados.length} produto(s) não estão no cadastro de Estoque, então não tiveram saldo atualizado (apenas a movimentação foi registrada):\n\n${naoCadastrados.join('\n')}\n\nCadastre-os em Estoque para o saldo ser atualizado automaticamente.`)
     setShowConfReceb(false); load()
   }

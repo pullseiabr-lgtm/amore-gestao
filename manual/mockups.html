@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<style>
+  :root{
+    --bordo:#7a1f2b; --bordo-d:#5c141d; --bordo-l:#e9c9cf; --bordo-bg:#fbeef0;
+    --cream:#fbf7f4; --ink:#26201f; --muted:#8a807e; --border:#ece4e1;
+    --blue:#2563eb; --green:#16a34a; --amber:#f59e0b; --red:#dc2626;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',system-ui,Arial,sans-serif}
+  body{background:#cfc7c4}
+  .screen{width:1040px;height:700px;background:var(--cream);overflow:hidden;position:relative;display:flex}
+  .sidebar{width:210px;background:linear-gradient(180deg,var(--bordo),var(--bordo-d));color:#fff;padding:18px 14px;flex-shrink:0}
+  .brand{font-size:19px;font-weight:800;letter-spacing:.3px;margin-bottom:2px}
+  .brand small{display:block;font-size:10px;font-weight:500;opacity:.8;letter-spacing:2px}
+  .nav{margin-top:22px;display:flex;flex-direction:column;gap:3px}
+  .nav a{display:flex;align-items:center;gap:9px;font-size:12.5px;padding:8px 10px;border-radius:8px;color:#fff;opacity:.82;text-decoration:none}
+  .nav a.on{background:rgba(255,255,255,.16);opacity:1;font-weight:700}
+  .nav a .ic{width:16px;height:16px;border-radius:4px;background:rgba(255,255,255,.35);display:inline-block}
+  .main{flex:1;padding:22px 26px;overflow:hidden}
+  .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+  .h1{font-size:21px;font-weight:800;color:var(--ink)}
+  .h1 small{display:block;font-size:11.5px;font-weight:500;color:var(--muted);margin-top:2px}
+  .pill{background:var(--bordo-bg);color:var(--bordo);border:1px solid var(--bordo-l);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:700}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:18px}
+  .kpi{background:#fff;border:1px solid var(--border);border-radius:13px;padding:14px 15px;position:relative;overflow:hidden}
+  .kpi .ac{position:absolute;left:0;top:0;bottom:0;width:4px}
+  .kpi .lbl{font-size:11px;color:var(--muted);font-weight:600}
+  .kpi .val{font-size:25px;font-weight:900;color:var(--ink);margin-top:3px}
+  .kpi .sub{font-size:10.5px;color:var(--muted);margin-top:2px}
+  .card{background:#fff;border:1px solid var(--border);border-radius:13px;padding:16px 18px}
+  .card-tt{font-size:13.5px;font-weight:800;color:var(--ink);margin-bottom:13px;display:flex;align-items:center;gap:7px}
+  table{width:100%;border-collapse:collapse}
+  th{font-size:10.5px;color:var(--muted);text-align:left;font-weight:700;padding:7px 8px;border-bottom:2px solid var(--border);text-transform:uppercase;letter-spacing:.3px}
+  td{font-size:12.5px;color:var(--ink);padding:9px 8px;border-bottom:1px solid var(--border)}
+  td b{font-weight:700}
+  .badge{font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px;display:inline-block}
+  .b-red{background:#fde8e8;color:var(--red)} .b-amber{background:#fef3da;color:#b45309}
+  .b-green{background:#dcfce7;color:#15803d} .b-blue{background:#dbeafe;color:#1d4ed8}
+  .bars{display:flex;align-items:flex-end;gap:14px;height:150px;padding:10px 4px 0}
+  .bar{flex:1;background:linear-gradient(180deg,var(--bordo),#a83a48);border-radius:7px 7px 0 0;position:relative}
+  .bar span{position:absolute;top:-18px;left:0;right:0;text-align:center;font-size:10px;font-weight:700;color:var(--bordo)}
+  .bar small{position:absolute;bottom:-20px;left:0;right:0;text-align:center;font-size:10px;color:var(--muted)}
+  .row2{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}
+  .btn{background:var(--bordo);color:#fff;border:none;border-radius:9px;padding:9px 16px;font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;gap:7px}
+  .btn.o{background:#fff;color:var(--bordo);border:1.5px solid var(--bordo-l)}
+  .chat{display:flex;flex-direction:column;gap:10px}
+  .msg{max-width:78%;padding:10px 14px;border-radius:14px;font-size:12.5px;line-height:1.4}
+  .msg.bot{background:var(--bordo-bg);color:var(--ink);border:1px solid var(--bordo-l);border-bottom-left-radius:4px}
+  .msg.me{background:var(--bordo);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+  .pipe{display:grid;grid-template-columns:repeat(4,1fr);gap:11px}
+  .col{background:var(--cream);border:1px solid var(--border);border-radius:11px;padding:10px}
+  .col h4{font-size:11px;font-weight:800;color:var(--bordo);margin-bottom:9px;text-transform:uppercase;letter-spacing:.4px}
+  .tk{background:#fff;border:1px solid var(--border);border-left:3px solid var(--bordo);border-radius:8px;padding:8px 10px;margin-bottom:7px;font-size:11.5px;font-weight:600;color:var(--ink)}
+  .tk small{display:block;font-weight:500;color:var(--muted);font-size:10px;margin-top:2px}
+  .rank{display:flex;align-items:center;gap:12px;padding:11px 8px;border-bottom:1px solid var(--border)}
+  .medal{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;font-size:14px}
+  .prog{height:8px;background:var(--border);border-radius:6px;overflow:hidden;margin-top:5px}
+  .prog i{display:block;height:100%;background:linear-gradient(90deg,var(--bordo),#c2566a);border-radius:6px}
+</style>
+</head>
+<body>
+
+<!-- 1. DASHBOARD -->
+<div class="screen" id="s_dash">
+  <div class="sidebar">
+    <div class="brand">Amore Gestão<small>AMORE FOOD</small></div>
+    <div class="nav">
+      <a class="on"><i class="ic"></i>Dashboard</a>
+      <a><i class="ic"></i>Estoque</a>
+      <a><i class="ic"></i>Compras</a>
+      <a><i class="ic"></i>Requisições</a>
+      <a><i class="ic"></i>Financeiro</a>
+      <a><i class="ic"></i>Marketing</a>
+      <a><i class="ic"></i>Gamificação</a>
+    </div>
+  </div>
+  <div class="main">
+    <div class="top"><div class="h1">Dashboard Gerencial<small>Visão geral · Junho 2026</small></div><div class="pill">🏪 Amore CD</div></div>
+    <div class="kpis">
+      <div class="kpi"><div class="ac" style="background:var(--bordo)"></div><div class="lbl">Valor em Estoque</div><div class="val">R$ 84,2k</div><div class="sub">286 produtos</div></div>
+      <div class="kpi"><div class="ac" style="background:var(--blue)"></div><div class="lbl">Pedidos do mês</div><div class="val">142</div><div class="sub">+12% vs maio</div></div>
+      <div class="kpi"><div class="ac" style="background:var(--green)"></div><div class="lbl">Economia gerada</div><div class="val">R$ 9,7k</div><div class="sub">cotações</div></div>
+      <div class="kpi"><div class="ac" style="background:var(--red)"></div><div class="lbl">Estoque crítico</div><div class="val" style="color:var(--red)">18</div><div class="sub">repor já</div></div>
+    </div>
+    <div class="row2">
+      <div class="card"><div class="card-tt">📊 Compras por categoria</div>
+        <div class="bars">
+          <div class="bar" style="height:62%"><span>R$22k</span><small>Carnes</small></div>
+          <div class="bar" style="height:90%"><span>R$31k</span><small>Mercearia</small></div>
+          <div class="bar" style="height:40%"><span>R$14k</span><small>Bebidas</small></div>
+          <div class="bar" style="height:55%"><span>R$19k</span><small>Hortifruti</small></div>
+          <div class="bar" style="height:30%"><span>R$10k</span><small>Limpeza</small></div>
+        </div>
+      </div>
+      <div class="card"><div class="card-tt">🔔 Alertas recentes</div>
+        <div style="font-size:12px;color:var(--ink);line-height:2.1">
+          🔴 <b>FILÉ DE TILÁPIA</b> abaixo do mínimo<br>
+          🟡 <b>COCA-COLA LT 350ML</b> repor sugerido<br>
+          🟢 Recebimento <b>NF 4521</b> validado<br>
+          📄 Boleto <b>Praso Comércio</b> vence em 2 dias<br>
+          ✅ Cotação <b>3 fornecedores</b> concluída
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 2. ESTOQUE -->
+<div class="screen" id="s_estoque">
+  <div class="sidebar">
+    <div class="brand">Amore Gestão<small>AMORE FOOD</small></div>
+    <div class="nav">
+      <a><i class="ic"></i>Dashboard</a>
+      <a class="on"><i class="ic"></i>Estoque</a>
+      <a><i class="ic"></i>Compras</a>
+      <a><i class="ic"></i>Requisições</a>
+      <a><i class="ic"></i>Financeiro</a>
+      <a><i class="ic"></i>Marketing</a>
+      <a><i class="ic"></i>Gamificação</a>
+    </div>
+  </div>
+  <div class="main">
+    <div class="top"><div class="h1">📦 Estoque<small>Lista · Amore CD</small></div><button class="btn">＋ Adicionar Produto</button></div>
+    <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+      <div class="kpi"><div class="ac" style="background:var(--bordo)"></div><div class="lbl">Valor em Estoque</div><div class="val">R$ 84,2k</div></div>
+      <div class="kpi"><div class="ac" style="background:var(--red)"></div><div class="lbl">Nível Crítico</div><div class="val" style="color:var(--red)">18</div></div>
+      <div class="kpi"><div class="ac" style="background:var(--amber)"></div><div class="lbl">Repor</div><div class="val" style="color:var(--amber)">11</div></div>
+    </div>
+    <div class="card">
+      <div class="card-tt">📦 Lista de Estoque</div>
+      <table>
+        <thead><tr><th>Produto</th><th>Gramatura</th><th>Nível Atual</th><th>Status</th><th>Mínimo</th><th>Ideal</th></tr></thead>
+        <tbody>
+          <tr><td><b>FILE DE FRANGO CX 20 KG</b></td><td>Quilograma(s)</td><td><b>28.000</b></td><td><span class="badge b-green">Ideal</span></td><td>10</td><td>40</td></tr>
+          <tr><td><b>FILÉ DE TILÁPIA</b></td><td>Quilograma(s)</td><td><b style="color:var(--red)">0</b></td><td><span class="badge b-red">Crítico</span></td><td>5</td><td>20</td></tr>
+          <tr><td><b>COCA-COLA LT 350ML</b></td><td>Unidade(s)</td><td><b style="color:var(--amber)">132</b></td><td><span class="badge b-amber">Repor</span></td><td>120</td><td>300</td></tr>
+          <tr><td><b>GUARANÁ LATA 350 ML</b></td><td>Unidade(s)</td><td><b>288</b></td><td><span class="badge b-green">Ideal</span></td><td>36</td><td>240</td></tr>
+          <tr><td><b>BACON MANTA</b></td><td>Pacote(s)</td><td><b>2.244</b></td><td><span class="badge b-blue">Ok</span></td><td>1</td><td>2.000</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 3. COMPRAS / REQUISIÇÕES -->
+<div class="screen" id="s_compras">
+  <div class="sidebar">
+    <div class="brand">Amore Gestão<small>AMORE FOOD</small></div>
+    <div class="nav">
+      <a><i class="ic"></i>Dashboard</a>
+      <a><i class="ic"></i>Estoque</a>
+      <a><i class="ic"></i>Compras</a>
+      <a class="on"><i class="ic"></i>Requisições</a>
+      <a><i class="ic"></i>Financeiro</a>
+      <a><i class="ic"></i>Marketing</a>
+      <a><i class="ic"></i>Gamificação</a>
+    </div>
+  </div>
+  <div class="main">
+    <div class="top"><div class="h1">🔄 Pipeline de Suprimentos<small>Requisição → Cotação → Aprovação → Pedido → Recebimento</small></div><button class="btn">＋ Nova Requisição</button></div>
+    <div class="pipe">
+      <div class="col"><h4>Requisição</h4>
+        <div class="tk">Carnes - reposição<small>Cozinha · 8 itens</small></div>
+        <div class="tk">Embalagens<small>Salão · 5 itens</small></div>
+      </div>
+      <div class="col"><h4>Cotação</h4>
+        <div class="tk">Hortifruti semana<small>3 fornecedores</small></div>
+      </div>
+      <div class="col"><h4>Aprovação</h4>
+        <div class="tk">Bebidas - fardo<small>R$ 4.200 · Gestor</small></div>
+      </div>
+      <div class="col"><h4>Pedido / Receb.</h4>
+        <div class="tk">PC-0142 · Praso<small>NF validada ✅</small></div>
+        <div class="tk">PC-0141 · Nato<small>aguardando</small></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px"><div class="card-tt">🤝 Comparativo de cotação — Carnes</div>
+      <table>
+        <thead><tr><th>Fornecedor</th><th>Preço unit.</th><th>Prazo</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><b>Praso Comércio</b></td><td><b style="color:var(--green)">R$ 23,90</b></td><td>2 dias</td><td><span class="badge b-green">Melhor preço</span></td></tr>
+          <tr><td><b>Nato Nejaim</b></td><td>R$ 25,40</td><td>1 dia</td><td><span class="badge b-blue">Mais rápido</span></td></tr>
+          <tr><td><b>Casa do Queijo</b></td><td>R$ 26,10</td><td>3 dias</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 4. FINANCEIRO -->
+<div class="screen" id="s_fin">
+  <div class="sidebar">
+    <div class="brand">Amore Gestão<small>AMORE FOOD</small></div>
+    <div class="nav">
+      <a><i class="ic"></i>Dashboard</a>
+      <a><i class="ic"></i>Estoque</a>
+      <a><i class="ic"></i>Compras</a>
+      <a><i class="ic"></i>Requisições</a>
+      <a class="on"><i class="ic"></i>Financeiro</a>
+      <a><i class="ic"></i>Marketing</a>
+      <a><i class="ic"></i>Gamificação</a>
+    </div>
+  </div>
+  <div class="main">
+    <div class="top"><div class="h1">💰 Financeiro<small>Boletos · Contas · Prestação de contas</small></div><button class="btn">＋ Novo Lançamento</button></div>
+    <div class="kpis">
+      <div class="kpi"><div class="ac" style="background:var(--green)"></div><div class="lbl">A receber</div><div class="val" style="color:var(--green)">R$ 31k</div></div>
+      <div class="kpi"><div class="ac" style="background:var(--red)"></div><div class="lbl">A pagar</div><div class="val" style="color:var(--red)">R$ 18k</div></div>
+      <div class="kpi"><div class="ac" style="background:var(--amber)"></div><div class="lbl">Vencendo (2d)</div><div class="val" style="color:var(--amber)">4</div></div>
+      <div class="kpi"><div class="ac" style="background:var(--bordo)"></div><div class="lbl">Saldo</div><div class="val">R$ 13k</div></div>
+    </div>
+    <div class="card"><div class="card-tt">📄 Central de Boletos</div>
+      <table>
+        <thead><tr><th>Fornecedor</th><th>Valor</th><th>Vencimento</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><b>Praso Comércio</b></td><td>R$ 4.230,00</td><td>04/06/2026</td><td><span class="badge b-amber">Vence em 2d</span></td></tr>
+          <tr><td><b>Nato Nejaim</b></td><td>R$ 2.110,00</td><td>09/06/2026</td><td><span class="badge b-blue">Em aberto</span></td></tr>
+          <tr><td><b>Dia Distribuição</b></td><td>R$ 1.560,00</td><td>30/05/2026</td><td><span class="badge b-green">Pago</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 5. MARKETING + LIZ -->
+<div class="screen" id="s_liz">
+  <div class="sidebar">
+    <div class="brand">Amore Gestão<small>AMORE FOOD</small></div>
+    <div class="nav">
+      <a><i class="ic"></i>Dashboard</a>
+      <a><i class="ic"></i>Estoque</a>
+      <a><i class="ic"></i>Compras</a>
+      <a><i class="ic"></i>Requisições</a>
+      <a><i class="ic"></i>Financeiro</a>
+      <a class="on"><i class="ic"></i>Marketing</a>
+      <a><i class="ic"></i>Gamificação</a>
+    </div>
+  </div>
+  <div class="main">
+    <div class="top"><div class="h1">✨ Marketing & Agente Liz<small>Campanhas com IA · Prospecção de fornecedores</small></div><button class="btn">✨ Criar com IA</button></div>
+    <div class="row2">
+      <div class="card"><div class="card-tt">🤖 Liz — Assistente Inteligente</div>
+        <div class="chat">
+          <div class="msg me">Liz, prospecta fornecedores de embalagens em Recife</div>
+          <div class="msg bot">Encontrei 6 fornecedores: <b>Praso Comércio</b>, <b>Embalagens Norte</b>, <b>Dia Distribuição</b>… Quer que eu gere uma cotação?</div>
+          <div class="msg me">Cria uma campanha de Dia dos Namorados</div>
+          <div class="msg bot">✨ Campanha pronta! Post p/ Instagram + WhatsApp e sugestão de combo. Salvar no calendário?</div>
+        </div>
+      </div>
+      <div class="card"><div class="card-tt">📅 Calendário de Campanhas</div>
+        <div style="font-size:12px;line-height:2.2;color:var(--ink)">
+          ❤️ <b>12/06</b> Dia dos Namorados <span class="badge b-red">IA</span><br>
+          🎭 <b>Fev</b> Carnaval<br>
+          🌷 <b>Mai</b> Dia das Mães<br>
+          🎄 <b>25/12</b> Natal <span class="badge b-green">planejado</span><br>
+          🛍️ <b>Nov</b> Black Friday
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 6. GAMIFICAÇÃO -->
+<div class="screen" id="s_gam">
+  <div class="sidebar">
+    <div class="brand">Amore Gestão<small>AMORE FOOD</small></div>
+    <div class="nav">
+      <a><i class="ic"></i>Dashboard</a>
+      <a><i class="ic"></i>Estoque</a>
+      <a><i class="ic"></i>Compras</a>
+      <a><i class="ic"></i>Requisições</a>
+      <a><i class="ic"></i>Financeiro</a>
+      <a><i class="ic"></i>Marketing</a>
+      <a class="on"><i class="ic"></i>Gamificação</a>
+    </div>
+  </div>
+  <div class="main">
+    <div class="top"><div class="h1">🏆 Gamificação<small>Ranking da equipe · Metas e pontos</small></div><div class="pill">Meta do mês: 85%</div></div>
+    <div class="row2">
+      <div class="card"><div class="card-tt">🏅 Ranking da Equipe</div>
+        <div class="rank"><div class="medal" style="background:#d4af37">1</div><div style="flex:1"><b>Esdras</b><div class="prog"><i style="width:92%"></i></div></div><b style="color:var(--bordo)">920 pts</b></div>
+        <div class="rank"><div class="medal" style="background:#9ca3af">2</div><div style="flex:1"><b>Marina</b><div class="prog"><i style="width:78%"></i></div></div><b style="color:var(--bordo)">780 pts</b></div>
+        <div class="rank"><div class="medal" style="background:#b87333">3</div><div style="flex:1"><b>João</b><div class="prog"><i style="width:64%"></i></div></div><b style="color:var(--bordo)">640 pts</b></div>
+      </div>
+      <div class="card"><div class="card-tt">🎯 Metas configuráveis</div>
+        <div style="font-size:12px;line-height:2.3;color:var(--ink)">
+          ✅ Contagem de estoque <span class="badge b-green">+50 pts</span><br>
+          ✅ Recebimento validado <span class="badge b-green">+30 pts</span><br>
+          ⏳ Cotação completa <span class="badge b-amber">+40 pts</span><br>
+          ⏳ Tarefa no prazo <span class="badge b-blue">+20 pts</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
