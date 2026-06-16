@@ -71,17 +71,17 @@ export function perfisDoSetor(profiles: any[], setor: string): any[] {
 // Envia uma mensagem de texto para um número via Z-API. Retorna true se ok.
 // Se `meta` for informado, registra a notificação na Central (tabela notificacoes).
 export async function enviarWhatsApp(phone: string, message: string, cfg?: ZapiCfg, meta?: NotifyMeta): Promise<boolean> {
-  const c = cfg || getZapiCfg()
   const fone = soDigitos(phone)
   let ok = false
   let erro: string | null = null
   try {
-    if (!c.instance || !c.token || !fone || !message) { erro = 'config/numero/mensagem ausente'; }
+    if (!fone || !message) { erro = 'numero/mensagem ausente'; }
     else {
-      const r = await fetch('/api/zapi-send', {
+      // Envia pela Evolution API (credenciais ficam no servidor — env da Vercel).
+      const r = await fetch('/api/evolution-send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instance: c.instance, token: c.token, clientToken: c.clientToken, phone: fone, message }),
+        body: JSON.stringify({ phone: fone, message }),
       })
       ok = r.ok
       if (!r.ok) erro = `HTTP ${r.status}`

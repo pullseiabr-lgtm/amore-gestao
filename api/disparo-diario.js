@@ -134,6 +134,21 @@ async function enviarZapi(to, texto) {
   return { ok: res.ok, status: res.status, data }
 }
 
+// Envio via Evolution API (gateway grátis no VPS). Prioritário se configurado.
+// Vars: EVOLUTION_URL, EVOLUTION_KEY, EVOLUTION_INSTANCE, EVOLUTION_RECIPIENTS
+async function enviarEvolution(to, texto) {
+  const url = process.env.EVOLUTION_URL
+  const key = process.env.EVOLUTION_KEY
+  const instance = process.env.EVOLUTION_INSTANCE
+  const res = await fetch(`${url}/message/sendText/${instance}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: key },
+    body: JSON.stringify({ number: to, text: texto }),
+  })
+  const data = await res.json().catch(() => ({}))
+  return { ok: res.ok, status: res.status, data }
+}
+
 export default async function handler(req, res) {
   // Proteção: a Vercel envia "Authorization: Bearer <CRON_SECRET>" nos crons.
   // Permite também ?secret= para teste manual.
@@ -162,7 +177,12 @@ export default async function handler(req, res) {
       ZAPI_INSTANCE: !!process.env.ZAPI_INSTANCE,
       ZAPI_TOKEN: !!process.env.ZAPI_TOKEN,
       ZAPI_RECIPIENTS: !!process.env.ZAPI_RECIPIENTS,
-      provedor: (process.env.ZAPI_INSTANCE && process.env.ZAPI_TOKEN) ? 'z-api' : 'meta',
+      EVOLUTION_URL: !!process.env.EVOLUTION_URL,
+      EVOLUTION_KEY: !!process.env.EVOLUTION_KEY,
+      EVOLUTION_INSTANCE: !!process.env.EVOLUTION_INSTANCE,
+      EVOLUTION_RECIPIENTS: !!process.env.EVOLUTION_RECIPIENTS,
+      provedor: (process.env.EVOLUTION_URL && process.env.EVOLUTION_KEY && process.env.EVOLUTION_INSTANCE) ? 'evolution'
+        : (process.env.ZAPI_INSTANCE && process.env.ZAPI_TOKEN) ? 'z-api' : 'meta',
     })
   }
 
@@ -190,17 +210,22 @@ export default async function handler(req, res) {
       return res.status(200).json({ preview: true, loja: loja || 'todas', relatorio: texto })
     }
 
-    // Provedor: Z-API (se configurado) tem prioridade; senão, Meta Cloud API.
-    const usaZapi = !!(process.env.ZAPI_INSTANCE && process.env.ZAPI_TOKEN)
-    const recipientsRaw = process.env.ZAPI_RECIPIENTS || process.env.WHATSAPP_RECIPIENTS || ''
+    // Provedor: Evolution (se configurado) > Z-API > Meta Cloud API.
+    const usaEvolution = !!(process.env.EVOLUTION_URL && process.env.EVOLUTION_KEY && process.env.EVOLUTION_INSTANCE)
+    const usaZapi = !usaEvolution && !!(process.env.ZAPI_INSTANCE && process.env.ZAPI_TOKEN)
+    const recipientsRaw = process.env.EVOLUTION_RECIPIENTS || process.env.ZAPI_RECIPIENTS || process.env.WHATSAPP_RECIPIENTS || ''
 
-    if (usaZapi) {
+    if (usaEvolution) {
+      if (!recipientsRaw) {
+        return res.status(503).json({ error: 'Evolution conectada, mas falta EVOLUTION_RECIPIENTS (números destinatários).', dica: 'Use ?preview=1 para ver o relatório.', previa: texto.slice(0, 600) })
+      }
+    } else if (usaZapi) {
       if (!recipientsRaw) {
         return res.status(503).json({ error: 'Z-API conectado, mas falta ZAPI_RECIPIENTS (números destinatários). Adicione nas variáveis de ambiente da Vercel.', dica: 'Use ?preview=1 para ver o relatório.', previa: texto.slice(0, 600) })
       }
     } else if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID || !process.env.WHATSAPP_RECIPIENTS) {
       return res.status(503).json({
-        error: 'Disparo pronto, mas falta configurar o WhatsApp. Configure o Z-API (ZAPI_INSTANCE, ZAPI_TOKEN, ZAPI_RECIPIENTS) ou a Meta (WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_RECIPIENTS) na Vercel.',
+        error: 'Disparo pronto, mas falta configurar o WhatsApp. Configure a Evolution (EVOLUTION_URL, EVOLUTION_KEY, EVOLUTION_INSTANCE, EVOLUTION_RECIPIENTS), o Z-API ou a Meta na Vercel.',
         dica: 'Use ?preview=1 para ver o relatório sem enviar.',
         previa: texto.slice(0, 600),
       })
@@ -209,11 +234,12 @@ export default async function handler(req, res) {
     const destinatarios = recipientsRaw.split(',').map(s => s.trim().replace(/\D/g, '')).filter(Boolean)
     const resultados = []
     for (const to of destinatarios) {
-      const r = usaZapi ? await enviarZapi(to, texto) : await enviarWhatsApp(to, texto)
+      const r = usaEvolution ? await enviarEvolution(to, texto) : usaZapi ? await enviarZapi(to, texto) : await enviarWhatsApp(to, texto)
       resultados.push({ to, ok: r.ok, status: r.status, erro: r.ok ? undefined : (r.data?.error?.message || r.data) })
     }
 
-    return res.status(200).json({ provedor: usaZapi ? 'z-api' : 'meta', enviados: resultados.filter(r => r.ok).length, total: destinatarios.length, resultados, previa: texto.slice(0, 400) })
+    const provedor = usaEvolution ? 'evolution' : usaZapi ? 'z-api' : 'meta'
+    return res.status(200).json({ provedor, enviados: resultados.filter(r => r.ok).length, total: destinatarios.length, resultados, previa: texto.slice(0, 400) })
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Erro no disparo diário' })
   }
