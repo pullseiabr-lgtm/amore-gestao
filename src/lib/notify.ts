@@ -68,9 +68,10 @@ export function perfisDoSetor(profiles: any[], setor: string): any[] {
   })
 }
 
-// Envia uma mensagem de texto para um número via Z-API. Retorna true se ok.
+// Envia uma mensagem de texto para um número via Evolution API. Retorna true se ok.
 // Se `meta` for informado, registra a notificação na Central (tabela notificacoes).
-export async function enviarWhatsApp(phone: string, message: string, cfg?: ZapiCfg, meta?: NotifyMeta): Promise<boolean> {
+// `_cfg` mantido por compatibilidade com chamadores antigos (não usado — credenciais ficam no servidor).
+export async function enviarWhatsApp(phone: string, message: string, _cfg?: ZapiCfg, meta?: NotifyMeta): Promise<boolean> {
   const fone = soDigitos(phone)
   let ok = false
   let erro: string | null = null
