@@ -140,15 +140,26 @@ async function enviarZapi(to, texto) {
   return { ok: res.ok, status: res.status, data }
 }
 
-// Envio via Evolution API (gateway grátis no VPS). Prioritário se configurado.
-// Vars: EVOLUTION_URL, EVOLUTION_KEY, EVOLUTION_INSTANCE, EVOLUTION_RECIPIENTS
-async function enviarEvolution(to, texto) {
-  const url = process.env.EVOLUTION_URL
-  const key = process.env.EVOLUTION_KEY
-  const instance = process.env.EVOLUTION_INSTANCE
-  const res = await fetch(`${url}/message/sendText/${instance}`, {
+// Config da Evolution: env vars OU tabela app_config do Supabase (chave evolution_api).
+// Funciona mesmo em projetos Vercel sem as env vars (basta ter VITE_SUPABASE_*).
+async function getEvolutionCfg() {
+  if (process.env.EVOLUTION_URL && process.env.EVOLUTION_KEY && process.env.EVOLUTION_INSTANCE) {
+    return { url: process.env.EVOLUTION_URL, key: process.env.EVOLUTION_KEY, instance: process.env.EVOLUTION_INSTANCE, recipients: process.env.EVOLUTION_RECIPIENTS || '' }
+  }
+  try {
+    const r = await fetch(`${process.env.VITE_SUPABASE_URL}/rest/v1/app_config?chave=eq.evolution_api&select=valor`, {
+      headers: { apikey: process.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}` },
+    })
+    const rows = await r.json().catch(() => [])
+    return rows?.[0]?.valor || null
+  } catch { return null }
+}
+
+// Envio via Evolution API (gateway grátis no VPS).
+async function enviarEvolution(to, texto, cfg) {
+  const res = await fetch(`${cfg.url}/message/sendText/${cfg.instance}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', apikey: key },
+    headers: { 'Content-Type': 'application/json', apikey: cfg.key },
     body: JSON.stringify({ number: to, text: texto }),
   })
   const data = await res.json().catch(() => ({}))
@@ -217,10 +228,11 @@ export default async function handler(req, res) {
       return res.status(200).json({ preview: true, loja: loja || 'todas', relatorio: texto })
     }
 
-    // Provedor: Evolution (se configurado) > Z-API > Meta Cloud API.
-    const usaEvolution = !!(process.env.EVOLUTION_URL && process.env.EVOLUTION_KEY && process.env.EVOLUTION_INSTANCE)
+    // Provedor: Evolution (se configurado, via env OU Supabase) > Z-API > Meta Cloud API.
+    const evoCfg = await getEvolutionCfg()
+    const usaEvolution = !!(evoCfg && evoCfg.url && evoCfg.key && evoCfg.instance)
     const usaZapi = !usaEvolution && !!(process.env.ZAPI_INSTANCE && process.env.ZAPI_TOKEN)
-    const recipientsRaw = process.env.EVOLUTION_RECIPIENTS || process.env.ZAPI_RECIPIENTS || process.env.WHATSAPP_RECIPIENTS || ''
+    const recipientsRaw = (usaEvolution && evoCfg.recipients) || process.env.ZAPI_RECIPIENTS || process.env.WHATSAPP_RECIPIENTS || ''
 
     if (usaEvolution) {
       if (!recipientsRaw) {
@@ -241,7 +253,7 @@ export default async function handler(req, res) {
     const destinatarios = recipientsRaw.split(',').map(s => s.trim().replace(/\D/g, '')).filter(Boolean)
     const resultados = []
     for (const to of destinatarios) {
-      const r = usaEvolution ? await enviarEvolution(to, texto) : usaZapi ? await enviarZapi(to, texto) : await enviarWhatsApp(to, texto)
+      const r = usaEvolution ? await enviarEvolution(to, texto, evoCfg) : usaZapi ? await enviarZapi(to, texto) : await enviarWhatsApp(to, texto)
       resultados.push({ to, ok: r.ok, status: r.status, erro: r.ok ? undefined : (r.data?.error?.message || r.data) })
     }
 

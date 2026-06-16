@@ -5,6 +5,21 @@
 //   EVOLUTION_URL       = http://2.25.193.109:8080
 //   EVOLUTION_KEY       = chave global (apikey)
 //   EVOLUTION_INSTANCE  = nome da instância conectada (ex: esdras)
+// Lê config da Evolution: variáveis de ambiente OU tabela app_config do Supabase
+// (assim funciona mesmo em projetos Vercel sem as env vars, desde que tenham VITE_SUPABASE_*).
+async function getEvolutionCfg() {
+  if (process.env.EVOLUTION_URL && process.env.EVOLUTION_KEY && process.env.EVOLUTION_INSTANCE) {
+    return { url: process.env.EVOLUTION_URL, key: process.env.EVOLUTION_KEY, instance: process.env.EVOLUTION_INSTANCE, recipients: process.env.EVOLUTION_RECIPIENTS || '' }
+  }
+  try {
+    const r = await fetch(`${process.env.VITE_SUPABASE_URL}/rest/v1/app_config?chave=eq.evolution_api&select=valor`, {
+      headers: { apikey: process.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}` },
+    })
+    const rows = await r.json().catch(() => [])
+    return rows?.[0]?.valor || null
+  } catch { return null }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
@@ -12,11 +27,10 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido' })
 
-  const url = process.env.EVOLUTION_URL
-  const key = process.env.EVOLUTION_KEY
-  const instance = process.env.EVOLUTION_INSTANCE
+  const cfg = await getEvolutionCfg()
+  const url = cfg?.url, key = cfg?.key, instance = cfg?.instance
   if (!url || !key || !instance) {
-    return res.status(503).json({ error: 'Evolution não configurada (EVOLUTION_URL / EVOLUTION_KEY / EVOLUTION_INSTANCE).' })
+    return res.status(503).json({ error: 'Evolution não configurada (env ou app_config.evolution_api).' })
   }
 
   let body = req.body
