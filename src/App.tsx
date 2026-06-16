@@ -11,6 +11,7 @@ import VendasPage from './pages/vendas/VendasPage'
 import ComprasPage from './pages/compras/ComprasPage'
 import FinanceiroPage from './pages/financeiro/FinanceiroPage'
 import MarketingPage from './pages/marketing/MarketingPage'
+import ContatosPage from './pages/marketing/ContatosPage'
 import GamificacaoPage from './pages/gamificacao/GamificacaoPage'
 import PendenciasPage from './pages/pendencias/PendenciasPage'
 import CozinhaPage from './pages/cozinha/CozinhaPage'
@@ -53,6 +54,7 @@ export type PageId =
   | 'fornecedores'
   | 'financeiro'
   | 'marketing'
+  | 'mkt-contatos'
   | 'gamificacao'
   | 'pendencias'
   | 'cozinha'
@@ -89,6 +91,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   fornecedores: 'Fornecedores',
   financeiro: 'Financeiro',
   marketing: 'Marketing',
+  'mkt-contatos': 'Central de Consentimento',
   gamificacao: 'Gamificação',
   pendencias: 'Pendências & OS',
   cozinha: 'Cozinha',
@@ -127,6 +130,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'fornecedores': return <FornecedoresPage />
     case 'financeiro': return <FinanceiroPage />
     case 'marketing': return <MarketingPage />
+    case 'mkt-contatos': return <ContatosPage />
     case 'gamificacao': return <GamificacaoPage />
     case 'pendencias': return <PendenciasPage />
     case 'cozinha': return <CozinhaPage />

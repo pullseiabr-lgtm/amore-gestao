@@ -27,6 +27,7 @@ const MENU_TOP: NavItem[] = [
   { id: 'pendencias',  label: 'Pendências & OS',    icon: <FileText size={13} />, badge: '7' },
   { id: 'gamificacao', label: 'Gamificação',         icon: <Trophy size={13} /> },
   { id: 'marketing',   label: 'Marketing 360°',     icon: <Megaphone size={13} /> },
+  { id: 'mkt-contatos', label: 'Contatos & Consent.', icon: <Megaphone size={13} /> },
   { id: 'vendas',      label: 'Vendas',              icon: <TrendingUp size={13} /> },
 ]
 

@@ -1235,6 +1235,57 @@ export async function deleteMktCampanha(id: string): Promise<void> {
   await sdkCall<null>(db.from('mkt_campanhas').delete().eq('id', id))
 }
 
+// ── Marketing: Contatos + Consentimento (LGPD) ───────────────────
+export type MktContatoStatus = 'ativo' | 'cancelado' | 'bloqueado'
+export type MktContatoOrigem = 'qr_code' | 'wifi' | 'delivery' | 'site' | 'instagram' | 'presencial' | 'manual' | 'importacao'
+
+export interface MktContato {
+  id: string
+  loja: string | null
+  nome: string
+  telefone: string
+  email: string | null
+  origem: MktContatoOrigem | null
+  consentimento: boolean
+  data_optin: string | null
+  data_optout: string | null
+  status: MktContatoStatus
+  aniversario: string | null
+  ultima_compra: string | null
+  ticket_medio: number
+  total_pedidos: number
+  categoria_favorita: string | null
+  tags: string[]
+  observacoes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export async function fetchMktContatos(loja?: string): Promise<MktContato[]> {
+  let q = db.from('mkt_contatos').select('*').order('created_at', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas' && loja !== 'all') q = q.eq('loja', loja)
+  return sdkCall<MktContato[]>(q).then(d => d ?? []).catch(() => [])
+}
+
+export async function insertMktContato(c: Omit<MktContato, 'id' | 'created_at' | 'updated_at'>): Promise<MktContato> {
+  return sdkCall<MktContato>(db.from('mkt_contatos').insert(c).select().single())
+}
+
+export async function updateMktContato(id: string, c: Partial<MktContato>): Promise<MktContato> {
+  return sdkCall<MktContato>(db.from('mkt_contatos').update({ ...c, updated_at: new Date().toISOString() }).eq('id', id).select().single())
+}
+
+export async function deleteMktContato(id: string): Promise<void> {
+  await sdkCall<null>(db.from('mkt_contatos').delete().eq('id', id))
+}
+
+// Importa vários contatos de uma vez (ignora duplicados por telefone via upsert)
+export async function upsertMktContatos(contatos: Omit<MktContato, 'id' | 'created_at' | 'updated_at'>[]): Promise<number> {
+  if (!contatos.length) return 0
+  const r = await sdkCall<MktContato[]>(db.from('mkt_contatos').upsert(contatos, { onConflict: 'telefone', ignoreDuplicates: true }).select())
+  return (r ?? []).length
+}
+
 // Contagem por categoria
 export async function fetchContagemPorCategoria(loja: string): Promise<{ categoria_nome: string | null; total: number }[]> {
   let q = db.from('produtos').select('categoria_nome').eq('ativo', true)
