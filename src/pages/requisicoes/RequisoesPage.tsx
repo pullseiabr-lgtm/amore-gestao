@@ -676,12 +676,25 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
         .filter(i => (i.quantidade_aprovada ?? i.quantidade) > 0)
         .map(i => `• ${i.produto_nome}: +${i.quantidade_aprovada ?? i.quantidade}${i.unidade ? ' ' + i.unidade : ''}`)
         .join('\n')
+      // Fornecedor(es) dos itens recebidos
+      const fornecedores = Array.from(new Set(recebidos.map(i => i.fornecedor_nome).filter(Boolean)))
+      const linhaForn = fornecedores.length ? `Fornecedor: ${fornecedores.join(', ')}\n` : ''
+      // Ruptura/Falta: recebido < pedido
+      const rupturas = recebidos
+        .filter(i => (i.quantidade_aprovada ?? i.quantidade) < i.quantidade)
+        .map(i => { const rec = i.quantidade_aprovada ?? i.quantidade; return `• ${i.produto_nome}: pediu ${i.quantidade}, recebeu ${rec} (faltou ${i.quantidade - rec})` })
+      const blocoRuptura = rupturas.length ? `\n⚠️ *FALTA / RUPTURA:*\n${rupturas.join('\n')}\n` : ''
+      // Avaria / observações do conferente
+      const blocoAvaria = confRecebObs && confRecebObs.trim() ? `\n🛠️ *Avarias / Observações:*\n${confRecebObs.trim()}\n` : ''
       const hora = new Date(confRecebHorario).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
       const msg = `📦 *PEDIDO RECEBIDO*\n\n` +
         `Requisição: REQ-${String(req.numero).padStart(4, '0')}\n` +
+        linhaForn +
         `Data: ${new Date(confRecebHorario).toLocaleDateString('pt-BR')}\n\n` +
-        `*Itens Recebidos:*\n${linhasItens || '—'}\n\n` +
-        (entraram > 0 ? `✅ Estoque atualizado (${entraram} item(ns)).\n` : '') +
+        `*Itens Recebidos:*\n${linhasItens || '—'}\n` +
+        blocoRuptura +
+        blocoAvaria +
+        (entraram > 0 ? `\n✅ Estoque atualizado (${entraram} item(ns)).\n` : '') +
         `👤 Conferente: ${confRecebNome}\n🕐 Horário: ${hora}\n\n_Painel AmoreFood_`
 
       const profiles = await fetchProfiles()
