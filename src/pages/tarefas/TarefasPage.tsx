@@ -12,7 +12,7 @@ import {
   insertTarefaChecklist, updateTarefaChecklist, deleteTarefaChecklist,
   insertTarefaComentario, insertTarefaHistorico, fetchProfiles,
 } from '../../lib/db'
-import { enviarWhatsApp, getZapiCfg } from '../../lib/notify'
+import { enviarWhatsApp } from '../../lib/notify'
 import type { Tarefa, TarefaStatus, TarefaPrioridade, TarefaResultado, TarefaChecklist, TarefaComentario } from '../../types/database'
 import { AnexoUploader, AnexoLinks } from '../../components/ui/AnexoUploader'
 
@@ -132,12 +132,11 @@ export default function TarefasPage() {
   // Envia notificação de tarefa via Z-API (usa a config salva na Liz → WhatsApp)
   // e registra na Central de Notificações.
   const notificarTarefaWhats = async (titulo: string, responsavel: string, prazo: string, setor?: string) => {
-    const cfg = getZapiCfg()
     const phone = whatsappDoResponsavel(responsavel)
-    if (!cfg.instance || !cfg.token || !phone) return false
+    if (!phone) return false  // Evolution é server-side; basta o número do responsável
     const prazoBR = prazo ? new Date(prazo + 'T12:00:00').toLocaleDateString('pt-BR') : 'sem prazo definido'
     const msg = `🆕 *Nova tarefa atribuída*\n\n📋 *${titulo}*\n👤 Responsável: ${responsavel}\n⏰ Prazo: ${prazoBR}\n\nAcesse o painel para mais detalhes.\n_Amore Gestão_`
-    return enviarWhatsApp(phone, msg, cfg, {
+    return enviarWhatsApp(phone, msg, undefined, {
       tipo: 'tarefa', modulo: 'tarefas', titulo, setor: setor || null,
       loja, destinatario_nome: responsavel, created_by: user?.name || null,
     })

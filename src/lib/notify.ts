@@ -21,7 +21,14 @@ export type NotifyMeta = {
 }
 
 export function getZapiCfg(): ZapiCfg {
-  try { return JSON.parse(localStorage.getItem('zapi_cfg') || '{}') } catch { return {} }
+  // O envio agora é via Evolution API (server-side, credenciais no servidor).
+  // Retornamos uma sentinela "pronta" para que as telas que checam
+  // `cfg.instance && cfg.token` (Tarefas, Compras, Liz) liberem o envio.
+  const pronto = { instance: 'evolution', token: 'evolution' }
+  try {
+    const c = JSON.parse(localStorage.getItem('zapi_cfg') || '{}')
+    return { ...pronto, ...c }
+  } catch { return pronto }
 }
 
 const ZAPI_CFG_KEY = 'zapi'
