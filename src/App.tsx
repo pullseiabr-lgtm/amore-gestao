@@ -12,6 +12,7 @@ import ComprasPage from './pages/compras/ComprasPage'
 import NotasFiscaisPage from './pages/notas/NotasFiscaisPage'
 import InteligenciaComprasPage from './pages/notas/InteligenciaComprasPage'
 import CmvAbcPage from './pages/notas/CmvAbcPage'
+import CompradorIaPage from './pages/notas/CompradorIaPage'
 import FinanceiroPage from './pages/financeiro/FinanceiroPage'
 import MarketingPage from './pages/marketing/MarketingPage'
 import ContatosPage from './pages/marketing/ContatosPage'
@@ -51,6 +52,7 @@ export type PageId =
   | 'notas-fiscais'
   | 'compras-inteligencia'
   | 'cmv-abc'
+  | 'comprador-ia'
   | 'requisicoes'
   | 'req-automaticas'
   | 'pipeline-suprimentos'
@@ -91,6 +93,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'notas-fiscais': 'Notas Fiscais',
   'compras-inteligencia': 'Inteligência de Compras',
   'cmv-abc': 'CMV & Curva ABC',
+  'comprador-ia': 'Comprador IA',
   requisicoes: 'Requisições de Compra',
   'req-automaticas': 'Requisições Automáticas',
   'pipeline-suprimentos': 'Pipeline de Suprimentos',
@@ -133,6 +136,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'notas-fiscais': return <NotasFiscaisPage />
     case 'compras-inteligencia': return <InteligenciaComprasPage />
     case 'cmv-abc': return <CmvAbcPage />
+    case 'comprador-ia': return <CompradorIaPage />
     case 'requisicoes':      return <RequisoesPage />
     case 'req-automaticas': return <RequisoesAutomaticasPage />
     case 'pipeline-suprimentos': return <FluxoSuprimentosPage />

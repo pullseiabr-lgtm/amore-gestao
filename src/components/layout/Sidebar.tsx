@@ -46,6 +46,7 @@ const COMPRAS_SUBMENU: NavItem[] = [
   { id: 'notas-fiscais',          label: 'Notas Fiscais (ASI)', icon: <FileText size={12} /> },
   { id: 'compras-inteligencia',   label: 'Inteligência de Compras', icon: <TrendingUp size={12} /> },
   { id: 'cmv-abc',                label: 'CMV & Curva ABC',     icon: <Trophy size={12} /> },
+  { id: 'comprador-ia',           label: '🤖 Comprador IA',     icon: <span style={{ fontSize: 13, lineHeight: 1 }}>🤖</span> },
   { id: 'requisicoes',            label: 'Requisições',         icon: <ClipboardList size={12} /> },
   { id: 'req-automaticas',        label: 'Req. Automáticas',    icon: <Zap size={12} /> },
   { id: 'estoque',                label: 'Estoque',             icon: <Package size={12} /> },
