@@ -10,6 +10,7 @@ import DashboardPage from './pages/dashboard/DashboardPage'
 import VendasPage from './pages/vendas/VendasPage'
 import ComprasPage from './pages/compras/ComprasPage'
 import NotasFiscaisPage from './pages/notas/NotasFiscaisPage'
+import InteligenciaComprasPage from './pages/notas/InteligenciaComprasPage'
 import FinanceiroPage from './pages/financeiro/FinanceiroPage'
 import MarketingPage from './pages/marketing/MarketingPage'
 import ContatosPage from './pages/marketing/ContatosPage'
@@ -47,6 +48,7 @@ export type PageId =
   | 'vendas'
   | 'compras'
   | 'notas-fiscais'
+  | 'compras-inteligencia'
   | 'requisicoes'
   | 'req-automaticas'
   | 'pipeline-suprimentos'
@@ -85,6 +87,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   vendas: 'Vendas',
   compras: 'Compras',
   'notas-fiscais': 'Notas Fiscais',
+  'compras-inteligencia': 'Inteligência de Compras',
   requisicoes: 'Requisições de Compra',
   'req-automaticas': 'Requisições Automáticas',
   'pipeline-suprimentos': 'Pipeline de Suprimentos',
@@ -125,6 +128,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'vendas': return <VendasPage />
     case 'compras': return <ComprasPage />
     case 'notas-fiscais': return <NotasFiscaisPage />
+    case 'compras-inteligencia': return <InteligenciaComprasPage />
     case 'requisicoes':      return <RequisoesPage />
     case 'req-automaticas': return <RequisoesAutomaticasPage />
     case 'pipeline-suprimentos': return <FluxoSuprimentosPage />
