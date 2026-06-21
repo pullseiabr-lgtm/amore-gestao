@@ -2143,6 +2143,10 @@ export async function fetchNotaItens(notaId: string): Promise<NotaItem[]> {
   return sdkCall<NotaItem[]>(db.from('nf_itens').select('*').eq('nota_id', notaId).order('descricao'))
 }
 
+export async function fetchTodosNfItens(loja: string): Promise<NotaItem[]> {
+  return sdkCall<NotaItem[]>(db.from('nf_itens').select('*').eq('loja', loja).limit(3000))
+}
+
 export async function fetchHistoricoPrecos(loja: string, descricao?: string): Promise<HistoricoPreco[]> {
   let q = db.from('historico_precos').select('*').eq('loja', loja)
   if (descricao) q = q.ilike('descricao', descricao)
