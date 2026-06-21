@@ -8,7 +8,7 @@ import { useLoja } from '../../contexts/LojaContext'
 import { useToast } from '../../hooks/useToast'
 import {
   fetchNotasFiscais, fetchNotaItens, importarNotaFiscal, receberNotaConforme,
-  registrarDivergenciaNota, fetchContasPagar,
+  registrarDivergenciaNota, fetchContasPagar, lancarNotaManual,
   type NotaFiscal, type NotaItem, type ContaPagar,
 } from '../../lib/db'
 import { parseNFeXML } from '../../lib/nfe'
@@ -34,6 +34,13 @@ export default function NotasFiscaisPage() {
   const [itens, setItens] = useState<NotaItem[]>([])
   const [acao, setAcao] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // lançamento manual (recibo / nota de balcão)
+  const [manualOpen, setManualOpen] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const hoje = new Date().toISOString().slice(0, 10)
+  const [mForm, setMForm] = useState({ tipo: 'recibo' as 'recibo' | 'balcao', fornecedor_nome: '', numero: '', data_emissao: hoje, forma_pagamento: 'Dinheiro' })
+  const [mItens, setMItens] = useState([{ descricao: '', unidade: 'un', quantidade: '', valor_unitario: '' }])
 
   const lojaAtiva = loja && loja !== 'Todas as Lojas' ? loja
     : (user?.loja && user.loja !== 'Todas' ? user.loja : 'Amore Paiva')
@@ -89,6 +96,24 @@ export default function NotasFiscaisPage() {
     } catch { toast('Erro ao registrar divergência', 'error') } finally { setAcao(null) }
   }
 
+  async function salvarManual() {
+    const itens = mItens
+      .filter(i => i.descricao.trim() && parseFloat(i.quantidade) > 0)
+      .map(i => ({ descricao: i.descricao.trim(), unidade: i.unidade, quantidade: parseFloat(i.quantidade) || 0, valor_unitario: parseFloat(i.valor_unitario.replace(',', '.')) || 0 }))
+    if (!mForm.fornecedor_nome.trim() || !itens.length) { toast('Informe o fornecedor e ao menos 1 item', 'error'); return }
+    setSalvando(true)
+    try {
+      await lancarNotaManual({ loja: lojaAtiva, usuario: user?.name || 'Sistema', ...mForm, itens })
+      toast('Lançamento registrado → conta a pagar + histórico criados', 'success')
+      setManualOpen(false)
+      setMForm({ tipo: 'recibo', fornecedor_nome: '', numero: '', data_emissao: hoje, forma_pagamento: 'Dinheiro' })
+      setMItens([{ descricao: '', unidade: 'un', quantidade: '', valor_unitario: '' }])
+      load()
+    } catch { toast('Erro ao salvar lançamento', 'error') } finally { setSalvando(false) }
+  }
+  const setItem = (idx: number, campo: string, val: string) => setMItens(p => p.map((it, i) => i === idx ? { ...it, [campo]: val } : it))
+  const totalManual = mItens.reduce((s, i) => s + (parseFloat(i.quantidade) || 0) * (parseFloat((i.valor_unitario || '').replace(',', '.')) || 0), 0)
+
   const mesAtual = new Date().toISOString().slice(0, 7)
   const kpi = {
     pendentes: notas.filter(n => n.status === 'pendente_recebimento').length,
@@ -132,7 +157,11 @@ export default function NotasFiscaisPage() {
           {importing ? <Loader size={16} className="spin" /> : <Upload size={16} />}
           {importing ? 'Importando…' : 'Importar XML de NF-e'}
         </button>
-        <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 8 }}>Selecione um ou vários arquivos .xml (o XML que o fornecedor envia em cada nota)</p>
+        <button onClick={() => setManualOpen(true)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#fff', color: '#6B1212', border: '1px solid #6B1212', borderRadius: 10, padding: '11px 22px', fontWeight: 700, cursor: 'pointer', marginLeft: 10 }}>
+          <FileText size={16} /> Lançar recibo / nota de balcão
+        </button>
+        <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 8 }}>XML da NF-e (fornecedor) <b>ou</b> lançamento manual de recibo / compra de balcão (sem nota)</p>
       </div>
 
       {/* Lista */}
@@ -190,6 +219,50 @@ export default function NotasFiscaisPage() {
               )
             })}
       </div>
+
+      {/* Modal lançamento manual */}
+      {manualOpen && (
+        <div onClick={() => !salvando && setManualOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 20, width: 640, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h2 style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 800 }}>Lançamento manual</h2>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              {([['recibo', 'Recibo'], ['balcao', 'Nota de balcão']] as const).map(([v, l]) => (
+                <button key={v} onClick={() => setMForm(f => ({ ...f, tipo: v }))}
+                  style={{ flex: 1, padding: '8px', borderRadius: 8, border: mForm.tipo === v ? '2px solid #6B1212' : '1px solid #ddd', background: mForm.tipo === v ? '#6B121210' : '#fff', fontWeight: 700, cursor: 'pointer' }}>{l}</button>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+              <input placeholder="Fornecedor *" value={mForm.fornecedor_nome} onChange={e => setMForm(f => ({ ...f, fornecedor_nome: e.target.value }))} style={inp} />
+              <input placeholder="Nº recibo/doc (opcional)" value={mForm.numero} onChange={e => setMForm(f => ({ ...f, numero: e.target.value }))} style={inp} />
+              <input type="date" value={mForm.data_emissao} onChange={e => setMForm(f => ({ ...f, data_emissao: e.target.value }))} style={inp} />
+              <select value={mForm.forma_pagamento} onChange={e => setMForm(f => ({ ...f, forma_pagamento: e.target.value }))} style={inp}>
+                {['Dinheiro', 'Pix', 'Cartão de Débito', 'Cartão de Crédito', 'Boleto', 'A definir'].map(o => <option key={o}>{o}</option>)}
+              </select>
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', margin: '10px 0 4px' }}>Itens</div>
+            {mItens.map((it, idx) => (
+              <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 70px 90px 28px', gap: 6, marginBottom: 6 }}>
+                <input placeholder="Produto" value={it.descricao} onChange={e => setItem(idx, 'descricao', e.target.value)} style={inp} />
+                <select value={it.unidade} onChange={e => setItem(idx, 'unidade', e.target.value)} style={inp}>{['un', 'kg', 'g', 'L', 'ml', 'cx', 'pct', 'fd'].map(u => <option key={u}>{u}</option>)}</select>
+                <input placeholder="Qtd" inputMode="decimal" value={it.quantidade} onChange={e => setItem(idx, 'quantidade', e.target.value)} style={inp} />
+                <input placeholder="Vlr unit." inputMode="decimal" value={it.valor_unitario} onChange={e => setItem(idx, 'valor_unitario', e.target.value)} style={inp} />
+                <button onClick={() => setMItens(p => p.filter((_, i) => i !== idx))} style={{ border: 'none', background: 'none', color: '#991B1B', cursor: 'pointer' }}>✕</button>
+              </div>
+            ))}
+            <button onClick={() => setMItens(p => [...p, { descricao: '', unidade: 'un', quantidade: '', valor_unitario: '' }])}
+              style={{ fontSize: 12, color: '#6B1212', background: 'none', border: 'none', fontWeight: 700, cursor: 'pointer', marginTop: 4 }}>+ adicionar item</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <div style={{ fontWeight: 800 }}>Total: {brl(totalManual)}</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setManualOpen(false)} disabled={salvando} style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid #ddd', background: '#fff', cursor: 'pointer' }}>Cancelar</button>
+                <button onClick={salvarManual} disabled={salvando} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#6B1212', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>{salvando ? 'Salvando…' : 'Salvar lançamento'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
+const inp: React.CSSProperties = { padding: '8px 10px', borderRadius: 8, border: '1px solid #ddd', fontSize: 13, width: '100%', boxSizing: 'border-box' }

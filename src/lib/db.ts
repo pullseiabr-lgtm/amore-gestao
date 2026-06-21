@@ -2211,6 +2211,25 @@ export async function importarNotaFiscal(parsed: NFeParsed, loja: string, usuari
   return nota
 }
 
+// Lançamento MANUAL (recibo / nota de balcão / sem XML) — reaproveita o fluxo da NF
+export async function lancarNotaManual(input: {
+  loja: string; usuario: string; fornecedor_nome: string; fornecedor_cnpj?: string
+  numero?: string; data_emissao: string; forma_pagamento?: string; tipo: 'recibo' | 'balcao' | 'manual'
+  itens: { descricao: string; unidade: string; quantidade: number; valor_unitario: number }[]
+}): Promise<NotaFiscal> {
+  const total = input.itens.reduce((s, i) => s + (i.quantidade || 0) * (i.valor_unitario || 0), 0)
+  const parsed: NFeParsed = {
+    chave: '', numero: input.numero || `${input.tipo.toUpperCase()}-${Date.now().toString().slice(-6)}`, serie: '',
+    dataEmissao: input.data_emissao, fornecedorCnpj: input.fornecedor_cnpj || '', fornecedorNome: input.fornecedor_nome,
+    valorProdutos: total, valorImpostos: 0, valorTotal: total, formaPagamento: input.forma_pagamento || 'A definir',
+    itens: input.itens.map(i => ({ descricao: i.descricao, ncm: '', cfop: '', unidade: i.unidade, quantidade: i.quantidade, valorUnitario: i.valor_unitario, valorTotal: i.quantidade * i.valor_unitario })),
+  }
+  const nota = await importarNotaFiscal(parsed, input.loja, input.usuario)
+  const rotulo = input.tipo === 'recibo' ? 'Recibo' : input.tipo === 'balcao' ? 'Nota de balcão' : 'Lançamento manual'
+  await sdkCall(db.from('notas_fiscais').update({ observacoes: rotulo }).eq('id', nota.id).select())
+  return { ...nota, observacoes: rotulo }
+}
+
 // Recebe a nota CONFORME: dá entrada de todos os itens no estoque
 export async function receberNotaConforme(nota: NotaFiscal, usuario: string): Promise<void> {
   const itens = await fetchNotaItens(nota.id)
