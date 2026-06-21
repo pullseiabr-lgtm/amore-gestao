@@ -9,6 +9,7 @@ import Topbar from './components/layout/Topbar'
 import DashboardPage from './pages/dashboard/DashboardPage'
 import VendasPage from './pages/vendas/VendasPage'
 import ComprasPage from './pages/compras/ComprasPage'
+import NotasFiscaisPage from './pages/notas/NotasFiscaisPage'
 import FinanceiroPage from './pages/financeiro/FinanceiroPage'
 import MarketingPage from './pages/marketing/MarketingPage'
 import ContatosPage from './pages/marketing/ContatosPage'
@@ -45,6 +46,7 @@ export type PageId =
   | 'dashboard'
   | 'vendas'
   | 'compras'
+  | 'notas-fiscais'
   | 'requisicoes'
   | 'req-automaticas'
   | 'pipeline-suprimentos'
@@ -82,6 +84,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Dashboard',
   vendas: 'Vendas',
   compras: 'Compras',
+  'notas-fiscais': 'Notas Fiscais',
   requisicoes: 'Requisições de Compra',
   'req-automaticas': 'Requisições Automáticas',
   'pipeline-suprimentos': 'Pipeline de Suprimentos',
@@ -121,6 +124,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'dashboard': return <DashboardPage />
     case 'vendas': return <VendasPage />
     case 'compras': return <ComprasPage />
+    case 'notas-fiscais': return <NotasFiscaisPage />
     case 'requisicoes':      return <RequisoesPage />
     case 'req-automaticas': return <RequisoesAutomaticasPage />
     case 'pipeline-suprimentos': return <FluxoSuprimentosPage />

@@ -43,6 +43,7 @@ const COMPRAS_SUBMENU: NavItem[] = [
   { id: 'dashboard-suprimentos',  label: '📊 Dashboard Suprimentos', icon: <BarChart2 size={12} />, perm: 'requisicoes' },
   { id: 'lista-padrao',           label: '📋 Lista Padronizada', icon: <ShoppingCart size={12} /> },
   { id: 'compras',                label: 'Compras (histórico)', icon: <ShoppingCart size={12} /> },
+  { id: 'notas-fiscais',          label: 'Notas Fiscais (ASI)', icon: <FileText size={12} /> },
   { id: 'requisicoes',            label: 'Requisições',         icon: <ClipboardList size={12} /> },
   { id: 'req-automaticas',        label: 'Req. Automáticas',    icon: <Zap size={12} /> },
   { id: 'estoque',                label: 'Estoque',             icon: <Package size={12} /> },

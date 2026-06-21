@@ -1,5 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
+import type { NFeParsed } from './nfe'
 import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig, Boleto, Notificacao } from '../types/database'
 
 const db = supabase as any
@@ -2106,4 +2107,125 @@ export async function fetchAtaAcoesAtrasadas(loja: string): Promise<(AtaAcao & {
       .filter(a => a.status !== 'concluido' && a.status !== 'cancelado')
       .map(a => ({ ...a, ata_titulo: a.ata?.titulo }))
   ).catch(() => [])
+}
+
+// ════════════════════════════════════════════════════════════════
+// ASI — AmoreFood Supply Intelligence (Fase 1: NF-e)
+// ════════════════════════════════════════════════════════════════
+
+export interface NotaFiscal {
+  id: string; loja: string; fornecedor_id?: string | null; fornecedor_nome?: string
+  fornecedor_cnpj?: string; numero?: string; serie?: string; chave_nfe?: string
+  data_emissao?: string; valor_produtos: number; valor_impostos: number; valor_total: number
+  forma_pagamento?: string; status: string; observacoes?: string; created_at?: string
+}
+export interface NotaItem {
+  id: string; nota_id: string; loja: string; produto_id?: string | null; descricao: string
+  ncm?: string; cfop?: string; unidade: string; quantidade: number; valor_unitario: number
+  valor_total: number; qtd_recebida?: number | null; status_item: string; divergencia?: string
+}
+export interface HistoricoPreco {
+  id: string; loja: string; descricao: string; fornecedor_nome?: string; unidade: string
+  preco_unitario: number; data: string; nota_id?: string
+}
+export interface ContaPagar {
+  id: string; loja: string; fornecedor_nome?: string; nota_id?: string; descricao?: string
+  valor: number; vencimento?: string; forma_pagamento?: string; status: string; pago_em?: string
+}
+
+export async function fetchNotasFiscais(loja?: string): Promise<NotaFiscal[]> {
+  return sdkCall<NotaFiscal[]>(db.from('notas_fiscais').select('*')
+    .order('data_emissao', { ascending: false }).order('created_at', { ascending: false }))
+    .then(r => (r || []).filter(n => !loja || loja === 'Todas as Lojas' || loja === 'all' || n.loja === loja))
+}
+
+export async function fetchNotaItens(notaId: string): Promise<NotaItem[]> {
+  return sdkCall<NotaItem[]>(db.from('nf_itens').select('*').eq('nota_id', notaId).order('descricao'))
+}
+
+export async function fetchHistoricoPrecos(loja: string, descricao?: string): Promise<HistoricoPreco[]> {
+  let q = db.from('historico_precos').select('*').eq('loja', loja)
+  if (descricao) q = q.ilike('descricao', descricao)
+  return sdkCall<HistoricoPreco[]>(q.order('data', { ascending: false }).limit(500))
+}
+
+export async function fetchContasPagar(loja?: string): Promise<ContaPagar[]> {
+  return sdkCall<ContaPagar[]>(db.from('contas_pagar').select('*').order('vencimento', { ascending: true }))
+    .then(r => (r || []).filter(c => !loja || loja === 'Todas as Lojas' || loja === 'all' || c.loja === loja))
+}
+
+export async function pagarConta(id: string): Promise<void> {
+  await sdkCall(db.from('contas_pagar').update({ status: 'pago', pago_em: new Date().toISOString().slice(0, 10) }).eq('id', id).select())
+}
+
+// Importa uma NF-e (parseada): cria nota + itens + histórico de preços + conta a pagar
+export async function importarNotaFiscal(parsed: NFeParsed, loja: string, usuario: string): Promise<NotaFiscal> {
+  // 1. duplicidade por chave
+  if (parsed.chave) {
+    const exist = await sdkCall<{ id: string }[]>(db.from('notas_fiscais').select('id').eq('chave_nfe', parsed.chave).limit(1))
+    if (exist && exist.length) throw new Error('Esta nota já foi importada (chave duplicada).')
+  }
+  // 2. fornecedor (casa por CNPJ ou cria)
+  let fornecedor_id: string | null = null
+  let prazo = 30
+  try {
+    const forns = await fetchFornecedores(loja)
+    const m = (forns || []).find(f => (f.cnpj || '').replace(/\D/g, '') === (parsed.fornecedorCnpj || '').replace(/\D/g, '') && parsed.fornecedorCnpj)
+    if (m) { fornecedor_id = m.id; prazo = m.prazo_pagamento || 30 }
+    else if (parsed.fornecedorNome) {
+      const novo = await insertFornecedor({ loja, nome: parsed.fornecedorNome, cnpj: parsed.fornecedorCnpj, forma_pagamento: 'boleto', prazo_pagamento: 30, ativo: true } as any)
+      fornecedor_id = novo.id
+    }
+  } catch { /* segue sem fornecedor */ }
+
+  // 3. cabeçalho da nota
+  const nota = await sdkCall<NotaFiscal>(db.from('notas_fiscais').insert({
+    loja, fornecedor_id, fornecedor_nome: parsed.fornecedorNome, fornecedor_cnpj: parsed.fornecedorCnpj,
+    numero: parsed.numero, serie: parsed.serie, chave_nfe: parsed.chave || null, data_emissao: parsed.dataEmissao || null,
+    valor_produtos: parsed.valorProdutos, valor_impostos: parsed.valorImpostos, valor_total: parsed.valorTotal,
+    forma_pagamento: parsed.formaPagamento, status: 'pendente_recebimento', created_by: usuario,
+  }).select().single())
+
+  // 4. itens
+  if (parsed.itens.length) {
+    await sdkCall(db.from('nf_itens').insert(parsed.itens.map(it => ({
+      nota_id: nota.id, loja, descricao: it.descricao, ncm: it.ncm, cfop: it.cfop, unidade: it.unidade,
+      quantidade: it.quantidade, valor_unitario: it.valorUnitario, valor_total: it.valorTotal, status_item: 'pendente',
+    }))).select())
+    // 5. histórico de preços
+    await sdkCall(db.from('historico_precos').insert(parsed.itens.map(it => ({
+      loja, descricao: it.descricao, fornecedor_id, fornecedor_nome: parsed.fornecedorNome, unidade: it.unidade,
+      preco_unitario: it.valorUnitario, data: parsed.dataEmissao || new Date().toISOString().slice(0, 10), nota_id: nota.id,
+    }))).select())
+  }
+
+  // 6. conta a pagar (vencimento = emissão + prazo)
+  const base = parsed.dataEmissao ? new Date(parsed.dataEmissao + 'T00:00:00') : new Date()
+  base.setDate(base.getDate() + prazo)
+  await sdkCall(db.from('contas_pagar').insert({
+    loja, fornecedor_id, fornecedor_nome: parsed.fornecedorNome, nota_id: nota.id,
+    descricao: `NF ${parsed.numero} — ${parsed.fornecedorNome}`, valor: parsed.valorTotal,
+    vencimento: base.toISOString().slice(0, 10), forma_pagamento: parsed.formaPagamento, status: 'aberto',
+  }).select())
+
+  return nota
+}
+
+// Recebe a nota CONFORME: dá entrada de todos os itens no estoque
+export async function receberNotaConforme(nota: NotaFiscal, usuario: string): Promise<void> {
+  const itens = await fetchNotaItens(nota.id)
+  for (const it of itens) {
+    await darEntradaEstoquePorNome({
+      nome: it.descricao, loja: nota.loja, quantidade: it.quantidade, preco: it.valor_unitario,
+      unidade: it.unidade, motivo: `Entrada NF ${nota.numero || ''}`, usuario,
+    }).catch(e => console.error('entrada estoque', it.descricao, e))
+    await sdkCall(db.from('nf_itens').update({ status_item: 'conforme', qtd_recebida: it.quantidade }).eq('id', it.id).select())
+  }
+  await sdkCall(db.from('notas_fiscais').update({ status: 'recebido', updated_at: new Date().toISOString() }).eq('id', nota.id).select())
+}
+
+// Registra DIVERGÊNCIA (não lança no estoque até aprovação)
+export async function registrarDivergenciaNota(nota: NotaFiscal, tipo: string, descricao: string, usuario: string): Promise<void> {
+  await sdkCall(db.from('nf_ocorrencias').insert({ nota_id: nota.id, loja: nota.loja, tipo, descricao, created_by: usuario }).select())
+  await sdkCall(db.from('notas_fiscais').update({ status: 'divergencia', updated_at: new Date().toISOString() }).eq('id', nota.id).select())
 }
