@@ -863,6 +863,77 @@ export interface CozinhaSolicitacao {
   updated_at: string
 }
 
+// ── Operação Padrão / Checklists Inteligentes ────────────────
+
+export type ChecklistItemTipo    = 'confirm' | 'numero' | 'foto' | 'avaliacao'
+export type ChecklistRecorrencia = 'diario' | 'semanal' | 'mensal' | 'avulso'
+export type ChecklistTurno       = 'abertura' | 'almoco' | 'jantar' | 'fechamento' | 'qualquer'
+export type ChecklistExecStatus  = 'pendente' | 'em_andamento' | 'concluido' | 'atrasado'
+
+export interface ChecklistItem {
+  id: string
+  txt: string
+  tipo: ChecklistItemTipo
+  obrigatorio: boolean
+  critico: boolean
+  peso: number
+}
+
+export interface ChecklistModelo {
+  id: string
+  loja: string | null            // null = vale p/ todas as lojas
+  titulo: string
+  setor: string
+  descricao: string | null
+  recorrencia: ChecklistRecorrencia
+  dias_semana: number[] | null   // 0=dom .. 6=sab
+  dia_mes: number | null
+  turno: ChecklistTurno
+  hora_limite: string | null     // HH:MM
+  exige_gps: boolean
+  itens: ChecklistItem[]
+  ativo: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ChecklistResposta {
+  item_id: string
+  ok: boolean
+  valor: number | null
+  foto_url: string | null
+  nota: number | null
+  ia_ok: boolean | null
+  ia_motivo: string | null
+  obs: string | null
+}
+
+export interface ChecklistExecucao {
+  id: string
+  modelo_id: string | null
+  loja: string
+  titulo: string
+  setor: string | null
+  data: string                   // YYYY-MM-DD
+  turno: ChecklistTurno
+  status: ChecklistExecStatus
+  responsavel_id: string | null
+  responsavel_nome: string | null
+  respostas: ChecklistResposta[]
+  gps_lat: number | null
+  gps_lng: number | null
+  score: number | null           // compliance 0..100
+  hora_limite: string | null
+  iniciado_em: string | null
+  concluido_em: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  // join opcional
+  modelo?: ChecklistModelo
+}
+
 // ── Tarefas Operacionais ─────────────────────────────────────
 
 export type TarefaStatus     = 'pendente' | 'em_andamento' | 'aguardando_retorno' | 'aguardando_fornecedor' | 'concluido' | 'cancelado'

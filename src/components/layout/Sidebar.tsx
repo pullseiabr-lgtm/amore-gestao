@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap, Activity, Bot, Calendar, Bell } from 'lucide-react'
+import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, ClipboardCheck, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap, Activity, Bot, Calendar, Bell } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 
@@ -19,6 +19,7 @@ const MENU_TOP: NavItem[] = [
   { id: 'agente-liz',  label: 'Liz — Agente IA',   icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🤖</span> },
   { id: 'agente-cmv',  label: 'Precificação & CMV', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>💰</span> },
   { id: 'tarefas',     label: 'Central de Tarefas', icon: <ClipboardList size={13} /> },
+  { id: 'checklists',  label: 'Operação Padrão',    icon: <ClipboardCheck size={13} /> },
   { id: 'enxoval',        label: 'Controle Enxoval',   icon: <Package size={13} /> },
   { id: 'planejamento',  label: 'Planejamento',       icon: <Calendar size={13} /> },
   { id: 'atas',          label: 'Atas de Reunião',    icon: <FileText size={13} /> },

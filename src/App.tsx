@@ -39,6 +39,7 @@ import AgenteLizPage from './pages/agente/AgenteLizPage'
 import AgenteCMVPage from './pages/agente/AgenteCMVPage'
 import NotificacoesPage from './pages/notificacoes/NotificacoesPage'
 import TarefasPage from './pages/tarefas/TarefasPage'
+import ChecklistsPage from './pages/checklists/ChecklistsPage'
 import EnxovalPage from './pages/enxoval/EnxovalPage'
 import PlanejamentoPage from './pages/planejamento/PlanejamentoPage'
 import AtasPage from './pages/atas/AtasPage'
@@ -79,6 +80,7 @@ export type PageId =
   | 'agente-liz'
   | 'agente-cmv'
   | 'tarefas'
+  | 'checklists'
   | 'enxoval'
   | 'planejamento'
   | 'atas'
@@ -120,6 +122,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'agente-liz': 'Liz — Agente Gestora',
   'agente-cmv': 'Agente de Precificação & CMV',
   tarefas: 'Central de Tarefas',
+  checklists: 'Operação Padrão',
   enxoval: 'Controle de Enxoval',
   planejamento: 'Planejamento Operacional',
   atas: 'Atas de Reunião',
@@ -164,6 +167,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'agente-cmv':           return <AgenteCMVPage />
     case 'notificacoes':         return <NotificacoesPage />
     case 'tarefas':              return <TarefasPage />
+    case 'checklists':           return <ChecklistsPage />
     case 'enxoval':              return <EnxovalPage />
     case 'planejamento':         return <PlanejamentoPage />
     case 'atas':                 return <AtasPage />

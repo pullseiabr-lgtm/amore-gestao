@@ -1,7 +1,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
 import type { NFeParsed } from './nfe'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig, Boleto, Notificacao } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, ChecklistModelo, ChecklistExecucao, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig, Boleto, Notificacao } from '../types/database'
 
 const db = supabase as any
 
@@ -1465,6 +1465,60 @@ export async function updateCozinhaChecklist(
 }
 export async function deleteCozinhaChecklist(id: string): Promise<void> {
   await sdkCall<null>(db.from('cozinha_checklists').delete().eq('id', id))
+}
+
+// ── Operação Padrão / Checklists Inteligentes ───────────────
+// Modelos (templates). Retorna os da loja + os globais (loja null).
+export async function fetchChecklistModelos(loja?: string): Promise<ChecklistModelo[]> {
+  let q = db.from('checklist_modelos').select('*').order('created_at', { ascending: true })
+  if (loja) q = q.or(`loja.eq.${loja},loja.is.null`)
+  return sdkCall<ChecklistModelo[]>(q).then((d: ChecklistModelo[] | null) => d ?? []).catch(() => [])
+}
+
+export async function insertChecklistModelo(
+  m: Omit<ChecklistModelo, 'id' | 'created_at' | 'updated_at'>
+): Promise<ChecklistModelo> {
+  return sdkCall<ChecklistModelo>(db.from('checklist_modelos').insert(m).select().single())
+}
+
+export async function updateChecklistModelo(id: string, m: Partial<ChecklistModelo>): Promise<ChecklistModelo> {
+  return sdkCall<ChecklistModelo>(
+    db.from('checklist_modelos').update({ ...m, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  )
+}
+
+export async function deleteChecklistModelo(id: string): Promise<void> {
+  await sdkCall<null>(db.from('checklist_modelos').delete().eq('id', id))
+}
+
+// Execuções (instâncias do dia)
+export async function fetchChecklistExecucoes(loja: string, data?: string): Promise<ChecklistExecucao[]> {
+  let q = db.from('checklist_execucoes').select('*').eq('loja', loja).order('created_at', { ascending: false })
+  if (data) q = q.eq('data', data)
+  return sdkCall<ChecklistExecucao[]>(q).then((d: ChecklistExecucao[] | null) => d ?? []).catch(() => [])
+}
+
+// Execuções num intervalo de datas (p/ painel de compliance e rankings)
+export async function fetchChecklistExecucoesRange(loja: string, dataIni: string, dataFim: string): Promise<ChecklistExecucao[]> {
+  const q = db.from('checklist_execucoes').select('*').eq('loja', loja)
+    .gte('data', dataIni).lte('data', dataFim).order('data', { ascending: false })
+  return sdkCall<ChecklistExecucao[]>(q).then((d: ChecklistExecucao[] | null) => d ?? []).catch(() => [])
+}
+
+export async function insertChecklistExecucao(
+  e: Omit<ChecklistExecucao, 'id' | 'created_at' | 'updated_at' | 'modelo'>
+): Promise<ChecklistExecucao> {
+  return sdkCall<ChecklistExecucao>(db.from('checklist_execucoes').insert(e).select().single())
+}
+
+export async function updateChecklistExecucao(id: string, e: Partial<ChecklistExecucao>): Promise<ChecklistExecucao> {
+  return sdkCall<ChecklistExecucao>(
+    db.from('checklist_execucoes').update({ ...e, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  )
+}
+
+export async function deleteChecklistExecucao(id: string): Promise<void> {
+  await sdkCall<null>(db.from('checklist_execucoes').delete().eq('id', id))
 }
 
 // ── Cozinha — Produção ──────────────────────────────────────
