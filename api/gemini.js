@@ -1,5 +1,25 @@
 // Vercel Serverless Function — proxy para Google Gemini API
 // Resolve segurança: a API key fica no servidor, nunca exposta ao browser
+//
+// Resolve a chave do Gemini com 3 níveis de fallback (mesma estratégia da Evolution):
+//   1. env var server-side (VITE_GEMINI_API_KEY / GEMINI_API_KEY)
+//   2. tabela app_config do Supabase (chave 'gemini_api', valor { key })
+//      → funciona mesmo em projetos/contas Vercel SEM a env var, desde que tenham VITE_SUPABASE_*
+//   3. chave enviada pelo browser (?k=, do bundle ou localStorage)
+async function getGeminiKey(clientKey) {
+  const envKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY
+  if (envKey) return envKey
+  try {
+    const r = await fetch(`${process.env.VITE_SUPABASE_URL}/rest/v1/app_config?chave=eq.gemini_api&select=valor`, {
+      headers: { apikey: process.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}` },
+    })
+    const rows = await r.json().catch(() => [])
+    const k = rows?.[0]?.valor?.key
+    if (k) return k
+  } catch { /* cai para a chave do cliente */ }
+  return clientKey || ''
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
@@ -13,12 +33,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Método não permitido' })
   }
 
-  // Prioridade: env var server-side > cliente (evita chave antiga/inválida do localStorage)
-  // VITE_GEMINI_API_KEY é plain type — disponível no process.env em alguns contextos Vercel
-  const serverKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY
-  const clientKey = req.query.k  // chave enviada pelo browser (do bundle ou localStorage)
+  // Prioridade: env var server-side > app_config (Supabase) > cliente
+  const resolvedKey = await getGeminiKey(req.query.k)
   // Sanitiza: remove BOM (U+FEFF), espaços e caracteres não-ASCII que invalidam a chave
-  const apiKey = (serverKey || clientKey || '').replace(/[^\x21-\x7E]/g, '')
+  const apiKey = (resolvedKey || '').replace(/[^\x21-\x7E]/g, '')
 
   if (!apiKey) {
     return res.status(500).json({
