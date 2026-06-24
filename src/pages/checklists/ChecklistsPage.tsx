@@ -89,7 +89,7 @@ const scoreColor = (s: number | null) =>
 
 // ── Componente principal ─────────────────────────────────────
 export default function ChecklistsPage() {
-  const { loja } = useLoja()
+  const { loja, lojas } = useLoja()
   const { user } = useAuth()
   const { toast } = useToast()
 
@@ -121,20 +121,29 @@ export default function ChecklistsPage() {
   const gerarHoje = async () => {
     setGerando(true)
     try {
-      const jaTem = new Set(execucoes.map(e => e.modelo_id))
-      const aplicaveis = modelos.filter(m => aplicaHoje(m) && !jaTem.has(m.id))
-      if (aplicaveis.length === 0) { toast('Nenhum checklist novo para hoje.', 'info'); return }
-      for (const m of aplicaveis) {
-        await insertChecklistExecucao({
-          modelo_id: m.id, loja, titulo: m.titulo, setor: m.setor,
-          data: hoje(), turno: m.turno, status: 'pendente',
-          responsavel_id: null, responsavel_nome: null,
-          respostas: [], gps_lat: null, gps_lng: null, score: null,
-          hora_limite: m.hora_limite, iniciado_em: null, concluido_em: null,
-          created_by: user?.name || null,
-        })
+      // Alvos: a loja ativa, ou TODAS as lojas (quando admin está em "Todas as Lojas")
+      const alvos = loja === 'Todas as Lojas' ? lojas.filter(l => l && l !== 'Todas as Lojas') : [loja]
+      if (!alvos.length) { toast('Nenhuma loja disponível.', 'info'); return }
+      const jaTem = new Set(execucoes.map(e => `${e.modelo_id}|${e.loja}`))
+      let criados = 0
+      for (const lj of alvos) {
+        const aplicaveis = modelos.filter(m =>
+          aplicaHoje(m) && (m.loja == null || m.loja === lj) && !jaTem.has(`${m.id}|${lj}`)
+        )
+        for (const m of aplicaveis) {
+          await insertChecklistExecucao({
+            modelo_id: m.id, loja: lj, titulo: m.titulo, setor: m.setor,
+            data: hoje(), turno: m.turno, status: 'pendente',
+            responsavel_id: null, responsavel_nome: null,
+            respostas: [], gps_lat: null, gps_lng: null, score: null,
+            hora_limite: m.hora_limite, iniciado_em: null, concluido_em: null,
+            created_by: user?.name || null,
+          })
+          criados++
+        }
       }
-      toast(`${aplicaveis.length} checklist(s) gerado(s) para hoje.`, 'success')
+      if (!criados) { toast('Nenhum checklist novo para hoje.', 'info'); return }
+      toast(`${criados} checklist(s) gerado(s) para hoje.`, 'success')
       await load()
     } catch (e) {
       toast('Erro ao gerar: ' + (e as Error).message, 'error')
@@ -143,9 +152,11 @@ export default function ChecklistsPage() {
 
   // Cria uma execução do modelo para hoje sob demanda (serve p/ avulsos ou rodar de novo)
   const runModeloAgora = async (m: ChecklistModelo) => {
+    const alvo = loja !== 'Todas as Lojas' ? loja : (m.loja || '')
+    if (!alvo) { toast('Selecione uma loja específica para executar um modelo global.', 'warning'); return }
     try {
       await insertChecklistExecucao({
-        modelo_id: m.id, loja, titulo: m.titulo, setor: m.setor,
+        modelo_id: m.id, loja: alvo, titulo: m.titulo, setor: m.setor,
         data: hoje(), turno: m.turno, status: 'pendente',
         responsavel_id: null, responsavel_nome: null,
         respostas: [], gps_lat: null, gps_lng: null, score: null,
@@ -745,6 +756,8 @@ function PainelTab({ loja, toast }: { loja: string; toast: (m: string, t?: 'succ
 
   const porColab = useMemo(() => agrupa(execs, e => e.responsavel_nome || '—'), [execs])
   const porSetor = useMemo(() => agrupa(execs, e => e.setor || '—'), [execs])
+  const porLoja = useMemo(() => agrupa(execs, e => e.loja || '—'), [execs])
+  const multiLoja = useMemo(() => new Set(execs.map(e => e.loja)).size > 1, [execs])
 
   const avisarPendencias = async () => {
     setEnviando(true)
@@ -793,6 +806,7 @@ function PainelTab({ loja, toast }: { loja: string; toast: (m: string, t?: 'succ
         <Empty texto="Sem execuções no período. Gere e conclua checklists na aba “Execução do dia”." />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+          {multiLoja && <RankCard titulo="🏪 Ranking por unidade" linhas={porLoja} />}
           <RankCard titulo="🏆 Ranking por colaborador" linhas={porColab} />
           <RankCard titulo="🏢 Desempenho por setor" linhas={porSetor} />
         </div>

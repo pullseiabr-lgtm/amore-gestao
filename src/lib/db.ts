@@ -1471,7 +1471,8 @@ export async function deleteCozinhaChecklist(id: string): Promise<void> {
 // Modelos (templates). Retorna os da loja + os globais (loja null).
 export async function fetchChecklistModelos(loja?: string): Promise<ChecklistModelo[]> {
   let q = db.from('checklist_modelos').select('*').order('created_at', { ascending: true })
-  if (loja) q = q.or(`loja.eq.${loja},loja.is.null`)
+  // 'Todas as Lojas' (admin) → todos os modelos; loja específica → os dela + os globais (loja null)
+  if (loja && loja !== 'Todas as Lojas') q = q.or(`loja.eq.${loja},loja.is.null`)
   return sdkCall<ChecklistModelo[]>(q).then((d: ChecklistModelo[] | null) => d ?? []).catch(() => [])
 }
 
@@ -1493,15 +1494,16 @@ export async function deleteChecklistModelo(id: string): Promise<void> {
 
 // Execuções (instâncias do dia)
 export async function fetchChecklistExecucoes(loja: string, data?: string): Promise<ChecklistExecucao[]> {
-  let q = db.from('checklist_execucoes').select('*').eq('loja', loja).order('created_at', { ascending: false })
+  let q = db.from('checklist_execucoes').select('*').order('created_at', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
   if (data) q = q.eq('data', data)
   return sdkCall<ChecklistExecucao[]>(q).then((d: ChecklistExecucao[] | null) => d ?? []).catch(() => [])
 }
 
 // Execuções num intervalo de datas (p/ painel de compliance e rankings)
 export async function fetchChecklistExecucoesRange(loja: string, dataIni: string, dataFim: string): Promise<ChecklistExecucao[]> {
-  const q = db.from('checklist_execucoes').select('*').eq('loja', loja)
-    .gte('data', dataIni).lte('data', dataFim).order('data', { ascending: false })
+  let q = db.from('checklist_execucoes').select('*').gte('data', dataIni).lte('data', dataFim).order('data', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
   return sdkCall<ChecklistExecucao[]>(q).then((d: ChecklistExecucao[] | null) => d ?? []).catch(() => [])
 }
 

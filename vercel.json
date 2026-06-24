@@ -2,6 +2,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "crons": [
+    { "path": "/api/checklists-cron", "schedule": "0 9 * * *" },
     { "path": "/api/disparo-diario", "schedule": "0 11 * * *" }
   ],
   "rewrites": [
