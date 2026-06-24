@@ -19,6 +19,7 @@ import {
   fetchBoletos,
   fetchTarefas,
   fetchProfiles,
+  fetchChecklistExecucoes,
 } from '../../lib/db'
 import { enviarWhatsApp, getZapiCfg, soDigitos, carregarZapiCfgRemoto, salvarZapiCfgRemoto } from '../../lib/notify'
 import type { ListaHistoricoPreco, Requisicao, Boleto, Tarefa } from '../../types/database'
@@ -344,7 +345,8 @@ export default function AgenteLizPage() {
   // Load system context on mount
   const loadContext = useCallback(async () => {
     try {
-      const [fornecedores, produtos, comprasListas, requisicoes, historico, boletos, tarefas] = await Promise.all([
+      const hojeISO = new Date().toISOString().slice(0, 10)
+      const [fornecedores, produtos, comprasListas, requisicoes, historico, boletos, tarefas, checklistsHoje] = await Promise.all([
         fetchFornecedores(loja).catch(() => []),
         fetchProdutos(loja).catch(() => []),
         fetchComprasListas(loja).catch(() => []),
@@ -352,6 +354,7 @@ export default function AgenteLizPage() {
         fetchListaHistoricoPrecos(loja).catch(() => []),
         fetchBoletos(loja).catch(() => []),
         fetchTarefas(loja).catch(() => []),
+        fetchChecklistExecucoes(loja, hojeISO).catch(() => []),
       ])
       setRawProdutos(produtos as { nome: string; estoque_atual: number; estoque_minimo: number; unidade: string }[])
       setHistoricoPrecos(historico)
@@ -383,6 +386,14 @@ export default function AgenteLizPage() {
         .slice(0, 5)
         .map(r => `REQ-${r.numero}: ${r.titulo}`)
 
+      // Operação Padrão (checklists do dia)
+      const ckTotal = checklistsHoje.length
+      const ckConcl = checklistsHoje.filter((e: any) => e.status === 'concluido').length
+      const ckPend = checklistsHoje.filter((e: any) => e.status !== 'concluido')
+      const ckComScore = checklistsHoje.filter((e: any) => e.score != null)
+      const ckScore = ckComScore.length ? Math.round(ckComScore.reduce((a: number, e: any) => a + (e.score || 0), 0) / ckComScore.length) : null
+      const ckPendNomes = ckPend.slice(0, 6).map((e: any) => `${e.titulo}${e.loja ? ' (' + e.loja + ')' : ''}`)
+
       const ctx = `
 CONTEXTO DO SISTEMA — ${new Date().toLocaleDateString('pt-BR')}
 Loja ativa: ${loja}
@@ -402,6 +413,9 @@ ${comprasRecentes.length ? comprasRecentes.join('\n') : 'Nenhuma'}
 
 REQUISIÇÕES PENDENTES:
 ${reqPendentes.length ? reqPendentes.join('\n') : 'Nenhuma'}
+
+OPERAÇÃO PADRÃO — CHECKLISTS DE HOJE (${ckConcl}/${ckTotal} concluídos${ckScore != null ? `, score médio ${ckScore}` : ''}):
+${ckTotal === 0 ? 'Nenhum checklist gerado hoje' : (ckPendNomes.length ? 'Pendentes: ' + ckPendNomes.join(', ') : 'Todos concluídos ✅')}
       `.trim()
 
       setSystemCtx(ctx)
@@ -410,7 +424,7 @@ ${reqPendentes.length ? reqPendentes.join('\n') : 'Nenhuma'}
       // Welcome message
       setMsgs([{
         role: 'liz',
-        text: `Olá, ${user?.name?.split(' ')[0] || 'Gestor'}! Sou a **Liz**, sua assistente comercial inteligente. 🤖\n\nJá carreguei o contexto da loja **${loja}** — ${estoqueCritico.length} itens críticos, ${fornecedores.length} fornecedores, ${reqPendentes.length} requisições pendentes.\n\nPosso analisar o sistema, prospectar fornecedores, identificar oportunidades e gerar relatórios. Como posso ajudar?`,
+        text: `Olá, ${user?.name?.split(' ')[0] || 'Gestor'}! Sou a **Liz**, sua assistente comercial inteligente. 🤖\n\nJá carreguei o contexto da loja **${loja}** — ${estoqueCritico.length} itens críticos, ${fornecedores.length} fornecedores, ${reqPendentes.length} requisições pendentes${ckTotal ? `, ${ckConcl}/${ckTotal} checklists concluídos hoje` : ''}.\n\nPosso analisar o sistema, prospectar fornecedores, acompanhar os checklists da operação, identificar oportunidades e gerar relatórios. Como posso ajudar?`,
         ts: Date.now(),
       }])
     } catch (e) {
@@ -436,6 +450,7 @@ SUAS CAPACIDADES:
 - Recomendar fornecedores e negociações
 - Gerar relatórios gerenciais como se fosse o gestor da operação
 - Prospectar novos fornecedores via pesquisa de mercado
+- Acompanhar a OPERAÇÃO PADRÃO: cumprimento dos checklists do dia, score de compliance e pendências (alerte quando houver checklists pendentes ou score baixo)
 
 CONTEXTO ATUAL DO SISTEMA:
 ${systemCtx}
@@ -460,8 +475,10 @@ FINANCEIRO:
 • Financeiro — créditos e prestações de contas; Central de Boletos — boletos a pagar; Precificação & CMV — cálculo de custo/markup/margem por prato.
 
 OPERAÇÃO: Cozinha (fichas técnicas, produção, desperdício), Salão (mesas/atendimento), PDV (caixa), Vendas.
+• Operação Padrão — checklists inteligentes recorrentes por turno (abertura, fechamento, limpeza, controle dos 2 freezers, estoque geral, fichas técnicas). A equipe executa pelo celular com FOTO de evidência (validada por IA) e GPS opcional; cada execução gera um SCORE DE COMPLIANCE (0-100) e alimenta rankings por colaborador, setor e loja. Os checklists do dia são gerados AUTOMATICAMENTE todo dia (06h) em cada loja. Abas: "Execução do dia" (gerar/preencher/concluir), "Painel" (KPIs + rankings + botão "Avisar pendências" no WhatsApp) e "Modelos" (criar/editar templates — personalizáveis por loja, com "Gerar com IA"). Cada loja tem seus próprios modelos e pode ajustá-los sem afetar as outras.
 
-GESTÃO: Central de Tarefas, Pendências & OS, Planejamento, Atas de Reunião, Alertas & Rastreabilidade, Central de Notificações, Controle Enxoval, Gamificação.
+GESTÃO: Central de Tarefas, Pendências & OS, Planejamento, Atas de Reunião, Pauta de Reunião, Alertas & Rastreabilidade, Central de Notificações, Controle Enxoval, Gamificação.
+• Pauta de Reunião — organiza os assuntos ANTES da reunião (não confundir com "Atas de Reunião", que é o registro DEPOIS). Cadastra título/data/horário/tipo + temas, cada um com descrição, motivo (por quê), objetivo, setor responsável, responsável, prioridade, tempo e status — tudo personalizável. Tem SUGESTÕES AUTOMÁTICAS por setor (Financeiro, Compras, Operação, Marketing, RH, Comercial) que viram tema ao clicar. Permite "Gerar / Exportar PDF" da pauta e "Transformar temas em tarefas" (cria na Central de Tarefas). Mantém histórico editável.
 
 MARKETING: Marketing 360°, Contatos & Consentimento (LGPD).
 
