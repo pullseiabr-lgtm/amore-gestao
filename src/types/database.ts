@@ -947,6 +947,7 @@ export interface PautaTema {
   prioridade: string      // Alta|Média|Baixa|... (personalizável)
   tempo: string           // estimado, ex.: "15 min"
   status: string          // Pendente|Em andamento|Concluído|... (personalizável)
+  decisao?: string        // decisão tomada (preenchida após a reunião → gera a ata)
 }
 
 export interface PautaReuniao {

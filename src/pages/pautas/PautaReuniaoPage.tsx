@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Plus, Edit2, Trash2, Loader2, Save, X, FileDown, CheckSquare,
-  ArrowLeft, ListChecks, Lightbulb,
+  ArrowLeft, ListChecks, Lightbulb, Phone, FileText,
 } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../hooks/useToast'
-import { fetchPautas, insertPauta, updatePauta, deletePauta, insertTarefaDePauta } from '../../lib/db'
+import { fetchPautas, insertPauta, updatePauta, deletePauta, insertTarefaDePauta, fetchProfiles, insertAta } from '../../lib/db'
+import { enviarWhatsApp, whatsappDoPerfilPorNome } from '../../lib/notify'
+import Modal from '../../components/ui/Modal'
 import type { PautaReuniao, PautaTema } from '../../types/database'
 
 // ── Constantes (todas personalizáveis: usadas como sugestão em datalist) ──
@@ -31,7 +33,7 @@ const prioColor = (p: string) => p === 'Alta' ? '#ef4444' : p === 'Baixa' ? '#16
 const hoje = () => new Date().toISOString().slice(0, 10)
 
 function novoTema(p: Partial<PautaTema> = {}): PautaTema {
-  return { id: crypto.randomUUID(), tema: '', descricao: '', motivo: '', objetivo: '', setor: '', responsavel: '', prioridade: 'Média', tempo: '', status: 'Pendente', ...p }
+  return { id: crypto.randomUUID(), tema: '', descricao: '', motivo: '', objetivo: '', setor: '', responsavel: '', prioridade: 'Média', tempo: '', status: 'Pendente', decisao: '', ...p }
 }
 
 // ── Componente principal ─────────────────────────────────────
@@ -110,6 +112,11 @@ function PautaEditor({ pauta, onSaved, toast }: {
   const [temas, setTemas] = useState<PautaTema[]>(pauta.temas || [])
   const [salvando, setSalvando] = useState(false)
   const [convertendo, setConvertendo] = useState(false)
+  const [enviandoWa, setEnviandoWa] = useState(false)
+  const [profiles, setProfiles] = useState<any[]>([])
+  const [ataDraft, setAtaDraft] = useState<{ titulo: string; participantes: string; pauta: string; decisoes: string; proximos: string } | null>(null)
+  const [salvandoAta, setSalvandoAta] = useState(false)
+  useEffect(() => { fetchProfiles().then(setProfiles).catch(() => {}) }, [])
 
   const setTema = (id: string, patch: Partial<PautaTema>) => setTemas(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t))
   const addTema = (p: Partial<PautaTema> = {}) => setTemas(prev => [...prev, novoTema(p)])
@@ -192,6 +199,63 @@ function PautaEditor({ pauta, onSaved, toast }: {
     } finally { setConvertendo(false) }
   }
 
+  // Envia a pauta por WhatsApp aos responsáveis (1 msg por responsável, só seus temas) — padrão da Central de Tarefas.
+  const enviarWhatsAppResponsaveis = async () => {
+    const validos = temas.filter(t => t.tema.trim())
+    if (!validos.length) { toast('Adicione temas primeiro.', 'warning'); return }
+    const semResp = validos.filter(t => !t.responsavel.trim())
+    if (semResp.length) { toast(`${semResp.length} tema(s) sem responsável. O responsável é obrigatório para enviar a pauta.`, 'warning'); return }
+    setEnviandoWa(true)
+    try {
+      await salvar()
+      const porResp: Record<string, PautaTema[]> = {}
+      validos.forEach(t => { (porResp[t.responsavel.trim()] ||= []).push(t) })
+      const dataBR = data ? new Date(data + 'T12:00:00').toLocaleDateString('pt-BR') : ''
+      let ok = 0; const semFone: string[] = []
+      for (const [resp, lista] of Object.entries(porResp)) {
+        const fone = whatsappDoPerfilPorNome(profiles, resp)
+        if (!fone) { semFone.push(resp); continue }
+        const linhas = lista.map((t, i) => `${i + 1}. *${t.tema}*${t.prioridade ? ` [${t.prioridade}]` : ''}${t.tempo ? ` (${t.tempo})` : ''}${t.objetivo ? `\n   🎯 ${t.objetivo}` : ''}`).join('\n')
+        const msg = `📋 *PAUTA — ${titulo}*\n📅 ${dataBR}${horario ? ` ${horario}` : ''}${tipo ? `\n🏷️ ${tipo}` : ''}\n\nOlá, ${resp.split(' ')[0]}! Seus temas para a reunião:\n\n${linhas}\n\n_Amore Gestão · Pauta de Reunião_`
+        if (await enviarWhatsApp(fone, msg, undefined, { tipo: 'tarefa', modulo: 'pauta-reuniao', titulo, loja: pauta.loja || null, destinatario_nome: resp, created_by: pauta.created_by })) ok++
+      }
+      let m = `Pauta enviada a ${ok} responsável(is).`
+      if (semFone.length) m += ` Sem WhatsApp no cadastro: ${semFone.join(', ')}.`
+      toast(m, ok ? 'success' : 'warning')
+    } finally { setEnviandoWa(false) }
+  }
+
+  // Gera o rascunho da ata a partir dos temas/decisões e abre para edição.
+  const abrirGerarAta = () => {
+    const validos = temas.filter(t => t.tema.trim())
+    if (!validos.length) { toast('Adicione temas primeiro.', 'warning'); return }
+    const participantes = [...new Set(validos.map(t => t.responsavel.trim()).filter(Boolean))].join(', ')
+    const pautaTxt = validos.map((t, i) => `${i + 1}. ${t.tema}${t.setor ? ` (${t.setor})` : ''}${t.responsavel ? ` — ${t.responsavel}` : ''}`).join('\n')
+    const decisoesTxt = validos.map((t, i) => `${i + 1}. ${t.tema}: ${t.decisao?.trim() || '(definir decisão)'}`).join('\n')
+    const proximos = validos.filter(t => t.responsavel.trim()).map(t => `• ${t.tema} → ${t.responsavel}${t.status ? ` [${t.status}]` : ''}`).join('\n')
+    setAtaDraft({ titulo: `Ata — ${titulo}`, participantes, pauta: pautaTxt, decisoes: decisoesTxt, proximos })
+  }
+
+  const salvarAta = async () => {
+    if (!ataDraft) return
+    if (!ataDraft.titulo.trim()) { toast('Informe o título da ata.', 'warning'); return }
+    setSalvandoAta(true)
+    try {
+      await insertAta({
+        loja: pauta.loja || 'Todas as Lojas', titulo: ataDraft.titulo.trim(),
+        data_reuniao: data || hoje(), hora_inicio: horario || null, hora_fim: null, local_reuniao: null,
+        tipo: 'operacional',
+        participantes: ataDraft.participantes ? ataDraft.participantes.split(',').map(s => s.trim()).filter(Boolean) : null,
+        pauta: ataDraft.pauta || null, decisoes: ataDraft.decisoes || null, proximos_passos: ataDraft.proximos || null,
+        observacoes: null, status: 'rascunho', aprovada_por: null, aprovada_at: null,
+        arquivo_url: null, arquivo_nome: null, created_by: pauta.created_by,
+      })
+      toast('Ata gerada e salva em "Atas de Reunião".', 'success')
+      setAtaDraft(null)
+    } catch (e) { toast('Erro ao salvar ata: ' + (e as Error).message, 'error') }
+    finally { setSalvandoAta(false) }
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
@@ -251,7 +315,7 @@ function PautaEditor({ pauta, onSaved, toast }: {
               <Field label="Descrição do assunto"><input value={t.descricao} onChange={e => setTema(t.id, { descricao: e.target.value })} style={inp} /></Field>
               <Field label="Motivo (Por quê?)"><input value={t.motivo} onChange={e => setTema(t.id, { motivo: e.target.value })} style={inp} /></Field>
               <Field label="Objetivo esperado"><input value={t.objetivo} onChange={e => setTema(t.id, { objetivo: e.target.value })} style={inp} /></Field>
-              <Field label="Responsável pelo tema"><input value={t.responsavel} onChange={e => setTema(t.id, { responsavel: e.target.value })} style={inp} /></Field>
+              <Field label="Responsável pelo tema *"><input value={t.responsavel} onChange={e => setTema(t.id, { responsavel: e.target.value })} placeholder="Obrigatório p/ gerar/enviar" style={{ ...inp, borderColor: t.responsavel.trim() ? 'var(--border)' : '#ef4444' }} /></Field>
             </div>
             <div style={grid4}>
               <Field label="Setor responsável">
@@ -268,6 +332,9 @@ function PautaEditor({ pauta, onSaved, toast }: {
                 <datalist id="status-tema">{STATUS_TEMA.map(s => <option key={s} value={s} />)}</datalist>
               </Field>
             </div>
+            <Field label="Decisão tomada (preencha após a reunião → gera a ata)">
+              <input value={t.decisao || ''} onChange={e => setTema(t.id, { decisao: e.target.value })} placeholder="Ex.: Aprovado; renegociar com fornecedor X até dia 30" style={inp} />
+            </Field>
           </div>
         ))}
       </div>
@@ -278,8 +345,28 @@ function PautaEditor({ pauta, onSaved, toast }: {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
         <button onClick={salvar} disabled={salvando} style={btnPrimary}>{salvando ? <Loader2 className="spin" size={14} /> : <Save size={14} />} Salvar pauta</button>
         <button onClick={exportarPDF} style={btnGhost}><FileDown size={14} /> Gerar / Exportar PDF</button>
+        <button onClick={enviarWhatsAppResponsaveis} disabled={enviandoWa} style={btnGhost}>{enviandoWa ? <Loader2 className="spin" size={14} /> : <Phone size={14} />} Enviar pauta no WhatsApp</button>
+        <button onClick={abrirGerarAta} style={btnGhost}><FileText size={14} /> Gerar Ata</button>
         <button onClick={transformarEmTarefas} disabled={convertendo} style={btnGhost}>{convertendo ? <Loader2 className="spin" size={14} /> : <CheckSquare size={14} />} Transformar temas em tarefas</button>
       </div>
+
+      {/* Modal de geração de ata (editável) */}
+      {ataDraft && (
+        <Modal open onClose={() => setAtaDraft(null)} title="Gerar Ata da Reunião" size="lg"
+          footer={
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setAtaDraft(null)} style={btnGhost}>Cancelar</button>
+              <button onClick={salvarAta} disabled={salvandoAta} style={btnPrimary}>{salvandoAta ? <Loader2 className="spin" size={14} /> : <Save size={14} />} Salvar em Atas de Reunião</button>
+            </div>
+          }>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>Gerada a partir dos temas e decisões. Edite à vontade antes de salvar — fica registrada no módulo <strong>Atas de Reunião</strong>.</div>
+          <Field label="Título da ata"><input value={ataDraft.titulo} onChange={e => setAtaDraft({ ...ataDraft, titulo: e.target.value })} style={inp} /></Field>
+          <Field label="Participantes (separados por vírgula)"><input value={ataDraft.participantes} onChange={e => setAtaDraft({ ...ataDraft, participantes: e.target.value })} style={inp} /></Field>
+          <Field label="Pauta (temas discutidos)"><textarea value={ataDraft.pauta} onChange={e => setAtaDraft({ ...ataDraft, pauta: e.target.value })} rows={4} style={{ ...inp, resize: 'vertical' }} /></Field>
+          <Field label="Decisões tomadas"><textarea value={ataDraft.decisoes} onChange={e => setAtaDraft({ ...ataDraft, decisoes: e.target.value })} rows={4} style={{ ...inp, resize: 'vertical' }} /></Field>
+          <Field label="Próximos passos / responsáveis"><textarea value={ataDraft.proximos} onChange={e => setAtaDraft({ ...ataDraft, proximos: e.target.value })} rows={3} style={{ ...inp, resize: 'vertical' }} /></Field>
+        </Modal>
+      )}
     </div>
   )
 }
