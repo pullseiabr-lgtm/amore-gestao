@@ -181,6 +181,11 @@ for (const r of Object.keys(ROLE_PERMISSIONS)) {
   ROLE_PERMISSIONS[r]['checklists'] = ROLE_PERMISSIONS[r]['tarefas'] || { view: false, create: false, edit: false, delete: false, export: false }
 }
 
+// Módulo "Sugestão de Pauta de Reunião" — espelha o acesso a atas (ou tarefas) em todos os papéis
+for (const r of Object.keys(ROLE_PERMISSIONS)) {
+  ROLE_PERMISSIONS[r]['pauta-reuniao'] = ROLE_PERMISSIONS[r]['atas'] || ROLE_PERMISSIONS[r]['tarefas'] || { view: false, create: false, edit: false, delete: false, export: false }
+}
+
 const ALL_MODULE_IDS = Object.keys(ROLE_PERMISSIONS.super_admin)
 const FULL: ModulePermission = { view: true, create: true, edit: true, delete: true, export: true }
 const OFF: ModulePermission = { view: false, create: false, edit: false, delete: false, export: false }

@@ -1,7 +1,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
 import type { NFeParsed } from './nfe'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, ChecklistModelo, ChecklistExecucao, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig, Boleto, Notificacao } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, ChecklistModelo, ChecklistExecucao, PautaReuniao, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig, Boleto, Notificacao } from '../types/database'
 
 const db = supabase as any
 
@@ -1521,6 +1521,42 @@ export async function updateChecklistExecucao(id: string, e: Partial<ChecklistEx
 
 export async function deleteChecklistExecucao(id: string): Promise<void> {
   await sdkCall<null>(db.from('checklist_execucoes').delete().eq('id', id))
+}
+
+// ── Sugestão de Pauta de Reunião ────────────────────────────
+export async function fetchPautas(loja: string): Promise<PautaReuniao[]> {
+  let q = db.from('pautas_reuniao').select('*').order('created_at', { ascending: false })
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
+  return sdkCall<PautaReuniao[]>(q).then((d: PautaReuniao[] | null) => d ?? []).catch(() => [])
+}
+
+export async function insertPauta(p: Omit<PautaReuniao, 'id' | 'created_at' | 'updated_at'>): Promise<PautaReuniao> {
+  return sdkCall<PautaReuniao>(db.from('pautas_reuniao').insert(p).select().single())
+}
+
+export async function updatePauta(id: string, p: Partial<PautaReuniao>): Promise<PautaReuniao> {
+  return sdkCall<PautaReuniao>(
+    db.from('pautas_reuniao').update({ ...p, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+  )
+}
+
+export async function deletePauta(id: string): Promise<void> {
+  await sdkCall<null>(db.from('pautas_reuniao').delete().eq('id', id))
+}
+
+// Cria uma tarefa a partir de um tema de pauta (loja+titulo obrigatórios; resto usa default do banco)
+export async function insertTarefaDePauta(t: {
+  loja: string; titulo: string; descricao?: string | null; setor?: string | null
+  prioridade?: string | null; responsavel_nome?: string | null; solicitante_nome?: string | null; created_by?: string | null
+}): Promise<{ id: string }> {
+  const payload: Record<string, unknown> = { loja: t.loja, titulo: t.titulo }
+  if (t.descricao) payload.descricao = t.descricao
+  if (t.setor) payload.setor = t.setor
+  if (t.prioridade) payload.prioridade = t.prioridade
+  if (t.responsavel_nome) payload.responsavel_nome = t.responsavel_nome
+  if (t.solicitante_nome) payload.solicitante_nome = t.solicitante_nome
+  if (t.created_by) payload.created_by = t.created_by
+  return sdkCall<{ id: string }>(db.from('tarefas').insert(payload).select('id').single())
 }
 
 // ── Cozinha — Produção ──────────────────────────────────────

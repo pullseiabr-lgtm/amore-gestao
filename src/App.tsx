@@ -40,6 +40,7 @@ import AgenteCMVPage from './pages/agente/AgenteCMVPage'
 import NotificacoesPage from './pages/notificacoes/NotificacoesPage'
 import TarefasPage from './pages/tarefas/TarefasPage'
 import ChecklistsPage from './pages/checklists/ChecklistsPage'
+import PautaReuniaoPage from './pages/pautas/PautaReuniaoPage'
 import EnxovalPage from './pages/enxoval/EnxovalPage'
 import PlanejamentoPage from './pages/planejamento/PlanejamentoPage'
 import AtasPage from './pages/atas/AtasPage'
@@ -81,6 +82,7 @@ export type PageId =
   | 'agente-cmv'
   | 'tarefas'
   | 'checklists'
+  | 'pauta-reuniao'
   | 'enxoval'
   | 'planejamento'
   | 'atas'
@@ -123,6 +125,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'agente-cmv': 'Agente de Precificação & CMV',
   tarefas: 'Central de Tarefas',
   checklists: 'Operação Padrão',
+  'pauta-reuniao': 'Sugestão de Pauta de Reunião',
   enxoval: 'Controle de Enxoval',
   planejamento: 'Planejamento Operacional',
   atas: 'Atas de Reunião',
@@ -168,6 +171,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'notificacoes':         return <NotificacoesPage />
     case 'tarefas':              return <TarefasPage />
     case 'checklists':           return <ChecklistsPage />
+    case 'pauta-reuniao':        return <PautaReuniaoPage />
     case 'enxoval':              return <EnxovalPage />
     case 'planejamento':         return <PlanejamentoPage />
     case 'atas':                 return <AtasPage />

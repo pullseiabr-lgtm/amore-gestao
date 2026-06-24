@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, ClipboardCheck, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap, Activity, Bot, Calendar, Bell } from 'lucide-react'
+import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, ClipboardCheck, ListChecks, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap, Activity, Bot, Calendar, Bell } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 
@@ -23,6 +23,7 @@ const MENU_TOP: NavItem[] = [
   { id: 'enxoval',        label: 'Controle Enxoval',   icon: <Package size={13} /> },
   { id: 'planejamento',  label: 'Planejamento',       icon: <Calendar size={13} /> },
   { id: 'atas',          label: 'Atas de Reunião',    icon: <FileText size={13} /> },
+  { id: 'pauta-reuniao', label: 'Pauta de Reunião',   icon: <ListChecks size={13} /> },
   { id: 'alertas',     label: '🔔 Alertas & Rastreab.', icon: <Bell size={13} /> },
   { id: 'notificacoes', label: 'Central de Notificações', icon: <Bell size={13} /> },
   { id: 'pendencias',  label: 'Pendências & OS',    icon: <FileText size={13} />, badge: '7' },

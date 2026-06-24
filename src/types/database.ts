@@ -934,6 +934,36 @@ export interface ChecklistExecucao {
   modelo?: ChecklistModelo
 }
 
+// ── Sugestão de Pauta de Reunião ─────────────────────────────
+
+export interface PautaTema {
+  id: string
+  tema: string
+  descricao: string
+  motivo: string          // por quê?
+  objetivo: string        // resultado esperado
+  setor: string
+  responsavel: string
+  prioridade: string      // Alta|Média|Baixa|... (personalizável)
+  tempo: string           // estimado, ex.: "15 min"
+  status: string          // Pendente|Em andamento|Concluído|... (personalizável)
+}
+
+export interface PautaReuniao {
+  id: string
+  loja: string | null
+  titulo: string
+  data: string | null     // YYYY-MM-DD
+  horario: string | null  // HH:MM
+  tipo: string | null     // Operacional|Comercial|... (personalizável)
+  status: string          // rascunho|finalizada|realizada
+  temas: PautaTema[]
+  observacoes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 // ── Tarefas Operacionais ─────────────────────────────────────
 
 export type TarefaStatus     = 'pendente' | 'em_andamento' | 'aguardando_retorno' | 'aguardando_fornecedor' | 'concluido' | 'cancelado'
