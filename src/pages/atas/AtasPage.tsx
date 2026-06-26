@@ -2,16 +2,36 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   Plus, X, Edit2, Trash2, Search,
   FileText, Users, ChevronRight, ChevronDown,
-  ThumbsUp, Send, RefreshCw,
+  ThumbsUp, Send, RefreshCw, MessageCircle,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLoja } from '../../contexts/LojaContext'
 import {
   fetchAtas, insertAta, updateAta, deleteAta,
   insertAtaAcao, updateAtaAcao, deleteAtaAcao,
-  insertTarefa, uploadAnexo,
+  insertTarefa, uploadAnexo, fetchProfiles,
 } from '../../lib/db'
-import type { AtaReuniao, AtaAcao, AtaTipo, AtaStatus, AtaAcaoStatus } from '../../types/database'
+import { enviarWhatsApp, whatsappDoPerfilPorNome } from '../../lib/notify'
+import type { AtaReuniao, AtaAcao, AtaTipo, AtaStatus, AtaAcaoStatus, Profile } from '../../types/database'
+
+const PAINEL_URL = 'https://painel.amorefood.com.br'
+
+/** Monta a mensagem de WhatsApp da ata (temas abordados + aviso de disponibilidade no painel). */
+function montarMensagemAta(a: AtaReuniao): string {
+  const linhas: string[] = []
+  linhas.push('📋 *Ata de Reunião — Amore Food*', '')
+  linhas.push(`*${a.titulo}*`)
+  const cab = [fmtDate(a.data_reuniao), a.hora_inicio ? a.hora_inicio.slice(0, 5) : '', a.local_reuniao || '']
+    .filter(Boolean).join(' · ')
+  if (cab) linhas.push(`🗓️ ${cab}`)
+  if ((a.participantes || []).length) linhas.push(`👥 ${(a.participantes || []).join(', ')}`)
+  if (a.pauta)    linhas.push('', '📌 *Temas abordados:*', a.pauta.trim())
+  if (a.decisoes) linhas.push('', '✅ *Decisões:*', a.decisoes.trim())
+  if (a.proximos_passos) linhas.push('', '➡️ *Próximos passos:*', a.proximos_passos.trim())
+  linhas.push('', `A ata completa está disponível no Painel Amore Food 👉 ${PAINEL_URL}`)
+  linhas.push('', '_Mensagem automática · Sistema Amore Food_')
+  return linhas.join('\n')
+}
 
 /* ── constants ──────────────────────────────────────────── */
 const TIPOS: Record<AtaTipo, { label: string; emoji: string; cor: string }> = {
@@ -54,7 +74,9 @@ export default function AtasPage() {
   const { loja }       = useLoja()
 
   const [atas,    setAtas]    = useState<AtaReuniao[]>([])
+  const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading] = useState(false)
+  const [sendingId, setSendingId] = useState<string | null>(null)
   const [search,  setSearch]  = useState('')
   const [filterTipo, setFilterTipo] = useState<AtaTipo | ''>('')
 
@@ -91,6 +113,51 @@ export default function AtasPage() {
     setLoading(false)
   }
   useEffect(() => { load() }, [loja])
+  useEffect(() => { fetchProfiles().then(setProfiles).catch(() => {}) }, [])
+
+  /* ── disparo da ata aos participantes (WhatsApp via Evolution) ── */
+  const enviarAtaParticipantes = async (a: AtaReuniao) => {
+    const nomes = a.participantes || []
+    if (nomes.length === 0) { alert('Esta ata não tem participantes cadastrados.'); return }
+
+    const comFone: { nome: string; fone: string }[] = []
+    const semFone: string[] = []
+    for (const nome of nomes) {
+      const fone = whatsappDoPerfilPorNome(profiles, nome)
+      if (fone) comFone.push({ nome, fone }); else semFone.push(nome)
+    }
+    if (comFone.length === 0) {
+      alert('Nenhum participante tem WhatsApp cadastrado no perfil.\n\nCadastre o número em Usuários → editar usuário → 📱 WhatsApp principal.\nSem WhatsApp: ' + semFone.join(', '))
+      return
+    }
+
+    const aviso = semFone.length
+      ? `\n\n⚠️ Sem WhatsApp cadastrado (não receberão): ${semFone.join(', ')}`
+      : ''
+    if (!confirm(`Enviar a ata "${a.titulo}" via WhatsApp para ${comFone.length} participante(s)?${aviso}`)) return
+
+    setSendingId(a.id)
+    const mensagem = montarMensagemAta(a)
+    let ok = 0; const falhas: string[] = []
+    try {
+      for (let i = 0; i < comFone.length; i++) {
+        const { nome, fone } = comFone[i]
+        const enviado = await enviarWhatsApp(fone, mensagem, undefined, {
+          tipo: 'manual', modulo: 'atas', titulo: `Ata: ${a.titulo}`,
+          loja: a.loja, destinatario_nome: nome, referencia_id: a.id,
+          created_by: user?.name || null,
+        })
+        if (enviado) ok++; else falhas.push(nome)
+        // pausa entre envios (anti-ban) — não espera após o último
+        if (i < comFone.length - 1) await new Promise(r => setTimeout(r, 1500))
+      }
+    } finally { setSendingId(null) }
+
+    const partes = [`✅ Ata enviada para ${ok} de ${comFone.length} participante(s).`]
+    if (falhas.length) partes.push(`❌ Falha: ${falhas.join(', ')}`)
+    if (semFone.length) partes.push(`⚠️ Sem WhatsApp: ${semFone.join(', ')}`)
+    alert(partes.join('\n'))
+  }
 
   const filtered = useMemo(() => atas.filter(a => {
     if (search    && !a.titulo.toLowerCase().includes(search.toLowerCase())) return false
@@ -404,6 +471,13 @@ export default function AtasPage() {
 
                   {/* ata actions */}
                   <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+                    {can('atas', 'edit') && (
+                      <button onClick={() => enviarAtaParticipantes(a)} disabled={sendingId === a.id}
+                        title="Enviar a ata via WhatsApp para os participantes"
+                        style={{ padding: '6px 14px', borderRadius: 7, border: 'none', background: '#25D366', color: '#fff', fontSize: 12, fontWeight: 600, cursor: sendingId === a.id ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: 5, opacity: sendingId === a.id ? 0.6 : 1 }}>
+                        <MessageCircle size={12} /> {sendingId === a.id ? 'Enviando…' : 'Enviar aos participantes'}
+                      </button>
+                    )}
                     {can('atas', 'edit') && a.status === 'rascunho' && (
                       <button onClick={() => finalizarAta(a)}
                         style={{ padding: '6px 14px', borderRadius: 7, border: '1px solid #3b82f6', color: '#3b82f6', background: '#3b82f610', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
@@ -499,6 +573,21 @@ export default function AtasPage() {
               {/* participantes */}
               <div>
                 <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Participantes</label>
+                <select value="" onChange={e => {
+                    const nome = e.target.value
+                    if (nome && !(ataForm.participantes || []).includes(nome)) {
+                      setAtaForm(p => ({ ...p, participantes: [...(p.participantes || []), nome] }))
+                    }
+                  }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-primary)', fontSize: 12, marginBottom: 6 }}>
+                  <option value="">+ Adicionar usuário cadastrado…</option>
+                  {profiles
+                    .filter(p => !(ataForm.participantes || []).includes(p.name))
+                    .map(p => {
+                      const temFone = !!whatsappDoPerfilPorNome(profiles, p.name)
+                      return <option key={p.id} value={p.name}>{p.name}{temFone ? ' 📱' : ' (sem WhatsApp)'}</option>
+                    })}
+                </select>
                 <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
                   <input value={participInput} onChange={e => setParticipInput(e.target.value)}
                     placeholder="Nome do participante"
