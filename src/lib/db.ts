@@ -1,7 +1,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
 import type { NFeParsed } from './nfe'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, ChecklistModelo, ChecklistExecucao, PautaReuniao, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig, Boleto, Notificacao } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, ChecklistModelo, ChecklistExecucao, PautaReuniao, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig, Boleto, Notificacao, Caixa, CaixaItem } from '../types/database'
 
 const db = supabase as any
 
@@ -878,6 +878,28 @@ export async function saveAppConfig(chave: string, valor: any): Promise<void> {
   await sdkCall<null>(
     db.from('app_config').upsert({ chave, valor, updated_at: new Date().toISOString() }, { onConflict: 'chave' })
   ).catch(() => {})
+}
+
+// ── Módulo de Caixas ────────────────────────────────────────────────────────
+export async function fetchCaixas(loja?: string): Promise<Caixa[]> {
+  let q = db.from('caixas').select('*').order('data_ref', { ascending: false, nullsFirst: false })
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
+  return sdkCall<Caixa[]>(q).then(d => d ?? []).catch(() => [])
+}
+export async function fetchCaixaItens(caixaId: string): Promise<CaixaItem[]> {
+  return sdkCall<CaixaItem[]>(
+    db.from('caixa_itens').select('*').eq('caixa_id', caixaId).order('valor', { ascending: false }),
+  ).then(d => d ?? []).catch(() => [])
+}
+export async function fetchTodosCaixaItens(loja?: string): Promise<CaixaItem[]> {
+  // itens de todos os caixas (para ABC/comparativo) — via join na loja
+  const caixas = await fetchCaixas(loja)
+  const ids = caixas.map(c => c.id)
+  if (!ids.length) return []
+  return sdkCall<CaixaItem[]>(db.from('caixa_itens').select('*').in('caixa_id', ids)).then(d => d ?? []).catch(() => [])
+}
+export async function deleteCaixa(id: string): Promise<void> {
+  await sdkCall<null>(db.from('caixas').delete().eq('id', id)).catch(() => {})
 }
 
 // ── Upload de anexos (Supabase Storage, bucket "anexos") ────────────────────

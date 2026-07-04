@@ -26,6 +26,7 @@ const MENU_TOP: NavItem[] = [
   { id: 'pauta-reuniao', label: 'Pauta de Reunião',   icon: <ListChecks size={13} /> },
   { id: 'alertas',     label: '🔔 Alertas & Rastreab.', icon: <Bell size={13} /> },
   { id: 'notificacoes', label: 'Central de Notificações', icon: <Bell size={13} /> },
+  { id: 'caixas',      label: '🗄️ Caixas & Despesas',   icon: <FileText size={13} /> },
   { id: 'pendencias',  label: 'Pendências & OS',    icon: <FileText size={13} />, badge: '7' },
   { id: 'gamificacao', label: 'Gamificação',         icon: <Trophy size={13} /> },
   { id: 'marketing',   label: 'Marketing 360°',     icon: <Megaphone size={13} /> },

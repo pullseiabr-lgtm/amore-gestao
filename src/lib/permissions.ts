@@ -176,6 +176,11 @@ for (const r of Object.keys(ROLE_PERMISSIONS)) {
   ROLE_PERMISSIONS[r]['notificacoes'] = ROLE_PERMISSIONS[r]['tarefas'] || { view: false, create: false, edit: false, delete: false, export: false }
 }
 
+// Módulo "Caixas & Despesas" — espelha o acesso ao financeiro em todos os papéis
+for (const r of Object.keys(ROLE_PERMISSIONS)) {
+  ROLE_PERMISSIONS[r]['caixas'] = ROLE_PERMISSIONS[r]['financeiro'] || { view: false, create: false, edit: false, delete: false, export: false }
+}
+
 // Módulo "Operação Padrão / Checklists" — espelha o acesso a tarefas em todos os papéis
 for (const r of Object.keys(ROLE_PERMISSIONS)) {
   ROLE_PERMISSIONS[r]['checklists'] = ROLE_PERMISSIONS[r]['tarefas'] || { view: false, create: false, edit: false, delete: false, export: false }

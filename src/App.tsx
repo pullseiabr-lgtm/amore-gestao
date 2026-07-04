@@ -38,6 +38,7 @@ import ComprasAgentePage from './pages/compras/ComprasAgentePage'
 import AgenteLizPage from './pages/agente/AgenteLizPage'
 import AgenteCMVPage from './pages/agente/AgenteCMVPage'
 import NotificacoesPage from './pages/notificacoes/NotificacoesPage'
+import CaixasPage from './pages/caixas/CaixasPage'
 import TarefasPage from './pages/tarefas/TarefasPage'
 import ChecklistsPage from './pages/checklists/ChecklistsPage'
 import PautaReuniaoPage from './pages/pautas/PautaReuniaoPage'
@@ -89,6 +90,7 @@ export type PageId =
   | 'lista-padrao'
   | 'alertas'
   | 'notificacoes'
+  | 'caixas'
 
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Dashboard',
@@ -132,6 +134,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'lista-padrao': 'Lista de Compras Padronizada',
   alertas: 'Alertas & Rastreabilidade',
   notificacoes: 'Central de Notificações',
+  caixas: 'Caixas & Despesas',
 }
 
 function PageContent({ page }: { page: PageId }) {
@@ -169,6 +172,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'agente-liz':           return <AgenteLizPage />
     case 'agente-cmv':           return <AgenteCMVPage />
     case 'notificacoes':         return <NotificacoesPage />
+    case 'caixas':               return <CaixasPage />
     case 'tarefas':              return <TarefasPage />
     case 'checklists':           return <ChecklistsPage />
     case 'pauta-reuniao':        return <PautaReuniaoPage />

@@ -319,6 +319,37 @@ export interface Notificacao {
   created_at: string
 }
 
+// ── Módulo de Caixas (arquivo de caixas de despesas) ────────────────────────
+export interface Caixa {
+  id: string
+  loja: string
+  titulo: string
+  periodo_inicio: string | null
+  periodo_fim: string | null
+  data_ref: string | null
+  total: number
+  qtd_itens: number
+  arquivo_origem: string | null
+  origem: string
+  status: string
+  observacoes: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export interface CaixaItem {
+  id: string
+  caixa_id: string
+  data: string | null
+  fornecedor: string | null
+  categoria: string | null
+  descricao: string | null
+  valor: number
+  forma_pagamento: string | null
+  documento: string | null
+  created_at: string
+}
+
 export interface RequisicaoItem {
   id: string
   requisicao_id: string
