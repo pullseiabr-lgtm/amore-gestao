@@ -333,6 +333,7 @@ export interface Caixa {
   origem: string
   status: string
   observacoes: string | null
+  anexo_url: string | null
   created_by: string | null
   created_at: string
 }
@@ -347,6 +348,7 @@ export interface CaixaItem {
   valor: number
   forma_pagamento: string | null
   documento: string | null
+  anexo_url: string | null
   created_at: string
 }
 

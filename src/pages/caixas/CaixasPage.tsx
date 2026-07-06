@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Archive, RefreshCw, Loader, ChevronLeft, Store, Calendar, FileText, Trash2, Plus, Check } from 'lucide-react'
+import { Archive, RefreshCw, Loader, ChevronLeft, Store, Calendar, Trash2, Plus, Check } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
-import { fetchCaixas, fetchCaixaItens, fetchTodosCaixaItens, deleteCaixa, insertCaixa, insertCaixaItens, lancarCaixaFinanceiro, fetchProfiles } from '../../lib/db'
+import { fetchCaixas, fetchCaixaItens, fetchTodosCaixaItens, deleteCaixa, insertCaixa, insertCaixaItens, lancarCaixaFinanceiro, fetchProfiles, uploadAnexo } from '../../lib/db'
 import { enviarWhatsApp, getZapiCfg, soDigitos } from '../../lib/notify'
 import type { Caixa, CaixaItem } from '../../types/database'
 
@@ -40,7 +40,11 @@ function CaixaDetalhe({ caixa, onVoltar }: { caixa: Caixa; onVoltar: () => void 
           <span style={{ fontWeight: 800, color: 'var(--bordo)', fontSize: 15 }}>{fmtR$(caixa.total)}</span>
         </div>
         {caixa.observacoes && <div style={{ marginTop: 8, fontSize: 12, color: '#B45309', background: '#FEF3C7', padding: '6px 10px', borderRadius: 6 }}>⚠ {caixa.observacoes}</div>}
-        {caixa.arquivo_origem && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--muted)' }}><FileText size={11} /> {caixa.arquivo_origem}</div>}
+        <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {caixa.anexo_url
+            ? <a href={caixa.anexo_url} target="_blank" rel="noreferrer"><button className="btn bp bsm">📎 Ver Notas Fiscais / Comprovantes</button></a>
+            : <span style={{ fontSize: 11, color: 'var(--muted)' }}>📎 Sem comprovante anexado {caixa.arquivo_origem ? `(origem: ${caixa.arquivo_origem})` : ''}</span>}
+        </div>
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -51,13 +55,14 @@ function CaixaDetalhe({ caixa, onVoltar }: { caixa: Caixa; onVoltar: () => void 
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead><tr style={{ background: 'var(--bordo-bg)' }}>
               <th style={{ textAlign: 'left', padding: '8px 12px' }}>Descrição</th><th style={{ textAlign: 'left', padding: '8px 12px' }}>Fornecedor</th>
-              <th style={{ textAlign: 'left', padding: '8px 12px' }}>Categoria</th><th style={{ textAlign: 'right', padding: '8px 12px' }}>Valor</th>
+              <th style={{ textAlign: 'left', padding: '8px 12px' }}>Categoria</th><th style={{ textAlign: 'left', padding: '8px 12px' }}>Preço unit.</th><th style={{ textAlign: 'right', padding: '8px 12px' }}>Valor</th>
             </tr></thead>
             <tbody>{itens.map(i => (
               <tr key={i.id} style={{ borderTop: '1px solid var(--border)' }}>
-                <td style={{ padding: '7px 12px', fontWeight: 600 }}>{i.descricao || '—'}</td>
+                <td style={{ padding: '7px 12px', fontWeight: 600 }}>{i.descricao || '—'}{i.anexo_url && <a href={i.anexo_url} target="_blank" rel="noreferrer" style={{ marginLeft: 6, fontSize: 10 }}>📎 NF</a>}</td>
                 <td style={{ padding: '7px 12px', color: 'var(--muted)' }}>{i.fornecedor || '—'}</td>
                 <td style={{ padding: '7px 12px' }}><span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 12, background: corCat(i.categoria) + '22', color: corCat(i.categoria), fontWeight: 700 }}>{i.categoria || 'Outros'}</span></td>
+                <td style={{ padding: '7px 12px', fontSize: 11, color: 'var(--muted)' }}>{i.documento || '—'}</td>
                 <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700 }}>{fmtR$(i.valor)}</td>
               </tr>
             ))}</tbody>
@@ -67,6 +72,10 @@ function CaixaDetalhe({ caixa, onVoltar }: { caixa: Caixa; onVoltar: () => void 
     </div>
   )
 }
+
+// ── Helpers de preço (para análise produto-a-produto) ────────
+const parsePU = (doc: string | null): number | null => { const m = (doc || '').match(/unit\s+([\d.]+)/); return m ? parseFloat(m[1]) : null }
+const normProd = (s: string | null) => (s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim()
 
 // ── Formulário: Novo Caixa ───────────────────────────────────
 type NovoItem = { descricao: string; categoria: string; fornecedor: string; valor: string }
@@ -78,6 +87,7 @@ function NovoCaixaForm({ lojaAtual, onClose, onSalvo }: { lojaAtual: string; onC
   const [data, setData] = useState(new Date().toISOString().slice(0, 10))
   const [obs, setObs] = useState('')
   const [itens, setItens] = useState<NovoItem[]>([{ descricao: '', categoria: 'Hortifruti', fornecedor: '', valor: '' }])
+  const [nfFile, setNfFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
@@ -92,10 +102,12 @@ function NovoCaixaForm({ lojaAtual, onClose, onSalvo }: { lojaAtual: string; onC
     if (totalItens <= 0) { setErr('Adicione ao menos um item com valor'); return }
     setSaving(true); setErr('')
     try {
+      let anexoUrl: string | null = null
+      if (nfFile) { try { anexoUrl = await uploadAnexo(nfFile, 'caixas') } catch { /* segue sem anexo */ } }
       const caixa = await insertCaixa({
         loja, titulo: titulo.trim(), periodo_inicio: data, periodo_fim: data, data_ref: data,
         total: totalItens, qtd_itens: itensValidos.length, arquivo_origem: null, origem: 'manual', status: 'arquivado',
-        observacoes: obs.trim() || null, created_by: user?.name || null,
+        observacoes: obs.trim() || null, anexo_url: anexoUrl, created_by: user?.name || null,
       })
       const itensDb = itensValidos.map(i => ({
         caixa_id: caixa.id, data, fornecedor: i.fornecedor.trim() || null, categoria: i.categoria,
@@ -139,7 +151,12 @@ function NovoCaixaForm({ lojaAtual, onClose, onSalvo }: { lojaAtual: string; onC
           </table>
           <button className="btn bo bsm" onClick={addItem} style={{ marginTop: 8, borderStyle: 'dashed' }}><Plus size={11} /> Adicionar item</button>
 
-          <div className="fg" style={{ margin: '14px 0 0' }}><label className="fl">Observações</label><textarea className="inp" rows={2} value={obs} onChange={e => setObs(e.target.value)} style={{ resize: 'vertical' }} /></div>
+          <div className="fg" style={{ margin: '14px 0 0' }}>
+            <label className="fl">📎 Nota Fiscal / Comprovante (PDF ou imagem)</label>
+            <input type="file" accept="application/pdf,image/*" onChange={e => setNfFile(e.target.files?.[0] || null)} style={{ fontSize: 12 }} />
+            {nfFile && <span style={{ fontSize: 11, color: 'var(--success)', marginLeft: 8 }}>✓ {nfFile.name}</span>}
+          </div>
+          <div className="fg" style={{ margin: '12px 0 0' }}><label className="fl">Observações</label><textarea className="inp" rows={2} value={obs} onChange={e => setObs(e.target.value)} style={{ resize: 'vertical' }} /></div>
           {err && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 8 }}>{err}</div>}
         </div>
         <div className="mft" style={{ justifyContent: 'space-between' }}>
@@ -159,9 +176,11 @@ export default function CaixasPage() {
   const [caixas, setCaixas] = useState<Caixa[]>([])
   const [itens, setItens] = useState<CaixaItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [aba, setAba] = useState<'arquivo' | 'abc'>('arquivo')
+  const [aba, setAba] = useState<'arquivo' | 'abc' | 'precos'>('arquivo')
   const [sel, setSel] = useState<Caixa | null>(null)
   const [showNovo, setShowNovo] = useState(false)
+  const [precoBusca, setPrecoBusca] = useState('')
+  const [prodSel, setProdSel] = useState<string | null>(null)
   // WhatsApp
   const [showWhats, setShowWhats] = useState(false)
   const [profiles, setProfiles] = useState<any[]>([])
@@ -196,6 +215,30 @@ export default function CaixasPage() {
   }, [itens])
   const maxCat = Math.max(1, ...porCategoria.map(([, v]) => v))
 
+  // ── Análise de preços: histórico por produto (últimas compras) ──
+  const produtosPreco = useMemo(() => {
+    const m: Record<string, { nome: string; compras: { data: string | null; forn: string | null; unit: number | null; total: number }[] }> = {}
+    itens.forEach(i => {
+      const k = normProd(i.descricao); if (!k || k.length < 2) return
+      if (!m[k]) m[k] = { nome: i.descricao || k, compras: [] }
+      m[k].compras.push({ data: i.data, forn: i.fornecedor, unit: parsePU(i.documento), total: i.valor })
+    })
+    return Object.values(m).map(p => {
+      const comps = p.compras.sort((a, b) => (b.data || '').localeCompare(a.data || ''))
+      const comUnit = comps.filter(c => c.unit != null)
+      const ult = comUnit[0]?.unit ?? null
+      const ant = comUnit[1]?.unit ?? null
+      const units = comUnit.map(c => c.unit as number)
+      const min = units.length ? Math.min(...units) : null
+      const max = units.length ? Math.max(...units) : null
+      const varPct = (ult != null && ant != null && ant > 0) ? ((ult - ant) / ant) * 100 : null
+      return { ...p, comps, n: comps.length, ult, ant, min, max, varPct, gasto: comps.reduce((s, c) => s + c.total, 0) }
+    }).sort((a, b) => b.gasto - a.gasto)
+  }, [itens])
+
+  const produtosFiltrados = produtosPreco.filter(p => !precoBusca || normProd(p.nome).includes(normProd(precoBusca)))
+  const prodDetalhe = prodSel ? produtosPreco.find(p => normProd(p.nome) === prodSel) : null
+
   // ── WhatsApp: perfis com número + resumo + envio ──
   const perfisComWhats = useMemo(() => profiles
     .map(p => ({ nome: p.name, num: soDigitos((p?.permissions_override as any)?.__perfil__?.whatsapp) }))
@@ -225,9 +268,9 @@ export default function CaixasPage() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 4, background: 'var(--bordo-bg)', padding: 4, borderRadius: 10 }}>
-          {(['arquivo', 'abc'] as const).map(t => (
+          {(['arquivo', 'abc', 'precos'] as const).map(t => (
             <button key={t} onClick={() => setAba(t)} style={{ border: 'none', cursor: 'pointer', padding: '7px 16px', borderRadius: 7, fontSize: 13, fontWeight: aba === t ? 700 : 500, background: aba === t ? 'var(--bordo)' : 'transparent', color: aba === t ? '#fff' : 'var(--muted)' }}>
-              {t === 'arquivo' ? '🗄️ Arquivo de Caixas' : '📊 Análise ABC'}
+              {t === 'arquivo' ? '🗄️ Arquivo de Caixas' : t === 'abc' ? '📊 Análise ABC' : '💲 Preços por Produto'}
             </button>
           ))}
         </div>
@@ -330,6 +373,70 @@ export default function CaixasPage() {
                 <Bar pct={(v / maxCat) * 100} cor={corCat(cat)} />
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {aba === 'precos' && (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: 12, borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input className="inp" value={precoBusca} onChange={e => setPrecoBusca(e.target.value)} placeholder="🔎 Buscar produto (tomate, cebola, alho...)" style={{ maxWidth: 320, fontSize: 13 }} />
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{produtosFiltrados.length} produtos · comparando as últimas compras de cada um</span>
+          </div>
+          {produtosPreco.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>Sem itens com preço unitário ainda.</div>}
+          {produtosPreco.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead><tr style={{ background: 'var(--bordo-bg)' }}>
+                <th style={{ textAlign: 'left', padding: '8px 12px' }}>Produto</th>
+                <th style={{ textAlign: 'center', padding: '8px 12px' }}>Compras</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Último preço</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Anterior</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Variação</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Menor–Maior</th>
+              </tr></thead>
+              <tbody>{produtosFiltrados.slice(0, 120).map(p => {
+                const subiu = p.varPct != null && p.varPct > 0.5, caiu = p.varPct != null && p.varPct < -0.5
+                return (
+                  <tr key={p.nome} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => setProdSel(normProd(p.nome))}>
+                    <td style={{ padding: '7px 12px', fontWeight: 600 }}>{p.nome}</td>
+                    <td style={{ padding: '7px 12px', textAlign: 'center', color: 'var(--muted)' }}>{p.n}×</td>
+                    <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700 }}>{p.ult != null ? fmtR$(p.ult) : '—'}</td>
+                    <td style={{ padding: '7px 12px', textAlign: 'right', color: 'var(--muted)' }}>{p.ant != null ? fmtR$(p.ant) : '—'}</td>
+                    <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700, color: subiu ? '#B91C1C' : caiu ? '#15803D' : 'var(--muted)' }}>
+                      {p.varPct == null ? '—' : `${p.varPct > 0 ? '▲' : p.varPct < 0 ? '▼' : ''} ${Math.abs(p.varPct).toFixed(0)}%`}
+                    </td>
+                    <td style={{ padding: '7px 12px', textAlign: 'right', fontSize: 11, color: 'var(--muted)' }}>{p.min != null ? `${fmtR$(p.min)} – ${fmtR$(p.max)}` : '—'}</td>
+                  </tr>
+                )
+              })}</tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {prodDetalhe && (
+        <div className="ov open" onClick={e => e.target === e.currentTarget && setProdSel(null)}>
+          <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+            <div className="mhd"><span className="mtt">💲 {prodDetalhe.nome}</span><button className="mx" onClick={() => setProdSel(null)}>✕</button></div>
+            <div className="mbd" style={{ maxHeight: '72vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                <div className="card" style={{ padding: 10, flex: 1, minWidth: 120 }}><div style={{ fontSize: 18, fontWeight: 800, color: 'var(--bordo)' }}>{prodDetalhe.ult != null ? fmtR$(prodDetalhe.ult) : '—'}</div><div style={{ fontSize: 10, color: 'var(--muted)' }}>Último preço unit.</div></div>
+                <div className="card" style={{ padding: 10, flex: 1, minWidth: 120 }}><div style={{ fontSize: 18, fontWeight: 800, color: prodDetalhe.varPct != null && prodDetalhe.varPct > 0 ? '#B91C1C' : '#15803D' }}>{prodDetalhe.varPct == null ? '—' : `${prodDetalhe.varPct > 0 ? '+' : ''}${prodDetalhe.varPct.toFixed(0)}%`}</div><div style={{ fontSize: 10, color: 'var(--muted)' }}>vs. compra anterior</div></div>
+                <div className="card" style={{ padding: 10, flex: 1, minWidth: 120 }}><div style={{ fontSize: 18, fontWeight: 800, color: 'var(--bordo)' }}>{prodDetalhe.n}×</div><div style={{ fontSize: 10, color: 'var(--muted)' }}>Compras</div></div>
+              </div>
+              <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Histórico (mais recente primeiro)</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead><tr style={{ background: 'var(--bordo-bg)' }}><th style={{ textAlign: 'left', padding: '6px 8px' }}>Data</th><th style={{ textAlign: 'left', padding: '6px 8px' }}>Fornecedor</th><th style={{ textAlign: 'right', padding: '6px 8px' }}>Preço unit.</th><th style={{ textAlign: 'right', padding: '6px 8px' }}>Total</th></tr></thead>
+                <tbody>{prodDetalhe.comps.map((c, i) => (
+                  <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ padding: '6px 8px' }}>{fmtData(c.data)}</td>
+                    <td style={{ padding: '6px 8px', color: 'var(--muted)' }}>{c.forn || '—'}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{c.unit != null ? fmtR$(c.unit) : '—'}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>{fmtR$(c.total)}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
