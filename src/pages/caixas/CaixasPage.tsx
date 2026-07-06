@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Archive, RefreshCw, Loader, ChevronLeft, Store, Calendar, FileText, Trash2 } from 'lucide-react'
+import { Archive, RefreshCw, Loader, ChevronLeft, Store, Calendar, FileText, Trash2, Plus, Check } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
-import { fetchCaixas, fetchCaixaItens, fetchTodosCaixaItens, deleteCaixa } from '../../lib/db'
+import { useAuth } from '../../contexts/AuthContext'
+import { fetchCaixas, fetchCaixaItens, fetchTodosCaixaItens, deleteCaixa, insertCaixa, insertCaixaItens } from '../../lib/db'
 import type { Caixa, CaixaItem } from '../../types/database'
+
+const CATEGORIAS = ['Hortifruti', 'Supermercado', 'Bebidas', 'Embalagens/Descartaveis', 'Combustivel', 'Pedagio', 'Temperos', 'Folhagens', 'Outros']
+const LOJAS = ['Amore CD', 'Amore Paiva', 'Flow CD']
 
 const fmtR$ = (v: number | null | undefined) => v == null ? '—' : `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtData = (d: string | null) => { if (!d) return '—'; const [y, m, dd] = d.split('-'); return `${dd}/${m}/${y}` }
@@ -63,6 +67,89 @@ function CaixaDetalhe({ caixa, onVoltar }: { caixa: Caixa; onVoltar: () => void 
   )
 }
 
+// ── Formulário: Novo Caixa ───────────────────────────────────
+type NovoItem = { descricao: string; categoria: string; fornecedor: string; valor: string }
+function NovoCaixaForm({ lojaAtual, onClose, onSalvo }: { lojaAtual: string; onClose: () => void; onSalvo: () => void }) {
+  const { user } = useAuth()
+  const lojaInicial = LOJAS.includes(lojaAtual) ? lojaAtual : 'Amore CD'
+  const [loja, setLoja] = useState(lojaInicial)
+  const [titulo, setTitulo] = useState('')
+  const [data, setData] = useState(new Date().toISOString().slice(0, 10))
+  const [obs, setObs] = useState('')
+  const [itens, setItens] = useState<NovoItem[]>([{ descricao: '', categoria: 'Hortifruti', fornecedor: '', valor: '' }])
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const totalItens = itens.reduce((s, i) => s + (parseFloat(i.valor.replace(',', '.')) || 0), 0)
+  const setItem = (idx: number, patch: Partial<NovoItem>) => setItens(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it))
+  const addItem = () => setItens(prev => [...prev, { descricao: '', categoria: 'Hortifruti', fornecedor: '', valor: '' }])
+  const delItem = (idx: number) => setItens(prev => prev.filter((_, i) => i !== idx))
+
+  const salvar = async () => {
+    if (!titulo.trim()) { setErr('Informe o título do caixa'); return }
+    const itensValidos = itens.filter(i => i.descricao.trim() && (parseFloat(i.valor.replace(',', '.')) || 0) > 0)
+    if (totalItens <= 0) { setErr('Adicione ao menos um item com valor'); return }
+    setSaving(true); setErr('')
+    try {
+      const caixa = await insertCaixa({
+        loja, titulo: titulo.trim(), periodo_inicio: data, periodo_fim: data, data_ref: data,
+        total: totalItens, qtd_itens: itensValidos.length, arquivo_origem: null, origem: 'manual', status: 'arquivado',
+        observacoes: obs.trim() || null, created_by: user?.name || null,
+      })
+      await insertCaixaItens(itensValidos.map(i => ({
+        caixa_id: caixa.id, data, fornecedor: i.fornecedor.trim() || null, categoria: i.categoria,
+        descricao: i.descricao.trim(), valor: parseFloat(i.valor.replace(',', '.')) || 0,
+      })))
+      onSalvo()
+    } catch (e) { console.error(e); setErr('Erro ao salvar'); setSaving(false) }
+  }
+
+  return (
+    <div className="ov open" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
+        <div className="mhd"><span className="mtt">🗄️ Novo Caixa de Despesas</span><button className="mx" onClick={onClose}>✕</button></div>
+        <div className="mbd" style={{ maxHeight: '76vh', overflowY: 'auto' }}>
+          <div className="g2" style={{ marginBottom: 12 }}>
+            <div className="fg"><label className="fl">Loja <span className="rq">*</span></label>
+              <select className="sel" value={loja} onChange={e => setLoja(e.target.value)}>{LOJAS.map(l => <option key={l}>{l}</option>)}</select></div>
+            <div className="fg"><label className="fl">Data</label><input className="inp" type="date" value={data} onChange={e => setData(e.target.value)} /></div>
+          </div>
+          <div className="fg" style={{ marginBottom: 12 }}><label className="fl">Título do caixa <span className="rq">*</span></label>
+            <input className="inp" value={titulo} onChange={e => { setTitulo(e.target.value); setErr('') }} placeholder="Ex: Caixa 05/07 Amore CD" autoFocus /></div>
+
+          <div style={{ fontWeight: 700, fontSize: 13, margin: '4px 0 8px' }}>Itens / despesas</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead><tr style={{ background: 'var(--bordo-bg)' }}>
+              <th style={{ textAlign: 'left', padding: '6px 8px' }}>Descrição</th><th style={{ textAlign: 'left', padding: '6px 8px' }}>Categoria</th>
+              <th style={{ textAlign: 'left', padding: '6px 8px' }}>Fornecedor</th><th style={{ padding: '6px 8px' }}>Valor</th><th></th>
+            </tr></thead>
+            <tbody>{itens.map((it, idx) => (
+              <tr key={idx}>
+                <td style={{ padding: 3 }}><input className="inp" style={{ fontSize: 12 }} value={it.descricao} onChange={e => setItem(idx, { descricao: e.target.value })} placeholder="Produto/despesa" /></td>
+                <td style={{ padding: 3 }}><select className="sel" style={{ fontSize: 12 }} value={it.categoria} onChange={e => setItem(idx, { categoria: e.target.value })}>{CATEGORIAS.map(c => <option key={c}>{c}</option>)}</select></td>
+                <td style={{ padding: 3 }}><input className="inp" style={{ fontSize: 12 }} value={it.fornecedor} onChange={e => setItem(idx, { fornecedor: e.target.value })} placeholder="Fornecedor" /></td>
+                <td style={{ padding: 3 }}><input className="inp" style={{ width: 80, fontSize: 12 }} value={it.valor} onChange={e => setItem(idx, { valor: e.target.value })} placeholder="0,00" /></td>
+                <td style={{ padding: 3 }}><button className="ib rd" onClick={() => delItem(idx)}><Trash2 size={13} /></button></td>
+              </tr>
+            ))}</tbody>
+          </table>
+          <button className="btn bo bsm" onClick={addItem} style={{ marginTop: 8, borderStyle: 'dashed' }}><Plus size={11} /> Adicionar item</button>
+
+          <div className="fg" style={{ margin: '14px 0 0' }}><label className="fl">Observações</label><textarea className="inp" rows={2} value={obs} onChange={e => setObs(e.target.value)} style={{ resize: 'vertical' }} /></div>
+          {err && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 8 }}>{err}</div>}
+        </div>
+        <div className="mft" style={{ justifyContent: 'space-between' }}>
+          <span style={{ fontWeight: 800, color: 'var(--bordo)' }}>Total: {fmtR$(totalItens)}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn bo bsm" onClick={onClose}>Cancelar</button>
+            <button className="btn bp bsm" onClick={salvar} disabled={saving}>{saving ? <><Loader size={12} className="spin" /> Salvando…</> : <><Check size={12} /> Salvar caixa</>}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function CaixasPage() {
   const { loja } = useLoja()
   const [caixas, setCaixas] = useState<Caixa[]>([])
@@ -70,6 +157,7 @@ export default function CaixasPage() {
   const [loading, setLoading] = useState(true)
   const [aba, setAba] = useState<'arquivo' | 'abc'>('arquivo')
   const [sel, setSel] = useState<Caixa | null>(null)
+  const [showNovo, setShowNovo] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -110,8 +198,11 @@ export default function CaixasPage() {
           ))}
         </div>
         <div style={{ flex: 1 }} />
+        <button className="btn bp bsm" onClick={() => setShowNovo(true)}><Plus size={13} /> Novo Caixa</button>
         <button className="btn bo bsm" onClick={load} disabled={loading}>{loading ? <Loader size={13} className="spin" /> : <RefreshCw size={13} />} Atualizar</button>
       </div>
+
+      {showNovo && <NovoCaixaForm lojaAtual={loja} onClose={() => setShowNovo(false)} onSalvo={() => { setShowNovo(false); load() }} />}
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
         <div className="card" style={{ padding: 16, flex: 1, minWidth: 150 }}><div style={{ fontSize: 22, fontWeight: 800, color: 'var(--bordo)' }}>{caixas.length}</div><div style={{ fontSize: 11, color: 'var(--muted)' }}>Caixas arquivados</div></div>

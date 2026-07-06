@@ -901,6 +901,13 @@ export async function fetchTodosCaixaItens(loja?: string): Promise<CaixaItem[]> 
 export async function deleteCaixa(id: string): Promise<void> {
   await sdkCall<null>(db.from('caixas').delete().eq('id', id)).catch(() => {})
 }
+export async function insertCaixa(c: Partial<Caixa>): Promise<Caixa> {
+  return sdkCall<Caixa>(db.from('caixas').insert(c).select().single())
+}
+export async function insertCaixaItens(itens: Partial<CaixaItem>[]): Promise<void> {
+  if (!itens.length) return
+  await sdkCall<null>(db.from('caixa_itens').insert(itens)).catch(() => {})
+}
 
 // ── Upload de anexos (Supabase Storage, bucket "anexos") ────────────────────
 export async function uploadAnexo(file: File, pasta = 'geral'): Promise<string> {
