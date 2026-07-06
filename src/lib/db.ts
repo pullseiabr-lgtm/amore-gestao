@@ -904,6 +904,9 @@ export async function deleteCaixa(id: string): Promise<void> {
 export async function insertCaixa(c: Partial<Caixa>): Promise<Caixa> {
   return sdkCall<Caixa>(db.from('caixas').insert(c).select().single())
 }
+export async function updateCaixa(id: string, patch: Partial<Caixa>): Promise<void> {
+  await sdkCall<null>(db.from('caixas').update(patch).eq('id', id)).catch(() => {})
+}
 export async function insertCaixaItens(itens: Partial<CaixaItem>[]): Promise<void> {
   if (!itens.length) return
   await sdkCall<null>(db.from('caixa_itens').insert(itens)).catch(() => {})

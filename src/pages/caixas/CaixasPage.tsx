@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Archive, RefreshCw, Loader, ChevronLeft, Store, Calendar, Trash2, Plus, Check } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
-import { fetchCaixas, fetchCaixaItens, fetchTodosCaixaItens, deleteCaixa, insertCaixa, insertCaixaItens, lancarCaixaFinanceiro, fetchProfiles, uploadAnexo } from '../../lib/db'
+import { fetchCaixas, fetchCaixaItens, fetchTodosCaixaItens, deleteCaixa, insertCaixa, insertCaixaItens, lancarCaixaFinanceiro, fetchProfiles, uploadAnexo, updateCaixa } from '../../lib/db'
 import { enviarWhatsApp, getZapiCfg, soDigitos } from '../../lib/notify'
 import type { Caixa, CaixaItem } from '../../types/database'
 
@@ -27,7 +27,20 @@ function Bar({ pct, cor }: { pct: number; cor: string }) {
 function CaixaDetalhe({ caixa, onVoltar }: { caixa: Caixa; onVoltar: () => void }) {
   const [itens, setItens] = useState<CaixaItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [anexoUrl, setAnexoUrl] = useState<string | null>(caixa.anexo_url)
+  const [subindo, setSubindo] = useState(false)
   useEffect(() => { fetchCaixaItens(caixa.id).then(setItens).finally(() => setLoading(false)) }, [caixa.id])
+
+  const anexarNota = async (file: File | null) => {
+    if (!file) return
+    setSubindo(true)
+    try {
+      const url = await uploadAnexo(file, 'caixas')
+      await updateCaixa(caixa.id, { anexo_url: url })
+      setAnexoUrl(url)
+    } catch { alert('Falha ao anexar a nota.') }
+    setSubindo(false)
+  }
 
   return (
     <div>
@@ -41,9 +54,13 @@ function CaixaDetalhe({ caixa, onVoltar }: { caixa: Caixa; onVoltar: () => void 
         </div>
         {caixa.observacoes && <div style={{ marginTop: 8, fontSize: 12, color: '#B45309', background: '#FEF3C7', padding: '6px 10px', borderRadius: 6 }}>⚠ {caixa.observacoes}</div>}
         <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {caixa.anexo_url
-            ? <a href={caixa.anexo_url} target="_blank" rel="noreferrer"><button className="btn bp bsm">📎 Ver Notas Fiscais / Comprovantes</button></a>
-            : <span style={{ fontSize: 11, color: 'var(--muted)' }}>📎 Sem comprovante anexado {caixa.arquivo_origem ? `(origem: ${caixa.arquivo_origem})` : ''}</span>}
+          {anexoUrl
+            ? <a href={anexoUrl} target="_blank" rel="noreferrer"><button className="btn bp bsm">📎 Ver Notas Fiscais / Comprovantes</button></a>
+            : <span style={{ fontSize: 11, color: 'var(--muted)' }}>📎 Sem comprovante anexado ainda</span>}
+          <label className="btn bo bsm" style={{ cursor: 'pointer', margin: 0 }}>
+            {subindo ? <><Loader size={12} className="spin" /> Enviando…</> : (anexoUrl ? '🔄 Trocar nota' : '📎 Anexar Nota Fiscal')}
+            <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }} disabled={subindo} onChange={e => anexarNota(e.target.files?.[0] || null)} />
+          </label>
         </div>
       </div>
 
