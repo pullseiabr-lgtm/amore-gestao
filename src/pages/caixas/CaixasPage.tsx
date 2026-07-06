@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Archive, RefreshCw, Loader, ChevronLeft, Store, Calendar, FileText, Trash2, Plus, Check } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
-import { fetchCaixas, fetchCaixaItens, fetchTodosCaixaItens, deleteCaixa, insertCaixa, insertCaixaItens } from '../../lib/db'
+import { fetchCaixas, fetchCaixaItens, fetchTodosCaixaItens, deleteCaixa, insertCaixa, insertCaixaItens, lancarCaixaFinanceiro, fetchProfiles } from '../../lib/db'
+import { enviarWhatsApp, getZapiCfg, soDigitos } from '../../lib/notify'
 import type { Caixa, CaixaItem } from '../../types/database'
 
 const CATEGORIAS = ['Hortifruti', 'Supermercado', 'Bebidas', 'Embalagens/Descartaveis', 'Combustivel', 'Pedagio', 'Temperos', 'Folhagens', 'Outros']
@@ -96,10 +97,13 @@ function NovoCaixaForm({ lojaAtual, onClose, onSalvo }: { lojaAtual: string; onC
         total: totalItens, qtd_itens: itensValidos.length, arquivo_origem: null, origem: 'manual', status: 'arquivado',
         observacoes: obs.trim() || null, created_by: user?.name || null,
       })
-      await insertCaixaItens(itensValidos.map(i => ({
+      const itensDb = itensValidos.map(i => ({
         caixa_id: caixa.id, data, fornecedor: i.fornecedor.trim() || null, categoria: i.categoria,
         descricao: i.descricao.trim(), valor: parseFloat(i.valor.replace(',', '.')) || 0,
-      })))
+      }))
+      await insertCaixaItens(itensDb)
+      // Lança automaticamente no Financeiro como prestação de contas
+      await lancarCaixaFinanceiro(caixa, itensDb)
       onSalvo()
     } catch (e) { console.error(e); setErr('Erro ao salvar'); setSaving(false) }
   }
@@ -158,6 +162,13 @@ export default function CaixasPage() {
   const [aba, setAba] = useState<'arquivo' | 'abc'>('arquivo')
   const [sel, setSel] = useState<Caixa | null>(null)
   const [showNovo, setShowNovo] = useState(false)
+  // WhatsApp
+  const [showWhats, setShowWhats] = useState(false)
+  const [profiles, setProfiles] = useState<any[]>([])
+  const [waDest, setWaDest] = useState('')      // número escolhido (só dígitos)
+  const [waStatus, setWaStatus] = useState('')
+  const [waSending, setWaSending] = useState(false)
+  useEffect(() => { fetchProfiles().then(setProfiles).catch(() => {}) }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -185,6 +196,29 @@ export default function CaixasPage() {
   }, [itens])
   const maxCat = Math.max(1, ...porCategoria.map(([, v]) => v))
 
+  // ── WhatsApp: perfis com número + resumo + envio ──
+  const perfisComWhats = useMemo(() => profiles
+    .map(p => ({ nome: p.name, num: soDigitos((p?.permissions_override as any)?.__perfil__?.whatsapp) }))
+    .filter(p => p.num), [profiles])
+
+  const resumoWhats = () => {
+    const cls = (c: string) => c === 'A' ? '🔴' : c === 'B' ? '🟠' : '🟢'
+    const topFor = abcFornecedor.slice(0, 6).map(f => `${cls(f.classe)} ${f.classe} · ${f.nome} — ${fmtR$(f.val)} (${f.pct.toFixed(0)}%)`).join('\n')
+    const cats = porCategoria.slice(0, 8).map(([c, v]) => `• ${c}: ${fmtR$(v)}`).join('\n')
+    return `📊 *Relatório de Caixas — ${loja}*\n💰 Total: ${fmtR$(totalGeral)} · ${caixas.length} caixas · ${itens.length} itens\n\n*Curva ABC (fornecedores):*\n${topFor}\n\n*Gasto por categoria:*\n${cats}\n\n_Amore Gestão_`
+  }
+
+  const enviarResumoWhats = async () => {
+    const cfg = getZapiCfg()
+    if (!cfg.instance || !cfg.token) { setWaStatus('Configure o Z-API em Liz → WhatsApp.'); return }
+    if (!waDest) { setWaStatus('Escolha um destinatário.'); return }
+    setWaSending(true); setWaStatus('')
+    const ok = await enviarWhatsApp(waDest, resumoWhats(), cfg, { tipo: 'relatorio', modulo: 'caixas', titulo: `Relatório de Caixas — ${loja}`, loja })
+    setWaSending(false)
+    setWaStatus(ok ? '✅ Enviado!' : '⚠ Falha ao enviar (confira o Z-API/número).')
+    if (ok) setTimeout(() => { setShowWhats(false); setWaStatus('') }, 1500)
+  }
+
   if (sel) return <CaixaDetalhe caixa={sel} onVoltar={() => setSel(null)} />
 
   return (
@@ -198,11 +232,42 @@ export default function CaixasPage() {
           ))}
         </div>
         <div style={{ flex: 1 }} />
+        <button className="btn bo bsm" onClick={() => { setShowWhats(true); setWaStatus('') }} style={{ color: '#16A34A', borderColor: '#16A34A' }}>📲 Enviar WhatsApp</button>
         <button className="btn bp bsm" onClick={() => setShowNovo(true)}><Plus size={13} /> Novo Caixa</button>
         <button className="btn bo bsm" onClick={load} disabled={loading}>{loading ? <Loader size={13} className="spin" /> : <RefreshCw size={13} />} Atualizar</button>
       </div>
 
       {showNovo && <NovoCaixaForm lojaAtual={loja} onClose={() => setShowNovo(false)} onSalvo={() => { setShowNovo(false); load() }} />}
+
+      {showWhats && (
+        <div className="ov open" onClick={e => e.target === e.currentTarget && setShowWhats(false)}>
+          <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+            <div className="mhd"><span className="mtt">📲 Enviar relatório por WhatsApp</span><button className="mx" onClick={() => setShowWhats(false)}>✕</button></div>
+            <div className="mbd" style={{ maxHeight: '72vh', overflowY: 'auto' }}>
+              <div className="fg" style={{ marginBottom: 12 }}>
+                <label className="fl">Destinatário (usuários cadastrados)</label>
+                <select className="sel" value={waDest} onChange={e => setWaDest(e.target.value)}>
+                  <option value="">— Escolha —</option>
+                  {perfisComWhats.map(p => <option key={p.num} value={p.num}>{p.nome} · {p.num}</option>)}
+                </select>
+              </div>
+              <div className="fg" style={{ marginBottom: 12 }}>
+                <label className="fl">…ou digite um número (com DDD)</label>
+                <input className="inp" value={waDest} onChange={e => setWaDest(soDigitos(e.target.value))} placeholder="5581999999999" />
+              </div>
+              <label className="fl">Mensagem que será enviada</label>
+              <pre style={{ background: 'var(--bordo-bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', fontSize: 11.5, lineHeight: 1.6, whiteSpace: 'pre-wrap', margin: '4px 0 0' }}>{resumoWhats()}</pre>
+            </div>
+            <div className="mft" style={{ justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--bordo)' }}>{waStatus}</span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn bo bsm" onClick={() => setShowWhats(false)}>Fechar</button>
+                <button className="btn bp bsm" onClick={enviarResumoWhats} disabled={waSending || !waDest}>{waSending ? <><Loader size={12} className="spin" /> Enviando…</> : '📲 Enviar'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
         <div className="card" style={{ padding: 16, flex: 1, minWidth: 150 }}><div style={{ fontSize: 22, fontWeight: 800, color: 'var(--bordo)' }}>{caixas.length}</div><div style={{ fontSize: 11, color: 'var(--muted)' }}>Caixas arquivados</div></div>

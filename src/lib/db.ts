@@ -908,6 +908,25 @@ export async function insertCaixaItens(itens: Partial<CaixaItem>[]): Promise<voi
   if (!itens.length) return
   await sdkCall<null>(db.from('caixa_itens').insert(itens)).catch(() => {})
 }
+// Lança um caixa como prestação de contas no Financeiro (idempotente por caixa).
+export async function lancarCaixaFinanceiro(caixa: Caixa, itens: { categoria?: string | null; descricao?: string | null; fornecedor?: string | null; valor: number; data?: string | null }[]): Promise<void> {
+  try {
+    const ult = await sdkCall<{ numero: number }[]>(db.from('fin_prestacoes').select('numero').order('numero', { ascending: false }).limit(1)).catch(() => [])
+    const numero = ((ult?.[0]?.numero) || 0) + 1
+    const dataP = caixa.data_ref || caixa.periodo_fim || new Date().toISOString().slice(0, 10)
+    const prest = await sdkCall<{ id: string }>(db.from('fin_prestacoes').insert({
+      loja: caixa.loja, numero, credito_id: null, responsavel_nome: `Caixa: ${caixa.titulo}`,
+      data_prestacao: dataP, valor_recebido: caixa.total, valor_utilizado: caixa.total, valor_devolvido: 0, diferenca: 0,
+      status: 'enviada', observacoes: `[IMPORT_CAIXA] ${caixa.titulo} — arquivo: manual`, created_by: caixa.created_by,
+    }).select().single())
+    const base = itens.length ? itens : [{ categoria: 'Despesas do caixa', descricao: caixa.titulo, valor: caixa.total }]
+    const lanc = base.map(i => ({
+      prestacao_id: prest.id, categoria: i.categoria || 'Outros', descricao: i.descricao || caixa.titulo,
+      fornecedor: i.fornecedor || null, valor: i.valor, data_compra: i.data || dataP, forma_pagamento: 'dinheiro', status_auditoria: 'pendente',
+    }))
+    await sdkCall<null>(db.from('fin_lancamentos').insert(lanc)).catch(() => {})
+  } catch (e) { console.error('lancarCaixaFinanceiro', e) }
+}
 
 // ── Upload de anexos (Supabase Storage, bucket "anexos") ────────────────────
 export async function uploadAnexo(file: File, pasta = 'geral'): Promise<string> {
