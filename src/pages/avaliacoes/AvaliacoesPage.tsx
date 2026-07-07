@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Trophy, MessageSquare, QrCode, RefreshCw, AlertTriangle, TrendingUp, Plus, Trash2, ExternalLink, Download } from 'lucide-react'
+import { Trophy, MessageSquare, QrCode, RefreshCw, AlertTriangle, TrendingUp, Plus, Trash2, ExternalLink, Download, ChefHat } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../hooks/useToast'
 
@@ -22,7 +22,7 @@ const EXP: Record<string, { v: number; e: string; l: string; c: string }> = {
 const qrImg = (data: string, size = 220) => `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=6&data=${encodeURIComponent(data)}`
 const notaFb = (f: any) => { const n = [f.nota_atendimento, f.nota_comida, f.nota_agilidade].filter((x: any) => x != null); return n.length ? n.reduce((a: number, b: number) => a + b, 0) / n.length : (EXP[f.experiencia]?.v ?? 0) }
 
-type Tab = 'dashboard' | 'ranking' | 'feedbacks' | 'garcons'
+type Tab = 'dashboard' | 'ranking' | 'cozinha' | 'feedbacks' | 'garcons'
 
 export default function AvaliacoesPage() {
   const { toast } = useToast()
@@ -32,18 +32,20 @@ export default function AvaliacoesPage() {
   const [feedbacks, setFeedbacks] = useState<any[]>([])
   const [garcons, setGarcons] = useState<any[]>([])
   const [config, setConfig] = useState<any[]>([])
+  const [vendas, setVendas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [meta, setMeta] = useState<number>(() => Number(localStorage.getItem('amore_fb_meta') || 100))
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [f, g, c] = await Promise.all([
+      const [f, g, c, v] = await Promise.all([
         sb.from('feedbacks').select('*').order('created_at', { ascending: false }).limit(2000),
         sb.from('garcons').select('*').order('nome'),
         sb.from('fb_config').select('*'),
+        sb.from('vendas').select('colaborador,loja,itens,avaliacao,tempo_min,created_at').order('created_at', { ascending: false }).limit(3000),
       ])
-      setFeedbacks(f.data || []); setGarcons(g.data || []); setConfig(c.data || [])
+      setFeedbacks(f.data || []); setGarcons(g.data || []); setConfig(c.data || []); setVendas(v.data || [])
     } catch { toast('Erro ao carregar avaliações.', 'error') }
     setLoading(false)
   }, [toast])
@@ -98,9 +100,27 @@ export default function AvaliacoesPage() {
       if (f.experiencia === 'excelente' || f.experiencia === 'boa') m[g].sat++
       if (f.foi_google) m[g].google++
     })
-    return Object.values(m).map((r: any) => ({ ...r, media: r.n ? r.soma / r.n : 0, pctSat: r.n ? Math.round((r.sat / r.n) * 100) : 0 }))
-      .sort((a: any, b: any) => b.google - a.google || b.media - a.media)
+    // Gamificação: +10 por avaliação no Google, +2 por avaliação satisfeita
+    return Object.values(m).map((r: any) => ({ ...r, media: r.n ? r.soma / r.n : 0, pctSat: r.n ? Math.round((r.sat / r.n) * 100) : 0, pontos: r.google * 10 + r.sat * 2 }))
+      .sort((a: any, b: any) => b.pontos - a.pontos || b.google - a.google || b.media - a.media)
   }, [fbFiltrado])
+
+  // Ranking de pratos (a partir das vendas: nota da venda atribuída a cada prato)
+  const pratos = useMemo(() => {
+    const lim = Date.now() - dias * 864e5
+    const m: Record<string, any> = {}
+    vendas.filter(v => (!loja || v.loja === loja) && new Date(v.created_at).getTime() >= lim).forEach(v => {
+      const itens: any[] = Array.isArray(v.itens) ? v.itens : []
+      itens.forEach(it => {
+        const nome = (it.nome || '').trim(); if (!nome) return
+        if (!m[nome]) m[nome] = { nome, vendas: 0, qtd: 0, receita: 0, somaAval: 0, nAval: 0, somaTempo: 0, nTempo: 0 }
+        const p = m[nome]; p.vendas++; p.qtd += it.qtd || 1; p.receita += (it.preco || 0) * (it.qtd || 1)
+        if (v.avaliacao != null) { p.somaAval += v.avaliacao; p.nAval++ }
+        if (v.tempo_min != null) { p.somaTempo += v.tempo_min; p.nTempo++ }
+      })
+    })
+    return Object.values(m).map((p: any) => ({ ...p, media: p.nAval ? p.somaAval / p.nAval : null, tempo: p.nTempo ? Math.round(p.somaTempo / p.nTempo) : null }))
+  }, [vendas, loja, dias])
 
   const alertas = useMemo(() => fbFiltrado.filter(f => f.experiencia === 'ruim' || f.experiencia === 'pessima' || f.voltaria === false), [fbFiltrado])
 
@@ -134,6 +154,7 @@ export default function AvaliacoesPage() {
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18, background: '#f9fafb', padding: 6, borderRadius: 12, width: 'fit-content' }}>
         {tabBtn('dashboard', <TrendingUp size={16} />, 'Dashboard')}
         {tabBtn('ranking', <Trophy size={16} />, 'Ranking Garçons')}
+        {tabBtn('cozinha', <ChefHat size={16} />, 'Cozinha')}
         {tabBtn('feedbacks', <MessageSquare size={16} />, 'Feedbacks')}
         {tabBtn('garcons', <QrCode size={16} />, 'Garçons & QR')}
       </div>
@@ -180,21 +201,38 @@ export default function AvaliacoesPage() {
 
       {/* ===== RANKING ===== */}
       {tab === 'ranking' && <div style={card}>
-        <b style={{ fontSize: 14 }}>Ranking de garçons — por conversão em avaliações Google</b>
+        <b style={{ fontSize: 14 }}>Ranking de garçons — gamificação (+10 por avaliação Google, +2 por satisfeito)</b>
         <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12, fontSize: 14 }}>
           <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 12, textTransform: 'uppercase' }}>
-            <th style={{ padding: 8 }}>#</th><th>Garçom</th><th>Avaliações</th><th>Nota média</th><th>Satisfação</th><th>Foram ao Google</th>
+            <th style={{ padding: 8 }}>#</th><th>Garçom</th><th>Avaliações</th><th>Nota média</th><th>Satisfação</th><th>Google</th><th>Pontos</th>
           </tr></thead>
           <tbody>
-            {ranking.length === 0 ? <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>Sem dados no período.</td></tr> :
+            {ranking.length === 0 ? <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>Sem dados no período.</td></tr> :
               ranking.map((r: any, i: number) => <tr key={r.nome} style={{ borderTop: '1px solid #f3f4f6' }}>
                 <td style={{ padding: 8 }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</td>
                 <td style={{ fontWeight: 600 }}>{r.nome}</td><td>{r.n}</td>
                 <td>{r.media.toFixed(1)} ⭐</td><td>{r.pctSat}%</td>
                 <td><b style={{ color: '#3B82F6' }}>{r.google}</b></td>
+                <td><span style={{ background: '#FEF3C7', color: '#92400E', padding: '.15rem .55rem', borderRadius: 20, fontWeight: 700, fontSize: 13 }}>{r.pontos} pts</span></td>
               </tr>)}
           </tbody>
         </table>
+      </div>}
+
+      {/* ===== COZINHA ===== */}
+      {tab === 'cozinha' && <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ ...card, flex: 1, minWidth: 280 }}>
+          <b style={{ fontSize: 14, color: '#10B981' }}>👍 Pratos mais elogiados</b>
+          <PratosList lista={pratos.filter((p: any) => p.media != null).sort((a: any, b: any) => b.media - a.media).slice(0, 8)} tipo="elogio" />
+        </div>
+        <div style={{ ...card, flex: 1, minWidth: 280 }}>
+          <b style={{ fontSize: 14, color: '#EF4444' }}>👎 Pratos que precisam de atenção</b>
+          <PratosList lista={pratos.filter((p: any) => p.media != null).sort((a: any, b: any) => a.media - b.media).slice(0, 8)} tipo="reclamacao" />
+        </div>
+        <div style={{ ...card, flex: 1, minWidth: 280 }}>
+          <b style={{ fontSize: 14, color: '#6B1212' }}>🔥 Mais vendidos</b>
+          <PratosList lista={[...pratos].sort((a: any, b: any) => b.qtd - a.qtd).slice(0, 8)} tipo="vendas" />
+        </div>
       </div>}
 
       {/* ===== FEEDBACKS ===== */}
@@ -227,6 +265,19 @@ export default function AvaliacoesPage() {
       </>}
     </div>
   )
+}
+
+function PratosList({ lista, tipo }: { lista: any[]; tipo: 'elogio' | 'reclamacao' | 'vendas' }) {
+  if (!lista.length) return <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 10 }}>Sem vendas no período. Dica: selecione "Todo o período" no filtro.</div>
+  return <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+    {lista.map((p, i) => <div key={p.nome} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '.4rem 0', borderBottom: '1px solid #f3f4f6' }}>
+      <span style={{ color: '#9ca3af', width: 16 }}>{i + 1}</span>
+      <span style={{ flex: 1, fontWeight: 500 }}>{p.nome}</span>
+      {tipo === 'vendas'
+        ? <span style={{ color: '#6b7280', whiteSpace: 'nowrap' }}>{p.qtd} un · R$ {p.receita.toFixed(0)}</span>
+        : <span style={{ color: tipo === 'elogio' ? '#10B981' : '#EF4444', fontWeight: 600, whiteSpace: 'nowrap' }}>{p.media != null ? p.media.toFixed(1) + ' ⭐' : '—'}{p.tempo != null ? ` · ${p.tempo}min` : ''}</span>}
+    </div>)}
+  </div>
 }
 
 function GarconsTab({ garcons, config, reload, toast }: { garcons: any[]; config: any[]; reload: () => void; toast: (m: string, t?: any) => void }) {
