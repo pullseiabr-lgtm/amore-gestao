@@ -25,6 +25,7 @@ const MODULES = [
   { id: 'notificacoes',         label: 'Central de Notificações',   grupo: 'Tarefas & Planejamento' },
   // ── Marketing & IA ──
   { id: 'marketing',            label: 'Marketing',                 grupo: 'Marketing & IA' },
+  { id: 'avaliacoes',           label: 'Avaliações & NPS',          grupo: 'Marketing & IA' },
   { id: 'agente-liz',           label: 'Liz — Agente IA',           grupo: 'Marketing & IA' },
   { id: 'agente-cmv',           label: 'Precificação & CMV (IA)',   grupo: 'Marketing & IA' },
   { id: 'market',               label: 'Market Analytics',          grupo: 'Marketing & IA' },
