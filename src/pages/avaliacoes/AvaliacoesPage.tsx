@@ -32,20 +32,18 @@ export default function AvaliacoesPage() {
   const [feedbacks, setFeedbacks] = useState<any[]>([])
   const [garcons, setGarcons] = useState<any[]>([])
   const [config, setConfig] = useState<any[]>([])
-  const [vendas, setVendas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [meta, setMeta] = useState<number>(() => Number(localStorage.getItem('amore_fb_meta') || 100))
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [f, g, c, v] = await Promise.all([
+      const [f, g, c] = await Promise.all([
         sb.from('feedbacks').select('*').order('created_at', { ascending: false }).limit(2000),
         sb.from('garcons').select('*').order('nome'),
         sb.from('fb_config').select('*'),
-        sb.from('vendas').select('colaborador,loja,itens,avaliacao,tempo_min,created_at').order('created_at', { ascending: false }).limit(3000),
       ])
-      setFeedbacks(f.data || []); setGarcons(g.data || []); setConfig(c.data || []); setVendas(v.data || [])
+      setFeedbacks(f.data || []); setGarcons(g.data || []); setConfig(c.data || [])
     } catch { toast('Erro ao carregar avaliações.', 'error') }
     setLoading(false)
   }, [toast])
@@ -105,22 +103,23 @@ export default function AvaliacoesPage() {
       .sort((a: any, b: any) => b.pontos - a.pontos || b.google - a.google || b.media - a.media)
   }, [fbFiltrado])
 
-  // Ranking de pratos (a partir das vendas: nota da venda atribuída a cada prato)
-  const pratos = useMemo(() => {
-    const lim = Date.now() - dias * 864e5
-    const m: Record<string, any> = {}
-    vendas.filter(v => (!loja || v.loja === loja) && new Date(v.created_at).getTime() >= lim).forEach(v => {
-      const itens: any[] = Array.isArray(v.itens) ? v.itens : []
-      itens.forEach(it => {
-        const nome = (it.nome || '').trim(); if (!nome) return
-        if (!m[nome]) m[nome] = { nome, vendas: 0, qtd: 0, receita: 0, somaAval: 0, nAval: 0, somaTempo: 0, nTempo: 0 }
-        const p = m[nome]; p.vendas++; p.qtd += it.qtd || 1; p.receita += (it.preco || 0) * (it.qtd || 1)
-        if (v.avaliacao != null) { p.somaAval += v.avaliacao; p.nAval++ }
-        if (v.tempo_min != null) { p.somaTempo += v.tempo_min; p.nTempo++ }
-      })
+  // Cozinha: qualidade medida pela nota de "Comida" dos feedbacks (sem depender de PDV/prato)
+  const cozinha = useMemo(() => {
+    const comFood = fbFiltrado.filter(f => f.nota_comida != null)
+    const t = comFood.length
+    const media = t ? comFood.reduce((a, f) => a + f.nota_comida, 0) / t : 0
+    const dist: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+    comFood.forEach(f => { dist[f.nota_comida] = (dist[f.nota_comida] || 0) + 1 })
+    const baixa = comFood.filter(f => f.nota_comida <= 3).length
+    const MOT_COZINHA = ['Qualidade do prato', 'Comida fria', 'Demora']
+    const recFood: Record<string, number> = {}
+    fbFiltrado.forEach(f => { if (MOT_COZINHA.includes(f.motivo)) recFood[f.motivo] = (recFood[f.motivo] || 0) + 1 })
+    const porLoja = ['Amore Paiva', 'Amore CD'].map(l => {
+      const arr = comFood.filter(f => f.loja === l)
+      return { loja: l === 'Amore CD' ? 'Costa Dourada' : 'Paiva', n: arr.length, media: arr.length ? arr.reduce((a, f) => a + f.nota_comida, 0) / arr.length : null }
     })
-    return Object.values(m).map((p: any) => ({ ...p, media: p.nAval ? p.somaAval / p.nAval : null, tempo: p.nTempo ? Math.round(p.somaTempo / p.nTempo) : null }))
-  }, [vendas, loja, dias])
+    return { media, dist, total: t, baixa, pctBaixa: t ? Math.round((baixa / t) * 100) : 0, recFood: Object.entries(recFood).sort((a, b) => b[1] - a[1]), porLoja }
+  }, [fbFiltrado])
 
   const alertas = useMemo(() => fbFiltrado.filter(f => f.experiencia === 'ruim' || f.experiencia === 'pessima' || f.voltaria === false), [fbFiltrado])
 
@@ -219,21 +218,45 @@ export default function AvaliacoesPage() {
         </table>
       </div>}
 
-      {/* ===== COZINHA ===== */}
-      {tab === 'cozinha' && <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ ...card, flex: 1, minWidth: 280 }}>
-          <b style={{ fontSize: 14, color: '#10B981' }}>👍 Pratos mais elogiados</b>
-          <PratosList lista={pratos.filter((p: any) => p.media != null).sort((a: any, b: any) => b.media - a.media).slice(0, 8)} tipo="elogio" />
+      {/* ===== COZINHA (nota de Comida) ===== */}
+      {tab === 'cozinha' && <>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+          {kcard('Nota da Comida', cozinha.media.toFixed(1) + ' ⭐', `${cozinha.total} avaliações`, '#F59E0B')}
+          {kcard('Precisam de atenção', cozinha.pctBaixa + '%', `${cozinha.baixa} com nota ≤ 3`, '#EF4444')}
+          {kcard('Satisfeitos c/ a comida', (cozinha.total - cozinha.baixa) + '', 'notas 4 e 5', '#10B981')}
         </div>
-        <div style={{ ...card, flex: 1, minWidth: 280 }}>
-          <b style={{ fontSize: 14, color: '#EF4444' }}>👎 Pratos que precisam de atenção</b>
-          <PratosList lista={pratos.filter((p: any) => p.media != null).sort((a: any, b: any) => a.media - b.media).slice(0, 8)} tipo="reclamacao" />
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ ...card, flex: 2, minWidth: 280 }}>
+            <b style={{ fontSize: 14 }}>Notas da comida</b>
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[5, 4, 3, 2, 1].map(s => {
+                const n = cozinha.dist[s] || 0; const pct = cozinha.total ? Math.round((n / cozinha.total) * 100) : 0
+                return <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ width: 60, fontSize: 13 }}>{s} ⭐</span>
+                  <div style={{ flex: 1, height: 12, background: '#f3f4f6', borderRadius: 6, overflow: 'hidden' }}><div style={{ width: pct + '%', height: '100%', background: s >= 4 ? '#10B981' : s === 3 ? '#F59E0B' : '#EF4444' }} /></div>
+                  <span style={{ width: 56, textAlign: 'right', fontSize: 13, color: '#6b7280' }}>{n} · {pct}%</span>
+                </div>
+              })}
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <b style={{ fontSize: 13 }}>Comida por loja</b>
+              <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                {cozinha.porLoja.map(l => <div key={l.loja} style={{ flex: 1, background: '#f9fafb', borderRadius: 10, padding: '.7rem .9rem' }}>
+                  <div style={{ fontSize: 12, color: '#9ca3af' }}>{l.loja}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: '#6B1212' }}>{l.media != null ? l.media.toFixed(1) + ' ⭐' : '—'}</div>
+                  <div style={{ fontSize: 12, color: '#9ca3af' }}>{l.n} avaliações</div>
+                </div>)}
+              </div>
+            </div>
+          </div>
+          <div style={{ ...card, flex: 1, minWidth: 230 }}>
+            <b style={{ fontSize: 14, color: '#B91C1C' }}>Reclamações da cozinha</b>
+            <p style={{ fontSize: 12, color: '#9ca3af', margin: '4px 0 10px' }}>Motivos ligados à comida/preparo.</p>
+            {cozinha.recFood.length === 0 ? <div style={{ fontSize: 13, color: '#9ca3af' }}>Nenhuma reclamação 🎉</div> :
+              cozinha.recFood.map(([m, n]) => <div key={m} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '.4rem 0', borderBottom: '1px solid #f3f4f6' }}><span>{m}</span><b style={{ color: '#B91C1C' }}>{n as number}</b></div>)}
+          </div>
         </div>
-        <div style={{ ...card, flex: 1, minWidth: 280 }}>
-          <b style={{ fontSize: 14, color: '#6B1212' }}>🔥 Mais vendidos</b>
-          <PratosList lista={[...pratos].sort((a: any, b: any) => b.qtd - a.qtd).slice(0, 8)} tipo="vendas" />
-        </div>
-      </div>}
+      </>}
 
       {/* ===== FEEDBACKS ===== */}
       {tab === 'feedbacks' && <div style={card}>
@@ -265,19 +288,6 @@ export default function AvaliacoesPage() {
       </>}
     </div>
   )
-}
-
-function PratosList({ lista, tipo }: { lista: any[]; tipo: 'elogio' | 'reclamacao' | 'vendas' }) {
-  if (!lista.length) return <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 10 }}>Sem vendas no período. Dica: selecione "Todo o período" no filtro.</div>
-  return <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
-    {lista.map((p, i) => <div key={p.nome} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '.4rem 0', borderBottom: '1px solid #f3f4f6' }}>
-      <span style={{ color: '#9ca3af', width: 16 }}>{i + 1}</span>
-      <span style={{ flex: 1, fontWeight: 500 }}>{p.nome}</span>
-      {tipo === 'vendas'
-        ? <span style={{ color: '#6b7280', whiteSpace: 'nowrap' }}>{p.qtd} un · R$ {p.receita.toFixed(0)}</span>
-        : <span style={{ color: tipo === 'elogio' ? '#10B981' : '#EF4444', fontWeight: 600, whiteSpace: 'nowrap' }}>{p.media != null ? p.media.toFixed(1) + ' ⭐' : '—'}{p.tempo != null ? ` · ${p.tempo}min` : ''}</span>}
-    </div>)}
-  </div>
 }
 
 function GarconsTab({ garcons, config, reload, toast }: { garcons: any[]; config: any[]; reload: () => void; toast: (m: string, t?: any) => void }) {
