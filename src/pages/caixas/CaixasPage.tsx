@@ -197,6 +197,7 @@ export default function CaixasPage() {
   const [sel, setSel] = useState<Caixa | null>(null)
   const [showNovo, setShowNovo] = useState(false)
   const [precoBusca, setPrecoBusca] = useState('')
+  const [abcFiltro, setAbcFiltro] = useState<'' | 'A' | 'B' | 'C'>('')
   const [prodSel, setProdSel] = useState<string | null>(null)
   // WhatsApp
   const [showWhats, setShowWhats] = useState(false)
@@ -240,7 +241,7 @@ export default function CaixasPage() {
       if (!m[k]) m[k] = { nome: i.descricao || k, compras: [] }
       m[k].compras.push({ data: i.data, forn: i.fornecedor, unit: parsePU(i.documento), total: i.valor })
     })
-    return Object.values(m).map(p => {
+    const arr = Object.values(m).map(p => {
       const comps = p.compras.sort((a, b) => (b.data || '').localeCompare(a.data || ''))
       const comUnit = comps.filter(c => c.unit != null)
       const ult = comUnit[0]?.unit ?? null
@@ -251,9 +252,18 @@ export default function CaixasPage() {
       const varPct = (ult != null && ant != null && ant > 0) ? ((ult - ant) / ant) * 100 : null
       return { ...p, comps, n: comps.length, ult, ant, min, max, varPct, gasto: comps.reduce((s, c) => s + c.total, 0) }
     }).sort((a, b) => b.gasto - a.gasto)
+    // Classificação ABC por PRODUTO (por gasto acumulado): A ≤80%, B ≤95%, C resto
+    const totG = arr.reduce((s, p) => s + p.gasto, 0) || 1
+    let ac = 0
+    return arr.map(p => { ac += p.gasto; const pA = (ac / totG) * 100; return { ...p, gastoPct: (p.gasto / totG) * 100, classe: (pA <= 80 ? 'A' : pA <= 95 ? 'B' : 'C') as 'A' | 'B' | 'C' } })
   }, [itens])
 
-  const produtosFiltrados = produtosPreco.filter(p => !precoBusca || normProd(p.nome).includes(normProd(precoBusca)))
+  const produtosFiltrados = produtosPreco.filter(p => (!precoBusca || normProd(p.nome).includes(normProd(precoBusca))) && (!abcFiltro || p.classe === abcFiltro))
+  const abcResumo = useMemo(() => {
+    const r = { A: { n: 0, g: 0 }, B: { n: 0, g: 0 }, C: { n: 0, g: 0 } }
+    produtosPreco.forEach(p => { r[p.classe].n++; r[p.classe].g += p.gasto })
+    return r
+  }, [produtosPreco])
   const prodDetalhe = prodSel ? produtosPreco.find(p => normProd(p.nome) === prodSel) : null
 
   // ── WhatsApp: perfis com número + resumo + envio ──
@@ -397,25 +407,35 @@ export default function CaixasPage() {
       {aba === 'precos' && (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: 12, borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input className="inp" value={precoBusca} onChange={e => setPrecoBusca(e.target.value)} placeholder="🔎 Buscar produto (tomate, cebola, alho...)" style={{ maxWidth: 320, fontSize: 13 }} />
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{produtosFiltrados.length} produtos · comparando as últimas compras de cada um</span>
+            <input className="inp" value={precoBusca} onChange={e => setPrecoBusca(e.target.value)} placeholder="🔎 Buscar produto (tomate, cebola, alho...)" style={{ maxWidth: 280, fontSize: 13 }} />
+            <div style={{ display: 'flex', gap: 6 }}>
+              {([['', 'Todos'], ['A', `🔴 A · ${abcResumo.A.n}`], ['B', `🟠 B · ${abcResumo.B.n}`], ['C', `🟢 C · ${abcResumo.C.n}`]] as const).map(([k, lbl]) => (
+                <button key={k} onClick={() => setAbcFiltro(k)} style={{ padding: '5px 11px', borderRadius: 20, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: abcFiltro === k ? 'var(--bordo)' : 'transparent', color: abcFiltro === k ? '#fff' : 'var(--text)' }}>{lbl}</button>
+              ))}
+            </div>
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{produtosFiltrados.length} produtos · curva ABC por gasto · Classe A = {fmtR$(abcResumo.A.g)} (80% do gasto)</span>
           </div>
           {produtosPreco.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>Sem itens com preço unitário ainda.</div>}
           {produtosPreco.length > 0 && (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead><tr style={{ background: 'var(--bordo-bg)' }}>
+                <th style={{ textAlign: 'center', padding: '8px 12px' }}>ABC</th>
                 <th style={{ textAlign: 'left', padding: '8px 12px' }}>Produto</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Gasto total</th>
                 <th style={{ textAlign: 'center', padding: '8px 12px' }}>Compras</th>
                 <th style={{ textAlign: 'right', padding: '8px 12px' }}>Último preço</th>
                 <th style={{ textAlign: 'right', padding: '8px 12px' }}>Anterior</th>
                 <th style={{ textAlign: 'right', padding: '8px 12px' }}>Variação</th>
                 <th style={{ textAlign: 'right', padding: '8px 12px' }}>Menor–Maior</th>
               </tr></thead>
-              <tbody>{produtosFiltrados.slice(0, 120).map(p => {
+              <tbody>{produtosFiltrados.slice(0, 150).map(p => {
                 const subiu = p.varPct != null && p.varPct > 0.5, caiu = p.varPct != null && p.varPct < -0.5
+                const cor = p.classe === 'A' ? '#B91C1C' : p.classe === 'B' ? '#D97706' : '#15803D'
                 return (
                   <tr key={p.nome} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => setProdSel(normProd(p.nome))}>
+                    <td style={{ padding: '7px 12px', textAlign: 'center' }}><span style={{ display: 'inline-block', minWidth: 20, padding: '2px 7px', borderRadius: 20, background: cor, color: '#fff', fontWeight: 800, fontSize: 11 }}>{p.classe}</span></td>
                     <td style={{ padding: '7px 12px', fontWeight: 600 }}>{p.nome}</td>
+                    <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700 }}>{fmtR$(p.gasto)}<span style={{ fontSize: 10, color: 'var(--muted)' }}> · {p.gastoPct.toFixed(1)}%</span></td>
                     <td style={{ padding: '7px 12px', textAlign: 'center', color: 'var(--muted)' }}>{p.n}×</td>
                     <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700 }}>{p.ult != null ? fmtR$(p.ult) : '—'}</td>
                     <td style={{ padding: '7px 12px', textAlign: 'right', color: 'var(--muted)' }}>{p.ant != null ? fmtR$(p.ant) : '—'}</td>
