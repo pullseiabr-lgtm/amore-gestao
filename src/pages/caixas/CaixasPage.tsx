@@ -244,13 +244,14 @@ export default function CaixasPage() {
     const arr = Object.values(m).map(p => {
       const comps = p.compras.sort((a, b) => (b.data || '').localeCompare(a.data || ''))
       const comUnit = comps.filter(c => c.unit != null)
-      const ult = comUnit[0]?.unit ?? null
-      const ant = comUnit[1]?.unit ?? null
-      const units = comUnit.map(c => c.unit as number)
-      const min = units.length ? Math.min(...units) : null
-      const max = units.length ? Math.max(...units) : null
+      const ultimas5 = comUnit.slice(0, 5)   // 5 últimas compras com preço (mais recente primeiro)
+      const ult = ultimas5[0]?.unit ?? null
+      const ant = ultimas5[1]?.unit ?? null
+      const u5 = ultimas5.map(c => c.unit as number)
+      const min = u5.length ? Math.min(...u5) : null   // menor/maior entre as 5 últimas
+      const max = u5.length ? Math.max(...u5) : null
       const varPct = (ult != null && ant != null && ant > 0) ? ((ult - ant) / ant) * 100 : null
-      return { ...p, comps, n: comps.length, ult, ant, min, max, varPct, gasto: comps.reduce((s, c) => s + c.total, 0) }
+      return { ...p, comps, ultimas5, n: comps.length, ult, ant, min, max, varPct, gasto: comps.reduce((s, c) => s + c.total, 0) }
     }).sort((a, b) => b.gasto - a.gasto)
     // Classificação ABC por PRODUTO (por gasto acumulado): A ≤80%, B ≤95%, C resto
     const totG = arr.reduce((s, p) => s + p.gasto, 0) || 1
@@ -422,11 +423,9 @@ export default function CaixasPage() {
                 <th style={{ textAlign: 'center', padding: '8px 12px' }}>ABC</th>
                 <th style={{ textAlign: 'left', padding: '8px 12px' }}>Produto</th>
                 <th style={{ textAlign: 'right', padding: '8px 12px' }}>Gasto total</th>
-                <th style={{ textAlign: 'center', padding: '8px 12px' }}>Compras</th>
-                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Último preço</th>
-                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Anterior</th>
+                <th style={{ textAlign: 'left', padding: '8px 12px' }}>Últimas 5 compras (unit. · data)</th>
                 <th style={{ textAlign: 'right', padding: '8px 12px' }}>Variação</th>
-                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Menor–Maior</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Menor–Maior (5)</th>
               </tr></thead>
               <tbody>{produtosFiltrados.slice(0, 150).map(p => {
                 const subiu = p.varPct != null && p.varPct > 0.5, caiu = p.varPct != null && p.varPct < -0.5
@@ -434,11 +433,24 @@ export default function CaixasPage() {
                 return (
                   <tr key={p.nome} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => setProdSel(normProd(p.nome))}>
                     <td style={{ padding: '7px 12px', textAlign: 'center' }}><span style={{ display: 'inline-block', minWidth: 20, padding: '2px 7px', borderRadius: 20, background: cor, color: '#fff', fontWeight: 800, fontSize: 11 }}>{p.classe}</span></td>
-                    <td style={{ padding: '7px 12px', fontWeight: 600 }}>{p.nome}</td>
+                    <td style={{ padding: '7px 12px', fontWeight: 600 }}>{p.nome}<div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400 }}>{p.n} compras no total</div></td>
                     <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700 }}>{fmtR$(p.gasto)}<span style={{ fontSize: 10, color: 'var(--muted)' }}> · {p.gastoPct.toFixed(1)}%</span></td>
-                    <td style={{ padding: '7px 12px', textAlign: 'center', color: 'var(--muted)' }}>{p.n}×</td>
-                    <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700 }}>{p.ult != null ? fmtR$(p.ult) : '—'}</td>
-                    <td style={{ padding: '7px 12px', textAlign: 'right', color: 'var(--muted)' }}>{p.ant != null ? fmtR$(p.ant) : '—'}</td>
+                    <td style={{ padding: '5px 12px' }}>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        {p.ultimas5.length === 0 && <span style={{ color: 'var(--muted)' }}>—</span>}
+                        {p.ultimas5.map((c, i) => {
+                          const older = p.ultimas5[i + 1]
+                          const up = older && older.unit != null && (c.unit as number) > (older.unit as number)
+                          const down = older && older.unit != null && (c.unit as number) < (older.unit as number)
+                          return (
+                            <span key={i} title={c.forn || ''} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.15, padding: '3px 7px', borderRadius: 6, background: i === 0 ? 'var(--bordo-bg)' : 'var(--card2, #f6f6f6)', minWidth: 54 }}>
+                              <b style={{ fontSize: 11.5, color: i === 0 ? 'var(--bordo)' : up ? '#B91C1C' : down ? '#15803D' : 'inherit' }}>{c.unit != null ? fmtR$(c.unit as number) : '—'}</b>
+                              <small style={{ fontSize: 9.5, color: 'var(--muted)' }}>{fmtData(c.data).slice(0, 5)}</small>
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </td>
                     <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700, color: subiu ? '#B91C1C' : caiu ? '#15803D' : 'var(--muted)' }}>
                       {p.varPct == null ? '—' : `${p.varPct > 0 ? '▲' : p.varPct < 0 ? '▼' : ''} ${Math.abs(p.varPct).toFixed(0)}%`}
                     </td>
