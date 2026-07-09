@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Plus, Trash2, Star } from 'lucide-react'
+import { Plus, Trash2, Star, Camera, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../hooks/useToast'
@@ -10,7 +10,9 @@ import {
   fetchSalaoAvaliacoes, insertSalaoAvaliacao, deleteSalaoAvaliacao,
   fetchSalaoAvaliacaoEquipe, insertSalaoAvaliacaoEquipe, deleteSalaoAvaliacaoEquipe,
   fetchSalaoChecklist, upsertSalaoChecklistItem, updateSalaoChecklistItem, deleteSalaoChecklistItem,
+  uploadAnexo,
 } from '../../lib/db'
+import { enviarWhatsApp } from '../../lib/notify'
 import type { SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, CheckStatus, MesaStatus } from '../../types/database'
 
 // ── Types ─────────────────────────────────────────────────────
@@ -20,17 +22,135 @@ type Tab = 'checklist' | 'mesas' | 'atendimento' | 'avaliacoes' | 'performance'
 interface CheckItem { categoria: string; item: string }
 
 const ABERTURA_ITEMS: CheckItem[] = [
-  { categoria: '🪑 SALÃO & MESAS',       item: 'Salão limpo e organizado' },
-  { categoria: '🪑 SALÃO & MESAS',       item: 'Mesas alinhadas e niveladas' },
-  { categoria: '🪑 SALÃO & MESAS',       item: 'Cardápios limpos e sem rasgados' },
-  { categoria: '🪑 SALÃO & MESAS',       item: 'Reservas do dia conferidas' },
-  { categoria: '👔 EQUIPE & APRESENTAÇÃO', item: 'Todos colaboradores presentes' },
-  { categoria: '👔 EQUIPE & APRESENTAÇÃO', item: 'Uniformes completos e limpos' },
-  { categoria: '👔 EQUIPE & APRESENTAÇÃO', item: 'Higiene pessoal em conformidade' },
-  { categoria: '👔 EQUIPE & APRESENTAÇÃO', item: 'Briefing de atendimento realizado' },
-  { categoria: '⚙️ INFRAESTRUTURA',       item: 'Ar condicionado/ventilação funcionando' },
-  { categoria: '⚙️ INFRAESTRUTURA',       item: 'Iluminação adequada' },
-  { categoria: '⚙️ INFRAESTRUTURA',       item: 'Música ambiente configurada' },
+  // 1. SALÃO
+  { categoria: '🪑 SALÃO',            item: 'Mesas limpas e higienizadas' },
+  { categoria: '🪑 SALÃO',            item: 'Cadeiras alinhadas e limpas' },
+  { categoria: '🪑 SALÃO',            item: 'Piso limpo e seco' },
+  { categoria: '🪑 SALÃO',            item: 'Escorredor de pratos organizado' },
+  { categoria: '🪑 SALÃO',            item: 'Lixeiras limpas e com saco' },
+  { categoria: '🪑 SALÃO',            item: 'Iluminação conferida' },
+  { categoria: '🪑 SALÃO',            item: 'Música ambiente ligada' },
+  { categoria: '🪑 SALÃO',            item: 'Cardápios limpos' },
+  { categoria: '🪑 SALÃO',            item: 'Porta-cardápios organizados' },
+  { categoria: '🪑 SALÃO',            item: 'Plantas e decoração organizadas' },
+  { categoria: '🪑 SALÃO',            item: 'TV ligada (quando aplicável)' },
+  { categoria: '🪑 SALÃO',            item: 'Ambiente sem odores' },
+
+  // 2. AQUÁRIO
+  { categoria: '🐠 AQUÁRIO',          item: 'Água limpa' },
+  { categoria: '🐠 AQUÁRIO',          item: 'Vidros limpos (interno e externo)' },
+  { categoria: '🐠 AQUÁRIO',          item: 'Oxigenação funcionando' },
+  { categoria: '🐠 AQUÁRIO',          item: 'Animais saudáveis' },
+  { categoria: '🐠 AQUÁRIO',          item: 'Iluminação do aquário funcionando' },
+
+  // 3. BALCÃO
+  { categoria: '🧾 BALCÃO',           item: 'Balcão higienizado' },
+  { categoria: '🧾 BALCÃO',           item: 'Caixa organizado' },
+  { categoria: '🧾 BALCÃO',           item: 'Máquina de cartão funcionando' },
+  { categoria: '🧾 BALCÃO',           item: 'Impressora funcionando' },
+  { categoria: '🧾 BALCÃO',           item: 'Bobinas disponíveis' },
+  { categoria: '🧾 BALCÃO',           item: 'Sacolas disponíveis' },
+  { categoria: '🧾 BALCÃO',           item: 'Guardanapos abastecidos' },
+  { categoria: '🧾 BALCÃO',           item: 'Canudos abastecidos' },
+  { categoria: '🧾 BALCÃO',           item: 'Talheres descartáveis' },
+  { categoria: '🧾 BALCÃO',           item: 'Copos descartáveis' },
+  { categoria: '🧾 BALCÃO',           item: 'Tampas descartáveis' },
+  { categoria: '🧾 BALCÃO',           item: 'Mexedores' },
+  { categoria: '🧾 BALCÃO',           item: 'Embalagens para delivery (balcão)' },
+  { categoria: '🧾 BALCÃO',           item: 'Sacolas delivery' },
+
+  // 4. FREEZERS
+  { categoria: '🧊 FREEZERS',         item: 'Bebidas — Refrigerantes abastecidos' },
+  { categoria: '🧊 FREEZERS',         item: 'Bebidas — Água abastecida' },
+  { categoria: '🧊 FREEZERS',         item: 'Bebidas — Sucos abastecidos' },
+  { categoria: '🧊 FREEZERS',         item: 'Bebidas — Energéticos abastecidos' },
+  { categoria: '🧊 FREEZERS',         item: 'Bebidas — Cervejas abastecidas' },
+  { categoria: '🧊 FREEZERS',         item: 'Bebidas — Vinhos organizados' },
+  { categoria: '🧊 FREEZERS',         item: 'Picolé — Estoque conferido' },
+  { categoria: '🧊 FREEZERS',         item: 'Picolé — Sabores completos' },
+  { categoria: '🧊 FREEZERS',         item: 'Picolé — Temperatura adequada' },
+  { categoria: '🧊 FREEZERS',         item: 'Sorvete — Estoque conferido' },
+  { categoria: '🧊 FREEZERS',         item: 'Sorvete — Sabores completos' },
+  { categoria: '🧊 FREEZERS',         item: 'Sorvete — Temperatura adequada' },
+
+  // 5. CHOPP
+  { categoria: '🍺 CHOPP',            item: 'Barril conectado' },
+  { categoria: '🍺 CHOPP',            item: 'Barril reserva disponível' },
+  { categoria: '🍺 CHOPP',            item: 'CO₂ conferido' },
+  { categoria: '🍺 CHOPP',            item: 'Chopeira limpa' },
+  { categoria: '🍺 CHOPP',            item: 'Temperatura correta' },
+  { categoria: '🍺 CHOPP',            item: 'Teste de extração realizado' },
+
+  // 6. SUSHIBAR
+  { categoria: '🍣 SUSHIBAR',         item: 'Bancada limpa' },
+  { categoria: '🍣 SUSHIBAR',         item: 'Facas organizadas' },
+  { categoria: '🍣 SUSHIBAR',         item: 'Tábuas higienizadas' },
+  { categoria: '🍣 SUSHIBAR',         item: 'Arroz disponível' },
+  { categoria: '🍣 SUSHIBAR',         item: 'Salmão disponível' },
+  { categoria: '🍣 SUSHIBAR',         item: 'Peixes conferidos' },
+  { categoria: '🍣 SUSHIBAR',         item: 'Cream Cheese' },
+  { categoria: '🍣 SUSHIBAR',         item: 'Cebolinha' },
+  { categoria: '🍣 SUSHIBAR',         item: 'Gergelim' },
+  { categoria: '🍣 SUSHIBAR',         item: 'Nori' },
+  { categoria: '🍣 SUSHIBAR',         item: 'Shoyu (sushibar)' },
+  { categoria: '🍣 SUSHIBAR',         item: 'Gengibre' },
+  { categoria: '🍣 SUSHIBAR',         item: 'Wasabi' },
+  { categoria: '🍣 SUSHIBAR',         item: 'Hashi' },
+  { categoria: '🍣 SUSHIBAR',         item: 'Barcas limpas' },
+  { categoria: '🍣 SUSHIBAR',         item: 'Embalagens delivery (sushibar)' },
+
+  // 7. MOLHOS E CONDIMENTOS
+  { categoria: '🥢 MOLHOS & CONDIMENTOS', item: 'Shoyu (mesa/sachê)' },
+  { categoria: '🥢 MOLHOS & CONDIMENTOS', item: 'Molho Tarê' },
+  { categoria: '🥢 MOLHOS & CONDIMENTOS', item: 'Molho Agridoce' },
+  { categoria: '🥢 MOLHOS & CONDIMENTOS', item: 'Azeite' },
+  { categoria: '🥢 MOLHOS & CONDIMENTOS', item: 'Pimenta' },
+  { categoria: '🥢 MOLHOS & CONDIMENTOS', item: 'Ketchup' },
+  { categoria: '🥢 MOLHOS & CONDIMENTOS', item: 'Mostarda' },
+  { categoria: '🥢 MOLHOS & CONDIMENTOS', item: 'Maionese' },
+  { categoria: '🥢 MOLHOS & CONDIMENTOS', item: 'Vinagrete' },
+  { categoria: '🥢 MOLHOS & CONDIMENTOS', item: 'Parmesão ralado' },
+  { categoria: '🥢 MOLHOS & CONDIMENTOS', item: 'Orégano' },
+  { categoria: '🥢 MOLHOS & CONDIMENTOS', item: 'Sachês abastecidos' },
+
+  // 8. ATENDIMENTO
+  { categoria: '👥 ATENDIMENTO',      item: 'Tablets carregados' },
+  { categoria: '👥 ATENDIMENTO',      item: 'Sistema funcionando' },
+  { categoria: '👥 ATENDIMENTO',      item: 'Internet funcionando' },
+  { categoria: '👥 ATENDIMENTO',      item: 'Impressoras funcionando' },
+  { categoria: '👥 ATENDIMENTO',      item: 'Comandas disponíveis' },
+  { categoria: '👥 ATENDIMENTO',      item: 'Canetas' },
+  { categoria: '👥 ATENDIMENTO',      item: 'Escala completa' },
+  { categoria: '👥 ATENDIMENTO',      item: 'Uniformes corretos' },
+  { categoria: '👥 ATENDIMENTO',      item: 'Crachás' },
+  { categoria: '👥 ATENDIMENTO',      item: 'Aparência da equipe conferida' },
+  { categoria: '👥 ATENDIMENTO',      item: 'Equipe alinhada sobre promoções' },
+  { categoria: '👥 ATENDIMENTO',      item: 'Cardápio atualizado' },
+  { categoria: '👥 ATENDIMENTO',      item: 'Tempo de espera informado à equipe' },
+
+  // 9. DELIVERY
+  { categoria: '🛵 DELIVERY',         item: 'Sistema online' },
+  { categoria: '🛵 DELIVERY',         item: 'Embalagens disponíveis' },
+  { categoria: '🛵 DELIVERY',         item: 'Etiquetas' },
+  { categoria: '🛵 DELIVERY',         item: 'Lacres' },
+  { categoria: '🛵 DELIVERY',         item: 'Sacolas (delivery)' },
+  { categoria: '🛵 DELIVERY',         item: 'Conferência dos aplicativos' },
+  { categoria: '🛵 DELIVERY',         item: 'Tempo de entrega atualizado' },
+
+  // 10. ABERTURA
+  { categoria: '🚀 ABERTURA',         item: 'Reunião rápida com equipe' },
+  { categoria: '🚀 ABERTURA',         item: 'Meta do dia apresentada' },
+  { categoria: '🚀 ABERTURA',         item: 'Promoções apresentadas' },
+  { categoria: '🚀 ABERTURA',         item: 'Pratos indisponíveis comunicados' },
+  { categoria: '🚀 ABERTURA',         item: 'Reservas conferidas' },
+  { categoria: '🚀 ABERTURA',         item: 'Aniversariantes do dia' },
+  { categoria: '🚀 ABERTURA',         item: 'Escala confirmada' },
+
+  // 11. CONFERÊNCIA FINAL
+  { categoria: '✅ CONFERÊNCIA FINAL', item: 'Todos os itens abastecidos' },
+  { categoria: '✅ CONFERÊNCIA FINAL', item: 'Todos os equipamentos funcionando' },
+  { categoria: '✅ CONFERÊNCIA FINAL', item: 'Ambiente pronto para receber clientes' },
+  { categoria: '✅ CONFERÊNCIA FINAL', item: 'Checklist concluído' },
 ]
 
 const FECHAMENTO_ITEMS: CheckItem[] = [
@@ -42,6 +162,12 @@ const FECHAMENTO_ITEMS: CheckItem[] = [
   { categoria: '🔒 FECHAMENTO',          item: 'Ar condicionado desligado' },
   { categoria: '🔒 FECHAMENTO',          item: 'Luzes do salão apagadas' },
 ]
+
+// Categorias críticas — bloqueiam a conclusão da abertura enquanto houver item não-OK
+const CRITICAL_CATS = ['🐠 AQUÁRIO', '🍺 CHOPP', '🧊 FREEZERS', '🍣 SUSHIBAR', '👥 ATENDIMENTO']
+// Áreas com foto obrigatória antes de concluir a abertura
+const FOTO_AREAS = ['Salão', 'Aquário', 'Balcão', 'Chopeira', 'Sushibar'] as const
+const FOTO_CAT = '📷 FOTOS'
 
 // ── Mock fallback ─────────────────────────────────────────────
 const MESAS_MOCK: SalaoMesa[] = [
@@ -299,6 +425,12 @@ export default function SalaoPage() {
   const [checkRecords, setCheckRecords] = useState<SalaoChecklistItem[]>([])
   const [saving, setSaving] = useState(false)
 
+  // Fotos obrigatórias + conclusão da abertura
+  const [fotos, setFotos] = useState<Record<string, { url: string; id?: string }>>({})
+  const [uploadingFoto, setUploadingFoto] = useState<string | null>(null)
+  const [concluindo, setConcluindo] = useState(false)
+  const [gestorFone, setGestorFone] = useState(() => localStorage.getItem('salao_gestor_fone') || '')
+
   // Modals
   const [showAtendModal, setShowAtendModal] = useState(false)
   const [showAvalModal, setShowAvalModal]   = useState(false)
@@ -344,6 +476,10 @@ export default function SalaoPage() {
     try {
       const recs = await fetchSalaoChecklist(lojaEf, dataFiltro)
       setCheckRecords(recs)
+      const fmap: Record<string, { url: string; id?: string }> = {}
+      recs.filter(r => r.categoria === FOTO_CAT && r.observacoes)
+        .forEach(r => { fmap[r.item] = { url: r.observacoes as string, id: r.id } })
+      setFotos(fmap)
     } catch { /* silent */ }
   }, [loja, dataFiltro, theme.stores])
 
@@ -433,6 +569,29 @@ export default function SalaoPage() {
       })
   }, [atendimentos, garcons, loja, garcomFiltro])
 
+  // ── Resumo de conformidade da Abertura ───────────────────────
+  const statusDe = useCallback((item: string): CheckStatus => {
+    const r = checkRecords.find(rr => rr.tipo === 'abertura' && rr.item === item)
+    return r ? r.status : 'pendente'
+  }, [checkRecords])
+
+  const resumoAbertura = useMemo(() => {
+    let ok = 0, nc = 0
+    const pendencias: { categoria: string; item: string; status: CheckStatus }[] = []
+    const criticosPend: { categoria: string; item: string; status: CheckStatus }[] = []
+    for (const ci of ABERTURA_ITEMS) {
+      const st = statusDe(ci.item)
+      if (st === 'ok') { ok++; continue }
+      if (st === 'nao_conforme') nc++
+      pendencias.push({ categoria: ci.categoria, item: ci.item, status: st })
+      if (CRITICAL_CATS.includes(ci.categoria)) criticosPend.push({ categoria: ci.categoria, item: ci.item, status: st })
+    }
+    const total = ABERTURA_ITEMS.length
+    const pct = Math.round((ok / total) * 100)
+    const faltamFotos = FOTO_AREAS.filter(a => !fotos[a]?.url)
+    return { total, ok, nc, pend: total - ok, pct, pendencias, criticosPend, faltamFotos }
+  }, [statusDe, fotos])
+
   // ── Handlers Checklist ───────────────────────────────────────
   const handleCheckStatus = async (ci: CheckItem, status: CheckStatus) => {
     const lojaEf = loja === 'Todas as Lojas' ? (theme.stores[0] || 'Amore Paiva') : loja
@@ -496,6 +655,83 @@ export default function SalaoPage() {
       setCheckRecords(prev => prev.filter(r => r.id !== id))
     } catch {
       setCheckRecords(prev => prev.filter(r => r.id !== id))
+    }
+  }
+
+  // ── Foto obrigatória (salva como registro do checklist, categoria 📷 FOTOS) ──
+  const handleUploadFoto = async (area: string, file: File | undefined) => {
+    if (!file) return
+    const lojaEf = loja === 'Todas as Lojas' ? (theme.stores[0] || 'Amore Paiva') : loja
+    setUploadingFoto(area)
+    try {
+      const url = await uploadAnexo(file, `salao-checklist/${lojaEf}`)
+      const existing = fotos[area]
+      if (existing?.id) {
+        await updateSalaoChecklistItem(existing.id, { observacoes: url, status: 'ok' })
+        setFotos(prev => ({ ...prev, [area]: { url, id: existing.id } }))
+      } else {
+        const rec = await upsertSalaoChecklistItem({
+          loja: lojaEf, data_reg: dataFiltro, tipo: 'abertura', categoria: FOTO_CAT,
+          item: area, status: 'ok', colaborador: null, responsavel: null,
+          observacoes: url, criado_por: user?.name || null,
+        })
+        setFotos(prev => ({ ...prev, [area]: { url, id: rec.id } }))
+      }
+      toast(`Foto de ${area} registrada!`)
+    } catch {
+      toast('Falha ao enviar a foto. Tente novamente.', 'error')
+    } finally {
+      setUploadingFoto(null)
+    }
+  }
+
+  // ── Concluir Abertura: valida críticos + fotos, marca conclusão e alerta o gestor ──
+  const handleConcluirAbertura = async () => {
+    const { criticosPend, faltamFotos, pct, ok, total, pendencias } = resumoAbertura
+    if (faltamFotos.length) { toast(`Fotos obrigatórias faltando: ${faltamFotos.join(', ')}`, 'error'); return }
+    if (criticosPend.length) { toast(`${criticosPend.length} item(ns) crítico(s) pendente(s). Resolva antes de concluir.`, 'error'); return }
+    const lojaEf = loja === 'Todas as Lojas' ? (theme.stores[0] || 'Amore Paiva') : loja
+    setConcluindo(true)
+    try {
+      // Marca o item "Checklist concluído" com o % de conformidade
+      const existing = checkRecords.find(r => r.tipo === 'abertura' && r.item === 'Checklist concluído')
+      if (existing) {
+        await updateSalaoChecklistItem(existing.id, { status: 'ok', observacoes: `Conformidade ${pct}%`, responsavel: user?.name || null })
+      } else {
+        await upsertSalaoChecklistItem({
+          loja: lojaEf, data_reg: dataFiltro, tipo: 'abertura', categoria: '✅ CONFERÊNCIA FINAL',
+          item: 'Checklist concluído', status: 'ok', colaborador: null, responsavel: user?.name || null,
+          observacoes: `Conformidade ${pct}%`, criado_por: user?.name || null,
+        })
+      }
+
+      // Alerta ao gestor via WhatsApp (Evolution API) — pendências do dia
+      const fones = gestorFone.split(/[,;\n]/).map(s => s.trim()).filter(Boolean)
+      if (fones.length) {
+        localStorage.setItem('salao_gestor_fone', gestorFone)
+        const linhas = pendencias.slice(0, 25).map(p => `• [${p.categoria}] ${p.item}${p.status === 'nao_conforme' ? ' ❌' : ''}`)
+        const dataBR = dataFiltro.split('-').reverse().join('/')
+        const msg = [
+          `🔔 *Abertura — ${lojaEf}*  (${dataBR})`,
+          `Responsável: ${user?.name || '—'}`,
+          `Conformidade: *${pct}%* (${ok}/${total} itens OK)`,
+          pendencias.length
+            ? `\n⚠️ Pendências (${pendencias.length}):\n${linhas.join('\n')}${pendencias.length > 25 ? `\n… +${pendencias.length - 25}` : ''}`
+            : `\n✅ Todos os itens conformes.`,
+        ].join('\n')
+        for (const f of fones) {
+          await enviarWhatsApp(f, msg, undefined, {
+            tipo: 'manual', modulo: 'Salão', titulo: `Abertura ${lojaEf}`, loja: lojaEf, created_by: user?.name || null,
+          })
+        }
+      }
+
+      await loadChecklist()
+      toast(pct === 100 ? 'Abertura concluída — 100% conforme! 🎉' : `Abertura concluída (${pct}%). Pendências enviadas ao gestor.`)
+    } catch {
+      toast('Erro ao concluir a abertura.', 'error')
+    } finally {
+      setConcluindo(false)
     }
   }
 
@@ -663,6 +899,91 @@ export default function SalaoPage() {
               💾 Salvar Registro
             </button>
           </div>
+
+          {/* Conformidade da Abertura + Fotos + Conclusão */}
+          {(() => {
+            const r = resumoAbertura
+            const barCol = r.pct === 100 ? 'var(--success)' : r.pct >= 70 ? 'var(--warning)' : 'var(--danger)'
+            const bloqueado = r.criticosPend.length > 0 || r.faltamFotos.length > 0
+            return (
+              <div className="card" style={{ marginBottom: 14 }}>
+                <div className="card-hd">
+                  <span className="card-tt">🚦 Conformidade da Abertura</span>
+                  <span style={{ fontSize: 15, fontWeight: 900, color: barCol }}>{r.pct}%</span>
+                </div>
+                <div className="card-bd" style={{ padding: '14px 16px' }}>
+                  <div className="prog" style={{ marginBottom: 12 }}>
+                    <div className="pb" style={{ width: `${r.pct}%`, background: barCol, transition: '.4s' }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, marginBottom: 16 }}>
+                    <span>✅ <strong style={{ color: 'var(--success)' }}>{r.ok}</strong> OK</span>
+                    <span>⏳ <strong style={{ color: 'var(--warning)' }}>{r.pend - r.nc}</strong> pendentes</span>
+                    <span>❌ <strong style={{ color: 'var(--danger)' }}>{r.nc}</strong> não conforme</span>
+                    <span style={{ color: 'var(--muted)' }}>Total: {r.total} itens</span>
+                  </div>
+
+                  {/* Fotos obrigatórias */}
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+                    📷 Fotos obrigatórias
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10, marginBottom: 16 }}>
+                    {FOTO_AREAS.map(area => {
+                      const f = fotos[area]
+                      const up = uploadingFoto === area
+                      return (
+                        <label key={area} style={{
+                          border: `1.5px dashed ${f?.url ? 'var(--success)' : 'var(--border)'}`,
+                          borderRadius: 10, padding: 8, cursor: up ? 'wait' : 'pointer',
+                          textAlign: 'center', background: f?.url ? '#F0FDF4' : 'var(--cream)',
+                        }}>
+                          <input type="file" accept="image/*" capture="environment" disabled={up} style={{ display: 'none' }}
+                            onChange={e => handleUploadFoto(area, e.target.files?.[0])} />
+                          {f?.url ? (
+                            <img src={f.url} alt={area} style={{ width: '100%', height: 64, objectFit: 'cover', borderRadius: 6, marginBottom: 4 }} />
+                          ) : (
+                            <div style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 20 }}>
+                              {up ? '⏳' : <Camera size={22} />}
+                            </div>
+                          )}
+                          <div style={{ fontSize: 11, fontWeight: 600, color: f?.url ? 'var(--success)' : 'var(--text)' }}>
+                            {f?.url ? '✓ ' : ''}{area}
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+
+                  {/* Aviso de bloqueio */}
+                  {bloqueado && (
+                    <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--danger)', fontWeight: 700, marginBottom: 4 }}>
+                        <AlertTriangle size={13} /> Conclusão bloqueada
+                      </div>
+                      {r.faltamFotos.length > 0 && <div style={{ color: 'var(--danger)' }}>• Fotos faltando: {r.faltamFotos.join(', ')}</div>}
+                      {r.criticosPend.length > 0 && (
+                        <div style={{ color: 'var(--danger)' }}>
+                          • {r.criticosPend.length} item(ns) crítico(s) pendente(s) — {[...new Set(r.criticosPend.map(c => c.categoria))].join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* WhatsApp do gestor + Concluir */}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                    <div className="fg" style={{ margin: 0, flex: 1, minWidth: 180 }}>
+                      <label className="fl">WhatsApp do gestor (pendências)</label>
+                      <input className="inp" value={gestorFone} onChange={e => setGestorFone(e.target.value)} placeholder="Ex: 5581999998888" />
+                    </div>
+                    <button className="btn bp bsm" style={{ minWidth: 170 }}
+                      disabled={concluindo || bloqueado}
+                      onClick={handleConcluirAbertura}>
+                      {concluindo ? 'Concluindo...' : <><CheckCircle2 size={13} /> Concluir Abertura</>}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Checklists */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
