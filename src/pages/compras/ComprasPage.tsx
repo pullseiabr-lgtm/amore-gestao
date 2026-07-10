@@ -2241,7 +2241,7 @@ function DashboardTab({ loja, listas, onCriarLista }: {
       </div>
 
       {/* Grid: Top Produtos + Top Fornecedores */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, marginBottom: 16 }}>
         {/* Top Produtos */}
         <div className="card">
           <div className="card-hd">

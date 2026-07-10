@@ -1051,7 +1051,7 @@ function FichaTab({
           <button className="btn bsm" style={{ background: 'var(--danger)', color: '#fff' }} onClick={() => { onDelete(ft.id); setSelecionada(null) }}><Trash2 size={11} /> Excluir</button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
           <div className="card">
             <div className="card-hd"><span className="card-tt"><Package size={13} style={{ display: 'inline', marginRight: 4 }} />Ingredientes</span></div>
             <div className="tw">

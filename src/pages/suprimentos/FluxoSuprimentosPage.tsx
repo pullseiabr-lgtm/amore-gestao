@@ -537,7 +537,7 @@ export default function FluxoSuprimentosPage() {
               <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>Conferência tripla: Pedido × Nota Fiscal × Mercadoria.</div>
 
               {/* 1. Pedido */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10, marginBottom: 14 }}>
                 <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)' }}>1 · PEDIDO</div>
                   <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{fmtR$(pedido)}</div>
@@ -581,7 +581,7 @@ export default function FluxoSuprimentosPage() {
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10, marginBottom: 14 }}>
                 <input value={fiscalForm.nf_numero} onChange={e => setFiscalForm(f => ({ ...f, nf_numero: e.target.value }))}
                   placeholder="Número da NF"
                   style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />

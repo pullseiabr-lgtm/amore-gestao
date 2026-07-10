@@ -866,7 +866,7 @@ function AvaliacaoModal({
           </div>
 
           {/* Critérios */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 14 }}>
             {[
               { label: 'Preço', value: criterio_preco, set: setCriterioPreco },
               { label: 'Prazo de Entrega', value: criterio_prazo, set: setCriterioPrazo },

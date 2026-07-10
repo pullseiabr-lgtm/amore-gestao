@@ -1097,7 +1097,7 @@ function DashboardView({ reqs }: { reqs: Requisicao[] }) {
         ))}
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(300px, 1fr))', gap:14 }}>
         <div className="card">
           <div className="card-header"><span className="card-tt">Distribuição por Status</span></div>
           <div style={{ padding:'10px 14px' }}>

@@ -387,7 +387,7 @@ export default function AtasPage() {
               {isExpanded && (
                 <div style={{ borderTop: '1px solid var(--border)', padding: '16px 18px', background: 'var(--bg-secondary,#f9fafb)' }}>
                   {/* pauta / decisoes summary */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12, marginBottom: 16 }}>
                     {a.pauta && (
                       <div style={{ background: 'var(--card-bg)', borderRadius: 8, padding: 12, border: '1px solid var(--border)' }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 4 }}>Pauta</div>

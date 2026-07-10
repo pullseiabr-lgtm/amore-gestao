@@ -499,7 +499,7 @@ function DashboardVendas({ dash, today, fatHoje, ticketMedio, loading }: {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, marginBottom: 16 }}>
         {/* Comparativo 7 dias */}
         <div className="card">
           <div className="card-hd">
@@ -551,7 +551,7 @@ function DashboardVendas({ dash, today, fatHoje, ticketMedio, loading }: {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
         {/* Ranking por colaborador */}
         <div className="card">
           <div className="card-hd">

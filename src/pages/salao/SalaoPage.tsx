@@ -986,7 +986,7 @@ export default function SalaoPage() {
           })()}
 
           {/* Checklists */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, marginBottom: 14 }}>
             <ChecklistPanel
               tipo="abertura" items={ABERTURA_ITEMS} records={checkRecords}
               loja={loja} data={dataFiltro} colaborador={garcomFiltro}
@@ -1275,7 +1275,7 @@ export default function SalaoPage() {
             </select>
           </div>
 
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(300px, 1fr))', gap:14 }}>
             {/* Distribuição */}
             <div className="card">
               <div className="card-hd"><span className="card-tt">Distribuição de Notas</span></div>
@@ -1442,7 +1442,7 @@ export default function SalaoPage() {
           </div>
 
           {/* Ranking + Metas */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(300px, 1fr))', gap:14 }}>
             {/* Ranking */}
             <div className="card">
               <div className="card-hd"><span className="card-tt">🏆 Ranking Garçons</span></div>

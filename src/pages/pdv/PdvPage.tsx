@@ -368,7 +368,7 @@ export default function PdvPage() {
           <div className="kpi"><div className="kpi-ac" style={{ background: 'var(--bordo)' }} /><div className="kpi-lbl">Saldo Líquido</div><div className="kpi-val">{fmtR$(caixa.saldo_abertura + caixa.total_vendas - caixa.total_sangrias)}</div><div className="kpi-sub">caixa atual</div></div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
           <div className="card">
             <div className="card-hd"><span className="card-tt"><TrendingUp size={13} style={{ display: 'inline', marginRight: 4 }} />Por Forma de Pagamento</span></div>
             {porForma.length === 0 ? (

@@ -549,7 +549,7 @@ function ConfigurarGamificacao({ cfg, onChange }: { cfg: GamConfig; onChange: (c
         {!totalOk && <span style={{ fontWeight: 400, marginLeft: 4 }}>— ajuste para totalizar 100</span>}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
         {/* Pesos positivos */}
         <div className="card" style={{ padding: '16px 18px' }}>
           <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>

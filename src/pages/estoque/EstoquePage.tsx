@@ -1249,7 +1249,7 @@ function TabAnalise({ loja }: { loja: string }) {
         </div>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(300px, 1fr))', gap:16, marginBottom:16 }}>
         {/* Top Consumo */}
         <div className="card">
           <div className="card-hd">
