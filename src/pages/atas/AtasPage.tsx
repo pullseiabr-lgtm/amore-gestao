@@ -71,7 +71,8 @@ const BLANK_ATA: Omit<AtaReuniao, 'id' | 'created_at' | 'updated_at' | 'acoes'> 
 /* ══════════════════════════════════════════════════════════ */
 export default function AtasPage() {
   const { user, can } = useAuth()
-  const { loja }       = useLoja()
+  const { loja, lojas, multiLoja } = useLoja()
+  const lojasReais = (lojas || []).filter(l => l && l !== 'Todas as Lojas')
 
   const [atas,    setAtas]    = useState<AtaReuniao[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
@@ -168,7 +169,9 @@ export default function AtasPage() {
   /* ── ata CRUD ── */
   const openNewAta = () => {
     setEditAta(null)
-    setAtaForm({ ...BLANK_ATA, loja, created_by: user?.name || null })
+    // Nunca gravar a pseudo-loja "Todas as Lojas": usa a loja atual se for real, senão a 1ª unidade
+    const defLoja = loja && loja !== 'Todas as Lojas' ? loja : (lojasReais[0] || '')
+    setAtaForm({ ...BLANK_ATA, loja: defLoja, created_by: user?.name || null })
     setParticipInput('')
     setShowAtaModal(true)
   }
@@ -180,10 +183,11 @@ export default function AtasPage() {
   }
   const saveAta = async () => {
     if (!ataForm.titulo.trim()) return
+    if (!ataForm.loja || ataForm.loja === 'Todas as Lojas') { alert('Selecione a loja (unidade) desta ata.'); return }
     setSaving(true)
     try {
       if (editAta) await updateAta(editAta.id, ataForm)
-      else await insertAta({ ...ataForm, loja })
+      else await insertAta(ataForm)
       setShowAtaModal(false)
       await load()
     } finally { setSaving(false) }
@@ -357,8 +361,10 @@ export default function AtasPage() {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>{a.titulo}</div>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    {a.loja && `🏪 ${a.loja} · `}
                     {fmtDate(a.data_reuniao)}
                     {a.hora_inicio && ` · ${a.hora_inicio.slice(0,5)}`}
+                    {a.hora_fim && `–${a.hora_fim.slice(0,5)}`}
                     {a.local_reuniao && ` · ${a.local_reuniao}`}
                     {acoes.length > 0 && ` · ${acoes.filter(x => x.status === 'pendente').length} ações pendentes`}
                   </div>
@@ -527,6 +533,16 @@ export default function AtasPage() {
                 <input value={ataForm.titulo} onChange={e => setAtaForm(p => ({ ...p, titulo: e.target.value }))}
                   placeholder="Ex: Reunião de alinhamento semanal"
                   style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-primary)', fontSize: 13, boxSizing: 'border-box' }} />
+              </div>
+              {/* loja / unidade */}
+              <div>
+                <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Loja (unidade) *</label>
+                <select value={ataForm.loja} disabled={!multiLoja} onChange={e => setAtaForm(p => ({ ...p, loja: e.target.value }))}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-primary)', fontSize: 13, opacity: multiLoja ? 1 : 0.7 }}>
+                  <option value="">Selecione a unidade…</option>
+                  {lojasReais.map(l => <option key={l} value={l}>{l}</option>)}
+                  {ataForm.loja && !lojasReais.includes(ataForm.loja) && <option value={ataForm.loja}>{ataForm.loja}</option>}
+                </select>
               </div>
               {/* tipo / status */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

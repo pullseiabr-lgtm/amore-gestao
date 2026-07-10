@@ -2070,13 +2070,13 @@ export async function insertListaHistoricoPreco(h: Omit<ListaHistoricoPreco, 'id
 // ── Ata de Reunião ────────────────────────────────────────────
 
 export async function fetchAtas(loja: string): Promise<AtaReuniao[]> {
-  return sdkCall<AtaReuniao[]>(
-    db.from('atas_reuniao')
-      .select('*, acoes:atas_acoes(*)')
-      .eq('loja', loja)
-      .order('data_reuniao', { ascending: false })
-      .limit(200),
-  ).then(d => d ?? []).catch(() => [])
+  let q = db.from('atas_reuniao')
+    .select('*, acoes:atas_acoes(*)')
+    .order('data_reuniao', { ascending: false })
+    .limit(200)
+  // "Todas as Lojas" (admin) → sem filtro de loja: retorna as atas de todas as unidades
+  if (loja && loja !== 'Todas as Lojas') q = q.eq('loja', loja)
+  return sdkCall<AtaReuniao[]>(q).then(d => d ?? []).catch(() => [])
 }
 
 export async function insertAta(a: Omit<AtaReuniao, 'id' | 'created_at' | 'updated_at' | 'acoes'>): Promise<AtaReuniao> {
