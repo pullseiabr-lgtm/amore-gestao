@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Raspadinha Amore</title>
+<meta name="theme-color" content="#8B1212" />
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--vinho:#8B1212;--vermelho:#E23744;--dourado:#E0A83E;--dourado2:#f7d488;--creme:#fff8f4;--verde:#28a06a;--grafite:#2a2320;--branco:#fff}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:'Poppins',system-ui,sans-serif;background:linear-gradient(165deg,#8B1212 0%,#B01D2A 55%,#8B1212 100%);color:#fff;min-height:100vh;min-height:100dvh;overflow-x:hidden}
+.app{max-width:460px;margin:0 auto;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;padding:1.6rem 1.4rem 2rem}
+.brand{text-align:center;padding:.2rem 0 1rem}
+.brand img{height:46px;width:auto;margin:0 auto;filter:drop-shadow(0 2px 8px rgba(0,0,0,.3))}
+.brand small{display:block;font-size:.68rem;letter-spacing:.26em;text-transform:uppercase;color:var(--dourado2);margin-top:8px;opacity:.9}
+.stage{flex:1;display:flex;flex-direction:column;justify-content:center}
+.screen{display:none;animation:fade .5s}.screen.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+h1{font-size:1.6rem;font-weight:800;text-align:center;line-height:1.2;margin-bottom:.5rem}
+.chamada{text-align:center;color:var(--dourado2);font-size:1.02rem;margin-bottom:1.6rem;font-weight:500}
+.field{margin-bottom:.9rem}
+.field label{font-size:.8rem;font-weight:500;display:block;margin-bottom:.35rem;color:#ffdede}
+.field input{width:100%;padding:.9rem 1rem;border:none;border-radius:14px;font-family:inherit;font-size:1rem;color:var(--grafite);background:#fff}
+.field input:focus{outline:3px solid var(--dourado)}
+.consent{display:flex;gap:.6rem;align-items:flex-start;font-size:.82rem;color:#ffdede;margin:.4rem 0 1.2rem;line-height:1.4}
+.consent input{margin-top:3px;width:18px;height:18px;flex-shrink:0}
+.consent a{color:var(--dourado2);text-decoration:underline}
+.btn{display:flex;align-items:center;justify-content:center;gap:.5rem;width:100%;border:none;border-radius:16px;padding:1.15rem;font-family:inherit;font-size:1.05rem;font-weight:700;cursor:pointer;transition:.2s}
+.btn:active{transform:scale(.97)}.btn:disabled{opacity:.6}
+.btn-ouro{background:linear-gradient(135deg,var(--dourado),var(--dourado2));color:#5a3d0a;box-shadow:0 10px 26px rgba(224,168,62,.4)}
+.btn-branco{background:#fff;color:var(--vinho)}
+.btn-verde{background:var(--verde);color:#fff}
+.btn-ghost{background:transparent;color:#ffdede;font-weight:500;border:1px solid rgba(255,255,255,.3)}
+.err{color:#ffd0d0;font-size:.85rem;text-align:center;margin-top:.8rem;min-height:1.1em}
+/* raspagem */
+.scratch-wrap{position:relative;width:100%;aspect-ratio:1.35/1;border-radius:22px;overflow:hidden;box-shadow:0 16px 40px rgba(0,0,0,.35);margin:0 auto}
+.prize-under{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:linear-gradient(160deg,#fff,#fff2e6);color:var(--vinho);padding:1.2rem}
+.prize-under .emoji{font-size:3.2rem;margin-bottom:.3rem}
+.prize-under .pnome{font-size:1.5rem;font-weight:800;line-height:1.15}
+.prize-under .pdesc{font-size:.9rem;color:#7a5b3a;margin-top:.4rem}
+#scratch{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:grab}
+.hint{position:absolute;left:0;right:0;bottom:12px;text-align:center;color:#7a5b3a;font-size:.82rem;font-weight:600;pointer-events:none;z-index:2}
+.scratch-title{text-align:center;font-size:1.2rem;font-weight:700;margin-bottom:1rem}
+/* resultado */
+.res{text-align:center}
+.res .big{font-size:3.4rem;margin-bottom:.4rem;animation:pop .6s}
+@keyframes pop{0%{transform:scale(0)}70%{transform:scale(1.2)}100%{transform:scale(1)}}
+.cupom-box{background:#fff;color:var(--vinho);border-radius:16px;padding:1.1rem;margin:1.2rem 0;text-align:center}
+.cupom-box .lbl{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:#a06;color:#9a6b00}
+.cupom-box .code{font-size:1.9rem;font-weight:800;letter-spacing:.06em;font-family:'Poppins';margin:.2rem 0}
+.cupom-box .val{font-size:.85rem;color:#666}
+.foot{text-align:center;color:rgba(255,255,255,.55);font-size:.72rem;padding-top:1.2rem}
+.spin{display:inline-block;width:18px;height:18px;border:3px solid rgba(90,61,10,.3);border-top-color:#5a3d0a;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.confetti{position:fixed;top:-10px;width:10px;height:14px;z-index:99;pointer-events:none;animation:fall linear forwards}
+@keyframes fall{to{transform:translateY(105vh) rotate(720deg);opacity:.8}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="brand"><img src="/logo-amore-white.png" alt="Amore" onerror="this.replaceWith(Object.assign(document.createElement('div'),{innerHTML:'<b style=font-size:1.8rem;font-weight:800>amore</b>'}))"><small id="unidadeLbl">Raspadinha</small></div>
+  <div class="stage">
+
+    <!-- CADASTRO -->
+    <section class="screen active" id="s1">
+      <h1 id="tituloCampanha">Raspe e ganhe! 🎁</h1>
+      <p class="chamada" id="chamada">Preencha e libere sua raspadinha.</p>
+      <div class="field"><label>Seu nome</label><input id="nome" placeholder="Como podemos te chamar?" autocomplete="name"></div>
+      <div class="field"><label>Seu WhatsApp</label><input id="fone" type="tel" inputmode="numeric" placeholder="(81) 9...." autocomplete="tel"></div>
+      <div class="field"><label>Aniversário (opcional)</label><input id="nasc" type="date"></div>
+      <label class="consent"><input type="checkbox" id="consent"><span>Aceito participar e receber contato da Amore, e concordo com o <a href="#" onclick="alert(regulamento||'Regras da campanha.');return false">regulamento</a> e a Política de Privacidade (LGPD).</span></label>
+      <button class="btn btn-ouro" id="btnLiberar" onclick="liberar()">LIBERAR MINHA RASPADINHA</button>
+      <div class="err" id="err1"></div>
+    </section>
+
+    <!-- RASPAGEM -->
+    <section class="screen" id="s2">
+      <div class="scratch-title">✨ <span id="raspInstr">Passe o dedo para raspar</span></div>
+      <div class="scratch-wrap">
+        <div class="prize-under" id="prizeUnder">
+          <div class="emoji" id="pEmoji">🎁</div>
+          <div class="pnome" id="pNome">—</div>
+          <div class="pdesc" id="pDesc"></div>
+        </div>
+        <canvas id="scratch"></canvas>
+        <div class="hint" id="hint">Raspe aqui 👆</div>
+      </div>
+      <p style="text-align:center;color:#ffdede;font-size:.82rem;margin-top:1rem">Raspe pelo menos <b id="minPct">60</b>% para revelar</p>
+    </section>
+
+    <!-- RESULTADO -->
+    <section class="screen" id="s3">
+      <div class="res">
+        <div class="big" id="resEmoji">🎉</div>
+        <h1 id="resTitulo">Parabéns!</h1>
+        <p class="chamada" id="resTexto" style="margin-bottom:.4rem"></p>
+        <div class="cupom-box" id="cupomBox" style="display:none">
+          <div class="lbl">Seu código</div>
+          <div class="code" id="cupomCode">—</div>
+          <div class="val" id="cupomVal"></div>
+        </div>
+        <button class="btn btn-branco" id="btnCopiar" style="display:none;margin-bottom:.6rem" onclick="copiar()">📋 Copiar código</button>
+        <button class="btn btn-verde" id="btnWhats" style="display:none;margin-bottom:.6rem">💬 Enviar pro meu WhatsApp</button>
+        <p style="text-align:center;color:#ffdede;font-size:.82rem;margin-top:.6rem" id="resObs">Apresente o código ao atendente para resgatar. 🍟</p>
+      </div>
+    </section>
+
+  </div>
+  <div class="foot">Amore Food · Raspadinha Digital</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SB_URL='https://xdwnsqkzgopymufsuccr.supabase.co';
+const SB_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+let sb=null; try{ sb=supabase.createClient(SB_URL,SB_ANON) }catch(e){}
+const p=new URLSearchParams(location.search);
+const LOJA_MAP={paiva:'Amore Paiva',cd:'Amore CD','costa-dourada':'Amore CD'};
+const SLUG=p.get('c')||p.get('campanha')||'batata-gratis';
+const UNIDADE=LOJA_MAP[(p.get('loja')||'').toLowerCase()]||p.get('loja')||'Amore Paiva';
+const ORIGEM=p.get('origem')||p.get('mesa')||null;
+const GARCOM=p.get('g')||p.get('garcom')||null;
+let regulamento='', minPct=60, resultado=null, WA='558130322619';
+document.getElementById('unidadeLbl').textContent = UNIDADE;
+
+// carrega config da campanha
+(async()=>{ if(!sb)return; try{
+  const {data}=await sb.from('rasp_campanhas').select('*').eq('slug',SLUG).maybeSingle();
+  if(data){ document.getElementById('tituloCampanha').textContent=data.nome||'Raspe e ganhe! 🎁';
+    if(data.chamada)document.getElementById('chamada').textContent=data.chamada;
+    if(data.instrucao)document.getElementById('raspInstr').textContent=data.instrucao;
+    regulamento=data.regulamento||''; minPct=data.min_raspagem||60; document.getElementById('minPct').textContent=minPct;
+    if(data.status!=='ativa'){ document.getElementById('btnLiberar').disabled=true; document.getElementById('err1').textContent='Esta campanha não está ativa no momento.' }
+  }
+}catch(e){} })();
+
+const EMO={'Batata':'🍟','Refrigerante':'🥤','desconto':'🏷️','Caldinho':'🍲','Não foi':'💔'};
+function emojiDe(nome){ for(const k in EMO){ if((nome||'').toLowerCase().includes(k.toLowerCase()))return EMO[k] } return '🎁' }
+
+async function liberar(){
+  const nome=document.getElementById('nome').value.trim();
+  const fone=document.getElementById('fone').value.replace(/\D/g,'');
+  const nasc=document.getElementById('nasc').value||null;
+  const err=document.getElementById('err1'); err.textContent='';
+  if(!nome){err.textContent='Informe seu nome.';return}
+  if(fone.length<10){err.textContent='Informe um WhatsApp válido com DDD.';return}
+  if(!document.getElementById('consent').checked){err.textContent='É preciso aceitar para participar.';return}
+  const btn=document.getElementById('btnLiberar'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+  try{
+    const {data,error}=await sb.rpc('rasp_sortear',{p_slug:SLUG,p_nome:nome,p_telefone:fone,p_unidade:UNIDADE,p_nascimento:nasc,p_consent:true,p_origem:ORIGEM,p_garcom:GARCOM});
+    if(error){ err.textContent='Erro ao liberar. Tente novamente.'; btn.disabled=false; btn.textContent='LIBERAR MINHA RASPADINHA'; return }
+    if(data.erro){ err.textContent=msgErro(data.erro); btn.disabled=false; btn.textContent='LIBERAR MINHA RASPADINHA'; return }
+    resultado=data;
+    if(data.ja_participou){ mostrarResultado(true); return }   // já jogou: mostra direto
+    // prepara raspadinha
+    document.getElementById('pEmoji').textContent=emojiDe(data.premio);
+    document.getElementById('pNome').textContent=data.premio;
+    document.getElementById('pDesc').textContent=data.descricao||'';
+    show('s2'); setTimeout(initScratch,120);
+  }catch(e){ err.textContent='Falha de conexão. Tente novamente.'; btn.disabled=false; btn.textContent='LIBERAR MINHA RASPADINHA'; }
+}
+function msgErro(e){ return ({telefone_invalido:'WhatsApp inválido.',campanha_inexistente:'Campanha não encontrada.',campanha_indisponivel:'Campanha indisponível.',nao_iniciada:'A campanha ainda não começou.',encerrada:'A campanha foi encerrada.',esgotada:'Os prêmios desta campanha acabaram. 😢'})[e]||'Não foi possível liberar.' }
+
+function show(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById(id).classList.add('active'); window.scrollTo(0,0) }
+
+/* ===== RASPAGEM (canvas) ===== */
+let revelou=false;
+function initScratch(){
+  const wrap=document.querySelector('.scratch-wrap'), cv=document.getElementById('scratch');
+  const r=wrap.getBoundingClientRect(); const dpr=Math.min(2,window.devicePixelRatio||1);
+  cv.width=r.width*dpr; cv.height=r.height*dpr; const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
+  // camada dourada
+  const g=ctx.createLinearGradient(0,0,r.width,r.height);
+  g.addColorStop(0,'#e9c15a');g.addColorStop(.5,'#f7d488');g.addColorStop(1,'#d9a93c');
+  ctx.fillStyle=g; ctx.fillRect(0,0,r.width,r.height);
+  ctx.fillStyle='rgba(120,80,10,.35)'; ctx.font='700 20px Poppins'; ctx.textAlign='center';
+  ctx.fillText('R A S P E   A Q U I', r.width/2, r.height/2);
+  ctx.globalCompositeOperation='destination-out';
+  let drawing=false;
+  const pos=e=>{ const b=cv.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return {x:t.clientX-b.left,y:t.clientY-b.top} };
+  const scratch=e=>{ if(!drawing||revelou)return; e.preventDefault(); const {x,y}=pos(e); ctx.beginPath(); ctx.arc(x,y,24,0,7); ctx.fill(); };
+  const start=e=>{ drawing=true; document.getElementById('hint').style.display='none'; scratch(e) };
+  const end=()=>{ drawing=false; checkPct(ctx,r,dpr) };
+  cv.addEventListener('mousedown',start); cv.addEventListener('mousemove',scratch); window.addEventListener('mouseup',end);
+  cv.addEventListener('touchstart',start,{passive:false}); cv.addEventListener('touchmove',scratch,{passive:false}); cv.addEventListener('touchend',end);
+  window._sctx={ctx,r,dpr,cv};
+}
+function checkPct(ctx,r,dpr){
+  if(revelou)return;
+  try{
+    const img=ctx.getImageData(0,0,r.width*dpr,r.height*dpr).data; let clear=0;
+    for(let i=3;i<img.length;i+=4*40){ if(img[i]===0)clear++ }
+    const total=img.length/(4*40); const pct=(clear/total)*100;
+    if(pct>=minPct) revelar();
+  }catch(e){}
+}
+function revelar(){
+  if(revelou)return; revelou=true;
+  const {ctx,r,cv}=window._sctx;
+  cv.style.transition='opacity .5s'; cv.style.opacity='0';
+  setTimeout(()=>mostrarResultado(false),650);
+}
+
+function mostrarResultado(jaTinha){
+  const d=resultado;
+  const ganhou=d.ganhou;
+  document.getElementById('resEmoji').textContent= ganhou? '🎉' : '💔';
+  document.getElementById('resTitulo').textContent= jaTinha? 'Você já participou!' : (ganhou? 'Parabéns!' : 'Ah, não!');
+  document.getElementById('resTexto').textContent= ganhou? `Você ganhou ${d.premio}!` : (d.premio||'Não foi dessa vez, mas volte sempre! ❤️');
+  if(ganhou && d.cupom){
+    document.getElementById('cupomBox').style.display='block';
+    document.getElementById('cupomCode').textContent=d.cupom;
+    document.getElementById('cupomVal').textContent= d.validade? 'Válido até '+d.validade.split('-').reverse().join('/') : '';
+    document.getElementById('btnCopiar').style.display='flex';
+    const b=document.getElementById('btnWhats'); b.style.display='flex';
+    const msg=`Olá! Ganhei *${d.premio}* na Raspadinha Amore 🎉%0ACódigo: *${d.cupom}*${d.validade?'%0AVálido até '+d.validade.split('-').reverse().join('/'):''}%0AUnidade: ${UNIDADE}`;
+    b.onclick=()=>window.open('https://wa.me/?text='+msg,'_blank');
+    document.getElementById('resObs').textContent='Apresente o código ao atendente da '+UNIDADE+' para resgatar. 🍟';
+    confetes();
+  } else {
+    document.getElementById('resObs').textContent= ganhou? '' : 'Fique de olho nas próximas campanhas da Amore! 💛';
+  }
+  show('s3');
+}
+function copiar(){ navigator.clipboard.writeText(resultado.cupom).then(()=>{const b=document.getElementById('btnCopiar');b.textContent='✅ Copiado!';setTimeout(()=>b.textContent='📋 Copiar código',1500)}) }
+function confetes(){ const cores=['#E0A83E','#E23744','#fff','#28a06a','#f7d488']; for(let i=0;i<60;i++){ const c=document.createElement('div'); c.className='confetti'; c.style.left=Math.random()*100+'vw'; c.style.background=cores[i%cores.length]; c.style.animationDuration=(2+Math.random()*2)+'s'; c.style.animationDelay=(Math.random()*.6)+'s'; document.body.appendChild(c); setTimeout(()=>c.remove(),4200) } }
+</script>
+</body>
+</html>
