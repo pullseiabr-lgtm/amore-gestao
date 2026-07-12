@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { AlertOctagon, BarChart3, CalendarClock, RefreshCw, CheckCircle2, TrendingUp, AlertTriangle } from 'lucide-react'
+import { AlertOctagon, BarChart3, CalendarClock, RefreshCw, CheckCircle2, TrendingUp, AlertTriangle, Send } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../hooks/useToast'
 
@@ -33,7 +33,7 @@ const CLS: Record<string, { emoji: string; label: string; cor: string; bg: strin
 }
 const LOJAS = ['', 'Amore Paiva', 'Amore CD', 'Flow CD']
 
-type Tab = 'alertas' | 'dashboard' | 'agenda'
+type Tab = 'alertas' | 'dashboard' | 'agenda' | 'cobranca'
 
 export default function LizCentralPage() {
   const { toast } = useToast()
@@ -94,6 +94,7 @@ export default function LizCentralPage() {
         {tabBtn('alertas', <AlertOctagon size={16} />, 'Central de Alertas')}
         {tabBtn('dashboard', <BarChart3 size={16} />, 'Dashboard do Gestor')}
         {tabBtn('agenda', <CalendarClock size={16} />, 'Agenda do Dia')}
+        {tabBtn('cobranca', <Send size={16} />, 'Cobrança WhatsApp')}
       </div>
 
       {loading ? <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Carregando…</div> : <>
@@ -131,9 +132,79 @@ export default function LizCentralPage() {
 
       {tab === 'agenda' && <AgendaDia tarefas={filtradas} now={now} resolver={resolver} card={card} />}
 
+      {tab === 'cobranca' && <CobrancaTab card={card} toast={toast} />}
+
       </>}
     </div>
   )
+}
+
+function CobrancaTab({ card, toast }: { card: React.CSSProperties; toast: (m: string, t?: any) => void }) {
+  const [cfg, setCfg] = useState<any>(null)
+  const [log, setLog] = useState<any[]>([])
+  const [busy, setBusy] = useState(false)
+  const carregar = useCallback(async () => {
+    const [c, l] = await Promise.all([
+      sb.from('liz_cobranca_config').select('*').eq('id', 1).maybeSingle(),
+      sb.from('liz_cobrancas').select('*').order('created_at', { ascending: false }).limit(50),
+    ])
+    setCfg(c.data || {}); setLog(l.data || [])
+  }, [])
+  useEffect(() => { carregar() }, [carregar])
+  const set = (k: string, v: any) => setCfg((p: any) => ({ ...p, [k]: v }))
+  const salvar = async () => {
+    const { error } = await sb.from('liz_cobranca_config').update({
+      ativo: !!cfg.ativo, n1_min: +cfg.n1_min || 15, n2_min: +cfg.n2_min || 60, gerente_min: +cfg.gerente_min || 120, diretor_min: +cfg.diretor_min || 240,
+      gerente_whats: cfg.gerente_whats || null, diretor_whats: cfg.diretor_whats || null, horario_inicio: +cfg.horario_inicio || 7, horario_fim: +cfg.horario_fim || 21, updated_at: new Date().toISOString(),
+    }).eq('id', 1)
+    if (error) toast('Erro ao salvar.', 'error'); else toast('Configuração salva!')
+  }
+  const testar = async () => { setBusy(true); const { data } = await sb.rpc('liz_cobrar'); setBusy(false); carregar(); toast(data?.ativo ? `${data.enviadas} cobrança(s) disparada(s)` : 'Cobrança está DESLIGADA — ative para disparar', data?.ativo ? 'success' : 'error') }
+  if (!cfg) return <div style={{ padding: 30, color: '#9ca3af' }}>Carregando…</div>
+  const field = (label: string, k: string, w = 90, type = 'number') => <div><div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>{label}</div><input type={type} value={cfg[k] ?? ''} onChange={e => set(k, e.target.value)} style={{ width: w, padding: '.5rem .6rem', border: '1px solid #e5e7eb', borderRadius: 8 }} /></div>
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ ...card, background: cfg.ativo ? '#ECFDF3' : '#fff', borderColor: cfg.ativo ? '#A6F4C5' : '#e5e7eb' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div><b style={{ fontSize: 15 }}>🤖 Cobrança automática da Liz</b><div style={{ fontSize: 13, color: '#6b7280' }}>A Liz cobra as tarefas vencidas pelo WhatsApp, escalando conforme o atraso.</div></div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+          <input type="checkbox" checked={!!cfg.ativo} onChange={e => set('ativo', e.target.checked)} style={{ width: 20, height: 20 }} />
+          {cfg.ativo ? '🟢 Ligada' : '🔴 Desligada'}
+        </label>
+      </div>
+    </div>
+    <div style={card}>
+      <b style={{ fontSize: 14 }}>Escada de cobrança (minutos de atraso)</b>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 12 }}>
+        {field('🟡 1º aviso ao responsável', 'n1_min')}
+        {field('🔴 2º aviso (reforço)', 'n2_min')}
+        {field('🚨 Escala p/ gerente', 'gerente_min')}
+        {field('🚨 Escala p/ diretor', 'diretor_min')}
+      </div>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 14 }}>
+        {field('WhatsApp do gerente', 'gerente_whats', 170, 'tel')}
+        {field('WhatsApp do diretor', 'diretor_whats', 170, 'tel')}
+        {field('Horário início (h)', 'horario_inicio', 70)}
+        {field('Horário fim (h)', 'horario_fim', 70)}
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+        <button onClick={salvar} style={{ padding: '.6rem 1.2rem', border: 'none', borderRadius: 10, background: '#6B1212', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Salvar configuração</button>
+        <button onClick={testar} disabled={busy} style={{ padding: '.6rem 1.2rem', border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>{busy ? 'Disparando…' : '▶ Testar cobrança agora'}</button>
+      </div>
+      <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 8 }}>O responsável recebe no WhatsApp dele (cadastrado no perfil). A Liz varre as tarefas a cada 10 min. Cada nível é enviado uma única vez por tarefa.</div>
+    </div>
+    <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '1rem 1.3rem', borderBottom: '1px solid #f3f4f6' }}><b style={{ fontSize: 14 }}>Últimas cobranças enviadas</b></div>
+      {log.length === 0 ? <div style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>Nenhuma cobrança enviada ainda.</div> :
+        <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 560 }}>
+          <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 12, textTransform: 'uppercase' }}><th style={{ padding: 8 }}>Quando</th><th>Nível</th><th>Para</th><th>WhatsApp</th></tr></thead>
+          <tbody>{log.map(l => <tr key={l.id} style={{ borderTop: '1px solid #f3f4f6' }}>
+            <td style={{ padding: 8 }}>{new Date(l.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+            <td>{['', '🟡 1º aviso', '🔴 2º aviso', '🚨 Gerente', '🚨 Diretor'][l.nivel] || l.nivel}</td>
+            <td>{l.destinatario_nome}</td><td>{l.destinatario_fone}</td>
+          </tr>)}</tbody>
+        </table></div>}
+    </div>
+  </div>
 }
 
 function DashboardGestor({ tarefas, now, kcard, card }: any) {
