@@ -30,6 +30,7 @@ const MODULES = [
   { id: 'agente-cmv',           label: 'Precificação & CMV (IA)',   grupo: 'Marketing & IA' },
   { id: 'market',               label: 'Market Analytics',          grupo: 'Marketing & IA' },
   { id: 'raspadinha',           label: 'Raspadinha Digital',        grupo: 'Marketing & IA' },
+  { id: 'liz-central',          label: 'Liz — Central Operacional', grupo: 'Marketing & IA' },
   // ── Compras & Suprimentos ──
   { id: 'compras',              label: 'Compras / Lista',           grupo: 'Compras & Suprimentos' },
   { id: 'requisicoes',          label: 'Requisições de Compra',     grupo: 'Compras & Suprimentos' },

@@ -191,6 +191,11 @@ for (const r of Object.keys(ROLE_PERMISSIONS)) {
   ROLE_PERMISSIONS[r]['raspadinha'] = ROLE_PERMISSIONS[r]['marketing'] || { view: false, create: false, edit: false, delete: false, export: false }
 }
 
+// Módulo "Liz — Central Operacional" — espelha o acesso a tarefas em todos os papéis
+for (const r of Object.keys(ROLE_PERMISSIONS)) {
+  ROLE_PERMISSIONS[r]['liz-central'] = ROLE_PERMISSIONS[r]['tarefas'] || { view: false, create: false, edit: false, delete: false, export: false }
+}
+
 // Módulo "Operação Padrão / Checklists" — espelha o acesso a tarefas em todos os papéis
 for (const r of Object.keys(ROLE_PERMISSIONS)) {
   ROLE_PERMISSIONS[r]['checklists'] = ROLE_PERMISSIONS[r]['tarefas'] || { view: false, create: false, edit: false, delete: false, export: false }
