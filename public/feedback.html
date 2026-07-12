@@ -53,6 +53,11 @@ h1 .em{font-size:2rem}
 .motivo:active{transform:scale(.96)}
 .motivo:hover{border-color:var(--rosa)}
 .motivo .ic{font-size:1.7rem;display:block;margin-bottom:.3rem}
+/* comentario */
+.cbox{background:var(--branco);border-radius:18px;padding:1.1rem 1.2rem;box-shadow:0 4px 16px rgba(0,0,0,.05)}
+.cbox textarea{width:100%;border:2px solid var(--rosa);border-radius:14px;padding:.9rem 1rem;font-family:inherit;font-size:1rem;color:var(--grafite);resize:none;min-height:120px;background:var(--creme)}
+.cbox textarea:focus{outline:none;border-color:var(--vermelho)}
+.ccount{text-align:right;font-size:.78rem;color:var(--cinza);margin-top:.35rem}
 /* botoes */
 .btn{display:flex;align-items:center;justify-content:center;gap:.5rem;width:100%;border:none;border-radius:16px;padding:1.15rem;font-family:inherit;font-size:1.05rem;font-weight:600;cursor:pointer;transition:.2s;margin-top:.5rem}
 .btn:active{transform:scale(.97)}
@@ -109,6 +114,18 @@ h1 .em{font-size:2rem}
       </div>
     </section>
 
+    <!-- COMENTÁRIO (opcional) -->
+    <section class="screen" id="sComentario">
+      <h1>Gostaria de nos<br>contar algo? 💬</h1>
+      <p class="sub">Sua opinião é muito importante para melhorarmos. (opcional)</p>
+      <div class="cbox">
+        <textarea id="obs" maxlength="500" placeholder="Escreva aqui elogios, críticas ou sugestões..." oninput="document.getElementById('obsCount').textContent=this.value.length"></textarea>
+        <div class="ccount"><span id="obsCount">0</span>/500</div>
+      </div>
+      <button class="btn btn-continuar" onclick="continuarComentario()">Continuar</button>
+      <button class="btn btn-ghost" onclick="continuarComentario()">Pular</button>
+    </section>
+
     <!-- GOOGLE (satisfeitos) -->
     <section class="screen" id="sGoogle">
       <div class="big-emoji">❤️</div>
@@ -158,7 +175,7 @@ const LOJA_MAP={paiva:'Amore Paiva',cd:'Amore CD','costa-dourada':'Amore CD'};
 const fb={ loja: LOJA_MAP[(p.get('loja')||'').toLowerCase()] || p.get('loja') || 'Amore Food',
   garcom: p.get('g')||null, mesa: p.get('m')||null,
   experiencia:null, nota_atendimento:null, nota_comida:null, nota_agilidade:null,
-  voltaria:null, motivo:null, foi_google:false, pontos:20 };
+  voltaria:null, motivo:null, observacoes:null, foi_google:false, pontos:20 };
 let googleUrl='https://www.google.com/search?q=Amore+Food+avaliar';
 
 document.getElementById('lojaNome').textContent = fb.loja;
@@ -181,10 +198,11 @@ function dots(n){ ['d1','d2','d3'].forEach((d,i)=>document.getElementById(d).cla
 
 function setExp(v,emoji){ fb.experiencia=v; dots(2); show('s2'); }
 function goVoltaria(){ dots(3); show('s3'); }
-function setVoltaria(v){
-  fb.voltaria=v;
+function setVoltaria(v){ fb.voltaria=v; dots(3); show('sComentario'); }
+function continuarComentario(){
+  fb.observacoes = (document.getElementById('obs').value||'').trim() || null;
   const alto = (fb.experiencia==='excelente'||fb.experiencia==='boa');
-  if(alto && v){ salvar(); show('sGoogle'); }
+  if(alto && fb.voltaria){ salvar(); show('sGoogle'); }
   else { salvar(); show('sMotivo'); }
 }
 function setMotivo(m){ fb.motivo=m; salvarUpdate(); finalizarBaixo(); }
@@ -193,7 +211,7 @@ function irGoogle(){ fb.foi_google=true; fb.pontos=30; salvarUpdate(); window.op
 
 let fbId=null;
 async function salvar(){ if(!sb)return; try{
-  const {data}=await sb.from('feedbacks').insert({loja:fb.loja,garcom:fb.garcom,mesa:fb.mesa,experiencia:fb.experiencia,nota_atendimento:fb.nota_atendimento,nota_comida:fb.nota_comida,nota_agilidade:fb.nota_agilidade,voltaria:fb.voltaria,pontos:fb.pontos}).select('id').maybeSingle();
+  const {data}=await sb.from('feedbacks').insert({loja:fb.loja,garcom:fb.garcom,mesa:fb.mesa,experiencia:fb.experiencia,nota_atendimento:fb.nota_atendimento,nota_comida:fb.nota_comida,nota_agilidade:fb.nota_agilidade,voltaria:fb.voltaria,observacoes:fb.observacoes,pontos:fb.pontos}).select('id').maybeSingle();
   if(data)fbId=data.id;
 }catch(e){} }
 async function salvarUpdate(){ if(!sb||!fbId)return; try{

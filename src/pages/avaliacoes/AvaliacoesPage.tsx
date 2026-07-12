@@ -275,6 +275,7 @@ export default function AvaliacoesPage() {
                     {f.motivo && <span style={{ color: '#B91C1C' }}> · {f.motivo}</span>}
                     {f.foi_google && <span style={{ color: '#3B82F6' }}> · avaliou no Google ✓</span>}
                   </div>
+                  {f.observacoes && <div style={{ fontSize: 13, color: '#374151', marginTop: 6, padding: '.5rem .7rem', background: '#fff', borderRadius: 8, borderLeft: '3px solid #6B1212', fontStyle: 'italic' }}>💬 “{f.observacoes}”</div>}
                 </div>
                 <span style={{ fontSize: 12, color: '#9ca3af', whiteSpace: 'nowrap' }}>{new Date(f.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
               </div>
