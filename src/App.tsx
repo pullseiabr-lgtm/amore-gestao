@@ -42,6 +42,7 @@ import CaixasPage from './pages/caixas/CaixasPage'
 import AvaliacoesPage from './pages/avaliacoes/AvaliacoesPage'
 import RaspadinhaPage from './pages/raspadinha/RaspadinhaPage'
 import LizCentralPage from './pages/liz/LizCentralPage'
+import ClientesPage from './pages/clientes/ClientesPage'
 import TarefasPage from './pages/tarefas/TarefasPage'
 import ChecklistsPage from './pages/checklists/ChecklistsPage'
 import PautaReuniaoPage from './pages/pautas/PautaReuniaoPage'
@@ -97,6 +98,7 @@ export type PageId =
   | 'avaliacoes'
   | 'raspadinha'
   | 'liz-central'
+  | 'clientes'
 
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Dashboard',
@@ -144,6 +146,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   avaliacoes: 'Avaliações & NPS',
   raspadinha: 'Raspadinha Digital',
   'liz-central': 'Liz — Central Operacional',
+  clientes: 'Clientes Amore (CRM)',
 }
 
 function PageContent({ page }: { page: PageId }) {
@@ -185,6 +188,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'avaliacoes':           return <AvaliacoesPage />
     case 'raspadinha':           return <RaspadinhaPage />
     case 'liz-central':          return <LizCentralPage />
+    case 'clientes':             return <ClientesPage />
     case 'tarefas':              return <TarefasPage />
     case 'checklists':           return <ChecklistsPage />
     case 'pauta-reuniao':        return <PautaReuniaoPage />

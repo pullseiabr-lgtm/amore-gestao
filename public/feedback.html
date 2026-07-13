@@ -75,6 +75,38 @@ h1 .em{font-size:2rem}
 .footer-tag{text-align:center;color:var(--cinza);font-size:.72rem;padding-top:1.2rem}
 .atendido{text-align:center;font-size:.82rem;color:var(--cinza);margin-bottom:.6rem}
 .atendido b{color:var(--grafite)}
+/* cadastro cliente */
+.field{margin-bottom:.75rem;text-align:left}
+.field label{font-size:.8rem;font-weight:500;display:block;margin-bottom:.28rem;color:var(--grafite)}
+.field input,.field select{width:100%;padding:.82rem 1rem;border:2px solid var(--rosa);border-radius:14px;font-family:inherit;font-size:1rem;color:var(--grafite);background:var(--branco)}
+.field input:focus,.field select:focus{outline:none;border-color:var(--vermelho)}
+.field-row{display:flex;gap:.6rem}
+.field-row .field{flex:1}
+.consent{display:flex;gap:.6rem;align-items:flex-start;font-size:.82rem;color:var(--grafite);margin:.5rem 0;line-height:1.35;text-align:left;background:var(--branco);border-radius:12px;padding:.7rem .8rem;box-shadow:0 3px 12px rgba(0,0,0,.04);cursor:pointer}
+.consent input{margin-top:2px;width:19px;height:19px;flex-shrink:0;accent-color:var(--vermelho)}
+.consent b{font-weight:600}
+.priv{font-size:.71rem;color:var(--cinza);text-align:center;margin-top:.7rem;line-height:1.4}
+.err{color:var(--vermelho);font-size:.85rem;text-align:center;margin-top:.6rem;min-height:1em}
+.btn-ouro{background:linear-gradient(135deg,var(--dourado),#f7d488);color:#5a3d0a;box-shadow:0 8px 22px rgba(224,168,62,.35)}
+.btn-verde{background:var(--verde);color:#fff}
+.btn-copy{background:#fff;color:var(--vermelho-esc);border:2px solid var(--rosa)!important}
+.btn:disabled{opacity:.6}
+/* raspadinha */
+.scratch-wrap{position:relative;width:100%;aspect-ratio:1.4/1;border-radius:20px;overflow:hidden;box-shadow:0 12px 32px rgba(226,55,68,.2);margin:.5rem auto 0}
+.prize-under{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:linear-gradient(160deg,#fff,#ffe9eb);color:var(--vermelho-esc);padding:1.1rem}
+.prize-under .emoji{font-size:3rem;margin-bottom:.2rem;line-height:1}
+.prize-under .pnome{font-size:1.4rem;font-weight:700;line-height:1.12}
+.prize-under .pdesc{font-size:.85rem;color:var(--cinza);margin-top:.3rem}
+#scratch{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:grab}
+.raspe-hint{text-align:center;color:var(--cinza);font-size:.82rem;margin-top:.8rem}
+.spin{display:inline-block;width:18px;height:18px;border:3px solid rgba(90,61,10,.35);border-top-color:#5a3d0a;border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle}
+@keyframes sp{to{transform:rotate(360deg)}}
+.cupom-box{background:var(--branco);border:2px dashed var(--dourado);border-radius:16px;padding:1rem;margin:1rem 0;text-align:center}
+.cupom-box .lbl{font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:#9a6b00}
+.cupom-box .code{font-size:1.85rem;font-weight:700;letter-spacing:.05em;color:var(--vermelho-esc);margin:.15rem 0}
+.cupom-box .val{font-size:.82rem;color:var(--cinza)}
+.confetti{position:fixed;top:-10px;width:10px;height:14px;z-index:99;pointer-events:none;animation:fall linear forwards}
+@keyframes fall{to{transform:translateY(105vh) rotate(720deg);opacity:.8}}
 </style>
 </head>
 <body>
@@ -132,7 +164,7 @@ h1 .em{font-size:2rem}
       <h1>Que bom que<br>você gostou!</h1>
       <p class="sub">Sua opinião ajuda a Amore a crescer. Poderia deixar sua avaliação no Google? Leva 10 segundos.</p>
       <button class="btn btn-google" onclick="irGoogle()"><span style="font-size:1.2rem">⭐</span> Avaliar no Google</button>
-      <button class="btn btn-ghost" onclick="finalizar(false)">Agora não</button>
+      <button class="btn btn-ghost" onclick="goCadastro()">Agora não</button>
       <div class="gtag">É rapidinho e nos ajuda demais 🙏</div>
     </section>
 
@@ -147,6 +179,57 @@ h1 .em{font-size:2rem}
         <div class="motivo" onclick="setMotivo('Limpeza')"><span class="ic">🧹</span>Limpeza</div>
         <div class="motivo" onclick="setMotivo('Preço')"><span class="ic">💰</span>Preço</div>
         <div class="motivo" onclick="setMotivo('Outro')"><span class="ic">💬</span>Outro</div>
+      </div>
+    </section>
+
+    <!-- CADASTRO + CONSENTIMENTOS -->
+    <section class="screen" id="sCadastro">
+      <h1>Sua raspadinha<br>Amore! 🎁</h1>
+      <p class="sub">Preencha para receber sua raspadinha agora mesmo.</p>
+      <div class="field"><label>Seu nome</label><input id="cNome" placeholder="Como podemos te chamar?" autocomplete="name"></div>
+      <div class="field"><label>Seu WhatsApp (DDD + número)</label><input id="cFone" type="tel" inputmode="numeric" placeholder="(81) 9 9999-9999" autocomplete="tel"></div>
+      <div class="field-row">
+        <div class="field"><label>Dia do aniversário</label><select id="cDia"><option value="">—</option></select></div>
+        <div class="field"><label>Mês</label><select id="cMes"><option value="">—</option></select></div>
+      </div>
+      <div class="field"><label>E-mail (opcional)</label><input id="cEmail" type="email" placeholder="seu@email.com" autocomplete="email"></div>
+      <label class="consent"><input type="checkbox" id="cObrig"><span><b>Autorizo</b> o uso do meu nome e WhatsApp para receber esta raspadinha e informações do prêmio.</span></label>
+      <label class="consent"><input type="checkbox" id="cMkt"><span>Quero receber promoções, novidades e campanhas da Amore pelo WhatsApp.</span></label>
+      <label class="consent"><input type="checkbox" id="cAniv"><span>Quero uma surpresa da Amore no mês do meu aniversário. 🎂</span></label>
+      <button class="btn btn-ouro" id="btnLiberar" onclick="liberarRaspadinha()">🎁 LIBERAR MINHA RASPADINHA</button>
+      <div class="err" id="cErr"></div>
+      <div class="priv">Seus dados são usados apenas para o benefício e as comunicações que você autorizar. Cancele quando quiser respondendo <b>SAIR</b>. (LGPD)</div>
+    </section>
+
+    <!-- RASPAR -->
+    <section class="screen" id="sRaspar">
+      <h1>Raspe e descubra! ✨</h1>
+      <p class="sub">Passe o dedo para revelar seu presente.</p>
+      <div class="scratch-wrap">
+        <div class="prize-under" id="prizeUnder">
+          <div class="emoji" id="pEmoji">🎁</div>
+          <div class="pnome" id="pNome">—</div>
+          <div class="pdesc" id="pDesc"></div>
+        </div>
+        <canvas id="scratch"></canvas>
+      </div>
+      <div class="raspe-hint">Raspe pelo menos <b id="minPct">55</b>% para revelar</div>
+    </section>
+
+    <!-- RESULTADO -->
+    <section class="screen" id="sResultado">
+      <div class="fim">
+        <div class="party" id="rEmoji">🎉</div>
+        <h1 id="rTitulo">Parabéns!</h1>
+        <p class="sub" id="rTexto"></p>
+        <div class="cupom-box" id="rCupomBox" style="display:none">
+          <div class="lbl">Seu código</div>
+          <div class="code" id="rCupom">—</div>
+          <div class="val" id="rVal"></div>
+        </div>
+        <button class="btn btn-verde" id="rWhats" style="display:none">💬 Enviar código pro meu WhatsApp</button>
+        <button class="btn btn-copy" id="rCopy" style="display:none" onclick="copiarCupom()">📋 Copiar código</button>
+        <p class="gtag" id="rObs"></p>
       </div>
     </section>
 
@@ -174,6 +257,7 @@ const p=new URLSearchParams(location.search);
 const LOJA_MAP={paiva:'Amore Paiva',cd:'Amore CD','costa-dourada':'Amore CD'};
 const fb={ loja: LOJA_MAP[(p.get('loja')||'').toLowerCase()] || p.get('loja') || 'Amore Food',
   garcom: p.get('g')||null, mesa: p.get('m')||null,
+  pedido: p.get('pedido')||p.get('ped')||p.get('comanda')||null,
   experiencia:null, nota_atendimento:null, nota_comida:null, nota_agilidade:null,
   voltaria:null, motivo:null, observacoes:null, foi_google:false, pontos:20 };
 let googleUrl='https://www.google.com/search?q=Amore+Food+avaliar';
@@ -205,9 +289,9 @@ function continuarComentario(){
   if(alto && fb.voltaria){ salvar(); show('sGoogle'); }
   else { salvar(); show('sMotivo'); }
 }
-function setMotivo(m){ fb.motivo=m; salvarUpdate(); finalizarBaixo(); }
+function setMotivo(m){ fb.motivo=m; salvarUpdate(); goCadastro(); }
 
-function irGoogle(){ fb.foi_google=true; fb.pontos=30; salvarUpdate(); window.open(googleUrl,'_blank'); setTimeout(()=>finalizar(true),400); }
+function irGoogle(){ fb.foi_google=true; fb.pontos=30; salvarUpdate(); window.open(googleUrl,'_blank'); setTimeout(()=>goCadastro(),400); }
 
 let fbId=null;
 async function salvar(){ if(!sb)return; try{
@@ -232,6 +316,110 @@ function finalizarBaixo(){
   document.getElementById('fimPontos').textContent='🏆 +10 pontos no Amore VIP';
   show('sFim');
 }
+
+/* ===================== CADASTRO + RASPADINHA ===================== */
+const MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+(function initSelects(){
+  const d=document.getElementById('cDia'), m=document.getElementById('cMes');
+  for(let i=1;i<=31;i++){ const o=document.createElement('option'); o.value=i; o.textContent=i; d.appendChild(o); }
+  MESES.forEach((nm,idx)=>{ const o=document.createElement('option'); o.value=idx+1; o.textContent=nm; m.appendChild(o); });
+})();
+
+function goCadastro(){ dots(3); show('sCadastro'); }
+
+let resultado=null;
+async function liberarRaspadinha(){
+  const nome=document.getElementById('cNome').value.trim();
+  const fone=document.getElementById('cFone').value.replace(/\D/g,'');
+  const err=document.getElementById('cErr'); err.textContent='';
+  if(!nome){ err.textContent='Informe seu nome.'; return; }
+  if(fone.length<10){ err.textContent='Informe um WhatsApp válido com DDD.'; return; }
+  if(!document.getElementById('cObrig').checked){ err.textContent='É preciso autorizar para receber a raspadinha.'; return; }
+  const btn=document.getElementById('btnLiberar'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+  const args={
+    p_feedback_id: fbId, p_nome: nome, p_telefone: fone, p_unidade: fb.loja,
+    p_pedido: fb.pedido, p_nasc_dia: Number(document.getElementById('cDia').value)||null,
+    p_nasc_mes: Number(document.getElementById('cMes').value)||null, p_nasc_ano: null,
+    p_email: document.getElementById('cEmail').value.trim()||null,
+    p_consent_marketing: document.getElementById('cMkt').checked,
+    p_consent_aniversario: document.getElementById('cAniv').checked,
+    p_origem: fb.mesa? ('mesa-'+fb.mesa) : 'avaliacao', p_garcom: fb.garcom, p_ip: null
+  };
+  try{
+    const {data,error}=await sb.rpc('av_sortear',args);
+    if(error||!data){ err.textContent='Não foi possível liberar. Tente novamente.'; btn.disabled=false; btn.innerHTML='🎁 LIBERAR MINHA RASPADINHA'; return; }
+    if(data.erro){ err.textContent=msgErro(data.erro); btn.disabled=false; btn.innerHTML='🎁 LIBERAR MINHA RASPADINHA'; return; }
+    resultado=data;
+    if(data.ja_participou){ mostrarResultado(true); return; }
+    document.getElementById('pEmoji').textContent=emojiDe(data.premio);
+    document.getElementById('pNome').textContent=data.premio;
+    document.getElementById('pDesc').textContent=data.descricao||'';
+    show('sRaspar'); setTimeout(initScratch,120);
+  }catch(e){ err.textContent='Falha de conexão. Tente novamente.'; btn.disabled=false; btn.innerHTML='🎁 LIBERAR MINHA RASPADINHA'; }
+}
+function msgErro(e){ return ({telefone_invalido:'WhatsApp inválido.',nome_invalido:'Informe seu nome.',campanha_indisponivel:'Sorteio indisponível no momento.',campanha_inexistente:'Sorteio não encontrado.',esgotada:'Os prêmios acabaram por hoje. 😢'})[e]||'Não foi possível liberar.'; }
+
+const EMO={'Batata':'🍟','Refrigerante':'🥤','Suco':'🧃','desconto':'🏷️','Sobremesa':'🍰','Brownie':'🍫','Prato':'🍽️','Chopp':'🍺','Pizza':'🍕','Não foi':'🤞'};
+function emojiDe(nome){ for(const k in EMO){ if((nome||'').toLowerCase().includes(k.toLowerCase()))return EMO[k]; } return '🎁'; }
+
+/* raspagem canvas */
+let revelou=false, minPct=55;
+function initScratch(){
+  revelou=false;
+  const wrap=document.querySelector('.scratch-wrap'), cv=document.getElementById('scratch');
+  const r=wrap.getBoundingClientRect(); const dpr=Math.min(2,window.devicePixelRatio||1);
+  cv.width=r.width*dpr; cv.height=r.height*dpr; const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
+  const g=ctx.createLinearGradient(0,0,r.width,r.height);
+  g.addColorStop(0,'#e9c15a'); g.addColorStop(.5,'#f7d488'); g.addColorStop(1,'#d9a93c');
+  ctx.fillStyle=g; ctx.fillRect(0,0,r.width,r.height);
+  ctx.fillStyle='rgba(120,80,10,.4)'; ctx.font='700 20px Poppins'; ctx.textAlign='center';
+  ctx.fillText('R A S P E   A Q U I', r.width/2, r.height/2);
+  ctx.globalCompositeOperation='destination-out';
+  let drawing=false;
+  const pos=e=>{ const b=cv.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return {x:t.clientX-b.left,y:t.clientY-b.top}; };
+  const scratch=e=>{ if(!drawing||revelou)return; e.preventDefault(); const {x,y}=pos(e); ctx.beginPath(); ctx.arc(x,y,24,0,7); ctx.fill(); };
+  const start=e=>{ drawing=true; scratch(e); };
+  const end=()=>{ drawing=false; checkPct(ctx,r,dpr); };
+  cv.addEventListener('mousedown',start); cv.addEventListener('mousemove',scratch); window.addEventListener('mouseup',end);
+  cv.addEventListener('touchstart',start,{passive:false}); cv.addEventListener('touchmove',scratch,{passive:false}); cv.addEventListener('touchend',end);
+  window._sctx={ctx,r,dpr,cv};
+}
+function checkPct(ctx,r,dpr){
+  if(revelou)return;
+  try{
+    const img=ctx.getImageData(0,0,r.width*dpr,r.height*dpr).data; let clear=0;
+    for(let i=3;i<img.length;i+=4*40){ if(img[i]===0)clear++; }
+    const total=img.length/(4*40); if((clear/total)*100>=minPct) revelar();
+  }catch(e){}
+}
+function revelar(){
+  if(revelou)return; revelou=true;
+  const {cv}=window._sctx; cv.style.transition='opacity .5s'; cv.style.opacity='0';
+  setTimeout(()=>mostrarResultado(false),600);
+}
+
+function mostrarResultado(jaTinha){
+  const d=resultado, ganhou=d.ganhou;
+  document.getElementById('rEmoji').textContent= ganhou?'🎉':'💚';
+  document.getElementById('rTitulo').textContent= jaTinha?'Você já participou!':(ganhou?'Parabéns!':'Obrigado!');
+  document.getElementById('rTexto').textContent= ganhou? `Você ganhou ${d.premio}!` : (d.descricao||'Não foi dessa vez, mas volte sempre! ❤️');
+  if(ganhou && d.cupom){
+    document.getElementById('rCupomBox').style.display='block';
+    document.getElementById('rCupom').textContent=d.cupom;
+    document.getElementById('rVal').textContent= d.validade? 'Válido até '+d.validade.split('-').reverse().join('/')+' · use em até 7 dias' : 'Use em até 7 dias';
+    document.getElementById('rCopy').style.display='flex';
+    const b=document.getElementById('rWhats'); b.style.display='flex';
+    const msg=`Ganhei *${d.premio}* na Amore! 🎉%0ACódigo: *${d.cupom}*${d.validade?'%0AVálido até '+d.validade.split('-').reverse().join('/'):''}%0AUnidade: ${fb.loja}`;
+    b.onclick=()=>window.open('https://wa.me/?text='+msg,'_blank');
+    document.getElementById('rObs').textContent='Apresente o código no caixa da '+fb.loja+'. 🍟';
+    confetes();
+  } else {
+    document.getElementById('rObs').textContent='Fique de olho no seu WhatsApp — em breve tem mais novidades da Amore! 💛';
+  }
+  show('sResultado');
+}
+function copiarCupom(){ navigator.clipboard.writeText(resultado.cupom).then(()=>{ const b=document.getElementById('rCopy'); b.textContent='✅ Copiado!'; setTimeout(()=>b.textContent='📋 Copiar código',1500); }); }
+function confetes(){ const cores=['#E0A83E','#E23744','#fff','#28a06a','#f7d488']; for(let i=0;i<50;i++){ const c=document.createElement('div'); c.className='confetti'; c.style.left=Math.random()*100+'vw'; c.style.background=cores[i%cores.length]; c.style.animationDuration=(2+Math.random()*2)+'s'; c.style.animationDelay=(Math.random()*.6)+'s'; document.body.appendChild(c); setTimeout(()=>c.remove(),4200); } }
 </script>
 </body>
 </html>

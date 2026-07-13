@@ -32,6 +32,7 @@ const MENU_TOP: NavItem[] = [
   { id: 'gamificacao', label: 'Gamificação',         icon: <Trophy size={13} /> },
   { id: 'avaliacoes',  label: '⭐ Avaliações & NPS',  icon: <span style={{ fontSize: 14, lineHeight: 1 }}>⭐</span> },
   { id: 'raspadinha',  label: '🎟️ Raspadinha Digital', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🎟️</span> },
+  { id: 'clientes',    label: '💚 Clientes Amore (CRM)', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>💚</span> },
   { id: 'marketing',   label: 'Marketing 360°',     icon: <Megaphone size={13} /> },
   { id: 'mkt-contatos', label: 'Contatos & Consent.', icon: <Megaphone size={13} /> },
   { id: 'vendas',      label: 'Vendas',              icon: <TrendingUp size={13} /> },
