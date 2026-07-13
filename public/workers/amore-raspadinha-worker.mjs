@@ -30,7 +30,7 @@ async function enviar(number, text) {
 async function rodar() {
   // pega prêmios ganhos com token (avaliação + aniversário), ainda não enviados
   const alvos = await sel('rasp_participacoes',
-    `ganhou=eq.true&notificado_em=is.null&telefone=not.is.null&token=not.is.null&select=id,nome,telefone,unidade,premio_nome,cupom,validade,token,origem&limit=30`)
+    `ganhou=eq.true&notificado_em=is.null&telefone=not.is.null&token=not.is.null&select=id,nome,telefone,unidade,premio_nome,cupom,validade,token,origem,customers(prefs_token)&limit=30`)
   if (!alvos?.length) return
 
   let n = 0
@@ -49,7 +49,9 @@ async function rodar() {
         `Você tem uma *raspadinha* esperando! 🎁\n` +
         `Raspe e descubra seu presente:\n${link}\n\n` +
         `Boa sorte! 🍀`
-    const ok = await enviar(fone, msg)
+    const sairTok = p.customers?.prefs_token
+    const sair = sairTok ? `\n\n_🔕 Não quer mais receber? ${'https://painel.amorefood.com.br/privacidade.html?t=' + sairTok}_` : ''
+    const ok = await enviar(fone, msg + sair)
     await patch('rasp_participacoes', `id=eq.${p.id}`, { notificado_em: new Date().toISOString() })
     if (ok) n++
     await new Promise(r => setTimeout(r, 1500))

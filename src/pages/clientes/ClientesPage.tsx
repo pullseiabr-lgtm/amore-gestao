@@ -173,18 +173,33 @@ export default function ClientesPage() {
 function ClienteDrawer({ c, onClose, reload, toast }: { c: any; onClose: () => void; reload: () => void; toast: (m: string, t?: any) => void }) {
   const [avaliacoes, setAvaliacoes] = useState<any[]>([])
   const [premios, setPremios] = useState<any[]>([])
+  const [consents, setConsents] = useState<any[]>([])
   const [tags, setTags] = useState<string>((c.tags || []).join(', '))
   const [obs, setObs] = useState<string>(c.obs_internas || '')
 
   useEffect(() => {
     (async () => {
-      const [f, p] = await Promise.all([
+      const [f, p, cc] = await Promise.all([
         sb.from('feedbacks').select('*').eq('customer_id', c.id).order('created_at', { ascending: false }),
         sb.from('rasp_participacoes').select('*').eq('customer_id', c.id).order('created_at', { ascending: false }),
+        sb.from('customer_consents').select('*').eq('customer_id', c.id).order('accepted_at', { ascending: false }).limit(30),
       ])
-      setAvaliacoes(f.data || []); setPremios(p.data || [])
+      setAvaliacoes(f.data || []); setPremios(p.data || []); setConsents(cc.data || [])
     })()
   }, [c.id])
+
+  const copiarPriv = () => {
+    if (!c.prefs_token) { toast('Cliente sem link (dados excluídos).', 'error'); return }
+    navigator.clipboard.writeText(`https://painel.amorefood.com.br/privacidade.html?t=${c.prefs_token}`)
+    toast('Link de privacidade copiado!')
+  }
+  const excluirLGPD = async () => {
+    if (!c.prefs_token) { toast('Dados já excluídos.', 'error'); return }
+    if (!confirm('EXCLUIR os dados pessoais deste cliente (LGPD)? O histórico é anonimizado e a ação é permanente.')) return
+    const { data } = await sb.rpc('cliente_excluir', { p_token: c.prefs_token })
+    if (data?.ok) { toast('Dados excluídos/anonimizados.'); reload(); onClose() } else { toast('Não foi possível excluir.', 'error') }
+  }
+  const CONSENT_LBL: Record<string, string> = { obrigatorio_beneficio: 'Benefício', marketing: 'Marketing', aniversario: 'Aniversário', exclusao_lgpd: 'Exclusão LGPD' }
 
   const salvar = async () => {
     const arr = tags.split(',').map(s => s.trim()).filter(Boolean)
@@ -229,6 +244,24 @@ function ClienteDrawer({ c, onClose, reload, toast }: { c: any; onClose: () => v
         <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
           <button onClick={salvar} style={{ flex: 1, padding: '.6rem', borderRadius: 10, border: 'none', background: '#6B1212', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Salvar</button>
           <button onClick={optOut} title="LGPD — parar comunicações" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.6rem .9rem', borderRadius: 10, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#B91C1C', cursor: 'pointer' }}><Ban size={15} />Opt-out</button>
+        </div>
+
+        {/* LGPD */}
+        <div style={{ background: '#f9fafb', borderRadius: 12, padding: '.8rem .9rem', marginBottom: 18 }}>
+          <b style={{ fontSize: 13 }}>🔒 Privacidade (LGPD)</b>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+            <button onClick={copiarPriv} style={{ flex: 1, minWidth: 150, padding: '.5rem', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 12.5 }}>🔗 Copiar link do cliente</button>
+            <button onClick={excluirLGPD} style={{ padding: '.5rem .8rem', borderRadius: 8, border: '1px solid #FCA5A5', background: '#fff', color: '#B91C1C', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 }}>🗑️ Excluir dados</button>
+          </div>
+          {consents.length > 0 && <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 11.5, color: '#9ca3af', marginBottom: 4 }}>Histórico de consentimentos</div>
+            <div style={{ maxHeight: 120, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {consents.map(cc => <div key={cc.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#4b5563' }}>
+                <span>{cc.accepted ? '✅' : '🚫'} {CONSENT_LBL[cc.consent_type] || cc.consent_type} <span style={{ color: '#9ca3af' }}>· {cc.source || ''}</span></span>
+                <span style={{ color: '#9ca3af' }}>{new Date(cc.accepted_at || cc.revoked_at).toLocaleDateString('pt-BR')}</span>
+              </div>)}
+            </div>
+          </div>}
         </div>
 
         {/* prêmios */}

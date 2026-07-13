@@ -56,7 +56,7 @@ export default function CampanhasPage() {
     try {
       const [ca, cl] = await Promise.all([
         sb.from('campaigns').select('*').order('created_at', { ascending: false }),
-        sb.from('customers').select('id,name,phone,origin_store,birthday_day,birthday_month,nota_media,premios_recebidos,premios_resgatados,last_seen_at,avaliacoes_count,consent_whatsapp,consent_birthday,status').limit(5000),
+        sb.from('customers').select('id,name,phone,origin_store,birthday_day,birthday_month,nota_media,premios_recebidos,premios_resgatados,last_seen_at,avaliacoes_count,consent_whatsapp,consent_birthday,status,prefs_token').limit(5000),
       ])
       setCampanhas(ca.data || []); setClientes(cl.data || [])
     } catch { toast('Erro ao carregar (verifique se está logado).', 'error') }
@@ -95,7 +95,8 @@ export default function CampanhasPage() {
     if (!confirm(`Gerar e enviar para ${aud.length} cliente(s)? O envio ocorre pelo worker do WhatsApp.`)) return
     // limpa envios anteriores pendentes desta campanha
     await sb.from('campaign_deliveries').delete().eq('campaign_id', saved.id).eq('status', 'pending')
-    const rows = aud.map(c => ({ campaign_id: saved.id, customer_id: c.id, phone: c.phone, name: c.name, channel: 'whatsapp', status: 'pending', message: render(saved.message, c, saved.link) }))
+    const sairLink = (c: any) => c.prefs_token ? `\n\n_🔕 Sair: https://painel.amorefood.com.br/privacidade.html?t=${c.prefs_token}_` : ''
+    const rows = aud.map(c => ({ campaign_id: saved.id, customer_id: c.id, phone: c.phone, name: c.name, channel: 'whatsapp', status: 'pending', message: render(saved.message, c, saved.link) + sairLink(c) }))
     for (let i = 0; i < rows.length; i += 500) { await sb.from('campaign_deliveries').insert(rows.slice(i, i + 500)) }
     await sb.from('campaigns').update({ status: 'enviando', selected_count: aud.length, updated_at: new Date().toISOString() }).eq('id', saved.id)
     toast(`${aud.length} envio(s) na fila. O worker vai despachar. 🚀`); setEditar(null); load()

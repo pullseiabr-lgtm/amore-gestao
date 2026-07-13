@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Suas preferências · Amore</title>
+<meta name="theme-color" content="#E23744" />
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--vermelho:#E23744;--vermelho-esc:#c1272f;--rosa:#ffe9eb;--creme:#fff8f4;--verde:#28a06a;--grafite:#2a2320;--cinza:#8f857c;--branco:#fff}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:'Poppins',system-ui,sans-serif;background:linear-gradient(160deg,#fff8f4,#ffe9eb);color:var(--grafite);min-height:100vh;padding:1.4rem}
+.app{max-width:480px;margin:0 auto}
+.brand{text-align:center;padding:.4rem 0 1.2rem}
+.brand img{height:42px}
+.card{background:var(--branco);border-radius:18px;padding:1.3rem 1.4rem;box-shadow:0 8px 30px rgba(226,55,68,.1);margin-bottom:1rem}
+h1{font-size:1.35rem;font-weight:600;margin-bottom:.3rem}
+.sub{color:var(--cinza);font-size:.9rem;margin-bottom:1rem}
+.dado{display:flex;justify-content:space-between;font-size:.9rem;padding:.5rem 0;border-bottom:1px solid #f3eee9}
+.dado:last-child{border:none}
+.dado b{font-weight:600}
+.toggle{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.9rem 0;border-bottom:1px solid #f3eee9}
+.toggle:last-of-type{border:none}
+.toggle .t{font-size:.95rem;font-weight:500}
+.toggle .d{font-size:.78rem;color:var(--cinza)}
+.sw{position:relative;width:52px;height:30px;flex-shrink:0}
+.sw input{opacity:0;width:0;height:0}
+.sw span{position:absolute;inset:0;background:#ddd;border-radius:30px;transition:.25s;cursor:pointer}
+.sw span:before{content:"";position:absolute;width:24px;height:24px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.25s}
+.sw input:checked+span{background:var(--verde)}
+.sw input:checked+span:before{transform:translateX(22px)}
+.btn{display:block;width:100%;border:none;border-radius:14px;padding:1rem;font-family:inherit;font-size:1rem;font-weight:600;cursor:pointer;transition:.2s;margin-top:.6rem}
+.btn:active{transform:scale(.98)}
+.btn-primary{background:var(--vermelho);color:#fff}
+.btn-ghost{background:transparent;color:var(--cinza);font-weight:500}
+.btn-danger{background:#fff;color:#B91C1C;border:1.5px solid #FCA5A5}
+.msg{text-align:center;font-size:.9rem;padding:.6rem;border-radius:10px;margin-top:.6rem;display:none}
+.msg.ok{background:#eafaf1;color:#1D7A54;display:block}
+.msg.err{background:#fef2f2;color:#B91C1C;display:block}
+.policy{font-size:.78rem;color:var(--cinza);line-height:1.55}
+.policy b{color:var(--grafite)}
+.center{text-align:center;padding:2rem 0;color:var(--cinza)}
+.spin{display:inline-block;width:22px;height:22px;border:3px solid var(--rosa);border-top-color:var(--vermelho);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="brand"><img src="/logo-amore-red.png" alt="Amore" onerror="this.style.display='none'"></div>
+
+  <div id="load" class="center"><div class="spin"></div></div>
+
+  <div id="main" style="display:none">
+    <div class="card">
+      <h1 id="ola">Olá!</h1>
+      <p class="sub">Aqui você controla como a Amore fala com você. 💚</p>
+      <div class="dado"><span>WhatsApp</span><b id="dFone">—</b></div>
+      <div class="dado" id="rowEmail" style="display:none"><span>E-mail</span><b id="dEmail">—</b></div>
+      <div class="dado"><span>Avaliações feitas</span><b id="dAval">0</b></div>
+      <div class="dado"><span>Prêmios recebidos</span><b id="dPrem">0</b></div>
+    </div>
+
+    <div class="card">
+      <div class="toggle">
+        <div><div class="t">📣 Promoções e novidades</div><div class="d">Ofertas e campanhas da Amore no WhatsApp</div></div>
+        <label class="sw"><input type="checkbox" id="cMkt"><span></span></label>
+      </div>
+      <div class="toggle">
+        <div><div class="t">🎂 Surpresa de aniversário</div><div class="d">Um presente no mês do seu aniversário</div></div>
+        <label class="sw"><input type="checkbox" id="cAniv"><span></span></label>
+      </div>
+      <button class="btn btn-primary" onclick="salvar()">Salvar preferências</button>
+      <div class="msg" id="msg"></div>
+    </div>
+
+    <div class="card">
+      <button class="btn btn-ghost" onclick="optout()">🔕 Não quero mais receber nada</button>
+      <button class="btn btn-danger" onclick="excluir()">🗑️ Excluir meus dados (LGPD)</button>
+    </div>
+
+    <div class="card">
+      <div class="policy">
+        <b>Como cuidamos dos seus dados</b><br>
+        A Amore coleta <b>nome, WhatsApp e mês de aniversário</b> apenas para entregar seus prêmios e enviar as comunicações que você autorizar. Você pode, a qualquer momento, ajustar as opções acima, cancelar o recebimento ou solicitar a exclusão dos seus dados. Não compartilhamos suas informações com terceiros para fins de marketing. Em conformidade com a <b>LGPD</b>.
+      </div>
+    </div>
+  </div>
+
+  <div id="fim" style="display:none">
+    <div class="card center">
+      <div style="font-size:2.5rem">✅</div>
+      <h1 id="fimT" style="margin-top:.4rem">Tudo certo!</h1>
+      <p class="sub" id="fimM" style="margin-top:.4rem">Suas preferências foram atualizadas.</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SB_URL='https://xdwnsqkzgopymufsuccr.supabase.co';
+const SB_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+let sb=null; try{ sb=supabase.createClient(SB_URL,SB_ANON) }catch(e){}
+const TOKEN=new URLSearchParams(location.search).get('t');
+function el(id){return document.getElementById(id)}
+function fim(t,m){ el('main').style.display='none'; el('load').style.display='none'; el('fimT').textContent=t; el('fimM').textContent=m; el('fim').style.display='block'; }
+
+(async()=>{
+  if(!TOKEN||!sb){ return fim('Link inválido','Este link de preferências não é válido.'); }
+  try{
+    const {data,error}=await sb.rpc('cliente_prefs_get',{p_token:TOKEN});
+    if(error||!data||data.erro){ return fim('Não encontrado','Não localizamos seu cadastro. Verifique o link.'); }
+    el('ola').textContent = 'Olá'+(data.nome?', '+data.nome.split(' ')[0]:'')+'! 👋';
+    el('dFone').textContent = data.telefone_mascarado||'—';
+    if(data.email){ el('rowEmail').style.display='flex'; el('dEmail').textContent=data.email; }
+    el('dAval').textContent = data.avaliacoes||0;
+    el('dPrem').textContent = data.premios||0;
+    el('cMkt').checked = !!data.consent_whatsapp;
+    el('cAniv').checked = !!data.consent_birthday;
+    el('load').style.display='none'; el('main').style.display='block';
+  }catch(e){ fim('Ops','Falha de conexão. Tente abrir o link de novo.'); }
+})();
+
+function showMsg(t,ok){ const m=el('msg'); m.textContent=t; m.className='msg '+(ok?'ok':'err'); }
+async function salvar(){
+  try{ const {data}=await sb.rpc('cliente_prefs_set',{p_token:TOKEN,p_mkt:el('cMkt').checked,p_aniv:el('cAniv').checked});
+    if(data&&data.ok) showMsg('Preferências salvas! 💚',true); else showMsg('Não foi possível salvar.',false);
+  }catch(e){ showMsg('Falha de conexão.',false); }
+}
+async function optout(){
+  if(!confirm('Deseja parar de receber TODAS as comunicações da Amore?'))return;
+  try{ const {data}=await sb.rpc('cliente_optout',{p_token:TOKEN});
+    if(data&&data.ok) fim('Pronto! 🔕','Você não receberá mais comunicações. Sentiremos sua falta! 💛'); else showMsg('Não foi possível.',false);
+  }catch(e){ showMsg('Falha de conexão.',false); }
+}
+async function excluir(){
+  if(!confirm('Isso vai EXCLUIR seus dados pessoais da Amore de forma permanente. Deseja continuar?'))return;
+  try{ const {data}=await sb.rpc('cliente_excluir',{p_token:TOKEN});
+    if(data&&data.ok) fim('Dados excluídos','Seus dados pessoais foram removidos. Obrigado por ter feito parte da Amore! 💚'); else showMsg('Não foi possível.',false);
+  }catch(e){ showMsg('Falha de conexão.',false); }
+}
+</script>
+</body>
+</html>
