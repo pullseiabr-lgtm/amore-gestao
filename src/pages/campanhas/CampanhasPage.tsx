@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Megaphone, Plus, RefreshCw, Send, Pause, Play, X, Users, Eye, Trash2 } from 'lucide-react'
+import { Megaphone, Plus, RefreshCw, Send, Pause, Play, X, Users, Eye, Trash2, Cake, Gift } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../hooks/useToast'
 
@@ -118,6 +118,8 @@ export default function CampanhasPage() {
           <div key={l} style={{ ...card, flex: 1, minWidth: 150 }}><div style={{ fontSize: 12, color: '#9ca3af', textTransform: 'uppercase' }}>{l}</div><div style={{ fontSize: 26, fontWeight: 700, color: '#6B1212' }}>{v}</div><div style={{ fontSize: 12, color: '#9ca3af' }}>{s}</div></div>)}
       </div>
 
+      <AniversarioCard clientes={clientes} toast={toast} />
+
       <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
         <button onClick={novo} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.6rem 1rem', borderRadius: 10, border: 'none', background: '#6B1212', color: '#fff', cursor: 'pointer', fontWeight: 600 }}><Plus size={16} />Nova campanha</button>
         <button onClick={load} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.6rem .9rem', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer' }}><RefreshCw size={15} />Atualizar</button>
@@ -160,6 +162,52 @@ export default function CampanhasPage() {
   )
 }
 const btnMini = (cor: string, ghost = false): React.CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 4, padding: '.4rem .7rem', borderRadius: 8, border: ghost ? '1px solid #e5e7eb' : 'none', background: ghost ? '#fff' : cor, color: ghost ? cor : '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 })
+
+function AniversarioCard({ clientes, toast }: { clientes: any[]; toast: (m: string, t?: any) => void }) {
+  const [camp, setCamp] = useState<any | null>(null)
+  const [premio, setPremio] = useState<any | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const carregar = useCallback(async () => {
+    const { data: c } = await sb.from('rasp_campanhas').select('*').eq('slug', 'aniversario').maybeSingle()
+    setCamp(c || null)
+    if (c) { const { data: p } = await sb.from('rasp_premios').select('nome,descricao').eq('campanha_id', c.id).eq('is_premio', true).limit(1); setPremio(p?.[0] || null) }
+  }, [])
+  useEffect(() => { carregar() }, [carregar])
+
+  const h = new Date(), dia = h.getDate(), mes = h.getMonth() + 1
+  const elig = clientes.filter(c => c.consent_birthday && c.status !== 'opt_out')
+  const hoje = elig.filter(c => c.birthday_day === dia && c.birthday_month === mes).length
+  const noMes = elig.filter(c => c.birthday_month === mes).length
+  const ativo = camp?.status === 'ativa'
+
+  const toggle = async () => { if (!camp) return; await sb.from('rasp_campanhas').update({ status: ativo ? 'pausada' : 'ativa' }).eq('id', camp.id); carregar(); toast(ativo ? 'Aniversário automático pausado.' : 'Aniversário automático ligado! 🎂') }
+  const gerarAgora = async () => {
+    setBusy(true)
+    try { const { data } = await sb.rpc('av_aniversario_gerar'); toast(`${data || 0} presente(s) de aniversário gerado(s). O WhatsApp sai pelo worker. 🎉`) }
+    catch { toast('Erro ao gerar.', 'error') }
+    setBusy(false)
+  }
+
+  const wrap: React.CSSProperties = { background: 'linear-gradient(135deg,#fdf2f8,#fff)', border: '1px solid #F4C0D1', borderRadius: 14, padding: '1rem 1.2rem', marginBottom: 14 }
+  return (
+    <div style={wrap}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ width: 44, height: 44, borderRadius: 12, background: '#D4537E18', color: '#D4537E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Cake size={22} /></div>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>🎂 Aniversário automático {ativo ? <span style={{ fontSize: 11, color: '#1D9E75', fontWeight: 700 }}>· LIGADO</span> : <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 700 }}>· pausado</span>}</div>
+          <div style={{ fontSize: 12.5, color: '#6b7280' }}>Todo dia às 9h envia <b>{premio?.nome || 'um presente'}</b> pra quem faz aniversário (e autorizou). <b>{hoje}</b> hoje · <b>{noMes}</b> neste mês.</div>
+        </div>
+        <button onClick={toggle} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.5rem .9rem', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13, background: ativo ? '#FEF2F2' : '#1D9E75', color: ativo ? '#B91C1C' : '#fff' }}>
+          {ativo ? <><Pause size={14} />Pausar</> : <><Play size={14} />Ligar</>}
+        </button>
+        <button onClick={gerarAgora} disabled={busy || !ativo || hoje === 0} title={hoje === 0 ? 'Ninguém faz aniversário hoje' : ''} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.5rem .9rem', borderRadius: 10, border: '1px solid #D4537E', background: '#fff', color: '#D4537E', cursor: busy || hoje === 0 ? 'default' : 'pointer', fontWeight: 600, fontSize: 13, opacity: (!ativo || hoje === 0) ? .5 : 1 }}>
+          <Gift size={14} />{busy ? 'Gerando…' : `Gerar hoje (${hoje})`}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function CampanhaModal({ camp, setCamp, onSave, onDisparar, audiencia }: any) {
   const [c, setC] = useState<any>(camp)
