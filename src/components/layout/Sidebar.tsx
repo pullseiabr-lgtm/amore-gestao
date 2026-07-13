@@ -34,6 +34,7 @@ const MENU_TOP: NavItem[] = [
   { id: 'raspadinha',  label: '🎟️ Raspadinha Digital', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🎟️</span> },
   { id: 'clientes',    label: '💚 Clientes Amore (CRM)', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>💚</span> },
   { id: 'campanhas',   label: '📣 Campanhas', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>📣</span> },
+  { id: 'agente-controle', label: '🤖 Controle do Agente', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🤖</span> },
   { id: 'marketing',   label: 'Marketing 360°',     icon: <Megaphone size={13} /> },
   { id: 'mkt-contatos', label: 'Contatos & Consent.', icon: <Megaphone size={13} /> },
   { id: 'vendas',      label: 'Vendas',              icon: <TrendingUp size={13} /> },

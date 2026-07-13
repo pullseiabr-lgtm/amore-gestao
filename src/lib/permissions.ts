@@ -206,6 +206,11 @@ for (const r of Object.keys(ROLE_PERMISSIONS)) {
   ROLE_PERMISSIONS[r]['campanhas'] = ROLE_PERMISSIONS[r]['marketing'] || { view: false, create: false, edit: false, delete: false, export: false }
 }
 
+// Módulo "Controle do Agente" — espelha o acesso ao marketing em todos os papéis
+for (const r of Object.keys(ROLE_PERMISSIONS)) {
+  ROLE_PERMISSIONS[r]['agente-controle'] = ROLE_PERMISSIONS[r]['marketing'] || { view: false, create: false, edit: false, delete: false, export: false }
+}
+
 // Módulo "Operação Padrão / Checklists" — espelha o acesso a tarefas em todos os papéis
 for (const r of Object.keys(ROLE_PERMISSIONS)) {
   ROLE_PERMISSIONS[r]['checklists'] = ROLE_PERMISSIONS[r]['tarefas'] || { view: false, create: false, edit: false, delete: false, export: false }

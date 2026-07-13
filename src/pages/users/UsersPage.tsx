@@ -33,6 +33,7 @@ const MODULES = [
   { id: 'liz-central',          label: 'Liz — Central Operacional', grupo: 'Marketing & IA' },
   { id: 'clientes',             label: 'Clientes Amore (CRM)',      grupo: 'Marketing & IA' },
   { id: 'campanhas',            label: 'Campanhas',                 grupo: 'Marketing & IA' },
+  { id: 'agente-controle',      label: 'Controle do Agente',        grupo: 'Marketing & IA' },
   // ── Compras & Suprimentos ──
   { id: 'compras',              label: 'Compras / Lista',           grupo: 'Compras & Suprimentos' },
   { id: 'requisicoes',          label: 'Requisições de Compra',     grupo: 'Compras & Suprimentos' },
