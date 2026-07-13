@@ -32,7 +32,7 @@ async function rodar() {
   if (!camp?.[0]) return
   const cid = camp[0].id
   const alvos = await sel('rasp_participacoes',
-    `campanha_id=eq.${cid}&ganhou=eq.true&notificado_em=is.null&telefone=not.is.null&select=id,nome,telefone,unidade,premio_nome,cupom,validade&limit=30`)
+    `campanha_id=eq.${cid}&ganhou=eq.true&notificado_em=is.null&telefone=not.is.null&token=not.is.null&select=id,nome,telefone,unidade,premio_nome,cupom,validade,token&limit=30`)
   if (!alvos?.length) return
 
   let n = 0
@@ -41,11 +41,11 @@ async function rodar() {
     if (fone.length < 10) { await patch('rasp_participacoes', `id=eq.${p.id}`, { notificado_em: new Date().toISOString() }); continue }
     if (fone.length <= 11) fone = '55' + fone
     const nome = (p.nome || '').split(' ')[0]
+    const link = `https://painel.amorefood.com.br/raspar.html?t=${p.token}`
     const msg = `Obrigado por avaliar a Amore, ${nome}! 💚\n\n` +
-      `Você ganhou *${p.premio_nome}* na sua raspadinha! 🎉\n` +
-      `Código: *${p.cupom}*\n` +
-      (p.validade ? `Válido até ${brDate(p.validade)} · ` : '') + `use em até 7 dias.\n\n` +
-      `É só apresentar este código no caixa da ${p.unidade}. 🍟`
+      `Você tem uma *raspadinha* esperando! 🎁\n` +
+      `Raspe e descubra seu presente:\n${link}\n\n` +
+      `Boa sorte! 🍀`
     const ok = await enviar(fone, msg)
     await patch('rasp_participacoes', `id=eq.${p.id}`, { notificado_em: new Date().toISOString() })
     if (ok) n++

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Sua Raspadinha Amore 🎁</title>
+<meta name="theme-color" content="#8B1212" />
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--vinho:#8B1212;--vermelho:#E23744;--dourado:#E0A83E;--dourado2:#f7d488;--verde:#28a06a;--grafite:#2a2320;--cinza:#8f857c;--branco:#fff}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:'Poppins',system-ui,sans-serif;background:linear-gradient(165deg,#8B1212 0%,#B01D2A 55%,#8B1212 100%);color:#fff;min-height:100vh;min-height:100dvh;overflow-x:hidden}
+.app{max-width:460px;margin:0 auto;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;justify-content:center;padding:1.6rem 1.4rem 2rem}
+.brand{text-align:center;padding:.2rem 0 1.2rem}
+.brand img{height:46px;width:auto;margin:0 auto;filter:drop-shadow(0 2px 8px rgba(0,0,0,.3))}
+.brand small{display:block;font-size:.68rem;letter-spacing:.26em;text-transform:uppercase;color:var(--dourado2);margin-top:8px;opacity:.9}
+.screen{display:none;animation:fade .5s}.screen.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+h1{font-size:1.55rem;font-weight:800;text-align:center;line-height:1.2;margin-bottom:.4rem}
+.chamada{text-align:center;color:var(--dourado2);font-size:1.02rem;margin-bottom:1.4rem;font-weight:500}
+.scratch-title{text-align:center;font-size:1.15rem;font-weight:700;margin-bottom:1rem}
+.scratch-wrap{position:relative;width:100%;aspect-ratio:1.35/1;border-radius:22px;overflow:hidden;box-shadow:0 16px 40px rgba(0,0,0,.35);margin:0 auto}
+.prize-under{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:linear-gradient(160deg,#fff,#fff2e6);color:var(--vinho);padding:1.2rem}
+.prize-under .emoji{font-size:3.2rem;margin-bottom:.3rem}
+.prize-under .pnome{font-size:1.5rem;font-weight:800;line-height:1.15}
+.prize-under .pdesc{font-size:.9rem;color:#7a5b3a;margin-top:.4rem}
+#scratch{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:grab}
+.raspe-hint{text-align:center;color:#ffdede;font-size:.82rem;margin-top:1rem}
+.res{text-align:center}
+.res .big{font-size:3.4rem;margin-bottom:.4rem;animation:pop .6s}
+@keyframes pop{0%{transform:scale(0)}70%{transform:scale(1.2)}100%{transform:scale(1)}}
+.cupom-box{background:#fff;color:var(--vinho);border-radius:16px;padding:1.1rem;margin:1.2rem 0;text-align:center}
+.cupom-box .lbl{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:#9a6b00}
+.cupom-box .code{font-size:1.9rem;font-weight:800;letter-spacing:.06em;margin:.2rem 0}
+.cupom-box .val{font-size:.85rem;color:#666}
+.btn{display:flex;align-items:center;justify-content:center;gap:.5rem;width:100%;border:none;border-radius:16px;padding:1.05rem;font-family:inherit;font-size:1.02rem;font-weight:700;cursor:pointer;transition:.2s;margin-top:.5rem}
+.btn:active{transform:scale(.97)}
+.btn-branco{background:#fff;color:var(--vinho)}
+.foot{text-align:center;color:rgba(255,255,255,.55);font-size:.72rem;padding-top:1.4rem}
+.spin{display:inline-block;width:22px;height:22px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.center{display:flex;justify-content:center;padding:2rem 0}
+.confetti{position:fixed;top:-10px;width:10px;height:14px;z-index:99;pointer-events:none;animation:fall linear forwards}
+@keyframes fall{to{transform:translateY(105vh) rotate(720deg);opacity:.8}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="brand"><img src="/logo-amore-white.png" alt="Amore" onerror="this.replaceWith(Object.assign(document.createElement('div'),{innerHTML:'<b style=font-size:1.8rem;font-weight:800>amore</b>'}))"><small>Sua Raspadinha</small></div>
+
+  <!-- LOADING -->
+  <section class="screen active" id="sLoad"><div class="center"><div class="spin"></div></div></section>
+
+  <!-- RASPAR -->
+  <section class="screen" id="sRaspar">
+    <div class="scratch-title">✨ Você tem uma raspadinha! Raspe e descubra 🎁</div>
+    <div class="scratch-wrap">
+      <div class="prize-under" id="prizeUnder">
+        <div class="emoji" id="pEmoji">🎁</div>
+        <div class="pnome" id="pNome">—</div>
+        <div class="pdesc" id="pDesc"></div>
+      </div>
+      <canvas id="scratch"></canvas>
+    </div>
+    <p class="raspe-hint">Passe o dedo para raspar 👆</p>
+  </section>
+
+  <!-- RESULTADO -->
+  <section class="screen" id="sRes">
+    <div class="res">
+      <div class="big" id="rEmoji">🎉</div>
+      <h1 id="rTitulo">Parabéns!</h1>
+      <p class="chamada" id="rTexto" style="margin-bottom:.2rem"></p>
+      <div class="cupom-box" id="rCupomBox" style="display:none">
+        <div class="lbl">Seu código</div>
+        <div class="code" id="rCupom">—</div>
+        <div class="val" id="rVal"></div>
+      </div>
+      <button class="btn btn-branco" id="rCopy" style="display:none" onclick="copiar()">📋 Copiar código</button>
+      <p class="raspe-hint" id="rObs" style="margin-top:.8rem"></p>
+    </div>
+  </section>
+
+  <!-- ERRO -->
+  <section class="screen" id="sErro">
+    <h1>Ops! 😕</h1>
+    <p class="chamada" id="errMsg">Este link de raspadinha não é válido.</p>
+  </section>
+
+  <div class="foot">Amore Food · Raspadinha Digital</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SB_URL='https://xdwnsqkzgopymufsuccr.supabase.co';
+const SB_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+let sb=null; try{ sb=supabase.createClient(SB_URL,SB_ANON) }catch(e){}
+const TOKEN=new URLSearchParams(location.search).get('t');
+let dados=null;
+
+const EMO={'Batata':'🍟','Refrigerante':'🥤','Suco':'🧃','desconto':'🏷️','Sobremesa':'🍰','Brownie':'🍫','Prato':'🍽️','Chopp':'🍺','Pizza':'🍕'};
+function emojiDe(n){ for(const k in EMO){ if((n||'').toLowerCase().includes(k.toLowerCase()))return EMO[k]; } return '🎁'; }
+function show(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); document.getElementById(id).classList.add('active'); window.scrollTo(0,0); }
+function erro(m){ if(m)document.getElementById('errMsg').textContent=m; show('sErro'); }
+
+(async()=>{
+  if(!TOKEN || !sb){ return erro('Link inválido ou incompleto.'); }
+  try{
+    const {data,error}=await sb.rpc('av_raspar_get',{p_token:TOKEN});
+    if(error||!data||data.erro){ return erro('Não encontramos sua raspadinha. Verifique o link.'); }
+    dados=data;
+    if(!data.ganhou){ // sem prêmio (não deveria vir por link, mas trata)
+      dados._semPremio=true;
+    }
+    document.getElementById('pEmoji').textContent=emojiDe(data.premio);
+    document.getElementById('pNome').textContent=data.premio;
+    document.getElementById('pDesc').textContent=data.descricao||'';
+    show('sRaspar'); setTimeout(initScratch,150);
+  }catch(e){ erro('Falha de conexão. Tente abrir o link de novo.'); }
+})();
+
+/* ===== raspagem ===== */
+let revelou=false;
+function initScratch(){
+  const wrap=document.querySelector('.scratch-wrap'), cv=document.getElementById('scratch');
+  const r=wrap.getBoundingClientRect(); const dpr=Math.min(2,window.devicePixelRatio||1);
+  cv.width=r.width*dpr; cv.height=r.height*dpr; const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
+  const g=ctx.createLinearGradient(0,0,r.width,r.height);
+  g.addColorStop(0,'#e9c15a'); g.addColorStop(.5,'#f7d488'); g.addColorStop(1,'#d9a93c');
+  ctx.fillStyle=g; ctx.fillRect(0,0,r.width,r.height);
+  ctx.fillStyle='rgba(120,80,10,.4)'; ctx.font='700 22px Poppins'; ctx.textAlign='center';
+  ctx.fillText('R A S P E   A Q U I', r.width/2, r.height/2);
+  ctx.globalCompositeOperation='destination-out';
+  let drawing=false;
+  const pos=e=>{ const b=cv.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return {x:t.clientX-b.left,y:t.clientY-b.top}; };
+  const scr=e=>{ if(!drawing||revelou)return; e.preventDefault(); const {x,y}=pos(e); ctx.beginPath(); ctx.arc(x,y,26,0,7); ctx.fill(); };
+  const start=e=>{ drawing=true; scr(e); };
+  const end=()=>{ drawing=false; checkPct(ctx,r,dpr); };
+  cv.addEventListener('mousedown',start); cv.addEventListener('mousemove',scr); window.addEventListener('mouseup',end);
+  cv.addEventListener('touchstart',start,{passive:false}); cv.addEventListener('touchmove',scr,{passive:false}); cv.addEventListener('touchend',end);
+  window._s={ctx,r,dpr,cv};
+}
+function checkPct(ctx,r,dpr){
+  if(revelou)return;
+  try{ const img=ctx.getImageData(0,0,r.width*dpr,r.height*dpr).data; let c=0;
+    for(let i=3;i<img.length;i+=4*40){ if(img[i]===0)c++; }
+    if((c/(img.length/(4*40)))*100>=55) revelar();
+  }catch(e){}
+}
+function revelar(){ if(revelou)return; revelou=true; const {cv}=window._s; cv.style.transition='opacity .5s'; cv.style.opacity='0'; setTimeout(mostrar,600); }
+
+function mostrar(){
+  const d=dados, ganhou=d.ganhou;
+  document.getElementById('rEmoji').textContent= ganhou?'🎉':'💚';
+  document.getElementById('rTitulo').textContent= ganhou?'Parabéns, você ganhou!':'Obrigado!';
+  document.getElementById('rTexto').textContent= ganhou? `${d.premio}! 🎁` : 'Volte sempre — na próxima você ganha!';
+  if(ganhou && d.cupom){
+    document.getElementById('rCupomBox').style.display='block';
+    document.getElementById('rCupom').textContent=d.cupom;
+    document.getElementById('rVal').textContent= d.validade? 'Válido até '+d.validade.split('-').reverse().join('/')+' · use em até 7 dias' : 'Use em até 7 dias';
+    document.getElementById('rCopy').style.display='flex';
+    const resg = d.status==='resgatado';
+    document.getElementById('rObs').textContent= resg? '✅ Este prêmio já foi resgatado.' : ('Apresente este código no caixa da '+(d.unidade||'Amore')+'. 🍟');
+    if(!resg) confetes();
+  }
+  show('sRes');
+}
+function copiar(){ navigator.clipboard.writeText(dados.cupom).then(()=>{ const b=document.getElementById('rCopy'); b.textContent='✅ Copiado!'; setTimeout(()=>b.textContent='📋 Copiar código',1500); }); }
+function confetes(){ const cores=['#E0A83E','#E23744','#fff','#28a06a','#f7d488']; for(let i=0;i<60;i++){ const c=document.createElement('div'); c.className='confetti'; c.style.left=Math.random()*100+'vw'; c.style.background=cores[i%cores.length]; c.style.animationDuration=(2+Math.random()*2)+'s'; c.style.animationDelay=(Math.random()*.6)+'s'; document.body.appendChild(c); setTimeout(()=>c.remove(),4200); } }
+</script>
+</body>
+</html>
