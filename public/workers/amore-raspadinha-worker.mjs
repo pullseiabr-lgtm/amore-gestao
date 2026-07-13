@@ -1,0 +1,59 @@
+// ============================================================
+// Amore — Worker de envio da Raspadinha da Avaliação (roda NO VPS)
+// A chave service_role é lida de /root/.amore_key (não fica exposta aqui).
+// Deploy no VPS:  pm2 start amore-raspadinha-worker.mjs --name amore-rasp
+// ============================================================
+import { readFileSync } from 'fs'
+const SB_URL = 'https://xdwnsqkzgopymufsuccr.supabase.co'
+const SB_SRV = process.env.SB_SRV || (() => { try { return readFileSync('/root/.amore_key', 'utf8').trim() } catch { console.error('ERRO: crie o arquivo /root/.amore_key com a service_role key'); process.exit(1) } })()
+const EVO_URL = 'http://localhost:8080'
+const EVO_KEY = 'esdras2024chave'
+const EVO_INST = 'esdras'
+const INTERVALO_MS = 60 * 1000
+
+const H = { apikey: SB_SRV, Authorization: `Bearer ${SB_SRV}`, 'Content-Type': 'application/json' }
+const sel = (t, q = '') => fetch(`${SB_URL}/rest/v1/${t}?${q}`, { headers: H }).then(r => r.json())
+const patch = (t, q, row) => fetch(`${SB_URL}/rest/v1/${t}?${q}`, { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify(row) })
+const soDig = s => (s || '').replace(/\D/g, '')
+const brDate = d => d ? d.split('-').reverse().join('/') : ''
+
+async function enviar(number, text) {
+  try {
+    const r = await fetch(`${EVO_URL}/message/sendText/${EVO_INST}`, {
+      method: 'POST', headers: { apikey: EVO_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number, text })
+    })
+    return r.ok
+  } catch (e) { console.error('envio falhou', e.message); return false }
+}
+
+async function rodar() {
+  const camp = await sel('rasp_campanhas', 'slug=eq.avaliacao&select=id')
+  if (!camp?.[0]) return
+  const cid = camp[0].id
+  const alvos = await sel('rasp_participacoes',
+    `campanha_id=eq.${cid}&ganhou=eq.true&notificado_em=is.null&telefone=not.is.null&select=id,nome,telefone,unidade,premio_nome,cupom,validade&limit=30`)
+  if (!alvos?.length) return
+
+  let n = 0
+  for (const p of alvos) {
+    let fone = soDig(p.telefone)
+    if (fone.length < 10) { await patch('rasp_participacoes', `id=eq.${p.id}`, { notificado_em: new Date().toISOString() }); continue }
+    if (fone.length <= 11) fone = '55' + fone
+    const nome = (p.nome || '').split(' ')[0]
+    const msg = `Obrigado por avaliar a Amore, ${nome}! 💚\n\n` +
+      `Você ganhou *${p.premio_nome}* na sua raspadinha! 🎉\n` +
+      `Código: *${p.cupom}*\n` +
+      (p.validade ? `Válido até ${brDate(p.validade)} · ` : '') + `use em até 7 dias.\n\n` +
+      `É só apresentar este código no caixa da ${p.unidade}. 🍟`
+    const ok = await enviar(fone, msg)
+    await patch('rasp_participacoes', `id=eq.${p.id}`, { notificado_em: new Date().toISOString() })
+    if (ok) n++
+    await new Promise(r => setTimeout(r, 1500))
+  }
+  if (n) console.log(new Date().toISOString(), `${n} raspadinha(s) enviada(s)`)
+}
+
+console.log('Amore raspadinha worker iniciado. Varredura a cada 1 min.')
+rodar().catch(console.error)
+setInterval(() => rodar().catch(console.error), INTERVALO_MS)
