@@ -44,17 +44,23 @@ export default async function handler(req, res) {
 
     const gBody = {
       contents: [{ parts: [{ inline_data: { mime_type: mime, data: b64 } }, { text: PROMPT }] }],
-      generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
+      generationConfig: { temperature: 0.1, responseMimeType: 'application/json', maxOutputTokens: 8192 },
     }
     const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite']
-    let txt = null, lastErr = 'Falha na IA'
+    let txt = null, lastErr = 'Falha na IA', finish = null
     for (const model of models) {
       for (let t = 0; t < 2; t++) {
         const up = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(gBody),
         })
         const data = await up.json().catch(() => ({}))
-        if (up.ok) { txt = data?.candidates?.[0]?.content?.parts?.[0]?.text; break }
+        if (up.ok) {
+          txt = data?.candidates?.[0]?.content?.parts?.[0]?.text || null
+          finish = data?.candidates?.[0]?.finishReason || null
+          if (txt) break
+          lastErr = 'IA retornou vazio (finishReason=' + finish + ')'
+          continue
+        }
         lastErr = data?.error?.message || `HTTP ${up.status}`
         if (up.status === 429 || up.status === 503) { await new Promise(r => setTimeout(r, 900 * (t + 1))); continue }
         break
@@ -64,10 +70,13 @@ export default async function handler(req, res) {
     if (!txt) return res.status(503).json({ error: 'IA indisponível: ' + lastErr })
 
     let parsed = {}
-    try { parsed = JSON.parse(txt.replace(/```json|```/g, '').trim()) } catch { parsed = {} }
+    let parseErr = null
+    try { parsed = JSON.parse(txt.replace(/```json|```/g, '').trim()) } catch (e) { parsed = {}; parseErr = e.message }
     const cabecalho = parsed.cabecalho || {}
     const itens = Array.isArray(parsed.itens) ? parsed.itens : []
-    return res.status(200).json({ ok: true, cabecalho, itens, total: itens.length })
+    const out = { ok: true, cabecalho, itens, total: itens.length }
+    if (!itens.length) out._debug = { finish, parseErr, rawHead: String(txt).slice(0, 400) }
+    return res.status(200).json(out)
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Erro interno no OCR da nota' })
   }
