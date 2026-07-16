@@ -56,6 +56,7 @@ const MODULES = [
   { id: 'boletos',              label: 'Central de Boletos',        grupo: 'Financeiro' },
   { id: 'caixas',               label: 'Caixas & Despesas',         grupo: 'Financeiro' },
   { id: 'relatorios-precos',    label: 'Relatório de Compras',      grupo: 'Financeiro' },
+  { id: 'recebimento',          label: 'Recebimento Inteligente',   grupo: 'Financeiro' },
   // ── Administração ──
   { id: 'usuarios',             label: 'Usuários',                  grupo: 'Administração' },
   { id: 'configuracoes',        label: 'Configurações',             grupo: 'Administração' },

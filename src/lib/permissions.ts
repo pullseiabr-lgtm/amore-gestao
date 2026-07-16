@@ -216,6 +216,11 @@ for (const r of Object.keys(ROLE_PERMISSIONS)) {
   ROLE_PERMISSIONS[r]['relatorios-precos'] = ROLE_PERMISSIONS[r]['caixas'] || { view: false, create: false, edit: false, delete: false, export: false }
 }
 
+// Módulo "Recebimento Inteligente" — espelha o acesso a caixas em todos os papéis
+for (const r of Object.keys(ROLE_PERMISSIONS)) {
+  ROLE_PERMISSIONS[r]['recebimento'] = ROLE_PERMISSIONS[r]['caixas'] || { view: false, create: false, edit: false, delete: false, export: false }
+}
+
 // Módulo "Operação Padrão / Checklists" — espelha o acesso a tarefas em todos os papéis
 for (const r of Object.keys(ROLE_PERMISSIONS)) {
   ROLE_PERMISSIONS[r]['checklists'] = ROLE_PERMISSIONS[r]['tarefas'] || { view: false, create: false, edit: false, delete: false, export: false }
