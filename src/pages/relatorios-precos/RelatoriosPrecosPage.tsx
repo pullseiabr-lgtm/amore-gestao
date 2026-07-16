@@ -22,6 +22,7 @@ export default function RelatoriosPrecosPage() {
   const [dests, setDests] = useState<any[]>([])
   const [regras, setRegras] = useState<any>(null)
   const [rel, setRel] = useState<any | null>(null)
+  const [editItens, setEditItens] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -66,7 +67,10 @@ export default function RelatoriosPrecosPage() {
               <div key={c.id} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
                 <div style={{ fontWeight: 600, fontSize: 13.5 }}>{c.titulo}</div>
                 <div style={{ fontSize: 12, color: '#9ca3af', margin: '2px 0 8px' }}>{c.loja} · {new Date(c.data_ref).toLocaleDateString('pt-BR')} · {fmt(c.total)} · {c.qtd_itens} itens</div>
-                <button onClick={() => gerar(c)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.45rem .8rem', borderRadius: 8, border: 'none', background: '#6B1212', color: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 }}><FileText size={14} />Relatório de preços</button>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => gerar(c)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.45rem .8rem', borderRadius: 8, border: 'none', background: '#6B1212', color: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 }}><FileText size={14} />Relatório</button>
+                  <button onClick={() => setEditItens(c)} title="Preencher quantidade e unidade para comparar por unidade" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.45rem .8rem', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 }}>⚖️ Itens</button>
+                </div>
               </div>
             ))}
           </div>
@@ -77,6 +81,65 @@ export default function RelatoriosPrecosPage() {
       </>}
 
       {rel && <RelatorioModal rel={rel} dests={dests} onClose={() => setRel(null)} toast={toast} />}
+      {editItens && <ItensEditorModal caixa={editItens} onClose={() => { setEditItens(null); load() }} toast={toast} />}
+    </div>
+  )
+}
+
+const UNIDADES = ['', 'kg', 'g', 'L', 'ml', 'un', 'cx', 'pct', 'dz']
+function ItensEditorModal({ caixa, onClose, toast }: any) {
+  const [itens, setItens] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => { (async () => { const { data } = await sb.from('caixa_itens').select('*').eq('caixa_id', caixa.id).order('created_at'); setItens(data || []); setLoading(false) })() }, [caixa.id])
+  const up = (i: number, k: string, v: any) => setItens(arr => arr.map((x, idx) => idx === i ? { ...x, [k]: v } : x))
+  const precoUnit = (it: any) => {
+    const q = Number(it.quantidade), u = (it.unidade || '').toLowerCase(), cont = Number(it.conteudo) || 1
+    if (!q || !u) return null
+    const f: any = { g: 0.001, ml: 0.001, kg: 1, l: 1, un: 1, dz: 12, cx: cont, pct: cont }
+    const qb = q * (f[u] ?? 1); if (!qb) return null
+    const base = ['kg', 'g'].includes(u) ? 'kg' : ['l', 'ml'].includes(u) ? 'L' : 'un'
+    return { v: (Number(it.valor) / qb), base }
+  }
+  const salvar = async () => {
+    for (const it of itens) {
+      await sb.from('caixa_itens').update({ descricao: it.descricao, quantidade: it.quantidade ? Number(it.quantidade) : null, unidade: it.unidade || null, conteudo: Number(it.conteudo) || 1, marca: it.marca || null, fornecedor: it.fornecedor || null, valor: Number(it.valor) }).eq('id', it.id)
+    }
+    toast('Itens salvos! Agora o relatório compara por unidade. ✅'); onClose()
+  }
+  const inp: React.CSSProperties = { padding: '.35rem .5rem', borderRadius: 7, border: '1px solid #e5e7eb', fontSize: 12.5, width: '100%' }
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 60, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '3vh 1rem', overflowY: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 'min(880px,100%)', background: '#fff', borderRadius: 16, padding: '1.4rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <b style={{ fontSize: 16 }}>⚖️ Itens — {caixa.titulo}</b>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={22} /></button>
+        </div>
+        <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '0 0 12px' }}>Preencha <b>quantidade + unidade</b> (e conteúdo, para caixa/pacote) para comparar por unidade padronizada. O preço unitário é calculado sozinho.</p>
+        {loading ? <div style={{ padding: 30, textAlign: 'center', color: '#9ca3af' }}>Carregando…</div> :
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 760 }}>
+              <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 11, textTransform: 'uppercase' }}>
+                <th style={{ padding: 6 }}>Descrição</th><th>Qtd</th><th>Unid.</th><th>Conteúdo</th><th>Marca</th><th>Fornecedor</th><th>Valor</th><th>Preço unit.</th>
+              </tr></thead>
+              <tbody>
+                {itens.map((it, i) => { const pu = precoUnit(it); return (
+                  <tr key={it.id} style={{ borderTop: '1px solid #f3f4f6' }}>
+                    <td style={{ padding: 4, minWidth: 160 }}><input style={inp} value={it.descricao || ''} onChange={e => up(i, 'descricao', e.target.value)} /></td>
+                    <td style={{ width: 70 }}><input style={inp} type="number" step="0.01" value={it.quantidade ?? ''} onChange={e => up(i, 'quantidade', e.target.value)} /></td>
+                    <td style={{ width: 70 }}><select style={inp} value={it.unidade || ''} onChange={e => up(i, 'unidade', e.target.value)}>{UNIDADES.map(u => <option key={u} value={u}>{u || '—'}</option>)}</select></td>
+                    <td style={{ width: 70 }}><input style={inp} type="number" step="1" value={it.conteudo ?? 1} onChange={e => up(i, 'conteudo', e.target.value)} disabled={!['cx', 'pct'].includes((it.unidade || '').toLowerCase())} /></td>
+                    <td style={{ width: 90 }}><input style={inp} value={it.marca || ''} onChange={e => up(i, 'marca', e.target.value)} /></td>
+                    <td style={{ width: 110 }}><input style={inp} value={it.fornecedor || ''} onChange={e => up(i, 'fornecedor', e.target.value)} /></td>
+                    <td style={{ width: 80 }}><input style={inp} type="number" step="0.01" value={it.valor ?? ''} onChange={e => up(i, 'valor', e.target.value)} /></td>
+                    <td style={{ width: 90, fontWeight: 700, color: pu ? '#1D9E75' : '#9ca3af' }}>{pu ? 'R$ ' + pu.v.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + '/' + pu.base : '—'}</td>
+                  </tr>) })}
+              </tbody>
+            </table>
+          </div>}
+        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={salvar} style={{ padding: '.7rem 1.6rem', borderRadius: 10, border: 'none', background: '#6B1212', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Salvar itens</button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -120,17 +183,18 @@ function RelatorioModal({ rel, dests, onClose, toast }: any) {
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 620 }}>
             <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 11.5, textTransform: 'uppercase' }}>
-              <th style={{ padding: 8 }}>Produto</th><th>ABC</th><th>Atual</th><th>Anterior</th><th>Média 3</th><th>Variação</th><th>Status</th>
+              <th style={{ padding: 8 }}>Produto</th><th>ABC</th><th>Atual</th><th>Anterior</th><th>Média 3</th><th>Variação</th><th>Impacto</th><th>Status</th>
             </tr></thead>
             <tbody>
-              {itens.map((i, idx) => { const s = STAT[i.status] || STAT.sem_historico; return (
+              {itens.map((i, idx) => { const s = STAT[i.status] || STAT.sem_historico; const uni = (v: any) => v == null ? '—' : (i.por_unidade ? fmt(v) + '/' + i.un_base : fmt(v)); return (
                 <tr key={idx} style={{ borderTop: '1px solid #f3f4f6' }}>
-                  <td style={{ padding: 8, fontWeight: 500 }}>{i.produto}</td>
+                  <td style={{ padding: 8, fontWeight: 500 }}>{i.produto}{i.por_unidade && <span style={{ fontSize: 10.5, color: '#1D9E75', marginLeft: 5 }}>⚖️ un.</span>}</td>
                   <td><span style={{ fontWeight: 700, color: i.classe === 'A' ? '#DC2626' : i.classe === 'B' ? '#D97706' : '#6b7280' }}>{i.classe}</span></td>
-                  <td>{fmt(i.atual)}</td>
-                  <td style={{ color: '#9ca3af' }}>{i.anterior != null ? fmt(i.anterior) : '—'}</td>
-                  <td style={{ color: '#9ca3af' }}>{fmt(i.media3)}</td>
+                  <td>{uni(i.atual)}</td>
+                  <td style={{ color: '#9ca3af' }}>{uni(i.anterior)}</td>
+                  <td style={{ color: '#9ca3af' }}>{uni(i.media3)}</td>
                   <td style={{ fontWeight: 600, color: s.c }}>{i.var_anterior != null ? (i.var_anterior > 0 ? '+' : '') + i.var_anterior + '%' : '—'}</td>
+                  <td style={{ fontWeight: 600, color: i.impacto > 0 ? '#DC2626' : i.impacto < 0 ? '#1D9E75' : '#9ca3af' }}>{i.impacto ? (i.impacto > 0 ? '+' : '') + fmt(i.impacto) : '—'}</td>
                   <td><span style={{ fontSize: 12, fontWeight: 600, color: s.c }}>{s.e} {s.l}</span></td>
                 </tr>) })}
             </tbody>
