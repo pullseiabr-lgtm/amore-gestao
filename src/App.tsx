@@ -45,6 +45,7 @@ import LizCentralPage from './pages/liz/LizCentralPage'
 import ClientesPage from './pages/clientes/ClientesPage'
 import CampanhasPage from './pages/campanhas/CampanhasPage'
 import ControleAgentePage from './pages/agente-controle/ControleAgentePage'
+import RelatoriosPrecosPage from './pages/relatorios-precos/RelatoriosPrecosPage'
 import TarefasPage from './pages/tarefas/TarefasPage'
 import ChecklistsPage from './pages/checklists/ChecklistsPage'
 import PautaReuniaoPage from './pages/pautas/PautaReuniaoPage'
@@ -103,6 +104,7 @@ export type PageId =
   | 'clientes'
   | 'campanhas'
   | 'agente-controle'
+  | 'relatorios-precos'
 
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Dashboard',
@@ -153,6 +155,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   clientes: 'Clientes Amore (CRM)',
   campanhas: 'Campanhas',
   'agente-controle': 'Controle do Agente',
+  'relatorios-precos': 'Relatório de Compras',
 }
 
 function PageContent({ page }: { page: PageId }) {
@@ -197,6 +200,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'clientes':             return <ClientesPage />
     case 'campanhas':            return <CampanhasPage />
     case 'agente-controle':      return <ControleAgentePage />
+    case 'relatorios-precos':    return <RelatoriosPrecosPage />
     case 'tarefas':              return <TarefasPage />
     case 'checklists':           return <ChecklistsPage />
     case 'pauta-reuniao':        return <PautaReuniaoPage />

@@ -28,6 +28,7 @@ const MENU_TOP: NavItem[] = [
   { id: 'alertas',     label: '🔔 Alertas & Rastreab.', icon: <Bell size={13} /> },
   { id: 'notificacoes', label: 'Central de Notificações', icon: <Bell size={13} /> },
   { id: 'caixas',      label: '🗄️ Caixas & Despesas',   icon: <FileText size={13} /> },
+  { id: 'relatorios-precos', label: '📊 Relatório de Compras', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>📊</span> },
   { id: 'pendencias',  label: 'Pendências & OS',    icon: <FileText size={13} />, badge: '7' },
   { id: 'gamificacao', label: 'Gamificação',         icon: <Trophy size={13} /> },
   { id: 'avaliacoes',  label: '⭐ Avaliações & NPS',  icon: <span style={{ fontSize: 14, lineHeight: 1 }}>⭐</span> },

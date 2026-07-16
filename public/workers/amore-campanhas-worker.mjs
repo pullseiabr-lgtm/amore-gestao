@@ -58,6 +58,24 @@ async function rodar() {
   if (enviados) console.log(new Date().toISOString(), `${enviados} mensagem(ns) de campanha enviada(s)`)
 }
 
-console.log('Amore campanhas worker iniciado. Varredura a cada 90s, lote de', LOTE, 'com jitter anti-ban.')
-rodar().catch(console.error)
-setInterval(() => rodar().catch(console.error), INTERVALO_MS)
+// relatórios de compras (fila rel_disparos)
+async function rodarRelatorios() {
+  const fila = await sel('rel_disparos', `status=eq.pendente&select=id,whatsapp,mensagem&limit=${LOTE}`)
+  if (!fila?.length) return
+  let n = 0
+  for (const d of fila) {
+    let fone = soDig(d.whatsapp)
+    if (fone.length < 10) { await patch('rel_disparos', `id=eq.${d.id}`, { status: 'falha', error: 'telefone_invalido' }); continue }
+    if (fone.length <= 11) fone = '55' + fone
+    const r = await enviar(fone, d.mensagem || '')
+    if (r.ok) { await patch('rel_disparos', `id=eq.${d.id}`, { status: 'enviado', sent_at: new Date().toISOString() }); n++ }
+    else await patch('rel_disparos', `id=eq.${d.id}`, { status: 'falha', error: r.err })
+    await sleep(jitter())
+  }
+  if (n) console.log(new Date().toISOString(), `${n} relatório(s) de compras enviado(s)`)
+}
+
+async function ciclo() { await rodar(); await rodarRelatorios() }
+console.log('Amore campanhas worker iniciado (campanhas + relatórios de compras). Varredura a cada 90s.')
+ciclo().catch(console.error)
+setInterval(() => ciclo().catch(console.error), INTERVALO_MS)
