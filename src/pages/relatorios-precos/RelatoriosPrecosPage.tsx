@@ -13,6 +13,7 @@ const STAT: Record<string, { l: string; c: string; e: string }> = {
   reducao: { l: 'Redução', c: '#1D9E75', e: '🟢' }, estavel: { l: 'Estável', c: '#2563EB', e: '🔵' },
   atencao: { l: 'Atenção', c: '#D97706', e: '🟡' }, alerta: { l: 'Alerta', c: '#EA580C', e: '🟠' },
   critico: { l: 'Crítico', c: '#DC2626', e: '🔴' }, sem_historico: { l: 'Sem histórico', c: '#9ca3af', e: '⚪' },
+  comparacao_limitada: { l: 'Sem preço unit.', c: '#9ca3af', e: '⚠️' },
 }
 
 export default function RelatoriosPrecosPage() {
@@ -216,6 +217,7 @@ function RelatorioModal({ rel, dests, onClose, toast }: any) {
           {kpi('Aumentos', r.aumentos, '#DC2626')}
           {kpi('Reduções', r.reducoes, '#1D9E75')}
           {kpi('Sem histórico', r.sem_historico, '#9ca3af')}
+          {kpi('Sem preço unit.', r.comparacao_limitada ?? 0, '#D97706')}
           {kpi('Impacto aumentos', fmt(r.impacto_aumentos), '#DC2626')}
           {kpi('Economia', fmt(r.economia), '#1D9E75')}
         </div>
