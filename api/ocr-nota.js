@@ -72,9 +72,18 @@ export default async function handler(req, res) {
     let parsed = {}
     let parseErr = null
     try { parsed = JSON.parse(txt.replace(/```json|```/g, '').trim()) } catch (e) { parsed = {}; parseErr = e.message }
-    const cabecalho = parsed.cabecalho || {}
-    const itens = Array.isArray(parsed.itens) ? parsed.itens : []
-    const out = { ok: true, cabecalho, itens, total: itens.length }
+    // O documento pode conter mais de uma nota — a IA às vezes devolve um array.
+    // Normaliza: usa o cabeçalho da 1ª nota e junta os itens de todas as notas do array.
+    let cabecalho = {}, itens = []
+    if (Array.isArray(parsed)) {
+      const notas = parsed.filter(n => n && typeof n === 'object')
+      cabecalho = notas[0]?.cabecalho || {}
+      itens = notas.flatMap(n => Array.isArray(n.itens) ? n.itens : [])
+    } else {
+      cabecalho = parsed.cabecalho || {}
+      itens = Array.isArray(parsed.itens) ? parsed.itens : []
+    }
+    const out = { ok: true, cabecalho, itens, total: itens.length, multi: Array.isArray(parsed) ? parsed.length : 1 }
     if (!itens.length) out._debug = { finish, parseErr, rawHead: String(txt).slice(0, 400) }
     return res.status(200).json(out)
   } catch (err) {
