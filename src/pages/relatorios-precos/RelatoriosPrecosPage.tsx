@@ -90,8 +90,31 @@ const UNIDADES = ['', 'kg', 'g', 'L', 'ml', 'un', 'cx', 'pct', 'dz']
 function ItensEditorModal({ caixa, onClose, toast }: any) {
   const [itens, setItens] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  useEffect(() => { (async () => { const { data } = await sb.from('caixa_itens').select('*').eq('caixa_id', caixa.id).order('created_at'); setItens(data || []); setLoading(false) })() }, [caixa.id])
+  const [sug, setSug] = useState<any[] | null>(null)
+  const [ocr, setOcr] = useState(false)
+  const loadItens = async () => { const { data } = await sb.from('caixa_itens').select('*').eq('caixa_id', caixa.id).order('created_at'); setItens(data || []); setLoading(false) }
+  useEffect(() => { loadItens() }, [caixa.id])
   const up = (i: number, k: string, v: any) => setItens(arr => arr.map((x, idx) => idx === i ? { ...x, [k]: v } : x))
+
+  const lerNotas = async () => {
+    setOcr(true); setSug(null)
+    try {
+      const resp = await fetch('/api/ocr-caixa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ caixa_id: caixa.id }) })
+      const d = await resp.json()
+      if (!resp.ok) { toast(d.error || 'Erro na leitura por IA.', 'error'); setOcr(false); return }
+      setSug(d.itens || [])
+      toast(`IA leu ${d.total || 0} item(ns) das notas. Confira e adicione. 🔍`)
+    } catch { toast('Falha ao chamar a IA.', 'error') }
+    setOcr(false)
+  }
+  const addSug = async (s: any, all = false) => {
+    const rows = (all ? sug! : [s]).map(x => ({ caixa_id: caixa.id, descricao: x.produto, quantidade: x.quantidade ?? null, unidade: x.unidade || null, conteudo: x.conteudo || 1, marca: x.marca || null, fornecedor: x.fornecedor || null, valor: x.valor_total ?? 0, data: caixa.data_ref }))
+    await sb.from('caixa_itens').insert(rows)
+    await loadItens()
+    setSug(all ? [] : sug!.filter(x => x !== s))
+    toast(all ? 'Itens da IA adicionados!' : 'Item adicionado!')
+  }
+  const delItem = async (id: string) => { await sb.from('caixa_itens').delete().eq('id', id); loadItens() }
   const precoUnit = (it: any) => {
     const q = Number(it.quantidade), u = (it.unidade || '').toLowerCase(), cont = Number(it.conteudo) || 1
     if (!q || !u) return null
@@ -114,12 +137,13 @@ function ItensEditorModal({ caixa, onClose, toast }: any) {
           <b style={{ fontSize: 16 }}>⚖️ Itens — {caixa.titulo}</b>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={22} /></button>
         </div>
-        <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '0 0 12px' }}>Preencha <b>quantidade + unidade</b> (e conteúdo, para caixa/pacote) para comparar por unidade padronizada. O preço unitário é calculado sozinho.</p>
+        <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '0 0 10px' }}>Preencha <b>quantidade + unidade</b> (e conteúdo, para caixa/pacote) para comparar por unidade padronizada. O preço unitário é calculado sozinho.</p>
+        <button onClick={lerNotas} disabled={ocr} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, padding: '.5rem .9rem', borderRadius: 8, border: 'none', background: '#7C3AED', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>🔍 {ocr ? 'Lendo as notas com IA…' : 'Ler notas com IA (preencher automático)'}</button>
         {loading ? <div style={{ padding: 30, textAlign: 'center', color: '#9ca3af' }}>Carregando…</div> :
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 760 }}>
               <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 11, textTransform: 'uppercase' }}>
-                <th style={{ padding: 6 }}>Descrição</th><th>Qtd</th><th>Unid.</th><th>Conteúdo</th><th>Marca</th><th>Fornecedor</th><th>Valor</th><th>Preço unit.</th>
+                <th style={{ padding: 6 }}>Descrição</th><th>Qtd</th><th>Unid.</th><th>Conteúdo</th><th>Marca</th><th>Fornecedor</th><th>Valor</th><th>Preço unit.</th><th></th>
               </tr></thead>
               <tbody>
                 {itens.map((it, i) => { const pu = precoUnit(it); return (
@@ -132,10 +156,26 @@ function ItensEditorModal({ caixa, onClose, toast }: any) {
                     <td style={{ width: 110 }}><input style={inp} value={it.fornecedor || ''} onChange={e => up(i, 'fornecedor', e.target.value)} /></td>
                     <td style={{ width: 80 }}><input style={inp} type="number" step="0.01" value={it.valor ?? ''} onChange={e => up(i, 'valor', e.target.value)} /></td>
                     <td style={{ width: 90, fontWeight: 700, color: pu ? '#1D9E75' : '#9ca3af' }}>{pu ? 'R$ ' + pu.v.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + '/' + pu.base : '—'}</td>
+                    <td><button onClick={() => delItem(it.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444' }}><Trash2 size={13} /></button></td>
                   </tr>) })}
               </tbody>
             </table>
           </div>}
+        {sug && sug.length > 0 && <div style={{ marginTop: 14, background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: 12, padding: '.9rem 1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <b style={{ fontSize: 13.5, color: '#6D28D9' }}>🔍 Sugestões da IA — confira e adicione ({sug.length})</b>
+            <button onClick={() => addSug(null, true)} style={{ padding: '.35rem .8rem', borderRadius: 8, border: 'none', background: '#7C3AED', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Adicionar todos</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {sug.map((s, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, background: '#fff', padding: '.45rem .6rem', borderRadius: 8 }}>
+              <div style={{ flex: 1 }}><b>{s.produto}</b> <span style={{ color: '#9ca3af' }}>· {s.quantidade ?? '?'} {s.unidade || ''}{s.marca ? ' · ' + s.marca : ''}{s.fornecedor ? ' · ' + s.fornecedor : ''} · {fmt(s.valor_total)}</span></div>
+              {s.confianca != null && <span style={{ fontSize: 11, fontWeight: 700, color: s.confianca >= 85 ? '#1D9E75' : s.confianca >= 60 ? '#D97706' : '#DC2626' }}>{s.confianca}%</span>}
+              <button onClick={() => addSug(s)} style={{ padding: '.3rem .7rem', borderRadius: 7, border: '1px solid #7C3AED', background: '#fff', color: '#7C3AED', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>+ Usar</button>
+            </div>)}
+          </div>
+          <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 8 }}>⚠️ Revise antes de adicionar — a IA pode errar. Itens de baixa confiança precisam de conferência manual.</p>
+        </div>}
+
         <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
           <button onClick={salvar} style={{ padding: '.7rem 1.6rem', borderRadius: 10, border: 'none', background: '#6B1212', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Salvar itens</button>
         </div>
