@@ -15,8 +15,8 @@ async function getGeminiKey() {
 const PROMPT = `Você lê notas fiscais e recibos de compra de restaurante. Leia TODAS as páginas deste documento e extraia o cabeçalho e os produtos.
 Responda APENAS um JSON válido (sem markdown, sem texto fora do JSON), no formato:
 {"cabecalho":{"fornecedor":"","cnpj":"","numero_nota":"","serie":"","chave_acesso":"","data_emissao":"YYYY-MM-DD","valor_total":numero,"forma_pagamento":""},
-"itens":[{"produto":"nome curto","categoria":"","quantidade":numero,"unidade":"kg|g|L|ml|un|cx|pct|dz","conteudo":numero,"marca":"","fornecedor":"","preco_unitario":numero,"valor_total":numero,"confianca":0a100}]}
-Regras: quantidade é numérica (ex.: "3x1kg" => quantidade 3, unidade "kg"). "conteudo" = unidades internas quando caixa/pacote (senão 1). unidade deve ser uma das listadas. data_emissao no formato ISO. Campo ilegível = null. Não invente dados.`
+"itens":[{"produto":"nome curto","categoria":"","codigo_fornecedor":"","codigo_barras":"","ncm":"","quantidade":numero,"unidade":"kg|g|L|ml|un|cx|pct|dz","conteudo":numero,"marca":"","fornecedor":"","preco_unitario":numero,"valor_total":numero,"confianca":0a100}]}
+Regras: quantidade é numérica (ex.: "3x1kg" => quantidade 3, unidade "kg"). "conteudo" = unidades internas quando caixa/pacote (senão 1). unidade deve ser uma das listadas. "codigo_fornecedor" = código/ref do produto na nota. "codigo_barras" = EAN/GTIN se houver. "ncm" = código NCM do item se houver. data_emissao no formato ISO. Campo ilegível = null. Não invente dados.`
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
