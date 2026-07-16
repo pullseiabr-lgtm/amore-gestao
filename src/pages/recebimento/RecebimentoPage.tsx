@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { PackageCheck, Upload, ScanLine, Check, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react'
+import { PackageCheck, Upload, ScanLine, Check, AlertTriangle, RefreshCw, Trash2, Boxes } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../hooks/useToast'
 
@@ -20,6 +20,22 @@ function precoUnit(it: any) {
   return { v: Number(it.valor_total || 0) / qb, base }
 }
 
+// normaliza p/ casar nomes (remove acentos, pontuação, minúsculo)
+const norm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+function matchProduto(nome: string, list: any[]) {
+  const n = norm(nome); if (!n) return null
+  const tokens = n.split(' ').filter(t => t.length > 2)
+  let best: any = null, bestScore = 0
+  for (const p of list) {
+    const pn = norm(p.nome); let score = 0
+    for (const t of tokens) if (pn.includes(t)) score++
+    if (score > bestScore) { bestScore = score; best = p }
+  }
+  return bestScore >= 1 ? best : null
+}
+// quantidade total (unidades) que entra no estoque = qtd × conteúdo
+const qtdEstoque = (it: any) => (Number(it.quantidade) || 0) * (Number(it.conteudo) || 1)
+
 export default function RecebimentoPage() {
   const { toast } = useToast()
   const [loja, setLoja] = useState('Amore Paiva')
@@ -29,13 +45,22 @@ export default function RecebimentoPage() {
   const [cab, setCab] = useState<any | null>(null)
   const [itens, setItens] = useState<any[]>([])
   const [recs, setRecs] = useState<any[]>([])
+  const [prodEstoque, setProdEstoque] = useState<any[]>([])
+  const [estoqueRows, setEstoqueRows] = useState<any[]>([])
+  const [darEntrada, setDarEntrada] = useState(true)
 
   const loadRecs = useCallback(async () => { const { data } = await sb.from('recebimentos').select('*').order('created_at', { ascending: false }).limit(20); setRecs(data || []) }, [])
   useEffect(() => { loadRecs() }, [loadRecs])
 
+  const fetchProdutos = async (lj: string) => {
+    const { data } = await sb.from('estoque_produtos').select('id,nome,gramatura,categoria,preco_unitario').eq('loja', lj).eq('ativo', true).order('nome')
+    return data || []
+  }
+  useEffect(() => { fetchProdutos(loja).then(setProdEstoque) }, [loja])
+
   const enviarELer = async () => {
     if (!file) { toast('Selecione a foto/PDF da nota.', 'error'); return }
-    setBusy('upload'); setCab(null); setItens([])
+    setBusy('upload'); setCab(null); setItens([]); setEstoqueRows([])
     try {
       const ext = (file.name.split('.').pop() || 'pdf').toLowerCase()
       const path = `recebimentos/${crypto.randomUUID()}.${ext}`
@@ -47,27 +72,44 @@ export default function RecebimentoPage() {
       const resp = await fetch('/api/ocr-nota', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_url: url, mime: file.type }) })
       const d = await resp.json()
       if (!resp.ok) { toast(d.error || 'Erro na leitura por IA.', 'error'); setBusy(''); return }
+      const its = (d.itens || []).map((x: any) => ({ ...x, conteudo: x.conteudo || 1 }))
       setCab({ fornecedor: '', cnpj: '', numero_nota: '', serie: '', data_emissao: '', valor_total: '', forma_pagamento: '', ...(d.cabecalho || {}) })
-      setItens((d.itens || []).map((x: any) => ({ ...x, conteudo: x.conteudo || 1 })))
+      setItens(its)
+      // monta entradas de estoque casando cada item com o catálogo da loja
+      const prods = await fetchProdutos(loja); setProdEstoque(prods)
+      setEstoqueRows(its.map((it: any) => {
+        const m = matchProduto(it.produto, prods)
+        const q = qtdEstoque(it)
+        return { on: true, produto_id: m ? m.id : '', novo: !m, nome: m ? m.nome : it.produto, categoria: it.categoria || '', quantidade: q || '', unidade: m?.gramatura || it.unidade || 'un', preco: q > 0 ? Number(it.valor_total || 0) / q : 0 }
+      }))
       toast(`IA leu ${d.total || 0} item(ns). Confira e confirme. 🔍`)
     } catch { toast('Falha ao processar a nota.', 'error') }
     setBusy('')
   }
 
   const upItem = (i: number, k: string, v: any) => setItens(a => a.map((x, idx) => idx === i ? { ...x, [k]: v } : x))
-  const delItem = (i: number) => setItens(a => a.filter((_, idx) => idx !== i))
+  const delItem = (i: number) => { setItens(a => a.filter((_, idx) => idx !== i)); setEstoqueRows(a => a.filter((_, idx) => idx !== i)) }
+  const upEst = (i: number, patch: any) => setEstoqueRows(a => a.map((x, idx) => idx === i ? { ...x, ...patch } : x))
   const somaItens = itens.reduce((s, x) => s + Number(x.valor_total || 0), 0)
   const totalNota = Number(cab?.valor_total || 0)
   const divergencia = cab && totalNota > 0 && Math.abs(somaItens - totalNota) > 0.5
+  const nEntradas = darEntrada ? estoqueRows.filter(r => r.on && Number(r.quantidade) > 0).length : 0
 
   const confirmar = async () => {
     if (!itens.length) { toast('Nenhum item para confirmar.', 'error'); return }
     setBusy('confirm')
     try {
-      const { data, error } = await sb.rpc('recebimento_confirmar', { p_loja: loja, p_header: cab, p_itens: itens, p_anexo_url: anexo?.url || null, p_arquivo: anexo?.nome || null })
+      const p_estoque = darEntrada
+        ? estoqueRows.filter(r => r.on && Number(r.quantidade) > 0).map(r => ({
+            acao: r.novo ? 'novo' : 'existente', produto_id: r.novo ? null : (r.produto_id || null),
+            nome: r.nome, categoria: r.categoria, quantidade: r.quantidade, unidade: r.unidade, preco_unitario: r.preco,
+          }))
+        : []
+      const { data, error } = await sb.rpc('recebimento_confirmar', { p_loja: loja, p_header: cab, p_itens: itens, p_anexo_url: anexo?.url || null, p_arquivo: anexo?.nome || null, p_estoque })
       if (error || !data?.ok) { toast('Erro ao confirmar recebimento.', 'error'); setBusy(''); return }
-      toast(`Recebimento confirmado! Despesa nº ${data.prestacao} lançada e Curva ABC atualizada. ✅`)
-      setFile(null); setAnexo(null); setCab(null); setItens([]); loadRecs()
+      const est = data.estoque ? ` · ${data.estoque} produto(s) no estoque 📦` : ''
+      toast(`Recebimento confirmado! Despesa nº ${data.prestacao} lançada · Curva ABC atualizada${est} ✅`)
+      setFile(null); setAnexo(null); setCab(null); setItens([]); setEstoqueRows([]); loadRecs()
     } catch { toast('Falha ao confirmar.', 'error') }
     setBusy('')
   }
@@ -77,7 +119,7 @@ export default function RecebimentoPage() {
       {/* passo 1 */}
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><PackageCheck size={20} style={{ color: '#6B1212' }} /><b style={{ fontSize: 15 }}>Recebimento Inteligente de Mercadorias</b></div>
-        <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '0 0 12px' }}>Selecione a unidade, envie a foto/PDF da nota e a IA lê o fornecedor e os produtos. Você confere antes de confirmar.</p>
+        <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '0 0 12px' }}>Selecione a unidade, envie a foto/PDF da nota e a IA lê o fornecedor e os produtos. Você confere, dá entrada no estoque e confirma.</p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <select value={loja} onChange={e => setLoja(e.target.value)} style={{ ...inp, width: 'auto' }}>{LOJAS.map(l => <option key={l}>{l}</option>)}</select>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.5rem .9rem', borderRadius: 10, border: '1px dashed #c4b5a8', cursor: 'pointer', fontSize: 13, background: '#faf8f5' }}>
@@ -124,8 +166,45 @@ export default function RecebimentoPage() {
             </tbody>
           </table>
         </div>
+
+        {/* entrada no estoque (Fase B) */}
+        <div style={{ marginTop: 18, borderTop: '1px dashed #e5e7eb', paddingTop: 14 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 8 }}>
+            <input type="checkbox" checked={darEntrada} onChange={e => setDarEntrada(e.target.checked)} />
+            <Boxes size={16} style={{ color: '#6B1212' }} /><b style={{ fontSize: 14 }}>Dar entrada no estoque</b>
+            {darEntrada && <span style={{ fontSize: 12, color: '#9ca3af' }}>— {nEntradas} produto(s) selecionado(s)</span>}
+          </label>
+          {darEntrada && <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 720 }}>
+              <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 11, textTransform: 'uppercase' }}>
+                <th style={{ padding: 6, width: 34 }}>✓</th><th>Item da nota</th><th>Produto no estoque</th><th>Qtd entrada</th><th>Unid.</th>
+              </tr></thead>
+              <tbody>
+                {itens.map((it, i) => { const r = estoqueRows[i]; if (!r) return null; return (
+                  <tr key={i} style={{ borderTop: '1px solid #f3f4f6', opacity: r.on ? 1 : .45 }}>
+                    <td style={{ padding: 4 }}><input type="checkbox" checked={r.on} onChange={e => upEst(i, { on: e.target.checked })} /></td>
+                    <td style={{ fontSize: 12, color: '#6b7280', maxWidth: 200 }}>{it.produto}</td>
+                    <td style={{ minWidth: 240 }}>
+                      <select style={inp} value={r.novo ? '__novo__' : (r.produto_id || '__novo__')} onChange={e => {
+                        const v = e.target.value
+                        if (v === '__novo__') upEst(i, { novo: true, produto_id: '', nome: it.produto, unidade: it.unidade || 'un' })
+                        else { const p = prodEstoque.find(x => x.id === v); upEst(i, { novo: false, produto_id: v, nome: p?.nome || it.produto, unidade: p?.gramatura || r.unidade }) }
+                      }}>
+                        <option value="__novo__">➕ Criar novo: {(it.produto || '').slice(0, 40)}</option>
+                        {prodEstoque.map(p => <option key={p.id} value={p.id}>{p.nome}{p.gramatura ? ` (${p.gramatura})` : ''}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ width: 90 }}><input style={inp} type="number" step="0.01" value={r.quantidade ?? ''} onChange={e => upEst(i, { quantidade: e.target.value })} /></td>
+                    <td style={{ width: 90 }}><input style={inp} value={r.unidade || ''} onChange={e => upEst(i, { unidade: e.target.value })} /></td>
+                  </tr>) })}
+              </tbody>
+            </table>
+            <p style={{ fontSize: 11.5, color: '#9ca3af', margin: '8px 0 0' }}>A quantidade de entrada já vem calculada (qtd × conteúdo). Produtos novos entram no catálogo de estoque da unidade.</p>
+          </div>}
+        </div>
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
-          <span style={{ fontSize: 12, color: '#9ca3af' }}>⚠️ Revise os itens — a IA pode errar. O total da nota vai 1x pra despesas; cada item alimenta a Curva ABC.</span>
+          <span style={{ fontSize: 12, color: '#9ca3af' }}>⚠️ Revise os itens — a IA pode errar. O total da nota vai 1x pra despesas; cada item alimenta a Curva ABC{darEntrada ? ' e o estoque' : ''}.</span>
           <button onClick={confirmar} disabled={!!busy} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.7rem 1.6rem', borderRadius: 10, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer', fontWeight: 600 }}><Check size={16} />{busy === 'confirm' ? 'Confirmando…' : 'Confirmar recebimento'}</button>
         </div>
       </div>}
