@@ -22,16 +22,19 @@ function precoUnit(it: any) {
 
 // normaliza p/ casar nomes (remove acentos, pontuação, minúsculo)
 const norm = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+// termos genéricos que NÃO devem, sozinhos, casar dois produtos diferentes
+const STOP = new Set(['caixa', 'cx', 'pacote', 'pct', 'pote', 'saco', 'fardo', 'unidade', 'unidades', 'und', 'kg', 'quilograma', 'grama', 'litro', 'litros', ' litro', 'lata', 'garrafa', 'balde', 'com', 'sem', 'para', 'tipo', 'premium', 'gourmet', 'sache', 'sacher'])
+const tok = (s: string) => norm(s).split(' ').filter(t => t.length > 2 && !STOP.has(t) && !/^\d+$/.test(t))
 function matchProduto(nome: string, list: any[]) {
-  const n = norm(nome); if (!n) return null
-  const tokens = n.split(' ').filter(t => t.length > 2)
+  const tokens = tok(nome); if (!tokens.length) return null
   let best: any = null, bestScore = 0
   for (const p of list) {
-    const pn = norm(p.nome); let score = 0
-    for (const t of tokens) if (pn.includes(t)) score++
+    const pn = ' ' + norm(p.nome) + ' '; let score = 0
+    for (const t of tokens) if (pn.includes(' ' + t) || pn.includes(t + ' ')) score++
     if (score > bestScore) { bestScore = score; best = p }
   }
-  return bestScore >= 1 ? best : null
+  // conservador: exige 2+ palavras significativas em comum p/ evitar casar produto errado
+  return bestScore >= 2 ? best : null
 }
 // quantidade total (unidades) que entra no estoque = qtd × conteúdo
 const qtdEstoque = (it: any) => (Number(it.quantidade) || 0) * (Number(it.conteudo) || 1)
