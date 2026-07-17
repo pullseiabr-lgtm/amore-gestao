@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { QrCode, Printer, Camera, ScanLine, PackageMinus, RefreshCw, Plus, AlertTriangle, Check, X, Tag } from 'lucide-react'
+import { QrCode, Printer, Camera, ScanLine, PackageMinus, RefreshCw, Plus, AlertTriangle, Check, X, Tag, Trash2, Undo2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import JsBarcode from 'jsbarcode'
 import { Html5Qrcode } from 'html5-qrcode'
@@ -104,6 +104,21 @@ function TabEtiquetas({ loja, toast, user }: any) {
   const selecionados = itens.filter(l => sel.has(l.id))
   const marcarTodos = () => setSel(new Set(filtrados.map(i => i.id)))
 
+  const cancelarItem = async (item: any) => {
+    if (!confirm(`Cancelar a etiqueta de "${item.produto_nome}" (${item.codigo})? Isso remove ${item.quantidade} ${item.unidade} do estoque.`)) return
+    const { data, error } = await sb.rpc('item_cancelar', { p_codigo: item.codigo, p_motivo: 'Etiqueta cancelada', p_por: user?.name || null })
+    if (error || !data?.ok) { toast(data?.erro || 'Erro ao cancelar.', 'error'); return }
+    toast('Etiqueta cancelada e estoque ajustado. 🗑️'); load()
+  }
+  const cancelarSelecionados = async () => {
+    if (!sel.size) return
+    if (!confirm(`Cancelar ${sel.size} etiqueta(s)? O estoque será ajustado.`)) return
+    const codigos = selecionados.map(i => i.codigo)
+    const { data, error } = await sb.rpc('itens_cancelar', { p_codigos: codigos, p_motivo: 'Etiquetas canceladas', p_por: user?.name || null })
+    if (error || !data?.ok) { toast('Erro ao cancelar.', 'error'); return }
+    toast(`${data.cancelados} etiqueta(s) cancelada(s)${data.erros ? ` · ${data.erros} não puderam` : ''}.`); setSel(new Set()); load()
+  }
+
   const gerar = async () => {
     if (!form.produto_id || !form.n_itens) { toast('Escolha o produto e o número de itens.', 'error'); return }
     const p = prods.find(x => x.id === form.produto_id)
@@ -155,12 +170,13 @@ function TabEtiquetas({ loja, toast, user }: any) {
         <span style={{ fontSize: 12.5, color: '#374151' }}><b>{sel.size}</b> selecionado(s)</span>
         <button onClick={marcarTodos} style={{ ...btn('#e5e7eb'), color: '#374151' }}>Selecionar todos</button>
         <button disabled={!sel.size} onClick={() => imprimirItens(selecionados, loja)} style={{ ...btn(sel.size ? '#6B1212' : '#c4b5a8'), cursor: sel.size ? 'pointer' : 'not-allowed' }}><Printer size={15} />Imprimir {sel.size ? `(${sel.size})` : ''}</button>
+        <button disabled={!sel.size} onClick={cancelarSelecionados} style={{ ...btn(sel.size ? '#DC2626' : '#e5b4b4'), cursor: sel.size ? 'pointer' : 'not-allowed' }}><Trash2 size={15} />Cancelar {sel.size ? `(${sel.size})` : ''}</button>
       </div>
 
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 720 }}>
           <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 11, textTransform: 'uppercase' }}>
-            <th style={{ padding: 6, width: 30 }}></th><th>Produto</th><th>Código do item</th><th>Qtd</th><th>Validade</th><th>Lote</th><th>Local</th>
+            <th style={{ padding: 6, width: 30 }}></th><th>Produto</th><th>Código do item</th><th>Qtd</th><th>Validade</th><th>Lote</th><th>Local</th><th></th>
           </tr></thead>
           <tbody>
             {filtrados.length === 0 ? <tr><td colSpan={7} style={{ padding: 18, color: '#9ca3af', textAlign: 'center' }}>Nenhum item etiquetado. Clique em "Gerar etiquetas".</td></tr> :
@@ -173,6 +189,7 @@ function TabEtiquetas({ loja, toast, user }: any) {
                   <td style={{ color: venc != null && venc <= 7 ? '#DC2626' : '#374151', fontWeight: venc != null && venc <= 7 ? 700 : 400 }}>{fmtD(l.data_validade)}{venc != null && venc <= 7 ? ` (${venc}d)` : ''}</td>
                   <td>{l.numero_lote || '—'}</td>
                   <td>{l.local_armazenamento || '—'}</td>
+                  <td><button onClick={() => cancelarItem(l)} title="Cancelar etiqueta" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626' }}><Trash2 size={14} /></button></td>
                 </tr>) })}
           </tbody>
         </table>
@@ -240,6 +257,18 @@ function TabLeitura({ loja, toast, user }: any) {
     setInfo(null); setCodigo(''); setQtd(''); loadRecentes()
   }
 
+  const podeEstornar = ['super_admin', 'manager', 'admin', 'gestor', 'diretor'].includes((user?.role || '').toLowerCase())
+  const estornar = async () => {
+    if (!info) return
+    if (!confirm(`Desfazer a saída de "${info.produto_nome}" e devolver ao estoque?`)) return
+    setBusy(true)
+    const { data, error } = await sb.rpc('item_estornar', { p_codigo: info.codigo, p_por: user?.name || null })
+    setBusy(false)
+    if (error || !data?.ok) { toast(data?.erro || 'Erro ao estornar.', 'error'); return }
+    toast(`Saída desfeita · ${data.produto_nome} devolvido ao estoque. ↩️`)
+    setInfo(null); setCodigo(''); loadRecentes()
+  }
+
   const isItem = info?.tipo === 'item'
   const jaSaiu = info && info.status && info.status !== 'disponivel'
 
@@ -267,7 +296,10 @@ function TabLeitura({ loja, toast, user }: any) {
               <div style={{ fontSize: 11, color: '#9ca3af' }}>{isItem ? `este item · ${info.itens_disponiveis} un. disponíveis` : 'saldo do lote'} · produto: {info.saldo_produto}</div>
             </div>
           </div>
-          {jaSaiu && <div style={{ marginTop: 8, display: 'flex', gap: 6, alignItems: 'center', fontSize: 12.5, color: '#B91C1C', background: '#FEE2E2', padding: '.4rem .7rem', borderRadius: 8, fontWeight: 700 }}><AlertTriangle size={14} />Este item já saiu do estoque{info.consumido_por ? ` (por ${info.consumido_por})` : ''}.</div>}
+          {jaSaiu && <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', fontSize: 12.5, color: '#B91C1C', background: '#FEE2E2', padding: '.5rem .7rem', borderRadius: 8, fontWeight: 700 }}>
+            <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}><AlertTriangle size={14} />Este item já saiu do estoque{info.consumido_por ? ` (por ${info.consumido_por})` : ''}.</span>
+            {isItem && info.status === 'consumido' && podeEstornar && <button onClick={estornar} disabled={busy} style={{ ...btn('#B45309'), padding: '.4rem .8rem' }}><Undo2 size={14} />Estornar (desfazer saída)</button>}
+          </div>}
           {info.data_validade && <div style={{ marginTop: 6, fontSize: 12.5, color: info.vence_em_dias != null && info.vence_em_dias <= 7 ? '#DC2626' : '#6b7280', fontWeight: info.vence_em_dias != null && info.vence_em_dias <= 7 ? 700 : 400 }}>Validade: {fmtD(info.data_validade)}{info.vence_em_dias != null ? ` — vence em ${info.vence_em_dias} dia(s)` : ''}</div>}
           {!jaSaiu && !info.fifo_ok && <div style={{ marginTop: 8, display: 'flex', gap: 6, alignItems: 'center', fontSize: 12.5, color: '#B45309', background: '#FEF3C7', padding: '.4rem .7rem', borderRadius: 8, fontWeight: 600 }}><AlertTriangle size={14} />Não é o {isItem ? 'item' : 'lote'} mais antigo (FIFO). Sugerido: {info.fifo_sugerido_codigo} (val. {fmtD(info.fifo_sugerido_validade)})</div>}
 
