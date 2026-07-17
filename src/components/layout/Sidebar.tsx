@@ -29,6 +29,7 @@ const MENU_TOP: NavItem[] = [
   { id: 'notificacoes', label: 'Central de Notificações', icon: <Bell size={13} /> },
   { id: 'caixas',      label: '🗄️ Caixas & Despesas',   icon: <FileText size={13} /> },
   { id: 'recebimento',  label: '📥 Recebimento Inteligente', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>📥</span> },
+  { id: 'etiquetas',    label: '📱 Etiquetas & Leitura', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>📱</span> },
   { id: 'relatorios-precos', label: '📊 Relatório de Compras', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>📊</span> },
   { id: 'pendencias',  label: 'Pendências & OS',    icon: <FileText size={13} />, badge: '7' },
   { id: 'gamificacao', label: 'Gamificação',         icon: <Trophy size={13} /> },

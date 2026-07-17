@@ -47,6 +47,7 @@ import CampanhasPage from './pages/campanhas/CampanhasPage'
 import ControleAgentePage from './pages/agente-controle/ControleAgentePage'
 import RelatoriosPrecosPage from './pages/relatorios-precos/RelatoriosPrecosPage'
 import RecebimentoPage from './pages/recebimento/RecebimentoPage'
+import EtiquetasPage from './pages/etiquetas/EtiquetasPage'
 import TarefasPage from './pages/tarefas/TarefasPage'
 import ChecklistsPage from './pages/checklists/ChecklistsPage'
 import PautaReuniaoPage from './pages/pautas/PautaReuniaoPage'
@@ -107,6 +108,7 @@ export type PageId =
   | 'agente-controle'
   | 'relatorios-precos'
   | 'recebimento'
+  | 'etiquetas'
 
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Dashboard',
@@ -159,6 +161,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'agente-controle': 'Controle do Agente',
   'relatorios-precos': 'Relatório de Compras',
   recebimento: 'Recebimento Inteligente',
+  etiquetas: 'Etiquetas & Leitura',
 }
 
 function PageContent({ page }: { page: PageId }) {
@@ -205,6 +208,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'agente-controle':      return <ControleAgentePage />
     case 'relatorios-precos':    return <RelatoriosPrecosPage />
     case 'recebimento':          return <RecebimentoPage />
+    case 'etiquetas':            return <EtiquetasPage />
     case 'tarefas':              return <TarefasPage />
     case 'checklists':           return <ChecklistsPage />
     case 'pauta-reuniao':        return <PautaReuniaoPage />
