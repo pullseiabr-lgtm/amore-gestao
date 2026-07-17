@@ -16,6 +16,12 @@ const card: React.CSSProperties = { background: '#fff', border: '1px solid #e5e7
 const inp: React.CSSProperties = { padding: '.5rem .7rem', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, width: '100%' }
 const btn = (bg: string): React.CSSProperties => ({ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '.55rem 1rem', borderRadius: 10, border: 'none', background: bg, color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 13 })
 const fmtD = (d: any) => d ? new Date(d + 'T00:00').toLocaleDateString('pt-BR') : '—'
+function baixarCSV(nome: string, colunas: string[], linhas: any[][]) {
+  const esc = (v: any) => { const s = String(v ?? ''); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
+  const csv = [colunas.join(';'), ...linhas.map(l => l.map(esc).join(';'))].join('\r\n')
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; a.click(); URL.revokeObjectURL(a.href)
+}
 
 async function qrDataURL(text: string) { try { return await QRCode.toDataURL(text, { margin: 1, width: 180 }) } catch { return '' } }
 function barcodeDataURL(text: string) {
@@ -65,7 +71,7 @@ async function imprimirItens(itens: any[], loja: string) {
 export default function EtiquetasPage() {
   const { toast } = useToast()
   const { user } = useAuth()
-  const [tab, setTab] = useState<'etiquetas' | 'leitura' | 'transferencia' | 'inventario' | 'relatorios'>('etiquetas')
+  const [tab, setTab] = useState<'etiquetas' | 'leitura' | 'transferencia' | 'inventario' | 'relatorios' | 'historico'>('etiquetas')
   const [loja, setLoja] = useState('Amore Paiva')
   return (
     <div style={{ padding: '1rem 0' }}>
@@ -79,13 +85,15 @@ export default function EtiquetasPage() {
           <button onClick={() => setTab('transferencia')} style={{ ...btn(tab === 'transferencia' ? '#6B1212' : '#e5e7eb'), color: tab === 'transferencia' ? '#fff' : '#374151' }}><ArrowRightLeft size={15} />Transferência</button>
           <button onClick={() => setTab('inventario')} style={{ ...btn(tab === 'inventario' ? '#6B1212' : '#e5e7eb'), color: tab === 'inventario' ? '#fff' : '#374151' }}><ClipboardList size={15} />Inventário</button>
           <button onClick={() => setTab('relatorios')} style={{ ...btn(tab === 'relatorios' ? '#6B1212' : '#e5e7eb'), color: tab === 'relatorios' ? '#fff' : '#374151' }}><BarChart3 size={15} />Relatórios</button>
+          <button onClick={() => setTab('historico')} style={{ ...btn(tab === 'historico' ? '#6B1212' : '#e5e7eb'), color: tab === 'historico' ? '#fff' : '#374151' }}><Clock size={15} />Histórico</button>
         </div>
       </div>
       {tab === 'etiquetas' ? <TabEtiquetas loja={loja} toast={toast} user={user} />
         : tab === 'leitura' ? <TabLeitura loja={loja} toast={toast} user={user} />
         : tab === 'transferencia' ? <TabTransferencia loja={loja} toast={toast} user={user} />
         : tab === 'inventario' ? <TabInventario loja={loja} toast={toast} user={user} />
-        : <TabRelatorios loja={loja} toast={toast} />}
+        : tab === 'relatorios' ? <TabRelatorios loja={loja} toast={toast} user={user} />
+        : <TabHistorico loja={loja} />}
     </div>
   )
 }
@@ -494,11 +502,35 @@ function TabInventario({ loja, toast, user }: any) {
 }
 
 // ─────────────────────────────────────────── Relatórios (vencimentos + consumo)
-function TabRelatorios({ loja, toast }: any) {
+function TabRelatorios({ loja, toast, user }: any) {
   const hoje = new Date().toISOString().slice(0, 10)
   const mesAtras = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)
   const [vencendo, setVencendo] = useState<any[]>([])
-  const [dias, setDias] = useState(7)
+  const [dias, setDias] = useState(8)
+  // destinatários do alerta de vencimento
+  const [dests, setDests] = useState<any[]>([])
+  const [novoDest, setNovoDest] = useState({ nome: '', whatsapp: '', loja: 'Todas' })
+  const [testeNum, setTesteNum] = useState('')
+  const loadDests = useCallback(async () => { const { data } = await sb.from('estoque_alerta_destinatarios').select('*').order('created_at'); setDests(data || []) }, [])
+  useEffect(() => { loadDests() }, [loadDests])
+  const addDest = async () => {
+    if (!novoDest.whatsapp.trim()) { toast('Informe o WhatsApp.', 'error'); return }
+    const { error } = await sb.from('estoque_alerta_destinatarios').insert({ nome: novoDest.nome || null, whatsapp: novoDest.whatsapp.replace(/\D/g, ''), loja: novoDest.loja, created_by: user?.name || null })
+    if (error) { toast('Erro ao adicionar.', 'error'); return }
+    setNovoDest({ nome: '', whatsapp: '', loja: 'Todas' }); loadDests()
+  }
+  const delDest = async (id: string) => { await sb.from('estoque_alerta_destinatarios').delete().eq('id', id); loadDests() }
+  const enviarAlerta = async () => {
+    const { data, error } = await sb.rpc('vencimento_disparar', { p_dias: 8 })
+    if (error || !data?.ok) { toast('Erro ao disparar alerta.', 'error'); return }
+    toast(data.enviados > 0 ? `${data.enviados} alerta(s) na fila — o WhatsApp envia em ~90s. 📲` : 'Nenhum item vencendo em 8 dias, ou sem destinatários ativos.')
+  }
+  const enviarTeste = async () => {
+    if (!testeNum.trim()) { toast('Informe o número para o teste.', 'error'); return }
+    const { data, error } = await sb.rpc('vencimento_enviar_numero', { p_loja: loja, p_numero: testeNum.replace(/\D/g, ''), p_dias: 8 })
+    if (error || !data?.ok) { toast(data?.erro || 'Erro no teste.', 'error'); return }
+    toast('Alerta de teste na fila — chega no WhatsApp em ~90s. 📲'); setTesteNum('')
+  }
   const [ini, setIni] = useState(mesAtras)
   const [fim, setFim] = useState(hoje)
   const [rel, setRel] = useState<any | null>(null)
@@ -531,7 +563,7 @@ function TabRelatorios({ loja, toast }: any) {
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <b style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={16} style={{ color: '#DC2626' }} />Vencendo em até
-            <select value={dias} onChange={e => setDias(Number(e.target.value))} style={{ ...inp, width: 'auto', display: 'inline-block' }}>{[3, 7, 15, 30].map(d => <option key={d} value={d}>{d} dias</option>)}</select>
+            <select value={dias} onChange={e => setDias(Number(e.target.value))} style={{ ...inp, width: 'auto', display: 'inline-block' }}>{[3, 8, 15, 30].map(d => <option key={d} value={d}>{d} dias</option>)}</select>
             ({vencendo.length})</b>
           <button onClick={loadVencendo} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><RefreshCw size={15} /></button>
         </div>
@@ -544,6 +576,31 @@ function TabRelatorios({ loja, toast }: any) {
                 <span style={{ fontWeight: 700, color: venc ? '#DC2626' : '#B45309' }}>{venc ? `vencido há ${-d}d` : `${d}d`}</span>
                 <span style={{ color: '#6b7280', fontSize: 12 }}>{fmtD(v.data_validade)}</span>
               </div>) })}
+        </div>
+      </div>
+
+      {/* alerta de vencimento no WhatsApp */}
+      <div style={card}>
+        <b style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>📲 Alerta de vencimento no WhatsApp</b>
+        <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '4px 0 10px' }}>Automático todo dia às 08h com os itens vencendo em até <b>8 dias</b>. Cadastre quem recebe e teste abaixo.</p>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 10 }}>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Nome</label><input style={{ ...inp, width: 130 }} value={novoDest.nome} onChange={e => setNovoDest({ ...novoDest, nome: e.target.value })} placeholder="Ex.: Wagner" /></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>WhatsApp</label><input style={{ ...inp, width: 150 }} value={novoDest.whatsapp} onChange={e => setNovoDest({ ...novoDest, whatsapp: e.target.value })} placeholder="5581999999999" /></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Unidade</label><select style={{ ...inp, width: 'auto' }} value={novoDest.loja} onChange={e => setNovoDest({ ...novoDest, loja: e.target.value })}><option>Todas</option>{LOJAS.map(l => <option key={l}>{l}</option>)}</select></div>
+          <button onClick={addDest} style={btn('#7C3AED')}><Plus size={15} />Adicionar</button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {dests.length === 0 ? <div style={{ fontSize: 12.5, color: '#9ca3af' }}>Nenhum destinatário. Adicione ao menos um para o envio automático.</div> :
+            dests.map(d => <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, background: '#f9fafb', padding: '.4rem .7rem', borderRadius: 8 }}>
+              <span style={{ flex: 1 }}><b>{d.nome || 'Sem nome'}</b> <span style={{ color: '#9ca3af' }}>· {d.whatsapp} · {d.loja}</span></span>
+              <button onClick={() => delDest(d.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626' }}><Trash2 size={14} /></button>
+            </div>)}
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 12, borderTop: '1px solid #f3f4f6', paddingTop: 12 }}>
+          <button onClick={enviarAlerta} style={btn('#1D9E75')}><ScanLine size={15} />Enviar alerta agora</button>
+          <span style={{ fontSize: 12, color: '#9ca3af' }}>ou teste em um número:</span>
+          <input style={{ ...inp, width: 160 }} value={testeNum} onChange={e => setTesteNum(e.target.value)} placeholder="5581999999999" />
+          <button onClick={enviarTeste} style={{ ...btn('#e5e7eb'), color: '#374151' }}>Enviar teste</button>
         </div>
       </div>
 
@@ -563,10 +620,11 @@ function TabRelatorios({ loja, toast }: any) {
             <div style={{ background: '#DCFCE7', borderRadius: 10, padding: '8px 14px' }}><div style={{ fontSize: 11, color: '#166534' }}>Saídas</div><div style={{ fontSize: 20, fontWeight: 800, color: '#166534' }}>{rel.total_saidas}</div></div>
             <div style={{ background: '#FEE2E2', borderRadius: 10, padding: '8px 14px' }}><div style={{ fontSize: 11, color: '#B91C1C' }}>Perdas</div><div style={{ fontSize: 20, fontWeight: 800, color: '#B91C1C' }}>{rel.total_perdas}</div></div>
           </div>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {[['produto', 'Por produto'], ['setor', 'Por setor'], ['colaborador', 'Por colaborador']].map(([v, l]) => (
               <button key={v} onClick={() => setAba(v as any)} style={{ ...btn(aba === v ? '#6B1212' : '#e5e7eb'), color: aba === v ? '#fff' : '#374151', padding: '.4rem .8rem', fontSize: 12 }}>{l}</button>
             ))}
+            <button onClick={() => baixarCSV(`consumo_${aba}_${ini}_a_${fim}.csv`, [aba === 'produto' ? 'Produto' : aba === 'setor' ? 'Setor' : 'Colaborador', 'Qtd', 'Saidas', 'Perdas', 'Movs'], lista.map((x: any) => [rotulo(x), x.qtd, x.saidas || 0, x.perdas || 0, x.mov]))} style={{ ...btn('#e5e7eb'), color: '#374151', padding: '.4rem .8rem', fontSize: 12, marginLeft: 'auto' }}>⬇ CSV</button>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 420 }}>
@@ -588,5 +646,70 @@ function TabRelatorios({ loja, toast }: any) {
         </>}
       </div>
     </>
+  )
+}
+
+// ─────────────────────────────────────────── Histórico consolidado
+const TIPO_MOV: Record<string, { l: string; c: string }> = {
+  entrada: { l: 'Entrada', c: '#166534' }, saida: { l: 'Saída', c: '#B91C1C' }, perda: { l: 'Perda', c: '#DC2626' },
+  transferencia: { l: 'Transferência', c: '#7C3AED' }, estorno: { l: 'Estorno', c: '#B45309' }, ajuste: { l: 'Ajuste', c: '#6b7280' },
+}
+function TabHistorico({ loja }: any) {
+  const hoje = new Date().toISOString().slice(0, 10)
+  const mesAtras = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)
+  const [ini, setIni] = useState(mesAtras)
+  const [fim, setFim] = useState(hoje)
+  const [tipo, setTipo] = useState('')
+  const [busca, setBusca] = useState('')
+  const [movs, setMovs] = useState<any[]>([])
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(async () => {
+    setBusy(true)
+    let query = sb.from('estoque_movimentacoes').select('*').eq('loja', loja)
+      .gte('created_at', ini + 'T00:00:00').lte('created_at', fim + 'T23:59:59').order('created_at', { ascending: false }).limit(500)
+    if (tipo) query = query.eq('tipo', tipo)
+    const { data } = await query
+    setMovs(data || []); setBusy(false)
+  }, [loja, ini, fim, tipo])
+  useEffect(() => { load() }, [load])
+
+  const filtrados = movs.filter(m => !busca || (m.produto_nome || '').toLowerCase().includes(busca.toLowerCase()) || (m.created_by || '').toLowerCase().includes(busca.toLowerCase()))
+
+  return (
+    <div style={card}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+        <b style={{ fontSize: 14 }}>Histórico de movimentações ({filtrados.length})</b>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input type="date" style={{ ...inp, width: 'auto' }} value={ini} onChange={e => setIni(e.target.value)} />
+          <span style={{ color: '#9ca3af' }}>até</span>
+          <input type="date" style={{ ...inp, width: 'auto' }} value={fim} onChange={e => setFim(e.target.value)} />
+          <select style={{ ...inp, width: 'auto' }} value={tipo} onChange={e => setTipo(e.target.value)}><option value="">Todos os tipos</option>{Object.entries(TIPO_MOV).map(([v, o]) => <option key={v} value={v}>{o.l}</option>)}</select>
+          <input style={{ ...inp, width: 140 }} placeholder="Buscar produto/pessoa" value={busca} onChange={e => setBusca(e.target.value)} />
+          <button onClick={() => baixarCSV(`historico_${loja}_${ini}_a_${fim}.csv`, ['Data', 'Tipo', 'Produto', 'Qtd', 'Unid', 'Setor', 'Destino', 'Responsável', 'Motivo', 'Código'], filtrados.map(m => [new Date(m.created_at).toLocaleString('pt-BR'), TIPO_MOV[m.tipo]?.l || m.tipo, m.produto_nome, m.quantidade, m.unidade, m.setor || '', m.unidade_destino || '', m.created_by || '', m.motivo || '', m.lote_codigo || '']))} style={{ ...btn('#e5e7eb'), color: '#374151', padding: '.5rem .8rem', fontSize: 12 }}>⬇ CSV</button>
+        </div>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 760 }}>
+          <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 11, textTransform: 'uppercase' }}>
+            <th style={{ padding: 6 }}>Data</th><th>Tipo</th><th>Produto</th><th>Qtd</th><th>Setor/Destino</th><th>Responsável</th><th>Motivo</th>
+          </tr></thead>
+          <tbody>
+            {busy ? <tr><td colSpan={7} style={{ padding: 16, color: '#9ca3af', textAlign: 'center' }}>Carregando…</td></tr> :
+              filtrados.length === 0 ? <tr><td colSpan={7} style={{ padding: 16, color: '#9ca3af', textAlign: 'center' }}>Sem movimentações no período.</td></tr> :
+                filtrados.map(m => { const t = TIPO_MOV[m.tipo] || { l: m.tipo, c: '#6b7280' }; return (
+                  <tr key={m.id} style={{ borderTop: '1px solid #f3f4f6' }}>
+                    <td style={{ whiteSpace: 'nowrap', color: '#6b7280' }}>{new Date(m.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                    <td><span style={{ fontSize: 11, fontWeight: 700, color: t.c }}>{t.l}</span></td>
+                    <td style={{ fontWeight: 600 }}>{m.produto_nome}</td>
+                    <td>{m.quantidade} {m.unidade}</td>
+                    <td>{m.setor || m.unidade_destino || '—'}</td>
+                    <td>{m.created_by || '—'}</td>
+                    <td style={{ color: '#6b7280', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.motivo || '—'}</td>
+                  </tr>) })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }
