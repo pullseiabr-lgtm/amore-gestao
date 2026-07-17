@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { QrCode, Printer, Camera, ScanLine, PackageMinus, RefreshCw, Plus, AlertTriangle, Check, X, Tag, Trash2, Undo2, ArrowRightLeft, ClipboardList, BarChart3, Clock } from 'lucide-react'
+import { QrCode, Printer, Camera, ScanLine, PackageMinus, RefreshCw, Plus, AlertTriangle, Check, X, Tag, Trash2, Undo2, ArrowRightLeft, ClipboardList, BarChart3, Clock, Scissors } from 'lucide-react'
 import QRCode from 'qrcode'
 import JsBarcode from 'jsbarcode'
 import { Html5Qrcode } from 'html5-qrcode'
@@ -13,6 +13,8 @@ const SETORES = ['Cozinha', 'Salão', 'Bar', 'Confeitaria', 'Estoque', 'Limpeza'
 const MOTIVOS = [['producao', 'Produção'], ['venda', 'Venda'], ['consumo_interno', 'Consumo interno'], ['degustacao', 'Degustação'], ['perda', 'Perda'], ['avaria', 'Avaria'], ['vencimento', 'Vencimento'], ['ajuste', 'Ajuste de estoque'], ['outro', 'Outro']]
 const PERDA_TIPOS = ['perda', 'avaria', 'vencimento', 'vencido']
 const UNIDADES = ['un', 'kg', 'g', 'L', 'ml', 'cx', 'pct', 'dz']
+const SB_URL = 'https://xdwnsqkzgopymufsuccr.supabase.co'
+const fmt = (n: any) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const card: React.CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: '1.1rem 1.3rem', marginBottom: 14 }
 const inp: React.CSSProperties = { padding: '.5rem .7rem', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, width: '100%' }
 const btn = (bg: string): React.CSSProperties => ({ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '.55rem 1rem', borderRadius: 10, border: 'none', background: bg, color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 13 })
@@ -90,12 +92,13 @@ export default function EtiquetasPage() {
     { id: 'consulta', icon: '🔍', label: 'Consulta', desc: 'Ver produto', c: '#1D4ED8', bg: '#DBEAFE' },
   ].filter(o => podeOp(o.id))
   const TOOLS = [
+    { id: 'beneficiamento', icon: <Scissors size={15} />, label: 'Beneficiamento' },
     { id: 'etiquetas', icon: <QrCode size={15} />, label: 'Etiquetas' },
     { id: 'inventario', icon: <ClipboardList size={15} />, label: 'Inventário' },
     { id: 'relatorios', icon: <BarChart3 size={15} />, label: 'Relatórios' },
     { id: 'historico', icon: <Clock size={15} />, label: 'Histórico' },
   ]
-  const TITULOS: Record<string, string> = { entrada: '📥 Entrada de Estoque', saida: '📤 Saída de Estoque', transferencia: '🔄 Transferência', consulta: '🔍 Consulta', etiquetas: '🖨️ Etiquetas', inventario: '📋 Inventário', relatorios: '📊 Relatórios', historico: '🕘 Histórico' }
+  const TITULOS: Record<string, string> = { entrada: '📥 Entrada de Estoque', saida: '📤 Saída de Estoque', transferencia: '🔄 Transferência', consulta: '🔍 Consulta', beneficiamento: '⚙️ Beneficiamento', etiquetas: '🖨️ Etiquetas', inventario: '📋 Inventário', relatorios: '📊 Relatórios', historico: '🕘 Histórico' }
 
   return (
     <div style={{ padding: '1rem 0' }}>
@@ -136,6 +139,7 @@ export default function EtiquetasPage() {
           : tab === 'saida' ? <TabLeitura loja={loja} toast={toast} user={user} />
           : tab === 'transferencia' ? <TabTransferencia loja={loja} toast={toast} user={user} />
           : tab === 'consulta' ? <TabConsulta loja={loja} toast={toast} />
+          : tab === 'beneficiamento' ? <TabBeneficiamento loja={loja} toast={toast} user={user} />
           : tab === 'etiquetas' ? <TabEtiquetas loja={loja} toast={toast} user={user} />
           : tab === 'inventario' ? <TabInventario loja={loja} toast={toast} user={user} />
           : tab === 'relatorios' ? <TabRelatorios loja={loja} toast={toast} user={user} />
@@ -697,6 +701,170 @@ function TabRelatorios({ loja, toast, user }: any) {
         </>}
       </div>
     </>
+  )
+}
+
+// ─────────────────────────────────────────── Beneficiamento / Conversão
+const DESTINOS = ['descarte', 'reaproveitamento', 'caldo', 'molho', 'recheio', 'alimentacao_colaborador', 'doacao', 'devolucao_fornecedor', 'amostra', 'outro']
+const nnum = (n: any) => Number(n) || 0
+function TabBeneficiamento({ loja, toast, user }: any) {
+  const [prods, setProds] = useState<any[]>([])
+  const [origem, setOrigem] = useState<any>({ produto_id: '', qtd_bruta: '', custo_kg: '', peso_antes: '', lote: '', validade: '', tipo_beneficiamento: '' })
+  const [saidas, setSaidas] = useState<any[]>([{ tipo: 'final', produto_nome: '', quantidade: '', unidade: 'kg', destino: '', custo_atribuido: '', validade: '', local: '' }])
+  const [meta, setMeta] = useState<any>({ setor: '', colaborador: '', conferente: '', observacao: '' })
+  const [justificativa, setJustificativa] = useState('')
+  const [fotos, setFotos] = useState<string[]>([])
+  const [upBusy, setUpBusy] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [novos, setNovos] = useState<string[]>([])
+
+  useEffect(() => { sb.from('estoque_produtos').select('id,nome,gramatura,preco_unitario,nivel_atual,rend_min,rend_max').eq('loja', loja).eq('ativo', true).order('nome').then(({ data }: any) => setProds(data || [])) }, [loja])
+  useEffect(() => { if (user?.name && !meta.colaborador) setMeta((m: any) => ({ ...m, colaborador: user.name })) }, [user])
+  const prodOrigem = prods.find(p => p.id === origem.produto_id)
+  useEffect(() => { if (prodOrigem) setOrigem((o: any) => ({ ...o, custo_kg: o.custo_kg || prodOrigem.preco_unitario || '' })) /* eslint-disable-next-line */ }, [origem.produto_id])
+
+  const upSaida = (i: number, patch: any) => setSaidas(a => a.map((x, idx) => idx === i ? { ...x, ...patch } : x))
+  const addSaida = (tipo: string) => setSaidas(a => [...a, { tipo, produto_nome: '', quantidade: '', unidade: 'kg', destino: tipo === 'perda' ? 'descarte' : '', custo_atribuido: '', validade: '', local: '' }])
+  const rmSaida = (i: number) => setSaidas(a => a.filter((_, idx) => idx !== i))
+
+  const pesoAntes = nnum(origem.peso_antes) || nnum(origem.qtd_bruta)
+  const pesoFinal = saidas.filter(s => s.tipo === 'final').reduce((a, s) => a + nnum(s.quantidade), 0)
+  const pesoSub = saidas.filter(s => s.tipo === 'subproduto').reduce((a, s) => a + nnum(s.quantidade), 0)
+  const pesoPerda = saidas.filter(s => s.tipo === 'perda').reduce((a, s) => a + nnum(s.quantidade), 0)
+  const custoBruto = nnum(origem.qtd_bruta) * nnum(origem.custo_kg)
+  const custoSub = saidas.filter(s => s.tipo === 'subproduto').reduce((a, s) => a + nnum(s.custo_atribuido), 0)
+  const custoLiq = custoBruto - custoSub
+  const custoKg = pesoFinal > 0 ? custoLiq / pesoFinal : 0
+  const rend = pesoAntes > 0 ? 100 * pesoFinal / pesoAntes : 0
+  const perdaPct = pesoAntes > 0 ? 100 * pesoPerda / pesoAntes : 0
+  const foraPadrao = prodOrigem?.rend_min != null && prodOrigem?.rend_max != null && pesoFinal > 0 && (rend < prodOrigem.rend_min || rend > prodOrigem.rend_max)
+  const somaSaidas = pesoFinal + pesoSub + pesoPerda
+  const divergePeso = pesoAntes > 0 && Math.abs(somaSaidas - pesoAntes) > 0.05
+
+  const upFoto = async (f: File) => {
+    setUpBusy(true)
+    try {
+      const ext = (f.name.split('.').pop() || 'jpg').toLowerCase()
+      const path = `beneficiamento/${crypto.randomUUID()}.${ext}`
+      const { error } = await sb.storage.from('anexos').upload(path, f, { upsert: true, contentType: f.type })
+      if (error) { toast('Erro ao enviar foto.', 'error'); setUpBusy(false); return }
+      setFotos(fs => [...fs, `${SB_URL}/storage/v1/object/public/anexos/${path}`])
+    } catch {} setUpBusy(false)
+  }
+
+  const confirmar = async () => {
+    if (!origem.produto_id || nnum(origem.qtd_bruta) <= 0) { toast('Selecione a origem e a quantidade bruta.', 'error'); return }
+    if (pesoFinal <= 0) { toast('Informe ao menos um produto final.', 'error'); return }
+    if (foraPadrao && !justificativa.trim()) { toast('Rendimento fora do padrão — informe a justificativa.', 'error'); return }
+    setBusy(true)
+    const { data, error } = await sb.rpc('beneficiamento_registrar', {
+      p_loja: loja,
+      p_origem: { produto_id: origem.produto_id, lote: origem.lote || null, validade: origem.validade || null, qtd_bruta: nnum(origem.qtd_bruta), unidade: prodOrigem?.gramatura || 'kg', peso_antes: pesoAntes, custo_kg: nnum(origem.custo_kg), tipo_beneficiamento: origem.tipo_beneficiamento || null },
+      p_saidas: saidas.filter(s => nnum(s.quantidade) > 0).map(s => ({ tipo: s.tipo, produto_nome: s.produto_nome, quantidade: nnum(s.quantidade), unidade: s.unidade, destino: s.destino || null, custo_atribuido: s.custo_atribuido ? nnum(s.custo_atribuido) : null, validade: s.validade || null, local: s.local || null })),
+      p_meta: meta, p_fotos: fotos, p_justificativa: justificativa || null,
+    })
+    setBusy(false)
+    if (error || !data?.ok) { toast(data?.erro || 'Erro ao registrar beneficiamento.', 'error'); return }
+    toast(`Beneficiamento nº ${data.numero} · rendimento ${data.rendimento}% · custo R$ ${Number(data.custo_kg_benef).toFixed(2)}/kg ✅`)
+    setNovos(data.codigos || [])
+  }
+  const imprimirNovas = async () => { if (!novos.length) return; const { data } = await sb.from('estoque_itens').select('*').in('codigo', novos); imprimirItens(data || [], loja) }
+
+  if (novos.length) return (
+    <div style={card}>
+      <div style={{ textAlign: 'center', padding: 12 }}>
+        <div style={{ fontSize: 40 }}>✅</div>
+        <b style={{ fontSize: 15 }}>Beneficiamento registrado!</b>
+        <p style={{ fontSize: 13, color: '#6b7280' }}>Rendimento {rend.toFixed(1)}% · custo real R$ {custoKg.toFixed(2)}/kg. Gerou {novos.length} etiqueta(s).</p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+          <button onClick={imprimirNovas} style={btn('#6B1212')}><Printer size={16} />Imprimir etiquetas</button>
+          <button onClick={() => { setNovos([]); setOrigem({ produto_id: '', qtd_bruta: '', custo_kg: '', peso_antes: '', lote: '', validade: '', tipo_beneficiamento: '' }); setSaidas([{ tipo: 'final', produto_nome: '', quantidade: '', unidade: 'kg', destino: '', custo_atribuido: '', validade: '', local: '' }]); setFotos([]); setJustificativa('') }} style={{ ...btn('#e5e7eb'), color: '#374151' }}>Novo beneficiamento</button>
+        </div>
+      </div>
+    </div>
+  )
+
+  const TCOR: any = { final: '#166534', subproduto: '#B45309', perda: '#DC2626' }
+  return (
+    <div style={card}>
+      <b style={{ fontSize: 14 }}>Beneficiamento / Conversão</b>
+      <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '4px 0 10px' }}>Transforme um produto bruto em produtos finais, subprodutos e perdas — com rendimento e custo real calculados.</p>
+
+      {/* origem */}
+      <div style={{ background: '#faf8f5', border: '1px solid #ece4dd', borderRadius: 10, padding: 12 }}>
+        <b style={{ fontSize: 12.5 }}>Matéria-prima (origem)</b>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px,1fr))', gap: 8, marginTop: 8 }}>
+          <div style={{ gridColumn: 'span 2' }}><label style={{ fontSize: 11, color: '#9ca3af' }}>Produto de origem</label>
+            <select style={inp} value={origem.produto_id} onChange={e => setOrigem({ ...origem, produto_id: e.target.value })}><option value="">Selecione…</option>{prods.map(p => <option key={p.id} value={p.id}>{p.nome} (estoque {p.nivel_atual})</option>)}</select></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Qtd bruta ({prodOrigem?.gramatura || 'kg'})</label><input style={inp} type="number" step="0.01" value={origem.qtd_bruta} onChange={e => setOrigem({ ...origem, qtd_bruta: e.target.value })} /></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Custo por {prodOrigem?.gramatura || 'kg'} (R$)</label><input style={inp} type="number" step="0.01" value={origem.custo_kg} onChange={e => setOrigem({ ...origem, custo_kg: e.target.value })} /></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Peso antes (opcional)</label><input style={inp} type="number" step="0.01" value={origem.peso_antes} onChange={e => setOrigem({ ...origem, peso_antes: e.target.value })} placeholder={String(origem.qtd_bruta || '')} /></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Tipo de beneficiamento</label><input style={inp} value={origem.tipo_beneficiamento} onChange={e => setOrigem({ ...origem, tipo_beneficiamento: e.target.value })} placeholder="Limpeza, porcionamento…" /></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Lote origem</label><input style={inp} value={origem.lote} onChange={e => setOrigem({ ...origem, lote: e.target.value })} /></div>
+        </div>
+      </div>
+
+      {/* saídas */}
+      <div style={{ marginTop: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+          <b style={{ fontSize: 12.5 }}>Produtos gerados</b>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => addSaida('final')} style={{ ...btn('#DCFCE7'), color: '#166534', padding: '.35rem .7rem', fontSize: 12 }}><Plus size={13} />Final</button>
+            <button onClick={() => addSaida('subproduto')} style={{ ...btn('#FEF3C7'), color: '#B45309', padding: '.35rem .7rem', fontSize: 12 }}><Plus size={13} />Subproduto</button>
+            <button onClick={() => addSaida('perda')} style={{ ...btn('#FEE2E2'), color: '#DC2626', padding: '.35rem .7rem', fontSize: 12 }}><Plus size={13} />Perda</button>
+          </div>
+        </div>
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {saidas.map((s, i) => (
+            <div key={i} style={{ border: '1px solid #e5e7eb', borderLeft: `4px solid ${TCOR[s.tipo]}`, borderRadius: 10, padding: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: TCOR[s.tipo] }}>{s.tipo === 'final' ? 'PRODUTO FINAL' : s.tipo === 'subproduto' ? 'SUBPRODUTO (reaproveitável)' : 'PERDA / RESÍDUO'}</span>
+                {saidas.length > 1 && <button onClick={() => rmSaida(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626' }}><Trash2 size={13} /></button>}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px,1fr))', gap: 6 }}>
+                <div style={{ gridColumn: 'span 2' }}><input style={inp} value={s.produto_nome} onChange={e => upSaida(i, { produto_nome: e.target.value })} placeholder={s.tipo === 'perda' ? 'Descrição do resíduo' : 'Nome do produto'} /></div>
+                <div><input style={inp} type="number" step="0.01" value={s.quantidade} onChange={e => upSaida(i, { quantidade: e.target.value })} placeholder="Qtd" /></div>
+                <div><select style={inp} value={s.unidade} onChange={e => upSaida(i, { unidade: e.target.value })}>{UNIDADES.map(u => <option key={u}>{u}</option>)}</select></div>
+                {s.tipo === 'subproduto' && <div><input style={inp} type="number" step="0.01" value={s.custo_atribuido} onChange={e => upSaida(i, { custo_atribuido: e.target.value })} placeholder="Custo atribuído R$" /></div>}
+                {(s.tipo === 'perda' || s.tipo === 'subproduto') && <div><select style={inp} value={s.destino} onChange={e => upSaida(i, { destino: e.target.value })}><option value="">Destino…</option>{DESTINOS.map(d => <option key={d} value={d}>{d.replace(/_/g, ' ')}</option>)}</select></div>}
+                {s.tipo !== 'perda' && <div><input style={inp} type="date" value={s.validade} onChange={e => upSaida(i, { validade: e.target.value })} /></div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* cálculo */}
+      <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px,1fr))', gap: 8 }}>
+        <div style={{ background: '#DCFCE7', borderRadius: 10, padding: '8px 12px' }}><div style={{ fontSize: 11, color: '#166534' }}>Rendimento</div><div style={{ fontSize: 19, fontWeight: 800, color: foraPadrao ? '#DC2626' : '#166534' }}>{rend.toFixed(1)}%</div></div>
+        <div style={{ background: '#FEE2E2', borderRadius: 10, padding: '8px 12px' }}><div style={{ fontSize: 11, color: '#B91C1C' }}>Perda</div><div style={{ fontSize: 19, fontWeight: 800, color: '#B91C1C' }}>{perdaPct.toFixed(1)}%</div></div>
+        <div style={{ background: '#f9fafb', borderRadius: 10, padding: '8px 12px' }}><div style={{ fontSize: 11, color: '#9ca3af' }}>Custo bruto</div><div style={{ fontSize: 17, fontWeight: 800 }}>{fmt(custoBruto)}</div></div>
+        <div style={{ background: '#EDE9FE', borderRadius: 10, padding: '8px 12px' }}><div style={{ fontSize: 11, color: '#6D28D9' }}>Custo real/kg</div><div style={{ fontSize: 17, fontWeight: 800, color: '#6D28D9' }}>{fmt(custoKg)}</div></div>
+      </div>
+      {divergePeso && <div style={{ marginTop: 8, fontSize: 12, color: '#B45309', background: '#FEF3C7', padding: '.4rem .7rem', borderRadius: 8 }}>⚠️ Soma dos produtos ({somaSaidas.toFixed(2)}) diferente do peso antes ({pesoAntes.toFixed(2)}).</div>}
+      {foraPadrao && <div style={{ marginTop: 8 }}>
+        <div style={{ fontSize: 12.5, color: '#B91C1C', background: '#FEE2E2', padding: '.5rem .7rem', borderRadius: 8, fontWeight: 600, display: 'flex', gap: 6, alignItems: 'center' }}><AlertTriangle size={14} />Rendimento fora do padrão ({prodOrigem.rend_min}–{prodOrigem.rend_max}%). Justifique abaixo.</div>
+        <input style={{ ...inp, marginTop: 6 }} value={justificativa} onChange={e => setJustificativa(e.target.value)} placeholder="Justificativa obrigatória" />
+      </div>}
+
+      {/* conferência + fotos */}
+      <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px,1fr))', gap: 8 }}>
+        <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Setor</label><input style={inp} list="setores-b" value={meta.setor} onChange={e => setMeta({ ...meta, setor: e.target.value })} /><datalist id="setores-b">{SETORES.map(s => <option key={s} value={s} />)}</datalist></div>
+        <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Colaborador</label><input style={inp} value={meta.colaborador} onChange={e => setMeta({ ...meta, colaborador: e.target.value })} /></div>
+        <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Conferente</label><input style={inp} value={meta.conferente} onChange={e => setMeta({ ...meta, conferente: e.target.value })} /></div>
+        <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Observação</label><input style={inp} value={meta.observacao} onChange={e => setMeta({ ...meta, observacao: e.target.value })} /></div>
+      </div>
+      <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, padding: '.5rem .8rem', border: '1px dashed #c4b5a8', borderRadius: 8, cursor: 'pointer', background: '#fff' }}>
+          <Camera size={15} />{upBusy ? 'Enviando…' : 'Anexar foto'}<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) upFoto(f) }} />
+        </label>
+        {fotos.map((f, i) => <a key={i} href={f} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#6B1212' }}>foto {i + 1}</a>)}
+      </div>
+
+      <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+        <button onClick={confirmar} disabled={busy} style={btn('#166534')}><Check size={16} />{busy ? 'Registrando…' : 'Confirmar beneficiamento'}</button>
+      </div>
+    </div>
   )
 }
 
