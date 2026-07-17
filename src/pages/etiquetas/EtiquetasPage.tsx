@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { QrCode, Printer, Camera, ScanLine, PackageMinus, RefreshCw, Plus, AlertTriangle, Check, X, Tag, Trash2, Undo2, ArrowRightLeft, ClipboardList } from 'lucide-react'
+import { QrCode, Printer, Camera, ScanLine, PackageMinus, RefreshCw, Plus, AlertTriangle, Check, X, Tag, Trash2, Undo2, ArrowRightLeft, ClipboardList, BarChart3, Clock } from 'lucide-react'
 import QRCode from 'qrcode'
 import JsBarcode from 'jsbarcode'
 import { Html5Qrcode } from 'html5-qrcode'
@@ -10,6 +10,7 @@ import { useAuth } from '../../contexts/AuthContext'
 const sb = supabase as any
 const LOJAS = ['Amore Paiva', 'Amore CD']
 const SETORES = ['Cozinha', 'Salão', 'Bar', 'Confeitaria', 'Estoque', 'Limpeza', 'Administrativo']
+const MOTIVOS = [['consumo', 'Consumo (retirada)'], ['consumo_interno', 'Consumo interno'], ['perda', 'Perda'], ['avaria', 'Avaria'], ['vencido', 'Vencido']]
 const UNIDADES = ['un', 'kg', 'g', 'L', 'ml', 'cx', 'pct', 'dz']
 const card: React.CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: '1.1rem 1.3rem', marginBottom: 14 }
 const inp: React.CSSProperties = { padding: '.5rem .7rem', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, width: '100%' }
@@ -64,7 +65,7 @@ async function imprimirItens(itens: any[], loja: string) {
 export default function EtiquetasPage() {
   const { toast } = useToast()
   const { user } = useAuth()
-  const [tab, setTab] = useState<'etiquetas' | 'leitura' | 'transferencia' | 'inventario'>('etiquetas')
+  const [tab, setTab] = useState<'etiquetas' | 'leitura' | 'transferencia' | 'inventario' | 'relatorios'>('etiquetas')
   const [loja, setLoja] = useState('Amore Paiva')
   return (
     <div style={{ padding: '1rem 0' }}>
@@ -77,12 +78,14 @@ export default function EtiquetasPage() {
           <button onClick={() => setTab('leitura')} style={{ ...btn(tab === 'leitura' ? '#6B1212' : '#e5e7eb'), color: tab === 'leitura' ? '#fff' : '#374151' }}><ScanLine size={15} />Leitura & Baixa</button>
           <button onClick={() => setTab('transferencia')} style={{ ...btn(tab === 'transferencia' ? '#6B1212' : '#e5e7eb'), color: tab === 'transferencia' ? '#fff' : '#374151' }}><ArrowRightLeft size={15} />Transferência</button>
           <button onClick={() => setTab('inventario')} style={{ ...btn(tab === 'inventario' ? '#6B1212' : '#e5e7eb'), color: tab === 'inventario' ? '#fff' : '#374151' }}><ClipboardList size={15} />Inventário</button>
+          <button onClick={() => setTab('relatorios')} style={{ ...btn(tab === 'relatorios' ? '#6B1212' : '#e5e7eb'), color: tab === 'relatorios' ? '#fff' : '#374151' }}><BarChart3 size={15} />Relatórios</button>
         </div>
       </div>
       {tab === 'etiquetas' ? <TabEtiquetas loja={loja} toast={toast} user={user} />
         : tab === 'leitura' ? <TabLeitura loja={loja} toast={toast} user={user} />
         : tab === 'transferencia' ? <TabTransferencia loja={loja} toast={toast} user={user} />
-        : <TabInventario loja={loja} toast={toast} user={user} />}
+        : tab === 'inventario' ? <TabInventario loja={loja} toast={toast} user={user} />
+        : <TabRelatorios loja={loja} toast={toast} />}
     </div>
   )
 }
@@ -210,6 +213,7 @@ function TabLeitura({ loja, toast, user }: any) {
   const [qtd, setQtd] = useState('')
   const [setor, setSetor] = useState('Cozinha')
   const [colaborador, setColaborador] = useState('')
+  const [motivo, setMotivo] = useState('consumo')
   const [scanning, setScanning] = useState(false)
   const [busy, setBusy] = useState(false)
   const [recentes, setRecentes] = useState<any[]>([])
@@ -250,7 +254,7 @@ function TabLeitura({ loja, toast, user }: any) {
     setBusy(true)
     let resp
     if (info.tipo === 'item') {
-      resp = await sb.rpc('item_baixa', { p_codigo: info.codigo, p_setor: setor, p_colaborador: colaborador || user?.name || 'Leitura', p_motivo: 'Saída por leitura' })
+      resp = await sb.rpc('item_saida', { p_codigo: info.codigo, p_tipo: motivo, p_motivo: null, p_setor: setor, p_colaborador: colaborador || user?.name || 'Leitura' })
     } else {
       if (!qtd || Number(qtd) <= 0) { toast('Informe a quantidade retirada.', 'error'); setBusy(false); return }
       resp = await sb.rpc('baixa_por_leitura', { p_codigo: info.codigo, p_qtd: Number(qtd), p_setor: setor, p_colaborador: colaborador || user?.name || 'Leitura', p_unidade_destino: info.unidade, p_motivo: 'Saída por leitura' })
@@ -310,12 +314,13 @@ function TabLeitura({ loja, toast, user }: any) {
 
           {!jaSaiu && <>
             <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px,1fr))', gap: 8 }}>
+              {isItem && <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Motivo da saída</label><select style={inp} value={motivo} onChange={e => setMotivo(e.target.value)}>{MOTIVOS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>}
               {!isItem && <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Quantidade retirada</label><input style={inp} type="number" step="0.01" value={qtd} onChange={e => setQtd(e.target.value)} autoFocus /></div>}
               <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Setor de destino</label><input style={inp} list="setores" value={setor} onChange={e => setSetor(e.target.value)} /><datalist id="setores">{SETORES.map(s => <option key={s} value={s} />)}</datalist></div>
               <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Colaborador</label><input style={inp} value={colaborador} onChange={e => setColaborador(e.target.value)} /></div>
             </div>
             <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={darBaixa} disabled={busy} style={btn('#1D9E75')}><PackageMinus size={16} />{busy ? 'Registrando…' : isItem ? 'Retirar este item' : 'Confirmar baixa'}</button>
+              <button onClick={darBaixa} disabled={busy} style={btn(['perda', 'avaria', 'vencido'].includes(motivo) && isItem ? '#DC2626' : '#1D9E75')}><PackageMinus size={16} />{busy ? 'Registrando…' : !isItem ? 'Confirmar baixa' : ['perda', 'avaria', 'vencido'].includes(motivo) ? `Registrar ${motivo}` : 'Retirar este item'}</button>
             </div>
           </>}
         </div>}
@@ -485,5 +490,103 @@ function TabInventario({ loja, toast, user }: any) {
         {resultado.faltando_n === 0 && resultado.divergencias_n === 0 && <div style={{ marginTop: 12, fontSize: 13, color: '#166534', background: '#DCFCE7', padding: '.6rem .8rem', borderRadius: 8, fontWeight: 600 }}>✅ Inventário bateu certinho — físico igual ao sistema.</div>}
       </div>}
     </div>
+  )
+}
+
+// ─────────────────────────────────────────── Relatórios (vencimentos + consumo)
+function TabRelatorios({ loja, toast }: any) {
+  const hoje = new Date().toISOString().slice(0, 10)
+  const mesAtras = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)
+  const [vencendo, setVencendo] = useState<any[]>([])
+  const [dias, setDias] = useState(7)
+  const [ini, setIni] = useState(mesAtras)
+  const [fim, setFim] = useState(hoje)
+  const [rel, setRel] = useState<any | null>(null)
+  const [aba, setAba] = useState<'produto' | 'setor' | 'colaborador'>('produto')
+  const [busy, setBusy] = useState(false)
+
+  const loadVencendo = useCallback(async () => {
+    const limite = new Date(Date.now() + dias * 864e5).toISOString().slice(0, 10)
+    const { data } = await sb.from('estoque_itens').select('codigo,produto_nome,data_validade,local_armazenamento,unidade')
+      .eq('loja', loja).eq('status', 'disponivel').not('data_validade', 'is', null).lte('data_validade', limite).order('data_validade').limit(100)
+    setVencendo(data || [])
+  }, [loja, dias])
+  useEffect(() => { loadVencendo() }, [loadVencendo])
+
+  const gerar = async () => {
+    setBusy(true)
+    const { data, error } = await sb.rpc('consumo_relatorio', { p_loja: loja, p_ini: ini, p_fim: fim })
+    setBusy(false)
+    if (error || !data?.ok) { toast('Erro ao gerar relatório.', 'error'); return }
+    setRel(data)
+  }
+  useEffect(() => { gerar() /* eslint-disable-next-line */ }, [loja])
+
+  const lista = rel ? (aba === 'produto' ? rel.por_produto : aba === 'setor' ? rel.por_setor : rel.por_colaborador) : []
+  const rotulo = (x: any) => aba === 'produto' ? x.produto : aba === 'setor' ? x.setor : x.colaborador
+
+  return (
+    <>
+      {/* vencimentos */}
+      <div style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <b style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={16} style={{ color: '#DC2626' }} />Vencendo em até
+            <select value={dias} onChange={e => setDias(Number(e.target.value))} style={{ ...inp, width: 'auto', display: 'inline-block' }}>{[3, 7, 15, 30].map(d => <option key={d} value={d}>{d} dias</option>)}</select>
+            ({vencendo.length})</b>
+          <button onClick={loadVencendo} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><RefreshCw size={15} /></button>
+        </div>
+        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {vencendo.length === 0 ? <div style={{ fontSize: 13, color: '#9ca3af' }}>Nenhum item vencendo nesse prazo. 👍</div> :
+            vencendo.map(v => { const d = Math.ceil((new Date(v.data_validade).getTime() - Date.now()) / 864e5); const venc = d < 0; return (
+              <div key={v.codigo} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, background: venc ? '#FEE2E2' : '#FEF3C7', padding: '.45rem .7rem', borderRadius: 8 }}>
+                <AlertTriangle size={14} style={{ color: venc ? '#DC2626' : '#B45309' }} />
+                <div style={{ flex: 1 }}><b>{v.produto_nome}</b> <span style={{ color: '#9ca3af', fontFamily: 'monospace', fontSize: 11.5 }}>{v.codigo}</span>{v.local_armazenamento ? ` · ${v.local_armazenamento}` : ''}</div>
+                <span style={{ fontWeight: 700, color: venc ? '#DC2626' : '#B45309' }}>{venc ? `vencido há ${-d}d` : `${d}d`}</span>
+                <span style={{ color: '#6b7280', fontSize: 12 }}>{fmtD(v.data_validade)}</span>
+              </div>) })}
+        </div>
+      </div>
+
+      {/* consumo */}
+      <div style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+          <b style={{ fontSize: 14 }}>Consumo no período</b>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input type="date" style={{ ...inp, width: 'auto' }} value={ini} onChange={e => setIni(e.target.value)} />
+            <span style={{ color: '#9ca3af' }}>até</span>
+            <input type="date" style={{ ...inp, width: 'auto' }} value={fim} onChange={e => setFim(e.target.value)} />
+            <button onClick={gerar} disabled={busy} style={btn('#6B1212')}><BarChart3 size={15} />{busy ? '…' : 'Gerar'}</button>
+          </div>
+        </div>
+        {rel && <>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <div style={{ background: '#DCFCE7', borderRadius: 10, padding: '8px 14px' }}><div style={{ fontSize: 11, color: '#166534' }}>Saídas</div><div style={{ fontSize: 20, fontWeight: 800, color: '#166534' }}>{rel.total_saidas}</div></div>
+            <div style={{ background: '#FEE2E2', borderRadius: 10, padding: '8px 14px' }}><div style={{ fontSize: 11, color: '#B91C1C' }}>Perdas</div><div style={{ fontSize: 20, fontWeight: 800, color: '#B91C1C' }}>{rel.total_perdas}</div></div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            {[['produto', 'Por produto'], ['setor', 'Por setor'], ['colaborador', 'Por colaborador']].map(([v, l]) => (
+              <button key={v} onClick={() => setAba(v as any)} style={{ ...btn(aba === v ? '#6B1212' : '#e5e7eb'), color: aba === v ? '#fff' : '#374151', padding: '.4rem .8rem', fontSize: 12 }}>{l}</button>
+            ))}
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 420 }}>
+              <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 11, textTransform: 'uppercase' }}>
+                <th style={{ padding: 6 }}>{aba === 'produto' ? 'Produto' : aba === 'setor' ? 'Setor' : 'Colaborador'}</th><th>Qtd</th>{aba === 'produto' && <><th>Saídas</th><th>Perdas</th></>}<th>Movs</th>
+              </tr></thead>
+              <tbody>
+                {lista.length === 0 ? <tr><td colSpan={5} style={{ padding: 16, color: '#9ca3af', textAlign: 'center' }}>Sem movimentações no período.</td></tr> :
+                  lista.map((x: any, i: number) => (
+                    <tr key={i} style={{ borderTop: '1px solid #f3f4f6' }}>
+                      <td style={{ fontWeight: 600 }}>{rotulo(x)}</td>
+                      <td style={{ fontWeight: 700 }}>{x.qtd}</td>
+                      {aba === 'produto' && <><td style={{ color: '#166534' }}>{x.saidas || 0}</td><td style={{ color: '#B91C1C' }}>{x.perdas || 0}</td></>}
+                      <td>{x.mov}</td>
+                    </tr>))}
+              </tbody>
+            </table>
+          </div>
+        </>}
+      </div>
+    </>
   )
 }
