@@ -10,7 +10,8 @@ import { useAuth } from '../../contexts/AuthContext'
 const sb = supabase as any
 const LOJAS = ['Amore Paiva', 'Amore CD']
 const SETORES = ['Cozinha', 'Salão', 'Bar', 'Confeitaria', 'Estoque', 'Limpeza', 'Administrativo']
-const MOTIVOS = [['consumo', 'Consumo (retirada)'], ['consumo_interno', 'Consumo interno'], ['perda', 'Perda'], ['avaria', 'Avaria'], ['vencido', 'Vencido']]
+const MOTIVOS = [['producao', 'Produção'], ['venda', 'Venda'], ['consumo_interno', 'Consumo interno'], ['degustacao', 'Degustação'], ['perda', 'Perda'], ['avaria', 'Avaria'], ['vencimento', 'Vencimento'], ['ajuste', 'Ajuste de estoque'], ['outro', 'Outro']]
+const PERDA_TIPOS = ['perda', 'avaria', 'vencimento', 'vencido']
 const UNIDADES = ['un', 'kg', 'g', 'L', 'ml', 'cx', 'pct', 'dz']
 const card: React.CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: '1.1rem 1.3rem', marginBottom: 14 }
 const inp: React.CSSProperties = { padding: '.5rem .7rem', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, width: '100%' }
@@ -71,29 +72,75 @@ async function imprimirItens(itens: any[], loja: string) {
 export default function EtiquetasPage() {
   const { toast } = useToast()
   const { user } = useAuth()
-  const [tab, setTab] = useState<'etiquetas' | 'leitura' | 'transferencia' | 'inventario' | 'relatorios' | 'historico'>('etiquetas')
+  const [tab, setTab] = useState('home')
   const [loja, setLoja] = useState('Amore Paiva')
+
+  const role = (user?.role || '').toLowerCase()
+  const ROLE_OPS: Record<string, string[]> = {
+    conferente: ['entrada', 'consulta'], estoquista: ['entrada', 'saida', 'transferencia', 'consulta'],
+    cozinha: ['saida', 'consulta'], compras: ['consulta'], auditoria: ['consulta'],
+  }
+  const opsPermitidas = ROLE_OPS[role] || ['entrada', 'saida', 'transferencia', 'consulta']
+  const podeOp = (id: string) => opsPermitidas.includes(id)
+
+  const OPS = [
+    { id: 'entrada', icon: '📥', label: 'Entrada', desc: 'Receber mercadoria', c: '#166534', bg: '#DCFCE7' },
+    { id: 'saida', icon: '📤', label: 'Saída', desc: 'Retirada / consumo', c: '#B91C1C', bg: '#FEE2E2' },
+    { id: 'transferencia', icon: '🔄', label: 'Transferência', desc: 'Entre setores/unidades', c: '#6D28D9', bg: '#EDE9FE' },
+    { id: 'consulta', icon: '🔍', label: 'Consulta', desc: 'Ver produto', c: '#1D4ED8', bg: '#DBEAFE' },
+  ].filter(o => podeOp(o.id))
+  const TOOLS = [
+    { id: 'etiquetas', icon: <QrCode size={15} />, label: 'Etiquetas' },
+    { id: 'inventario', icon: <ClipboardList size={15} />, label: 'Inventário' },
+    { id: 'relatorios', icon: <BarChart3 size={15} />, label: 'Relatórios' },
+    { id: 'historico', icon: <Clock size={15} />, label: 'Histórico' },
+  ]
+  const TITULOS: Record<string, string> = { entrada: '📥 Entrada de Estoque', saida: '📤 Saída de Estoque', transferencia: '🔄 Transferência', consulta: '🔍 Consulta', etiquetas: '🖨️ Etiquetas', inventario: '📋 Inventário', relatorios: '📊 Relatórios', historico: '🕘 Histórico' }
+
   return (
     <div style={{ padding: '1rem 0' }}>
-      <div style={card}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}><Tag size={20} style={{ color: '#6B1212' }} /><b style={{ fontSize: 15 }}>Etiquetas & Leitura de Estoque</b></div>
-        <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '0 0 12px' }}>Uma etiqueta por item: cada unidade recebe seu próprio QR Code. Leia a etiqueta pela câmera e o item sai do estoque automaticamente — com saldo, validade e PEPS/FIFO.</p>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <select value={loja} onChange={e => setLoja(e.target.value)} style={{ ...inp, width: 'auto' }}>{LOJAS.map(l => <option key={l}>{l}</option>)}</select>
-          <button onClick={() => setTab('etiquetas')} style={{ ...btn(tab === 'etiquetas' ? '#6B1212' : '#e5e7eb'), color: tab === 'etiquetas' ? '#fff' : '#374151' }}><QrCode size={15} />Etiquetas por item</button>
-          <button onClick={() => setTab('leitura')} style={{ ...btn(tab === 'leitura' ? '#6B1212' : '#e5e7eb'), color: tab === 'leitura' ? '#fff' : '#374151' }}><ScanLine size={15} />Leitura & Baixa</button>
-          <button onClick={() => setTab('transferencia')} style={{ ...btn(tab === 'transferencia' ? '#6B1212' : '#e5e7eb'), color: tab === 'transferencia' ? '#fff' : '#374151' }}><ArrowRightLeft size={15} />Transferência</button>
-          <button onClick={() => setTab('inventario')} style={{ ...btn(tab === 'inventario' ? '#6B1212' : '#e5e7eb'), color: tab === 'inventario' ? '#fff' : '#374151' }}><ClipboardList size={15} />Inventário</button>
-          <button onClick={() => setTab('relatorios')} style={{ ...btn(tab === 'relatorios' ? '#6B1212' : '#e5e7eb'), color: tab === 'relatorios' ? '#fff' : '#374151' }}><BarChart3 size={15} />Relatórios</button>
-          <button onClick={() => setTab('historico')} style={{ ...btn(tab === 'historico' ? '#6B1212' : '#e5e7eb'), color: tab === 'historico' ? '#fff' : '#374151' }}><Clock size={15} />Histórico</button>
+      {tab === 'home' ? <>
+        <div style={card}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><Tag size={20} style={{ color: '#6B1212' }} /><b style={{ fontSize: 15 }}>Estoque — Operação por leitura</b></div>
+            <select value={loja} onChange={e => setLoja(e.target.value)} style={{ ...inp, width: 'auto' }}>{LOJAS.map(l => <option key={l}>{l}</option>)}</select>
+          </div>
+          <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '8px 0 0' }}>Escolha a operação e aponte a câmera para o QR Code ou código de barras.</p>
         </div>
-      </div>
-      {tab === 'etiquetas' ? <TabEtiquetas loja={loja} toast={toast} user={user} />
-        : tab === 'leitura' ? <TabLeitura loja={loja} toast={toast} user={user} />
-        : tab === 'transferencia' ? <TabTransferencia loja={loja} toast={toast} user={user} />
-        : tab === 'inventario' ? <TabInventario loja={loja} toast={toast} user={user} />
-        : tab === 'relatorios' ? <TabRelatorios loja={loja} toast={toast} user={user} />
-        : <TabHistorico loja={loja} />}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 14 }}>
+          {OPS.map(o => (
+            <button key={o.id} onClick={() => setTab(o.id)} style={{ background: o.bg, border: 'none', borderRadius: 16, padding: '22px 18px', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 6, minHeight: 120 }}>
+              <span style={{ fontSize: 34, lineHeight: 1 }}>{o.icon}</span>
+              <span style={{ fontSize: 17, fontWeight: 800, color: o.c }}>{o.label}</span>
+              <span style={{ fontSize: 12.5, color: '#6b7280' }}>{o.desc}</span>
+            </button>
+          ))}
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 12, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 8 }}>Ferramentas</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {TOOLS.map(t => <button key={t.id} onClick={() => setTab(t.id)} style={{ ...btn('#f3f4f6'), color: '#374151' }}>{t.icon}{t.label}</button>)}
+          </div>
+        </div>
+      </> : <>
+        <div style={card}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button onClick={() => setTab('home')} style={{ ...btn('#f3f4f6'), color: '#374151', padding: '.45rem .8rem' }}>← Voltar</button>
+              <b style={{ fontSize: 15 }}>{TITULOS[tab] || tab}</b>
+            </div>
+            <select value={loja} onChange={e => setLoja(e.target.value)} style={{ ...inp, width: 'auto' }}>{LOJAS.map(l => <option key={l}>{l}</option>)}</select>
+          </div>
+        </div>
+        {tab === 'entrada' ? <TabEntrada loja={loja} toast={toast} user={user} />
+          : tab === 'saida' ? <TabLeitura loja={loja} toast={toast} user={user} />
+          : tab === 'transferencia' ? <TabTransferencia loja={loja} toast={toast} user={user} />
+          : tab === 'consulta' ? <TabConsulta loja={loja} toast={toast} />
+          : tab === 'etiquetas' ? <TabEtiquetas loja={loja} toast={toast} user={user} />
+          : tab === 'inventario' ? <TabInventario loja={loja} toast={toast} user={user} />
+          : tab === 'relatorios' ? <TabRelatorios loja={loja} toast={toast} user={user} />
+          : <TabHistorico loja={loja} />}
+      </>}
     </div>
   )
 }
@@ -221,7 +268,9 @@ function TabLeitura({ loja, toast, user }: any) {
   const [qtd, setQtd] = useState('')
   const [setor, setSetor] = useState('Cozinha')
   const [colaborador, setColaborador] = useState('')
-  const [motivo, setMotivo] = useState('consumo')
+  const [motivo, setMotivo] = useState('producao')
+  const [centroCusto, setCentroCusto] = useState('')
+  const [solicitante, setSolicitante] = useState('')
   const [scanning, setScanning] = useState(false)
   const [busy, setBusy] = useState(false)
   const [recentes, setRecentes] = useState<any[]>([])
@@ -262,7 +311,7 @@ function TabLeitura({ loja, toast, user }: any) {
     setBusy(true)
     let resp
     if (info.tipo === 'item') {
-      resp = await sb.rpc('item_saida', { p_codigo: info.codigo, p_tipo: motivo, p_motivo: null, p_setor: setor, p_colaborador: colaborador || user?.name || 'Leitura' })
+      resp = await sb.rpc('item_saida', { p_codigo: info.codigo, p_tipo: motivo, p_motivo: null, p_setor: setor, p_colaborador: colaborador || user?.name || 'Leitura', p_centro_custo: centroCusto || null, p_solicitante: solicitante || null })
     } else {
       if (!qtd || Number(qtd) <= 0) { toast('Informe a quantidade retirada.', 'error'); setBusy(false); return }
       resp = await sb.rpc('baixa_por_leitura', { p_codigo: info.codigo, p_qtd: Number(qtd), p_setor: setor, p_colaborador: colaborador || user?.name || 'Leitura', p_unidade_destino: info.unidade, p_motivo: 'Saída por leitura' })
@@ -325,10 +374,12 @@ function TabLeitura({ loja, toast, user }: any) {
               {isItem && <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Motivo da saída</label><select style={inp} value={motivo} onChange={e => setMotivo(e.target.value)}>{MOTIVOS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>}
               {!isItem && <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Quantidade retirada</label><input style={inp} type="number" step="0.01" value={qtd} onChange={e => setQtd(e.target.value)} autoFocus /></div>}
               <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Setor de destino</label><input style={inp} list="setores" value={setor} onChange={e => setSetor(e.target.value)} /><datalist id="setores">{SETORES.map(s => <option key={s} value={s} />)}</datalist></div>
-              <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Colaborador</label><input style={inp} value={colaborador} onChange={e => setColaborador(e.target.value)} /></div>
+              {isItem && <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Centro de custo</label><input style={inp} value={centroCusto} onChange={e => setCentroCusto(e.target.value)} placeholder="Opcional" /></div>}
+              {isItem && <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Solicitante</label><input style={inp} value={solicitante} onChange={e => setSolicitante(e.target.value)} placeholder="Quem pediu" /></div>}
+              <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Responsável pela retirada</label><input style={inp} value={colaborador} onChange={e => setColaborador(e.target.value)} /></div>
             </div>
             <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={darBaixa} disabled={busy} style={btn(['perda', 'avaria', 'vencido'].includes(motivo) && isItem ? '#DC2626' : '#1D9E75')}><PackageMinus size={16} />{busy ? 'Registrando…' : !isItem ? 'Confirmar baixa' : ['perda', 'avaria', 'vencido'].includes(motivo) ? `Registrar ${motivo}` : 'Retirar este item'}</button>
+              <button onClick={darBaixa} disabled={busy} style={btn(PERDA_TIPOS.includes(motivo) && isItem ? '#DC2626' : '#1D9E75')}><PackageMinus size={16} />{busy ? 'Registrando…' : !isItem ? 'Confirmar baixa' : PERDA_TIPOS.includes(motivo) ? `Registrar ${motivo}` : 'Confirmar saída'}</button>
             </div>
           </>}
         </div>}
@@ -646,6 +697,158 @@ function TabRelatorios({ loja, toast, user }: any) {
         </>}
       </div>
     </>
+  )
+}
+
+// ─────────────────────────────────────────── Entrada por leitura
+function TabEntrada({ loja, toast, user }: any) {
+  const [codigo, setCodigo] = useState('')
+  const [info, setInfo] = useState<any | null>(null)
+  const [form, setForm] = useState<any>({ qtd: '1', qtd_item: '1', lote: '', validade: '', fornecedor: '', nota: '', obs: '', local: '' })
+  const [scanning, setScanning] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [novosCodigos, setNovosCodigos] = useState<string[]>([])
+  const scannerRef = useRef<any>(null)
+
+  const consultar = async (cod: string) => {
+    const c = (cod || '').trim(); if (!c) return
+    const { data, error } = await sb.rpc('produto_consulta', { p_codigo: c })
+    if (error || !data?.ok) { toast(data?.erro || 'Etiqueta não encontrada.', 'error'); setInfo(null); return }
+    setInfo(data); setCodigo(c); setNovosCodigos([]); setForm((f: any) => ({ ...f, local: data.local || '', fornecedor: data.fornecedor || '' }))
+  }
+  const pararScanner = useCallback(async () => { if (scannerRef.current) { try { await scannerRef.current.stop(); await scannerRef.current.clear() } catch {} scannerRef.current = null } setScanning(false) }, [])
+  const iniciarScanner = async () => {
+    setScanning(true); setInfo(null)
+    try { const h = new Html5Qrcode('leitor-ent'); scannerRef.current = h; await h.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 } }, async (txt: string) => { await pararScanner(); consultar(txt) }, () => {}) }
+    catch (e: any) { toast('Não foi possível abrir a câmera: ' + (e?.message || ''), 'error'); setScanning(false) }
+  }
+  useEffect(() => () => { pararScanner() }, [pararScanner])
+
+  const salvar = async () => {
+    if (!info) return
+    if (!form.qtd || Number(form.qtd) <= 0) { toast('Informe a quantidade recebida.', 'error'); return }
+    setBusy(true)
+    const { data, error } = await sb.rpc('entrada_por_leitura', {
+      p_produto_id: info.produto_id, p_qtd_itens: Number(form.qtd), p_qtd_item: Number(form.qtd_item) || 1, p_lote: form.lote || null,
+      p_validade: form.validade || null, p_fornecedor: form.fornecedor || null, p_nota: form.nota || null, p_obs: form.obs || null, p_local: form.local || null, p_por: user?.name || null,
+    })
+    setBusy(false)
+    if (error || !data?.ok) { toast(data?.erro || 'Erro ao salvar entrada.', 'error'); return }
+    toast(`Entrada de ${data.n} item(ns) · ${data.produto_nome}. Saldo: ${data.saldo_produto} ✅`)
+    setNovosCodigos(data.codigos || [])
+    setInfo((i: any) => ({ ...i, estoque_atual: data.saldo_produto }))
+  }
+  const imprimirNovas = async () => {
+    if (!novosCodigos.length) return
+    const { data } = await sb.from('estoque_itens').select('*').in('codigo', novosCodigos)
+    imprimirItens(data || [], loja)
+  }
+
+  return (
+    <div style={card}>
+      <b style={{ fontSize: 14 }}>Entrada por leitura</b>
+      <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '4px 0 10px' }}>Leia a etiqueta do produto para identificá-lo, informe a quantidade recebida e salve. Gera novas etiquetas para imprimir.</p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {!scanning ? <button onClick={iniciarScanner} style={btn('#166534')}><Camera size={16} />Ler com a câmera</button> : <button onClick={pararScanner} style={btn('#DC2626')}><X size={16} />Parar câmera</button>}
+        <span style={{ fontSize: 12, color: '#9ca3af' }}>ou digite:</span>
+        <input style={{ ...inp, width: 190 }} placeholder="Código do produto" value={codigo} onChange={e => setCodigo(e.target.value)} onKeyDown={e => e.key === 'Enter' && consultar(codigo)} />
+        <button onClick={() => consultar(codigo)} style={{ ...btn('#e5e7eb'), color: '#374151' }}><ScanLine size={15} />Consultar</button>
+      </div>
+      <div id="leitor-ent" style={{ width: '100%', maxWidth: 340, margin: scanning ? '8px 0' : 0 }} />
+
+      {info && <div style={{ marginTop: 10, padding: 14, borderRadius: 12, border: '1px solid #e5e7eb', background: '#f9fafb' }}>
+        <div style={{ fontSize: 15, fontWeight: 800 }}>{info.produto_nome}</div>
+        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 3 }}>{info.categoria || '—'} · {info.unidade || 'un'} · estoque atual <b>{info.estoque_atual}</b>{info.local ? ` · ${info.local}` : ''}{info.ultima_compra ? ` · última compra ${new Date(info.ultima_compra.data).toLocaleDateString('pt-BR')}` : ''}</div>
+        <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px,1fr))', gap: 8 }}>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Qtd recebida (itens)</label><input style={inp} type="number" min={1} value={form.qtd} onChange={e => setForm({ ...form, qtd: e.target.value })} /></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Qtd por item</label><input style={inp} type="number" step="0.01" value={form.qtd_item} onChange={e => setForm({ ...form, qtd_item: e.target.value })} /></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Lote</label><input style={inp} value={form.lote} onChange={e => setForm({ ...form, lote: e.target.value })} /></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Validade</label><input style={inp} type="date" value={form.validade} onChange={e => setForm({ ...form, validade: e.target.value })} /></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Fornecedor</label><input style={inp} value={form.fornecedor} onChange={e => setForm({ ...form, fornecedor: e.target.value })} /></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Nota fiscal</label><input style={inp} value={form.nota} onChange={e => setForm({ ...form, nota: e.target.value })} /></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Localização</label><input style={inp} value={form.local} onChange={e => setForm({ ...form, local: e.target.value })} /></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Observação</label><input style={inp} value={form.obs} onChange={e => setForm({ ...form, obs: e.target.value })} /></div>
+        </div>
+        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>Quem recebeu: <b>{user?.name || '—'}</b> · {new Date().toLocaleString('pt-BR')}</div>
+        <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          {novosCodigos.length > 0 && <button onClick={imprimirNovas} style={{ ...btn('#6B1212') }}><Printer size={16} />Imprimir {novosCodigos.length} etiqueta(s)</button>}
+          <button onClick={salvar} disabled={busy} style={btn('#166534')}><Check size={16} />{busy ? 'Salvando…' : 'Salvar entrada'}</button>
+        </div>
+      </div>}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────── Consulta por leitura
+function TabConsulta({ toast }: any) {
+  const [codigo, setCodigo] = useState('')
+  const [info, setInfo] = useState<any | null>(null)
+  const [scanning, setScanning] = useState(false)
+  const scannerRef = useRef<any>(null)
+
+  const consultar = async (cod: string) => {
+    const c = (cod || '').trim(); if (!c) return
+    const { data, error } = await sb.rpc('produto_consulta', { p_codigo: c })
+    if (error || !data?.ok) { toast(data?.erro || 'Etiqueta não encontrada.', 'error'); setInfo(null); return }
+    setInfo(data); setCodigo(c)
+  }
+  const pararScanner = useCallback(async () => { if (scannerRef.current) { try { await scannerRef.current.stop(); await scannerRef.current.clear() } catch {} scannerRef.current = null } setScanning(false) }, [])
+  const iniciarScanner = async () => {
+    setScanning(true); setInfo(null)
+    try { const h = new Html5Qrcode('leitor-cons'); scannerRef.current = h; await h.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 } }, async (txt: string) => { await pararScanner(); consultar(txt) }, () => {}) }
+    catch (e: any) { toast('Não foi possível abrir a câmera: ' + (e?.message || ''), 'error'); setScanning(false) }
+  }
+  useEffect(() => () => { pararScanner() }, [pararScanner])
+
+  const critico = info && info.estoque_atual <= info.estoque_minimo && info.estoque_minimo > 0
+  const KPI = (l: string, v: any, c = '#241b19') => <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 12px' }}><div style={{ fontSize: 11, color: '#9ca3af' }}>{l}</div><div style={{ fontSize: 18, fontWeight: 800, color: c }}>{v}</div></div>
+
+  return (
+    <div style={card}>
+      <b style={{ fontSize: 14 }}>Consulta por leitura</b>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '8px 0' }}>
+        {!scanning ? <button onClick={iniciarScanner} style={btn('#1D4ED8')}><Camera size={16} />Ler com a câmera</button> : <button onClick={pararScanner} style={btn('#DC2626')}><X size={16} />Parar câmera</button>}
+        <span style={{ fontSize: 12, color: '#9ca3af' }}>ou digite:</span>
+        <input style={{ ...inp, width: 190 }} placeholder="Código" value={codigo} onChange={e => setCodigo(e.target.value)} onKeyDown={e => e.key === 'Enter' && consultar(codigo)} />
+        <button onClick={() => consultar(codigo)} style={{ ...btn('#e5e7eb'), color: '#374151' }}><ScanLine size={15} />Consultar</button>
+      </div>
+      <div id="leitor-cons" style={{ width: '100%', maxWidth: 340, margin: scanning ? '8px 0' : 0 }} />
+
+      {info && <div style={{ marginTop: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{info.produto_nome}</div>
+            <div style={{ fontSize: 12.5, color: '#6b7280' }}>{info.categoria || '—'} · cód. {info.codigo_interno || '—'} · {info.unidade || 'un'}{info.status_cadastro === 'pendente_validacao' ? ' · ⚠️ pendente de validação' : ''}</div>
+          </div>
+          {critico && <span style={{ fontSize: 12, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '.3rem .7rem', borderRadius: 20 }}>Abaixo do mínimo</span>}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px,1fr))', gap: 8, marginTop: 12 }}>
+          {KPI('Estoque atual', info.estoque_atual, critico ? '#DC2626' : '#1D9E75')}
+          {KPI('Mínimo', info.estoque_minimo)}
+          {KPI('Itens disp.', info.itens_disponiveis)}
+          {KPI('Preço un.', 'R$ ' + Number(info.preco_unitario || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }))}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px,1fr))', gap: 8, marginTop: 8, fontSize: 12.5 }}>
+          <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 12px' }}><span style={{ color: '#9ca3af' }}>Localização:</span> <b>{info.local || '—'}</b></div>
+          <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 12px' }}><span style={{ color: '#9ca3af' }}>Validade:</span> <b>{fmtD(info.validade)}</b></div>
+          <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 12px' }}><span style={{ color: '#9ca3af' }}>Lote:</span> <b>{info.lote || '—'}</b></div>
+          <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 12px' }}><span style={{ color: '#9ca3af' }}>Fornecedor:</span> <b>{info.fornecedor || '—'}</b></div>
+          {info.ultima_compra && <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 12px' }}><span style={{ color: '#9ca3af' }}>Última compra:</span> <b>{new Date(info.ultima_compra.data).toLocaleDateString('pt-BR')}</b> ({info.ultima_compra.qtd})</div>}
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <b style={{ fontSize: 13 }}>Últimas movimentações</b>
+          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {(info.movimentacoes || []).length === 0 ? <div style={{ fontSize: 12.5, color: '#9ca3af' }}>Sem movimentações.</div> :
+              info.movimentacoes.map((m: any, i: number) => { const t = TIPO_MOV[m.tipo] || { l: m.tipo, c: '#6b7280' }; return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, background: '#f9fafb', padding: '.4rem .7rem', borderRadius: 8 }}>
+                  <span style={{ fontWeight: 700, color: t.c, minWidth: 84 }}>{t.l}</span>
+                  <span style={{ flex: 1 }}>{m.qtd} {m.unidade}{m.motivo ? ` · ${m.motivo}` : ''}{m.quem ? ` · ${m.quem}` : ''}</span>
+                  <span style={{ color: '#9ca3af', fontSize: 11.5 }}>{new Date(m.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                </div>) })}
+          </div>
+        </div>
+      </div>}
+    </div>
   )
 }
 
