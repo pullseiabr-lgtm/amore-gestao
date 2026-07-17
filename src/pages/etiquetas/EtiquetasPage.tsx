@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { QrCode, Printer, Camera, ScanLine, PackageMinus, RefreshCw, Plus, AlertTriangle, Check, X, Tag, Trash2, Undo2 } from 'lucide-react'
+import { QrCode, Printer, Camera, ScanLine, PackageMinus, RefreshCw, Plus, AlertTriangle, Check, X, Tag, Trash2, Undo2, ArrowRightLeft, ClipboardList } from 'lucide-react'
 import QRCode from 'qrcode'
 import JsBarcode from 'jsbarcode'
 import { Html5Qrcode } from 'html5-qrcode'
@@ -64,7 +64,7 @@ async function imprimirItens(itens: any[], loja: string) {
 export default function EtiquetasPage() {
   const { toast } = useToast()
   const { user } = useAuth()
-  const [tab, setTab] = useState<'etiquetas' | 'leitura'>('etiquetas')
+  const [tab, setTab] = useState<'etiquetas' | 'leitura' | 'transferencia' | 'inventario'>('etiquetas')
   const [loja, setLoja] = useState('Amore Paiva')
   return (
     <div style={{ padding: '1rem 0' }}>
@@ -75,9 +75,14 @@ export default function EtiquetasPage() {
           <select value={loja} onChange={e => setLoja(e.target.value)} style={{ ...inp, width: 'auto' }}>{LOJAS.map(l => <option key={l}>{l}</option>)}</select>
           <button onClick={() => setTab('etiquetas')} style={{ ...btn(tab === 'etiquetas' ? '#6B1212' : '#e5e7eb'), color: tab === 'etiquetas' ? '#fff' : '#374151' }}><QrCode size={15} />Etiquetas por item</button>
           <button onClick={() => setTab('leitura')} style={{ ...btn(tab === 'leitura' ? '#6B1212' : '#e5e7eb'), color: tab === 'leitura' ? '#fff' : '#374151' }}><ScanLine size={15} />Leitura & Baixa</button>
+          <button onClick={() => setTab('transferencia')} style={{ ...btn(tab === 'transferencia' ? '#6B1212' : '#e5e7eb'), color: tab === 'transferencia' ? '#fff' : '#374151' }}><ArrowRightLeft size={15} />Transferência</button>
+          <button onClick={() => setTab('inventario')} style={{ ...btn(tab === 'inventario' ? '#6B1212' : '#e5e7eb'), color: tab === 'inventario' ? '#fff' : '#374151' }}><ClipboardList size={15} />Inventário</button>
         </div>
       </div>
-      {tab === 'etiquetas' ? <TabEtiquetas loja={loja} toast={toast} user={user} /> : <TabLeitura loja={loja} toast={toast} user={user} />}
+      {tab === 'etiquetas' ? <TabEtiquetas loja={loja} toast={toast} user={user} />
+        : tab === 'leitura' ? <TabLeitura loja={loja} toast={toast} user={user} />
+        : tab === 'transferencia' ? <TabTransferencia loja={loja} toast={toast} user={user} />
+        : <TabInventario loja={loja} toast={toast} user={user} />}
     </div>
   )
 }
@@ -328,5 +333,157 @@ function TabLeitura({ loja, toast, user }: any) {
         </div>
       </div>
     </>
+  )
+}
+
+// ─────────────────────────────────────────── Transferência
+function TabTransferencia({ loja, toast, user }: any) {
+  const [codigo, setCodigo] = useState('')
+  const [info, setInfo] = useState<any | null>(null)
+  const [destLoja, setDestLoja] = useState('')
+  const [destSetor, setDestSetor] = useState('')
+  const [scanning, setScanning] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const scannerRef = useRef<any>(null)
+
+  const consultar = async (cod: string) => {
+    const c = (cod || '').trim(); if (!c) return
+    const { data, error } = await sb.rpc('codigo_consultar', { p_codigo: c })
+    if (error || !data?.ok) { toast(data?.erro || 'Etiqueta não encontrada.', 'error'); setInfo(null); return }
+    if (data.tipo !== 'item') { toast('Transferência disponível só para etiquetas por item.', 'error'); return }
+    if (data.status && data.status !== 'disponivel') { toast('Item não está disponível (' + data.status + ').', 'error'); setInfo(null); return }
+    setInfo(data); setCodigo(c)
+  }
+  const pararScanner = useCallback(async () => { if (scannerRef.current) { try { await scannerRef.current.stop(); await scannerRef.current.clear() } catch {} scannerRef.current = null } setScanning(false) }, [])
+  const iniciarScanner = async () => {
+    setScanning(true); setInfo(null)
+    try { const h = new Html5Qrcode('leitor-transf'); scannerRef.current = h; await h.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 } }, async (txt: string) => { await pararScanner(); consultar(txt) }, () => {}) }
+    catch (e: any) { toast('Não foi possível abrir a câmera: ' + (e?.message || ''), 'error'); setScanning(false) }
+  }
+  useEffect(() => () => { pararScanner() }, [pararScanner])
+
+  const transferir = async () => {
+    if (!info) return
+    if (!destLoja && !destSetor) { toast('Escolha a unidade ou o setor de destino.', 'error'); return }
+    setBusy(true)
+    const { data, error } = await sb.rpc('item_transferir', { p_codigo: info.codigo, p_destino_loja: destLoja || null, p_destino_setor: destSetor || null, p_por: user?.name || null })
+    setBusy(false)
+    if (error || !data?.ok) { toast(data?.erro || 'Erro ao transferir.', 'error'); return }
+    toast(data.tipo === 'unidade' ? `Transferido de ${data.origem} → ${data.destino}. 🔄` : `Movido para o setor ${data.destino}. 🔄`)
+    setInfo(null); setCodigo(''); setDestLoja(''); setDestSetor('')
+  }
+
+  return (
+    <div style={card}>
+      <b style={{ fontSize: 14 }}>Transferência por leitura</b>
+      <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '4px 0 10px' }}>Leia a etiqueta do item e escolha o destino: outra unidade e/ou outro setor.</p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {!scanning ? <button onClick={iniciarScanner} style={btn('#6B1212')}><Camera size={16} />Ler com a câmera</button> : <button onClick={pararScanner} style={btn('#DC2626')}><X size={16} />Parar câmera</button>}
+        <span style={{ fontSize: 12, color: '#9ca3af' }}>ou digite:</span>
+        <input style={{ ...inp, width: 190 }} placeholder="Código do item" value={codigo} onChange={e => setCodigo(e.target.value)} onKeyDown={e => e.key === 'Enter' && consultar(codigo)} />
+        <button onClick={() => consultar(codigo)} style={{ ...btn('#e5e7eb'), color: '#374151' }}><ScanLine size={15} />Consultar</button>
+      </div>
+      <div id="leitor-transf" style={{ width: '100%', maxWidth: 340, margin: scanning ? '8px 0' : 0 }} />
+
+      {info && <div style={{ marginTop: 10, padding: 14, borderRadius: 12, border: '1px solid #e5e7eb', background: '#f9fafb' }}>
+        <div style={{ fontSize: 15, fontWeight: 800 }}>{info.produto_nome}</div>
+        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 3 }}>Item {info.codigo} · {info.quantidade} {info.unidade} · {loja}{info.local ? ` · ${info.local}` : ''}</div>
+        <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px,1fr))', gap: 8 }}>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Unidade de destino</label>
+            <select style={inp} value={destLoja} onChange={e => setDestLoja(e.target.value)}><option value="">— mesma ({loja}) —</option>{LOJAS.filter(l => l !== loja).map(l => <option key={l} value={l}>{l}</option>)}</select></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Setor de destino</label>
+            <input style={inp} list="setores-t" value={destSetor} onChange={e => setDestSetor(e.target.value)} placeholder="Ex.: Cozinha" /><datalist id="setores-t">{SETORES.map(s => <option key={s} value={s} />)}</datalist></div>
+        </div>
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={transferir} disabled={busy} style={btn('#1D9E75')}><ArrowRightLeft size={16} />{busy ? 'Transferindo…' : 'Confirmar transferência'}</button>
+        </div>
+      </div>}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────── Inventário pelo celular
+function TabInventario({ loja, toast, user }: any) {
+  const [prods, setProds] = useState<any[]>([])
+  const [prodId, setProdId] = useState('')
+  const [scanning, setScanning] = useState(false)
+  const [lidos, setLidos] = useState<string[]>([])
+  const [resultado, setResultado] = useState<any | null>(null)
+  const [busy, setBusy] = useState(false)
+  const scannerRef = useRef<any>(null)
+  const lidosRef = useRef<string[]>([])
+  const [manual, setManual] = useState('')
+
+  useEffect(() => { sb.from('estoque_produtos').select('id,nome').eq('loja', loja).eq('ativo', true).order('nome').then(({ data }: any) => setProds(data || [])) }, [loja])
+
+  const addCodigo = (c: string) => {
+    const cod = (c || '').trim(); if (!cod) return
+    if (lidosRef.current.includes(cod)) return
+    lidosRef.current = [...lidosRef.current, cod]; setLidos(lidosRef.current)
+  }
+  const pararScanner = useCallback(async () => { if (scannerRef.current) { try { await scannerRef.current.stop(); await scannerRef.current.clear() } catch {} scannerRef.current = null } setScanning(false) }, [])
+  const iniciarScanner = async () => {
+    setScanning(true); setResultado(null)
+    try { const h = new Html5Qrcode('leitor-inv'); scannerRef.current = h; await h.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 } }, (txt: string) => addCodigo(txt), () => {}) }
+    catch (e: any) { toast('Não foi possível abrir a câmera: ' + (e?.message || ''), 'error'); setScanning(false) }
+  }
+  useEffect(() => () => { pararScanner() }, [pararScanner])
+
+  const reiniciar = () => { lidosRef.current = []; setLidos([]); setResultado(null) }
+  const comparar = async () => {
+    setBusy(true)
+    const { data, error } = await sb.rpc('inventario_comparar', { p_loja: loja, p_codigos: lidosRef.current, p_produto_id: prodId || null })
+    setBusy(false)
+    if (error || !data?.ok) { toast('Erro ao comparar inventário.', 'error'); return }
+    setResultado(data)
+  }
+  const baixarFaltantes = async () => {
+    if (!resultado?.faltando?.length) return
+    if (!confirm(`Dar baixa como PERDA de ${resultado.faltando.length} item(ns) não encontrado(s) no físico?`)) return
+    const codes = resultado.faltando.map((f: any) => f.codigo)
+    const { data, error } = await sb.rpc('inventario_baixar_faltantes', { p_codigos: codes, p_por: user?.name || null, p_motivo: 'Perda por inventário' })
+    if (error || !data?.ok) { toast('Erro ao baixar faltantes.', 'error'); return }
+    toast(`${data.baixados} item(ns) baixado(s) como perda.`); reiniciar()
+  }
+
+  return (
+    <div style={card}>
+      <b style={{ fontSize: 14 }}>Inventário pelo celular</b>
+      <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '4px 0 10px' }}>Escaneie os itens presentes na prateleira. Ao finalizar, o sistema compara o físico com o registrado e aponta o que está faltando.</p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <select style={{ ...inp, width: 'auto' }} value={prodId} onChange={e => { setProdId(e.target.value); setResultado(null) }}><option value="">Todos os produtos</option>{prods.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}</select>
+        {!scanning ? <button onClick={iniciarScanner} style={btn('#6B1212')}><Camera size={16} />Escanear itens</button> : <button onClick={pararScanner} style={btn('#DC2626')}><X size={16} />Parar câmera</button>}
+        <input style={{ ...inp, width: 150 }} placeholder="ou digite o código" value={manual} onChange={e => setManual(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { addCodigo(manual); setManual('') } }} />
+      </div>
+      <div id="leitor-inv" style={{ width: '100%', maxWidth: 340, margin: scanning ? '8px 0' : 0 }} />
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '12px 0 6px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>{lidos.length} item(ns) escaneado(s)</span>
+        <button disabled={!lidos.length || busy} onClick={comparar} style={{ ...btn(lidos.length ? '#1D9E75' : '#c4b5a8'), cursor: lidos.length ? 'pointer' : 'not-allowed' }}><Check size={15} />Finalizar e comparar</button>
+        <button onClick={reiniciar} style={{ ...btn('#e5e7eb'), color: '#374151' }}><RefreshCw size={14} />Reiniciar</button>
+      </div>
+      {lidos.length > 0 && <div style={{ fontSize: 11.5, color: '#6b7280', fontFamily: 'monospace', wordBreak: 'break-all' }}>{lidos.join(' · ')}</div>}
+
+      {resultado && <div style={{ marginTop: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px,1fr))', gap: 8 }}>
+          {[['Esperado', resultado.esperado, '#6b7280'], ['Presentes', resultado.presentes, '#1D9E75'], ['Faltando', resultado.faltando_n, '#DC2626'], ['Divergências', resultado.divergencias_n, '#B45309']].map(([l, v, c]: any) => (
+            <div key={l} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px' }}><div style={{ fontSize: 11, color: '#9ca3af' }}>{l}</div><div style={{ fontSize: 22, fontWeight: 800, color: c }}>{v}</div></div>
+          ))}
+        </div>
+        {resultado.faltando_n > 0 && <div style={{ marginTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><b style={{ fontSize: 13, color: '#DC2626' }}>Faltando no físico ({resultado.faltando_n})</b><button onClick={baixarFaltantes} style={{ ...btn('#DC2626'), padding: '.4rem .8rem' }}><PackageMinus size={14} />Baixar como perda</button></div>
+          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {resultado.faltando.map((f: any) => <div key={f.codigo} style={{ fontSize: 12.5, background: '#FEF2F2', padding: '.4rem .7rem', borderRadius: 8 }}><b>{f.produto}</b> <span style={{ color: '#9ca3af', fontFamily: 'monospace' }}>{f.codigo}</span>{f.local ? ` · ${f.local}` : ''}{f.validade ? ` · val. ${fmtD(f.validade)}` : ''}</div>)}
+          </div>
+        </div>}
+        {resultado.divergencias_n > 0 && <div style={{ marginTop: 12 }}>
+          <b style={{ fontSize: 13, color: '#B45309' }}>Divergências ({resultado.divergencias_n})</b>
+          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {resultado.divergencias.map((d: any) => <div key={d.codigo} style={{ fontSize: 12.5, background: '#FFFBEB', padding: '.4rem .7rem', borderRadius: 8 }}><span style={{ fontFamily: 'monospace' }}>{d.codigo}</span> — {d.situacao}</div>)}
+          </div>
+        </div>}
+        {resultado.faltando_n === 0 && resultado.divergencias_n === 0 && <div style={{ marginTop: 12, fontSize: 13, color: '#166534', background: '#DCFCE7', padding: '.6rem .8rem', borderRadius: 8, fontWeight: 600 }}>✅ Inventário bateu certinho — físico igual ao sistema.</div>}
+      </div>}
+    </div>
   )
 }
