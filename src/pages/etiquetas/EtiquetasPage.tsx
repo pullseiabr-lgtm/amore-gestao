@@ -15,6 +15,18 @@ const PERDA_TIPOS = ['perda', 'avaria', 'vencimento', 'vencido']
 const UNIDADES = ['un', 'kg', 'g', 'L', 'ml', 'cx', 'pct', 'dz']
 const SB_URL = 'https://xdwnsqkzgopymufsuccr.supabase.co'
 const fmt = (n: any) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const CONSERV = [['', '— não manipulado —'], ['resfriado', 'Resfriado'], ['congelado', 'Congelado'], ['descongelado', 'Descongelado'], ['pronto', 'Produto pronto'], ['porcionado', 'Porcionado'], ['molhos', 'Molhos'], ['carnes', 'Carnes'], ['frutos_do_mar', 'Frutos do mar'], ['hortifruti', 'Hortifruti higienizado']]
+// cor por status sanitário: congelado=azul, descongelado=roxo, senão verde/amarelo/vermelho por validade
+function corValidade(it: any) {
+  const tc = (it.tipo_conservacao || '').toLowerCase()
+  if (tc === 'congelado') return { cor: '#1D4ED8', label: 'Congelado', emoji: '🔵' }
+  if (tc === 'descongelado') return { cor: '#7C3AED', label: 'Descongelado', emoji: '🟣' }
+  const d = it.data_validade ? Math.ceil((new Date(it.data_validade).getTime() - Date.now()) / 864e5) : null
+  if (d == null) return { cor: '#6b7280', label: '—', emoji: '⚪' }
+  if (d < 0) return { cor: '#DC2626', label: 'Vencido', emoji: '🔴' }
+  if (d <= 2) return { cor: '#D97706', label: 'Próximo do venc.', emoji: '🟡' }
+  return { cor: '#166534', label: 'Dentro da validade', emoji: '🟢' }
+}
 const card: React.CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: '1.1rem 1.3rem', marginBottom: 14 }
 const inp: React.CSSProperties = { padding: '.5rem .7rem', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, width: '100%' }
 const btn = (bg: string): React.CSSProperties => ({ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '.55rem 1rem', borderRadius: 10, border: 'none', background: bg, color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 13 })
@@ -66,6 +78,53 @@ async function imprimirItens(itens: any[], loja: string) {
   </style></head><body>${blocos.join('')}
   <script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script>
   </body></html>`
+  const w = window.open('', '_blank', 'width=800,height=600')
+  if (!w) { alert('Permita pop-ups para imprimir as etiquetas.'); return }
+  w.document.write(html); w.document.close()
+}
+
+// Etiqueta SANITÁRIA de produto manipulado (faixa de cor por status + campos obrigatórios)
+async function imprimirManipulados(itens: any[], loja: string, tam = '60x40') {
+  const dims: any = { '40x40': [40, 40], '50x30': [50, 30], '60x40': [60, 40] }
+  const [W, H] = dims[tam] || [60, 40]
+  const blocos: string[] = []
+  for (const it of itens) {
+    const qr = await qrDataURL(it.codigo)
+    const cv = corValidade(it)
+    const dm = it.data_manipulacao ? new Date(it.data_manipulacao).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
+    const dv = it.data_validade ? new Date(it.data_validade + 'T00:00').toLocaleDateString('pt-BR') : '—'
+    const vo = it.validade_original ? new Date(it.validade_original + 'T00:00').toLocaleDateString('pt-BR') : null
+    blocos.push(`
+      <div class="et">
+        <div class="band" style="background:${cv.cor}">${cv.emoji} ${cv.label.toUpperCase()}${it.categoria_conservacao ? ' · ' + String(it.categoria_conservacao).replace(/_/g, ' ').toUpperCase() : ''}</div>
+        <div class="body">
+          <div class="left">
+            <div class="nome">${(it.produto_nome || '').toUpperCase()}</div>
+            <div class="row"><b>Peso/Qtd:</b> ${it.quantidade ?? ''} ${it.unidade || ''}</div>
+            <div class="row"><b>Manipulado:</b> ${dm}</div>
+            <div class="row val"><b>VALIDADE:</b> ${dv}</div>
+            ${vo ? `<div class="row"><b>Val. original:</b> ${vo}</div>` : ''}
+            <div class="row"><b>Resp.:</b> ${it.responsavel_manip || '—'}${it.conferente_manip ? ' · Conf.: ' + it.conferente_manip : ''}</div>
+            <div class="row"><b>Lote:</b> ${it.numero_lote || '—'}${it.op_numero ? ' · OP ' + it.op_numero : ''}</div>
+            <div class="row"><b>Forn.:</b> ${(it.fornecedor || '—').slice(0, 24)}${it.sif ? ' · ' + it.sif : ''}</div>
+          </div>
+          <div class="right"><img class="qr" src="${qr}"/><div class="cod">${it.codigo}</div></div>
+        </div>
+        <div class="foot">${loja} · Amore Food · manipulado</div>
+      </div>`)
+  }
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas manipulado</title><style>
+    @page{margin:6mm} *{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}
+    body{margin:0;display:flex;flex-wrap:wrap;gap:4mm;padding:4mm}
+    .et{width:${W}mm;min-height:${H}mm;border:1px solid #333;border-radius:1.5mm;overflow:hidden;page-break-inside:avoid;display:flex;flex-direction:column}
+    .band{color:#fff;font-size:7.5pt;font-weight:800;padding:1mm 2mm;text-align:center}
+    .body{display:flex;gap:1.5mm;padding:1.5mm 2mm;flex:1}
+    .left{flex:1;font-size:6.5pt;line-height:1.3} .nome{font-size:8.5pt;font-weight:800;margin-bottom:.5mm;line-height:1.05}
+    .row b{font-weight:700} .val{color:#b30000;font-size:7.5pt}
+    .right{text-align:center} .qr{width:15mm;height:15mm} .cod{font-size:5.5pt;color:#555}
+    .foot{font-size:5.5pt;color:#666;text-align:center;border-top:1px solid #ddd;padding:.5mm}
+  </style></head><body>${blocos.join('')}
+  <script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script></body></html>`
   const w = window.open('', '_blank', 'width=800,height=600')
   if (!w) { alert('Permita pop-ups para imprimir as etiquetas.'); return }
   w.document.write(html); w.document.close()
@@ -237,6 +296,7 @@ function TabEtiquetas({ loja, toast, user }: any) {
         <span style={{ fontSize: 12.5, color: '#374151' }}><b>{sel.size}</b> selecionado(s)</span>
         <button onClick={marcarTodos} style={{ ...btn('#e5e7eb'), color: '#374151' }}>Selecionar todos</button>
         <button disabled={!sel.size} onClick={() => imprimirItens(selecionados, loja)} style={{ ...btn(sel.size ? '#6B1212' : '#c4b5a8'), cursor: sel.size ? 'pointer' : 'not-allowed' }}><Printer size={15} />Imprimir {sel.size ? `(${sel.size})` : ''}</button>
+        <button disabled={!sel.size} onClick={() => imprimirManipulados(selecionados, loja)} title="Etiqueta sanitária de produto manipulado" style={{ ...btn(sel.size ? '#166534' : '#b7cdb7'), cursor: sel.size ? 'pointer' : 'not-allowed' }}>🏷️ Manipulado {sel.size ? `(${sel.size})` : ''}</button>
         <button disabled={!sel.size} onClick={cancelarSelecionados} style={{ ...btn(sel.size ? '#DC2626' : '#e5b4b4'), cursor: sel.size ? 'pointer' : 'not-allowed' }}><Trash2 size={15} />Cancelar {sel.size ? `(${sel.size})` : ''}</button>
       </div>
 
@@ -250,7 +310,7 @@ function TabEtiquetas({ loja, toast, user }: any) {
               filtrados.map(l => { const venc = l.data_validade ? Math.ceil((new Date(l.data_validade).getTime() - Date.now()) / 864e5) : null; return (
                 <tr key={l.id} style={{ borderTop: '1px solid #f3f4f6' }}>
                   <td><input type="checkbox" checked={sel.has(l.id)} onChange={() => toggle(l.id)} /></td>
-                  <td style={{ fontWeight: 600 }}>{l.produto_nome}</td>
+                  <td style={{ fontWeight: 600 }}><span title={corValidade(l).label} style={{ display: 'inline-block', width: 9, height: 9, borderRadius: '50%', background: corValidade(l).cor, marginRight: 6 }} />{l.produto_nome}{l.manipulado ? <span title="Produto manipulado" style={{ marginLeft: 5, fontSize: 11 }}>🏷️</span> : ''}</td>
                   <td style={{ fontFamily: 'monospace', fontSize: 11.5 }}>{l.codigo}</td>
                   <td>{l.quantidade} {l.unidade}</td>
                   <td style={{ color: venc != null && venc <= 7 ? '#DC2626' : '#374151', fontWeight: venc != null && venc <= 7 ? 700 : 400 }}>{fmtD(l.data_validade)}{venc != null && venc <= 7 ? ` (${venc}d)` : ''}</td>
@@ -708,11 +768,11 @@ function TabRelatorios({ loja, toast, user }: any) {
 const DESTINOS = ['descarte', 'reaproveitamento', 'caldo', 'molho', 'recheio', 'alimentacao_colaborador', 'doacao', 'devolucao_fornecedor', 'amostra', 'outro']
 const nnum = (n: any) => Number(n) || 0
 function TabBeneficiamento({ loja, toast, user }: any) {
-  const [view, setView] = useState<'nova' | 'indicadores'>('nova')
+  const [view, setView] = useState<'nova' | 'indicadores' | 'regras'>('nova')
   const [prods, setProds] = useState<any[]>([])
-  const [origem, setOrigem] = useState<any>({ produto_id: '', qtd_bruta: '', custo_kg: '', peso_antes: '', lote: '', validade: '', tipo_beneficiamento: '' })
-  const [saidas, setSaidas] = useState<any[]>([{ tipo: 'final', produto_nome: '', quantidade: '', unidade: 'kg', destino: '', custo_atribuido: '', validade: '', local: '' }])
-  const [meta, setMeta] = useState<any>({ setor: '', colaborador: '', conferente: '', observacao: '' })
+  const [origem, setOrigem] = useState<any>({ produto_id: '', qtd_bruta: '', custo_kg: '', peso_antes: '', lote: '', validade: '', tipo_beneficiamento: '', sif: '' })
+  const [saidas, setSaidas] = useState<any[]>([{ tipo: 'final', produto_nome: '', quantidade: '', unidade: 'kg', destino: '', custo_atribuido: '', validade: '', local: '', categoria_conservacao: '' }])
+  const [meta, setMeta] = useState<any>({ setor: '', colaborador: '', conferente: '', observacao: '', op_numero: '' })
   const [justificativa, setJustificativa] = useState('')
   const [fotos, setFotos] = useState<string[]>([])
   const [upBusy, setUpBusy] = useState(false)
@@ -725,7 +785,7 @@ function TabBeneficiamento({ loja, toast, user }: any) {
   useEffect(() => { if (prodOrigem) setOrigem((o: any) => ({ ...o, custo_kg: o.custo_kg || prodOrigem.preco_unitario || '' })) /* eslint-disable-next-line */ }, [origem.produto_id])
 
   const upSaida = (i: number, patch: any) => setSaidas(a => a.map((x, idx) => idx === i ? { ...x, ...patch } : x))
-  const addSaida = (tipo: string) => setSaidas(a => [...a, { tipo, produto_nome: '', quantidade: '', unidade: 'kg', destino: tipo === 'perda' ? 'descarte' : '', custo_atribuido: '', validade: '', local: '' }])
+  const addSaida = (tipo: string) => setSaidas(a => [...a, { tipo, produto_nome: '', quantidade: '', unidade: 'kg', destino: tipo === 'perda' ? 'descarte' : '', custo_atribuido: '', validade: '', local: '', categoria_conservacao: '' }])
   const rmSaida = (i: number) => setSaidas(a => a.filter((_, idx) => idx !== i))
 
   const pesoAntes = nnum(origem.peso_antes) || nnum(origem.qtd_bruta)
@@ -760,8 +820,8 @@ function TabBeneficiamento({ loja, toast, user }: any) {
     setBusy(true)
     const { data, error } = await sb.rpc('beneficiamento_registrar', {
       p_loja: loja,
-      p_origem: { produto_id: origem.produto_id, lote: origem.lote || null, validade: origem.validade || null, qtd_bruta: nnum(origem.qtd_bruta), unidade: prodOrigem?.gramatura || 'kg', peso_antes: pesoAntes, custo_kg: nnum(origem.custo_kg), tipo_beneficiamento: origem.tipo_beneficiamento || null },
-      p_saidas: saidas.filter(s => nnum(s.quantidade) > 0).map(s => ({ tipo: s.tipo, produto_nome: s.produto_nome, quantidade: nnum(s.quantidade), unidade: s.unidade, destino: s.destino || null, custo_atribuido: s.custo_atribuido ? nnum(s.custo_atribuido) : null, validade: s.validade || null, local: s.local || null })),
+      p_origem: { produto_id: origem.produto_id, lote: origem.lote || null, validade: origem.validade || null, qtd_bruta: nnum(origem.qtd_bruta), unidade: prodOrigem?.gramatura || 'kg', peso_antes: pesoAntes, custo_kg: nnum(origem.custo_kg), tipo_beneficiamento: origem.tipo_beneficiamento || null, sif: origem.sif || null },
+      p_saidas: saidas.filter(s => nnum(s.quantidade) > 0).map(s => ({ tipo: s.tipo, produto_nome: s.produto_nome, quantidade: nnum(s.quantidade), unidade: s.unidade, destino: s.destino || null, custo_atribuido: s.custo_atribuido ? nnum(s.custo_atribuido) : null, validade: s.validade || null, local: s.local || null, categoria_conservacao: s.categoria_conservacao || null })),
       p_meta: meta, p_fotos: fotos, p_justificativa: justificativa || null,
     })
     setBusy(false)
@@ -791,8 +851,9 @@ function TabBeneficiamento({ loja, toast, user }: any) {
       <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
         <button onClick={() => setView('nova')} style={{ ...btn(view === 'nova' ? '#166534' : '#e5e7eb'), color: view === 'nova' ? '#fff' : '#374151', padding: '.45rem .9rem', fontSize: 12.5 }}><Scissors size={14} />Nova conversão</button>
         <button onClick={() => setView('indicadores')} style={{ ...btn(view === 'indicadores' ? '#166534' : '#e5e7eb'), color: view === 'indicadores' ? '#fff' : '#374151', padding: '.45rem .9rem', fontSize: 12.5 }}><BarChart3 size={14} />Indicadores</button>
+        <button onClick={() => setView('regras')} style={{ ...btn(view === 'regras' ? '#166534' : '#e5e7eb'), color: view === 'regras' ? '#fff' : '#374151', padding: '.45rem .9rem', fontSize: 12.5 }}><Clock size={14} />Regras de validade</button>
       </div>
-      {view === 'indicadores' ? <BenefIndicadores loja={loja} toast={toast} /> : <>
+      {view === 'indicadores' ? <BenefIndicadores loja={loja} toast={toast} /> : view === 'regras' ? <BenefRegras toast={toast} /> : <>
       <b style={{ fontSize: 14 }}>Beneficiamento / Conversão</b>
       <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '4px 0 10px' }}>Transforme um produto bruto em produtos finais, subprodutos e perdas — com rendimento e custo real calculados.</p>
 
@@ -807,6 +868,8 @@ function TabBeneficiamento({ loja, toast, user }: any) {
           <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Peso antes (opcional)</label><input style={inp} type="number" step="0.01" value={origem.peso_antes} onChange={e => setOrigem({ ...origem, peso_antes: e.target.value })} placeholder={String(origem.qtd_bruta || '')} /></div>
           <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Tipo de beneficiamento</label><input style={inp} value={origem.tipo_beneficiamento} onChange={e => setOrigem({ ...origem, tipo_beneficiamento: e.target.value })} placeholder="Limpeza, porcionamento…" /></div>
           <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Lote origem</label><input style={inp} value={origem.lote} onChange={e => setOrigem({ ...origem, lote: e.target.value })} /></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>SIF/SIE/SIM</label><input style={inp} value={origem.sif} onChange={e => setOrigem({ ...origem, sif: e.target.value })} placeholder="Opcional" /></div>
+          <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Validade origem</label><input style={inp} type="date" value={origem.validade} onChange={e => setOrigem({ ...origem, validade: e.target.value })} /></div>
         </div>
       </div>
 
@@ -833,8 +896,10 @@ function TabBeneficiamento({ loja, toast, user }: any) {
                 <div><select style={inp} value={s.unidade} onChange={e => upSaida(i, { unidade: e.target.value })}>{UNIDADES.map(u => <option key={u}>{u}</option>)}</select></div>
                 {s.tipo === 'subproduto' && <div><input style={inp} type="number" step="0.01" value={s.custo_atribuido} onChange={e => upSaida(i, { custo_atribuido: e.target.value })} placeholder="Custo atribuído R$" /></div>}
                 {(s.tipo === 'perda' || s.tipo === 'subproduto') && <div><select style={inp} value={s.destino} onChange={e => upSaida(i, { destino: e.target.value })}><option value="">Destino…</option>{DESTINOS.map(d => <option key={d} value={d}>{d.replace(/_/g, ' ')}</option>)}</select></div>}
-                {s.tipo !== 'perda' && <div><input style={inp} type="date" value={s.validade} onChange={e => upSaida(i, { validade: e.target.value })} /></div>}
+                {s.tipo !== 'perda' && <div title="Manipulado — calcula validade automática"><select style={inp} value={s.categoria_conservacao} onChange={e => upSaida(i, { categoria_conservacao: e.target.value })}>{CONSERV.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>}
+                {s.tipo !== 'perda' && !s.categoria_conservacao && <div><input style={inp} type="date" value={s.validade} onChange={e => upSaida(i, { validade: e.target.value })} title="Validade manual" /></div>}
               </div>
+              {s.tipo !== 'perda' && s.categoria_conservacao && <div style={{ fontSize: 11, color: '#166534', marginTop: 4 }}>🏷️ Produto manipulado — validade automática por categoria + etiqueta sanitária.</div>}
             </div>
           ))}
         </div>
@@ -858,6 +923,7 @@ function TabBeneficiamento({ loja, toast, user }: any) {
         <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Setor</label><input style={inp} list="setores-b" value={meta.setor} onChange={e => setMeta({ ...meta, setor: e.target.value })} /><datalist id="setores-b">{SETORES.map(s => <option key={s} value={s} />)}</datalist></div>
         <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Colaborador</label><input style={inp} value={meta.colaborador} onChange={e => setMeta({ ...meta, colaborador: e.target.value })} /></div>
         <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Conferente</label><input style={inp} value={meta.conferente} onChange={e => setMeta({ ...meta, conferente: e.target.value })} /></div>
+        <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Ordem de Produção</label><input style={inp} value={meta.op_numero} onChange={e => setMeta({ ...meta, op_numero: e.target.value })} placeholder="OP-000" /></div>
         <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Observação</label><input style={inp} value={meta.observacao} onChange={e => setMeta({ ...meta, observacao: e.target.value })} /></div>
       </div>
       <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -934,6 +1000,34 @@ function BenefIndicadores({ loja, toast }: any) {
         </div>}
       </>}
     </>
+  )
+}
+
+// ─────────────────────────────────────────── Regras de validade (admin)
+function BenefRegras({ toast }: any) {
+  const [regras, setRegras] = useState<any[]>([])
+  const load = useCallback(async () => { const { data } = await sb.from('validade_regras').select('*').order('categoria'); setRegras(data || []) }, [])
+  useEffect(() => { load() }, [load])
+  const salvar = async (r: any, dias: any, tipo: string) => {
+    const { error } = await sb.from('validade_regras').update({ dias_validade: Number(dias) || 0, tipo_conservacao: tipo, updated_at: new Date().toISOString() }).eq('id', r.id)
+    if (error) { toast('Erro ao salvar.', 'error'); return }
+    toast('Regra atualizada. ✅'); load()
+  }
+  const TIPOS = ['resfriado', 'congelado', 'descongelado', 'ambiente']
+  return (
+    <div>
+      <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '0 0 10px' }}>Configure a validade (em dias) e o tipo de conservação de cada categoria. Ao manipular, a validade é calculada automaticamente.</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {regras.map(r => (
+          <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', background: '#f9fafb', padding: '.5rem .7rem', borderRadius: 8 }}>
+            <b style={{ flex: 1, minWidth: 140, fontSize: 13 }}>{r.label || r.categoria}</b>
+            <label style={{ fontSize: 12, color: '#6b7280' }}>Dias: <input type="number" defaultValue={r.dias_validade} id={`d-${r.id}`} style={{ ...inp, width: 70, display: 'inline-block' }} /></label>
+            <select defaultValue={r.tipo_conservacao} id={`t-${r.id}`} style={{ ...inp, width: 'auto' }}>{TIPOS.map(t => <option key={t} value={t}>{t}</option>)}</select>
+            <button onClick={() => salvar(r, (document.getElementById(`d-${r.id}`) as any).value, (document.getElementById(`t-${r.id}`) as any).value)} style={{ ...btn('#166534'), padding: '.35rem .8rem', fontSize: 12 }}><Check size={13} />Salvar</button>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -1061,6 +1155,19 @@ function TabConsulta({ toast }: any) {
           </div>
           {critico && <span style={{ fontSize: 12, fontWeight: 700, color: '#DC2626', background: '#FEE2E2', padding: '.3rem .7rem', borderRadius: 20 }}>Abaixo do mínimo</span>}
         </div>
+        {info.manipulado && (() => { const cv = corValidade(info); return (
+          <div style={{ marginTop: 10, border: `1px solid ${cv.cor}`, borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ background: cv.cor, color: '#fff', fontSize: 12, fontWeight: 800, padding: '5px 10px' }}>{cv.emoji} PRODUTO MANIPULADO · {cv.label.toUpperCase()}{info.categoria_conservacao ? ' · ' + String(info.categoria_conservacao).replace(/_/g, ' ').toUpperCase() : ''}</div>
+            <div style={{ padding: '8px 10px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px,1fr))', gap: 6, fontSize: 12.5 }}>
+              <div><span style={{ color: '#9ca3af' }}>Manipulado em:</span> <b>{info.data_manipulacao ? new Date(info.data_manipulacao).toLocaleString('pt-BR') : '—'}</b></div>
+              <div><span style={{ color: '#9ca3af' }}>Validade:</span> <b style={{ color: cv.cor }}>{fmtD(info.validade)}</b></div>
+              {info.validade_original && <div><span style={{ color: '#9ca3af' }}>Val. original:</span> <b>{fmtD(info.validade_original)}</b></div>}
+              <div><span style={{ color: '#9ca3af' }}>Responsável:</span> <b>{info.responsavel_manip || '—'}</b></div>
+              {info.conferente_manip && <div><span style={{ color: '#9ca3af' }}>Conferente:</span> <b>{info.conferente_manip}</b></div>}
+              {info.sif && <div><span style={{ color: '#9ca3af' }}>SIF/SIE/SIM:</span> <b>{info.sif}</b></div>}
+              {info.op_numero && <div><span style={{ color: '#9ca3af' }}>Ordem Produção:</span> <b>{info.op_numero}</b></div>}
+            </div>
+          </div>) })()}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px,1fr))', gap: 8, marginTop: 12 }}>
           {KPI('Estoque atual', info.estoque_atual, critico ? '#DC2626' : '#1D9E75')}
           {KPI('Mínimo', info.estoque_minimo)}
