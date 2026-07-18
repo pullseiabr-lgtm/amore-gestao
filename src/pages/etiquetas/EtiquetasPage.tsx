@@ -708,6 +708,7 @@ function TabRelatorios({ loja, toast, user }: any) {
 const DESTINOS = ['descarte', 'reaproveitamento', 'caldo', 'molho', 'recheio', 'alimentacao_colaborador', 'doacao', 'devolucao_fornecedor', 'amostra', 'outro']
 const nnum = (n: any) => Number(n) || 0
 function TabBeneficiamento({ loja, toast, user }: any) {
+  const [view, setView] = useState<'nova' | 'indicadores'>('nova')
   const [prods, setProds] = useState<any[]>([])
   const [origem, setOrigem] = useState<any>({ produto_id: '', qtd_bruta: '', custo_kg: '', peso_antes: '', lote: '', validade: '', tipo_beneficiamento: '' })
   const [saidas, setSaidas] = useState<any[]>([{ tipo: 'final', produto_nome: '', quantidade: '', unidade: 'kg', destino: '', custo_atribuido: '', validade: '', local: '' }])
@@ -787,6 +788,11 @@ function TabBeneficiamento({ loja, toast, user }: any) {
   const TCOR: any = { final: '#166534', subproduto: '#B45309', perda: '#DC2626' }
   return (
     <div style={card}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+        <button onClick={() => setView('nova')} style={{ ...btn(view === 'nova' ? '#166534' : '#e5e7eb'), color: view === 'nova' ? '#fff' : '#374151', padding: '.45rem .9rem', fontSize: 12.5 }}><Scissors size={14} />Nova conversão</button>
+        <button onClick={() => setView('indicadores')} style={{ ...btn(view === 'indicadores' ? '#166534' : '#e5e7eb'), color: view === 'indicadores' ? '#fff' : '#374151', padding: '.45rem .9rem', fontSize: 12.5 }}><BarChart3 size={14} />Indicadores</button>
+      </div>
+      {view === 'indicadores' ? <BenefIndicadores loja={loja} toast={toast} /> : <>
       <b style={{ fontSize: 14 }}>Beneficiamento / Conversão</b>
       <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '4px 0 10px' }}>Transforme um produto bruto em produtos finais, subprodutos e perdas — com rendimento e custo real calculados.</p>
 
@@ -864,7 +870,70 @@ function TabBeneficiamento({ loja, toast, user }: any) {
       <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
         <button onClick={confirmar} disabled={busy} style={btn('#166534')}><Check size={16} />{busy ? 'Registrando…' : 'Confirmar beneficiamento'}</button>
       </div>
+      </>}
     </div>
+  )
+}
+
+// ─────────────────────────────────────────── Indicadores de beneficiamento
+function BenefIndicadores({ loja, toast }: any) {
+  const hoje = new Date().toISOString().slice(0, 10)
+  const mesAtras = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)
+  const [ini, setIni] = useState(mesAtras)
+  const [fim, setFim] = useState(hoje)
+  const [d, setD] = useState<any | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [aba, setAba] = useState<'produto' | 'colaborador' | 'ranking' | 'fora'>('produto')
+
+  const gerar = useCallback(async () => {
+    setBusy(true)
+    const { data, error } = await sb.rpc('beneficiamento_indicadores', { p_loja: loja, p_ini: ini, p_fim: fim })
+    setBusy(false)
+    if (error || !data?.ok) { toast('Erro ao gerar indicadores.', 'error'); return }
+    setD(data)
+  }, [loja, ini, fim])
+  useEffect(() => { gerar() }, [loja]) // eslint-disable-line
+
+  const KPI = (l: string, v: any, c = '#241b19') => <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 12px' }}><div style={{ fontSize: 11, color: '#9ca3af' }}>{l}</div><div style={{ fontSize: 18, fontWeight: 800, color: c }}>{v}</div></div>
+
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+        <input type="date" style={{ ...inp, width: 'auto' }} value={ini} onChange={e => setIni(e.target.value)} />
+        <span style={{ color: '#9ca3af' }}>até</span>
+        <input type="date" style={{ ...inp, width: 'auto' }} value={fim} onChange={e => setFim(e.target.value)} />
+        <button onClick={gerar} disabled={busy} style={btn('#166534')}><BarChart3 size={15} />{busy ? '…' : 'Gerar'}</button>
+      </div>
+      {!d ? <div style={{ fontSize: 13, color: '#9ca3af' }}>Sem dados.</div> : d.total_conversoes === 0 ? <div style={{ fontSize: 13, color: '#9ca3af' }}>Nenhuma conversão no período.</div> : <>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px,1fr))', gap: 8 }}>
+          {KPI('Conversões', d.total_conversoes)}
+          {KPI('Rendimento médio', d.rendimento_medio + '%', '#166534')}
+          {KPI('Perda média', d.perda_media + '%', '#B91C1C')}
+          {KPI('Valor perdas', fmt(d.valor_perdas), '#DC2626')}
+          {KPI('Recuperado', fmt(d.valor_recuperado), '#166534')}
+          {KPI('Fora do padrão', d.fora_padrao_n, d.fora_padrao_n > 0 ? '#DC2626' : '#166534')}
+        </div>
+        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>Peso bruto {d.peso_bruto} · aproveitado {d.peso_aproveitado} · perdido {d.peso_perdido} · custo bruto total {fmt(d.custo_bruto_total)}</div>
+        <div style={{ display: 'flex', gap: 6, margin: '12px 0 8px', flexWrap: 'wrap' }}>
+          {[['produto', 'Por produto'], ['colaborador', 'Por colaborador'], ['ranking', 'Ranking desperdício'], ['fora', `Fora do padrão (${d.fora_padrao_n})`]].map(([v, l]) => (
+            <button key={v} onClick={() => setAba(v as any)} style={{ ...btn(aba === v ? '#6B1212' : '#e5e7eb'), color: aba === v ? '#fff' : '#374151', padding: '.4rem .8rem', fontSize: 12 }}>{l}</button>
+          ))}
+        </div>
+        {aba === 'produto' && <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {(d.por_produto || []).map((p: any, i: number) => <div key={i} style={{ display: 'flex', gap: 8, fontSize: 12.5, background: '#f9fafb', padding: '.4rem .7rem', borderRadius: 8 }}><b style={{ flex: 1 }}>{p.produto}</b><span>rend. {p.rendimento_medio}%</span><span style={{ color: '#DC2626' }}>perda {fmt(p.valor_perda)}</span><span style={{ color: '#9ca3af' }}>{p.conversoes}x</span></div>)}
+        </div>}
+        {aba === 'colaborador' && <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {(d.por_colaborador || []).map((p: any, i: number) => <div key={i} style={{ display: 'flex', gap: 8, fontSize: 12.5, background: '#f9fafb', padding: '.4rem .7rem', borderRadius: 8 }}><b style={{ flex: 1 }}>{p.colaborador}</b><span>rend. {p.rendimento_medio}%</span><span style={{ color: '#B91C1C' }}>perda média {p.perda_media}%</span><span style={{ color: '#9ca3af' }}>{p.conversoes}x</span></div>)}
+        </div>}
+        {aba === 'ranking' && <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {(d.ranking_desperdicio || []).map((p: any, i: number) => <div key={i} style={{ display: 'flex', gap: 8, fontSize: 12.5, background: i === 0 ? '#FEE2E2' : '#f9fafb', padding: '.4rem .7rem', borderRadius: 8 }}><b style={{ minWidth: 20 }}>{i + 1}º</b><b style={{ flex: 1 }}>{p.produto}</b><span style={{ color: '#DC2626', fontWeight: 700 }}>{fmt(p.valor_perda)}</span><span style={{ color: '#9ca3af' }}>{p.peso_perdido}</span></div>)}
+        </div>}
+        {aba === 'fora' && <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {(d.fora_padrao || []).length === 0 ? <div style={{ fontSize: 12.5, color: '#166534' }}>✅ Nenhuma conversão fora do padrão.</div> :
+            d.fora_padrao.map((p: any, i: number) => <div key={i} style={{ fontSize: 12.5, background: '#FEE2E2', padding: '.4rem .7rem', borderRadius: 8 }}>nº {p.numero} · <b>{p.produto}</b> · rend. {p.rendimento}% · {p.colaborador}{p.justificativa ? ` · "${p.justificativa}"` : ' · sem justificativa'}</div>)}
+        </div>}
+      </>}
+    </>
   )
 }
 
@@ -951,14 +1020,16 @@ function TabEntrada({ loja, toast, user }: any) {
 function TabConsulta({ toast }: any) {
   const [codigo, setCodigo] = useState('')
   const [info, setInfo] = useState<any | null>(null)
+  const [rastro, setRastro] = useState<any | null>(null)
   const [scanning, setScanning] = useState(false)
   const scannerRef = useRef<any>(null)
 
   const consultar = async (cod: string) => {
     const c = (cod || '').trim(); if (!c) return
     const { data, error } = await sb.rpc('produto_consulta', { p_codigo: c })
-    if (error || !data?.ok) { toast(data?.erro || 'Etiqueta não encontrada.', 'error'); setInfo(null); return }
+    if (error || !data?.ok) { toast(data?.erro || 'Etiqueta não encontrada.', 'error'); setInfo(null); setRastro(null); return }
     setInfo(data); setCodigo(c)
+    if (data.produto_id) { const { data: r } = await sb.rpc('produto_rastreabilidade', { p_produto_id: data.produto_id }); setRastro(r || null) } else setRastro(null)
   }
   const pararScanner = useCallback(async () => { if (scannerRef.current) { try { await scannerRef.current.stop(); await scannerRef.current.clear() } catch {} scannerRef.current = null } setScanning(false) }, [])
   const iniciarScanner = async () => {
@@ -1015,6 +1086,15 @@ function TabConsulta({ toast }: any) {
                 </div>) })}
           </div>
         </div>
+        {rastro && ((rastro.veio_de || []).length > 0 || (rastro.gerou || []).length > 0) && <div style={{ marginTop: 12, background: '#F5F3FF', border: '1px solid #ddd6fe', borderRadius: 10, padding: 12 }}>
+          <b style={{ fontSize: 13, color: '#6D28D9' }}>🔗 Rastreabilidade (beneficiamento)</b>
+          {(rastro.veio_de || []).map((v: any, i: number) => (
+            <div key={'v' + i} style={{ fontSize: 12.5, marginTop: 6 }}>↖ <b>Veio de</b> beneficiamento nº {v.numero}: <b>{v.origem}</b> → este produto ({v.tipo}, {v.qtd} {v.unidade}, custo R$ {Number(v.custo_kg).toFixed(2)}/{v.unidade}) · rend. {v.rendimento}% · {v.colaborador} · {new Date(v.data).toLocaleDateString('pt-BR')}</div>
+          ))}
+          {(rastro.gerou || []).map((g: any, i: number) => (
+            <div key={'g' + i} style={{ fontSize: 12.5, marginTop: 6 }}>↘ <b>Gerou</b> na conversão nº {g.numero} ({new Date(g.data).toLocaleDateString('pt-BR')}) · rend. {g.rendimento}% · perda {g.perda}%: {(g.saidas || []).map((s: any) => `${s.produto} (${s.tipo} ${s.qtd}${s.unidade})`).join(' · ')}</div>
+          ))}
+        </div>}
       </div>}
     </div>
   )
@@ -1023,7 +1103,7 @@ function TabConsulta({ toast }: any) {
 // ─────────────────────────────────────────── Histórico consolidado
 const TIPO_MOV: Record<string, { l: string; c: string }> = {
   entrada: { l: 'Entrada', c: '#166534' }, saida: { l: 'Saída', c: '#B91C1C' }, perda: { l: 'Perda', c: '#DC2626' },
-  transferencia: { l: 'Transferência', c: '#7C3AED' }, estorno: { l: 'Estorno', c: '#B45309' }, ajuste: { l: 'Ajuste', c: '#6b7280' },
+  transferencia: { l: 'Transferência', c: '#7C3AED' }, estorno: { l: 'Estorno', c: '#B45309' }, ajuste: { l: 'Ajuste', c: '#6b7280' }, beneficiamento: { l: 'Beneficiam.', c: '#6D28D9' },
 }
 function TabHistorico({ loja }: any) {
   const hoje = new Date().toISOString().slice(0, 10)
