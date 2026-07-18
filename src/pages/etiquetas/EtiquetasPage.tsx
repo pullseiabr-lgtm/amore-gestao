@@ -881,9 +881,25 @@ function TabBeneficiamento({ loja, toast, user }: any) {
   const [upBusy, setUpBusy] = useState(false)
   const [busy, setBusy] = useState(false)
   const [novos, setNovos] = useState<string[]>([])
+  const [novoProd, setNovoProd] = useState(false)
+  const [formProd, setFormProd] = useState<any>({ nome: '', unidade: 'kg', categoria: 'Carnes', estoque: '', custo: '', rend_min: '', rend_max: '' })
 
-  useEffect(() => { sb.from('estoque_produtos').select('id,nome,gramatura,preco_unitario,nivel_atual,rend_min,rend_max').eq('loja', loja).eq('ativo', true).order('nome').then(({ data }: any) => setProds(data || [])) }, [loja])
+  const loadProds = useCallback(async () => { const { data } = await sb.from('estoque_produtos').select('id,nome,gramatura,preco_unitario,nivel_atual,rend_min,rend_max').eq('loja', loja).eq('ativo', true).order('nome'); setProds(data || []) }, [loja])
+  useEffect(() => { loadProds() }, [loadProds])
   useEffect(() => { if (user?.name && !meta.colaborador) setMeta((m: any) => ({ ...m, colaborador: user.name })) }, [user])
+  const criarProdOrigem = async () => {
+    if (!formProd.nome.trim()) { toast('Informe o nome do produto.', 'error'); return }
+    const { data, error } = await sb.from('estoque_produtos').insert({
+      loja, nome: formProd.nome.trim().toUpperCase(), gramatura: formProd.unidade, categoria: formProd.categoria || 'Geral',
+      nivel_atual: nnum(formProd.estoque), nivel_minimo: 0, nivel_ideal: 0, preco_unitario: nnum(formProd.custo), ativo: true,
+      status_cadastro: 'pendente_validacao', rend_min: formProd.rend_min ? nnum(formProd.rend_min) : null, rend_max: formProd.rend_max ? nnum(formProd.rend_max) : null,
+    }).select('id').single()
+    if (error || !data) { toast('Erro ao cadastrar produto.', 'error'); return }
+    toast('Produto de origem cadastrado! ✅')
+    await loadProds()
+    setOrigem((o: any) => ({ ...o, produto_id: data.id, custo_kg: nnum(formProd.custo) || '' }))
+    setNovoProd(false); setFormProd({ nome: '', unidade: 'kg', categoria: 'Carnes', estoque: '', custo: '', rend_min: '', rend_max: '' })
+  }
   const prodOrigem = prods.find(p => p.id === origem.produto_id)
   useEffect(() => { if (prodOrigem) setOrigem((o: any) => ({ ...o, custo_kg: o.custo_kg || prodOrigem.preco_unitario || '' })) /* eslint-disable-next-line */ }, [origem.produto_id])
 
@@ -962,7 +978,23 @@ function TabBeneficiamento({ loja, toast, user }: any) {
 
       {/* origem */}
       <div style={{ background: '#faf8f5', border: '1px solid #ece4dd', borderRadius: 10, padding: 12 }}>
-        <b style={{ fontSize: 12.5 }}>Matéria-prima (origem)</b>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <b style={{ fontSize: 12.5 }}>Matéria-prima (origem)</b>
+          <button onClick={() => setNovoProd(v => !v)} style={{ ...btn('#7C3AED'), padding: '.35rem .7rem', fontSize: 12 }}><Plus size={13} />Novo produto</button>
+        </div>
+        {novoProd && <div style={{ marginTop: 10, padding: 10, background: '#fff', border: '1px dashed #c4b5a8', borderRadius: 8 }}>
+          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>Cadastre a matéria-prima que ainda não existe no estoque (entra como pendente de validação).</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px,1fr))', gap: 6 }}>
+            <div style={{ gridColumn: 'span 2' }}><label style={{ fontSize: 11, color: '#9ca3af' }}>Nome</label><input style={inp} value={formProd.nome} onChange={e => setFormProd({ ...formProd, nome: e.target.value })} placeholder="Ex.: Peça de carne bovina" /></div>
+            <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Unidade</label><select style={inp} value={formProd.unidade} onChange={e => setFormProd({ ...formProd, unidade: e.target.value })}>{UNIDADES.map(u => <option key={u}>{u}</option>)}</select></div>
+            <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Categoria</label><input style={inp} value={formProd.categoria} onChange={e => setFormProd({ ...formProd, categoria: e.target.value })} /></div>
+            <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Estoque atual</label><input style={inp} type="number" step="0.01" value={formProd.estoque} onChange={e => setFormProd({ ...formProd, estoque: e.target.value })} /></div>
+            <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Custo/{formProd.unidade} (R$)</label><input style={inp} type="number" step="0.01" value={formProd.custo} onChange={e => setFormProd({ ...formProd, custo: e.target.value })} /></div>
+            <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Rend. mín %</label><input style={inp} type="number" value={formProd.rend_min} onChange={e => setFormProd({ ...formProd, rend_min: e.target.value })} placeholder="Opcional" /></div>
+            <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Rend. máx %</label><input style={inp} type="number" value={formProd.rend_max} onChange={e => setFormProd({ ...formProd, rend_max: e.target.value })} placeholder="Opcional" /></div>
+          </div>
+          <div style={{ marginTop: 8, display: 'flex', gap: 8 }}><button onClick={criarProdOrigem} style={{ ...btn('#166534'), padding: '.4rem .9rem', fontSize: 12 }}><Check size={14} />Cadastrar e usar</button><button onClick={() => setNovoProd(false)} style={{ ...btn('#e5e7eb'), color: '#374151', padding: '.4rem .9rem', fontSize: 12 }}>Cancelar</button></div>
+        </div>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px,1fr))', gap: 8, marginTop: 8 }}>
           <div style={{ gridColumn: 'span 2' }}><label style={{ fontSize: 11, color: '#9ca3af' }}>Produto de origem</label>
             <select style={inp} value={origem.produto_id} onChange={e => setOrigem({ ...origem, produto_id: e.target.value })}><option value="">Selecione…</option>{prods.map(p => <option key={p.id} value={p.id}>{p.nome} (estoque {p.nivel_atual})</option>)}</select></div>
