@@ -344,7 +344,12 @@ function TabLeitura({ loja, toast, user }: any) {
   const [scanning, setScanning] = useState(false)
   const [busy, setBusy] = useState(false)
   const [recentes, setRecentes] = useState<any[]>([])
+  const [modoLote, setModoLote] = useState(false)
+  const [lote, setLote] = useState<string[]>([])
   const scannerRef = useRef<any>(null)
+  const loteRef = useRef<string[]>([])
+  const addLote = (c: string) => { const cod = (c || '').trim(); if (!cod || loteRef.current.includes(cod)) return; loteRef.current = [...loteRef.current, cod]; setLote(loteRef.current) }
+  const rmLote = (c: string) => { loteRef.current = loteRef.current.filter(x => x !== c); setLote(loteRef.current) }
 
   useEffect(() => { if (user?.name && !colaborador) setColaborador(user.name) }, [user])
   const loadRecentes = useCallback(async () => {
@@ -371,7 +376,7 @@ function TabLeitura({ loja, toast, user }: any) {
     try {
       const h = new Html5Qrcode('leitor-cam'); scannerRef.current = h
       await h.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 } },
-        async (txt: string) => { await pararScanner(); consultar(txt) }, () => {})
+        async (txt: string) => { if (modoLote) { addLote(txt) } else { await pararScanner(); consultar(txt) } }, () => {})
     } catch (e: any) { toast('Não foi possível abrir a câmera: ' + (e?.message || ''), 'error'); setScanning(false) }
   }
   useEffect(() => () => { pararScanner() }, [pararScanner])
@@ -405,23 +410,53 @@ function TabLeitura({ loja, toast, user }: any) {
     setInfo(null); setCodigo(''); loadRecentes()
   }
 
+  const confirmarLote = async () => {
+    if (!loteRef.current.length) return
+    if (!confirm(`Confirmar saída de ${loteRef.current.length} item(ns)?`)) return
+    setBusy(true)
+    const { data, error } = await sb.rpc('itens_saida_lote', { p_codigos: loteRef.current, p_tipo: motivo, p_motivo: null, p_setor: setor, p_colaborador: colaborador || user?.name || 'Leitura', p_centro_custo: centroCusto || null, p_solicitante: solicitante || null })
+    setBusy(false)
+    if (error || !data?.ok) { toast('Erro ao dar baixa em lote.', 'error'); return }
+    toast(`${data.baixados} saída(s) confirmada(s)${data.erros ? ` · ${data.erros} com erro` : ''}. ✅`)
+    loteRef.current = []; setLote([]); loadRecentes()
+  }
+
   const isItem = info?.tipo === 'item'
   const jaSaiu = info && info.status && info.status !== 'disponivel'
 
   return (
     <>
       <div style={card}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 8, fontSize: 13, fontWeight: 600 }}>
+          <input type="checkbox" checked={modoLote} onChange={e => { setModoLote(e.target.checked); setInfo(null) }} />
+          📋 Leitura contínua (lote) — escaneie vários itens e confirme de uma vez
+        </label>
         <b style={{ fontSize: 14 }}>Leitura da etiqueta</b>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '10px 0' }}>
           {!scanning ? <button onClick={iniciarScanner} style={btn('#6B1212')}><Camera size={16} />Ler com a câmera</button>
             : <button onClick={pararScanner} style={btn('#DC2626')}><X size={16} />Parar câmera</button>}
           <span style={{ fontSize: 12, color: '#9ca3af' }}>ou digite o código:</span>
-          <input style={{ ...inp, width: 200 }} placeholder="Código da etiqueta" value={codigo} onChange={e => setCodigo(e.target.value)} onKeyDown={e => e.key === 'Enter' && consultar(codigo)} />
-          <button onClick={() => consultar(codigo)} style={{ ...btn('#e5e7eb'), color: '#374151' }}><ScanLine size={15} />Consultar</button>
+          <input style={{ ...inp, width: 200 }} placeholder="Código da etiqueta" value={codigo} onChange={e => setCodigo(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { if (modoLote) { addLote(codigo); setCodigo('') } else consultar(codigo) } }} />
+          <button onClick={() => { if (modoLote) { addLote(codigo); setCodigo('') } else consultar(codigo) }} style={{ ...btn('#e5e7eb'), color: '#374151' }}><ScanLine size={15} />{modoLote ? 'Adicionar' : 'Consultar'}</button>
         </div>
         <div id="leitor-cam" style={{ width: '100%', maxWidth: 340, margin: scanning ? '8px 0' : 0 }} />
 
-        {info && <div style={{ marginTop: 10, padding: 14, borderRadius: 12, border: '1px solid ' + (jaSaiu ? '#FCA5A5' : '#e5e7eb'), background: jaSaiu ? '#FEF2F2' : '#f9fafb' }}>
+        {modoLote && <div style={{ marginTop: 10, padding: 12, borderRadius: 12, border: '1px solid #e5e7eb', background: '#f9fafb' }}>
+          <b style={{ fontSize: 13.5 }}>Itens no lote ({lote.length})</b>
+          {lote.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+            {lote.map(c => <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontFamily: 'monospace', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 20, padding: '.25rem .6rem' }}>{c}<button onClick={() => rmLote(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', padding: 0 }}><X size={12} /></button></span>)}
+          </div>}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px,1fr))', gap: 8, marginTop: 10 }}>
+            <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Motivo</label><select style={inp} value={motivo} onChange={e => setMotivo(e.target.value)}>{MOTIVOS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+            <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Setor</label><input style={inp} list="setores" value={setor} onChange={e => setSetor(e.target.value)} /></div>
+            <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Responsável</label><input style={inp} value={colaborador} onChange={e => setColaborador(e.target.value)} /></div>
+          </div>
+          <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+            <button onClick={confirmarLote} disabled={!lote.length || busy} style={{ ...btn(lote.length ? '#1D9E75' : '#c4b5a8'), cursor: lote.length ? 'pointer' : 'not-allowed' }}><PackageMinus size={16} />{busy ? 'Registrando…' : `Confirmar ${lote.length} saída(s)`}</button>
+          </div>
+        </div>}
+
+        {!modoLote && info && <div style={{ marginTop: 10, padding: 14, borderRadius: 12, border: '1px solid ' + (jaSaiu ? '#FCA5A5' : '#e5e7eb'), background: jaSaiu ? '#FEF2F2' : '#f9fafb' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
             <div>
               <div style={{ fontSize: 15, fontWeight: 800 }}>{info.produto_nome}</div>
