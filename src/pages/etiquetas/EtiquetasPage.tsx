@@ -45,7 +45,9 @@ function barcodeDataURL(text: string) {
 }
 
 // imprime UMA etiqueta por item (cada item = 1 etiqueta)
-async function imprimirItens(itens: any[], loja: string) {
+const TAMANHOS: any = { '40x40': [40, 40], '50x30': [50, 30], '60x40': [60, 40], '100x50': [100, 50] }
+async function imprimirItens(itens: any[], loja: string, tam = '60x40') {
+  const [W] = TAMANHOS[tam] || [60, 40]
   const blocos: string[] = []
   for (const it of itens) {
     const qr = await qrDataURL(it.codigo)
@@ -70,7 +72,7 @@ async function imprimirItens(itens: any[], loja: string) {
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas</title><style>
     @page{margin:8mm} *{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}
     body{margin:0;display:flex;flex-wrap:wrap;gap:4mm;padding:4mm}
-    .et{width:58mm;border:1px solid #333;border-radius:2mm;padding:2.5mm;page-break-inside:avoid;display:flex;flex-direction:column;gap:1mm}
+    .et{width:${W}mm;border:1px solid #333;border-radius:2mm;padding:2.5mm;page-break-inside:avoid;display:flex;flex-direction:column;gap:1mm}
     .et-top{display:flex;justify-content:space-between;align-items:flex-start;gap:2mm;border-bottom:1px solid #ccc;padding-bottom:1mm}
     .et-nome{font-size:10pt;font-weight:800;line-height:1.1} .et-cod{font-size:7pt;color:#555;white-space:nowrap}
     .et-mid{display:flex;gap:2mm;align-items:center} .qr{width:20mm;height:20mm}
@@ -86,8 +88,7 @@ async function imprimirItens(itens: any[], loja: string) {
 
 // Etiqueta SANITÁRIA de produto manipulado (faixa de cor por status + campos obrigatórios)
 async function imprimirManipulados(itens: any[], loja: string, tam = '60x40') {
-  const dims: any = { '40x40': [40, 40], '50x30': [50, 30], '60x40': [60, 40] }
-  const [W, H] = dims[tam] || [60, 40]
+  const [W, H] = TAMANHOS[tam] || [60, 40]
   const blocos: string[] = []
   for (const it of itens) {
     const qr = await qrDataURL(it.codigo)
@@ -152,13 +153,14 @@ export default function EtiquetasPage() {
     { id: 'consulta', icon: '🔍', label: 'Consulta', desc: 'Ver produto', c: '#1D4ED8', bg: '#DBEAFE' },
   ].filter(o => podeOp(o.id))
   const TOOLS = [
+    { id: 'dashboard', icon: <BarChart3 size={15} />, label: 'Dashboard' },
     { id: 'beneficiamento', icon: <Scissors size={15} />, label: 'Beneficiamento' },
     { id: 'etiquetas', icon: <QrCode size={15} />, label: 'Etiquetas' },
     { id: 'inventario', icon: <ClipboardList size={15} />, label: 'Inventário' },
     { id: 'relatorios', icon: <BarChart3 size={15} />, label: 'Relatórios' },
     { id: 'historico', icon: <Clock size={15} />, label: 'Histórico' },
   ]
-  const TITULOS: Record<string, string> = { entrada: '📥 Entrada de Estoque', saida: '📤 Saída de Estoque', transferencia: '🔄 Transferência', consulta: '🔍 Consulta', beneficiamento: '⚙️ Beneficiamento', etiquetas: '🖨️ Etiquetas', inventario: '📋 Inventário', relatorios: '📊 Relatórios', historico: '🕘 Histórico' }
+  const TITULOS: Record<string, string> = { entrada: '📥 Entrada de Estoque', saida: '📤 Saída de Estoque', transferencia: '🔄 Transferência', consulta: '🔍 Consulta', dashboard: '📈 Dashboard do Estoque', beneficiamento: '⚙️ Beneficiamento', etiquetas: '🖨️ Etiquetas', inventario: '📋 Inventário', relatorios: '📊 Relatórios', historico: '🕘 Histórico' }
 
   return (
     <div style={{ padding: '1rem 0' }}>
@@ -195,7 +197,8 @@ export default function EtiquetasPage() {
             <select value={loja} onChange={e => setLoja(e.target.value)} style={{ ...inp, width: 'auto' }}>{LOJAS.map(l => <option key={l}>{l}</option>)}</select>
           </div>
         </div>
-        {tab === 'entrada' ? <TabEntrada loja={loja} toast={toast} user={user} />
+        {tab === 'dashboard' ? <TabDashboard loja={loja} toast={toast} setTab={setTab} />
+          : tab === 'entrada' ? <TabEntrada loja={loja} toast={toast} user={user} />
           : tab === 'saida' ? <TabLeitura loja={loja} toast={toast} user={user} />
           : tab === 'transferencia' ? <TabTransferencia loja={loja} toast={toast} user={user} />
           : tab === 'consulta' ? <TabConsulta loja={loja} toast={toast} />
@@ -214,6 +217,7 @@ function TabEtiquetas({ loja, toast, user }: any) {
   const [itens, setItens] = useState<any[]>([])
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [busca, setBusca] = useState('')
+  const [tamanho, setTamanho] = useState('60x40')
   const [novo, setNovo] = useState(false)
   const [prods, setProds] = useState<any[]>([])
   const [gerando, setGerando] = useState(false)
@@ -296,8 +300,9 @@ function TabEtiquetas({ loja, toast, user }: any) {
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '14px 0 8px', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12.5, color: '#374151' }}><b>{sel.size}</b> selecionado(s)</span>
         <button onClick={marcarTodos} style={{ ...btn('#e5e7eb'), color: '#374151' }}>Selecionar todos</button>
-        <button disabled={!sel.size} onClick={() => imprimirItens(selecionados, loja)} style={{ ...btn(sel.size ? '#6B1212' : '#c4b5a8'), cursor: sel.size ? 'pointer' : 'not-allowed' }}><Printer size={15} />Imprimir {sel.size ? `(${sel.size})` : ''}</button>
-        <button disabled={!sel.size} onClick={() => imprimirManipulados(selecionados, loja)} title="Etiqueta sanitária de produto manipulado" style={{ ...btn(sel.size ? '#166534' : '#b7cdb7'), cursor: sel.size ? 'pointer' : 'not-allowed' }}>🏷️ Manipulado {sel.size ? `(${sel.size})` : ''}</button>
+        <select value={tamanho} onChange={e => setTamanho(e.target.value)} title="Tamanho da etiqueta" style={{ ...inp, width: 'auto' }}>{['40x40', '50x30', '60x40', '100x50'].map(t => <option key={t} value={t}>{t} mm</option>)}</select>
+        <button disabled={!sel.size} onClick={() => imprimirItens(selecionados, loja, tamanho)} style={{ ...btn(sel.size ? '#6B1212' : '#c4b5a8'), cursor: sel.size ? 'pointer' : 'not-allowed' }}><Printer size={15} />Imprimir {sel.size ? `(${sel.size})` : ''}</button>
+        <button disabled={!sel.size} onClick={() => imprimirManipulados(selecionados, loja, tamanho)} title="Etiqueta sanitária de produto manipulado" style={{ ...btn(sel.size ? '#166534' : '#b7cdb7'), cursor: sel.size ? 'pointer' : 'not-allowed' }}>🏷️ Manipulado {sel.size ? `(${sel.size})` : ''}</button>
         <button disabled={!sel.size} onClick={cancelarSelecionados} style={{ ...btn(sel.size ? '#DC2626' : '#e5b4b4'), cursor: sel.size ? 'pointer' : 'not-allowed' }}><Trash2 size={15} />Cancelar {sel.size ? `(${sel.size})` : ''}</button>
       </div>
 
@@ -760,6 +765,68 @@ function TabRelatorios({ loja, toast, user }: any) {
             </table>
           </div>
         </>}
+      </div>
+    </>
+  )
+}
+
+// ─────────────────────────────────────────── Dashboard do Estoque
+function TabDashboard({ loja, toast, setTab }: any) {
+  const [d, setD] = useState<any | null>(null)
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(async () => {
+    setBusy(true)
+    const { data, error } = await sb.rpc('estoque_dashboard', { p_loja: loja })
+    setBusy(false)
+    if (error || !data?.ok) { toast('Erro ao carregar dashboard.', 'error'); return }
+    setD(data)
+  }, [loja])
+  useEffect(() => { load() }, [load])
+
+  const K = (l: string, v: any, c = '#241b19', sub?: string) => <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 14px' }}><div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.04em' }}>{l}</div><div style={{ fontSize: 22, fontWeight: 800, color: c }}>{v}</div>{sub && <div style={{ fontSize: 11, color: '#9ca3af' }}>{sub}</div>}</div>
+  const Lista = ({ titulo, cor, itens, render, vazio }: any) => (
+    <div style={card}>
+      <b style={{ fontSize: 13.5, color: cor }}>{titulo} ({itens?.length || 0})</b>
+      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {(!itens || itens.length === 0) ? <div style={{ fontSize: 12.5, color: '#9ca3af' }}>{vazio}</div> : itens.slice(0, 12).map(render)}
+      </div>
+    </div>
+  )
+
+  if (!d) return <div style={card}>{busy ? 'Carregando…' : 'Sem dados.'}</div>
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button onClick={load} style={{ ...btn('#f3f4f6'), color: '#374151' }}><RefreshCw size={15} />Atualizar</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px,1fr))', gap: 10, marginBottom: 14 }}>
+        {K('Entradas hoje', d.entradas_hoje?.n || 0, '#166534', `${d.entradas_hoje?.qtd || 0} un`)}
+        {K('Saídas hoje', d.saidas_hoje?.n || 0, '#B91C1C', `${d.saidas_hoje?.qtd || 0} un`)}
+        {K('Transferências', d.transferencias_hoje || 0, '#6D28D9', 'hoje')}
+        {K('Valor do estoque', fmt(d.valor_total), '#1D4ED8')}
+        {K('Giro (30d)', d.giro, '#241b19', 'saídas / estoque')}
+        {K('Perdas do mês', d.perdas_mes_qtd || 0, '#DC2626', 'un')}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px,1fr))', gap: 12 }}>
+        <Lista titulo="🔴 Abaixo do mínimo" cor="#DC2626" itens={d.abaixo_minimo} vazio="Tudo acima do mínimo. 👍"
+          render={(p: any, i: number) => <div key={i} style={{ display: 'flex', gap: 8, fontSize: 12.5, background: '#FEF2F2', padding: '.4rem .7rem', borderRadius: 8 }}><b style={{ flex: 1 }}>{p.nome}</b><span style={{ color: '#DC2626', fontWeight: 700 }}>{p.atual}</span><span style={{ color: '#9ca3af' }}>/ mín {p.minimo}</span></div>} />
+        <Lista titulo="⏰ Vencendo (≤8 dias)" cor="#B45309" itens={d.vencendo} vazio="Nada vencendo em breve."
+          render={(v: any, i: number) => <div key={i} style={{ display: 'flex', gap: 8, fontSize: 12.5, background: v.dias < 0 ? '#FEE2E2' : '#FEF3C7', padding: '.4rem .7rem', borderRadius: 8 }}><b style={{ flex: 1 }}>{v.produto}</b><span style={{ fontWeight: 700, color: v.dias < 0 ? '#DC2626' : '#B45309' }}>{v.dias < 0 ? `vencido ${-v.dias}d` : `${v.dias}d`}</span></div>} />
+        <Lista titulo="💤 Sem movimentação (30d)" cor="#6b7280" itens={d.sem_movimento} vazio="Todos com giro recente."
+          render={(p: any, i: number) => <div key={i} style={{ display: 'flex', gap: 8, fontSize: 12.5, background: '#f9fafb', padding: '.4rem .7rem', borderRadius: 8 }}><b style={{ flex: 1 }}>{p.nome}</b><span style={{ color: '#9ca3af' }}>{p.atual}</span></div>} />
+        <Lista titulo="👤 Mais movimentaram (30d)" cor="#1D4ED8" itens={d.top_colaboradores} vazio="Sem movimentações."
+          render={(c: any, i: number) => <div key={i} style={{ display: 'flex', gap: 8, fontSize: 12.5, background: '#f9fafb', padding: '.4rem .7rem', borderRadius: 8 }}><b style={{ flex: 1 }}>{c.quem}</b><span>{c.movs} movs</span><span style={{ color: '#9ca3af' }}>{c.qtd} un</span></div>} />
+      </div>
+      <div style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><b style={{ fontSize: 13.5 }}>Últimas movimentações</b><button onClick={() => setTab('historico')} style={{ background: 'none', border: 'none', color: '#6B1212', cursor: 'pointer', fontSize: 12 }}>ver histórico →</button></div>
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {(d.ultimas_mov || []).map((m: any, i: number) => { const t = TIPO_MOV[m.tipo] || { l: m.tipo, c: '#6b7280' }; return (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, background: '#f9fafb', padding: '.4rem .7rem', borderRadius: 8 }}>
+              <span style={{ fontWeight: 700, color: t.c, minWidth: 84 }}>{t.l}</span>
+              <span style={{ flex: 1 }}>{m.produto} · {m.qtd} {m.unidade}{m.quem ? ` · ${m.quem}` : ''}</span>
+              <span style={{ color: '#9ca3af', fontSize: 11.5 }}>{new Date(m.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+            </div>) })}
+        </div>
       </div>
     </>
   )
