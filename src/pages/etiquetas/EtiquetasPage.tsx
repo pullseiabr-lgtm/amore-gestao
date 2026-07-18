@@ -21,7 +21,8 @@ function corValidade(it: any) {
   const tc = (it.tipo_conservacao || '').toLowerCase()
   if (tc === 'congelado') return { cor: '#1D4ED8', label: 'Congelado', emoji: '🔵' }
   if (tc === 'descongelado') return { cor: '#7C3AED', label: 'Descongelado', emoji: '🟣' }
-  const d = it.data_validade ? Math.ceil((new Date(it.data_validade).getTime() - Date.now()) / 864e5) : null
+  const dv = it.data_validade || it.validade
+  const d = dv ? Math.ceil((new Date(dv).getTime() - Date.now()) / 864e5) : null
   if (d == null) return { cor: '#6b7280', label: '—', emoji: '⚪' }
   if (d < 0) return { cor: '#DC2626', label: 'Vencido', emoji: '🔴' }
   if (d <= 2) return { cor: '#D97706', label: 'Próximo do venc.', emoji: '🟡' }
