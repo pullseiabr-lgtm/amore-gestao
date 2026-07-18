@@ -877,7 +877,7 @@ function TabBeneficiamento({ loja, toast, user }: any) {
   const [saidas, setSaidas] = useState<any[]>([{ tipo: 'final', produto_nome: '', quantidade: '', unidade: 'kg', destino: '', custo_atribuido: '', validade: '', local: '', categoria_conservacao: '' }])
   const [meta, setMeta] = useState<any>({ setor: '', colaborador: '', conferente: '', observacao: '', op_numero: '' })
   const [justificativa, setJustificativa] = useState('')
-  const [fotos, setFotos] = useState<string[]>([])
+  const [fotos, setFotos] = useState<any[]>([])
   const [upBusy, setUpBusy] = useState(false)
   const [busy, setBusy] = useState(false)
   const [novos, setNovos] = useState<string[]>([])
@@ -921,14 +921,14 @@ function TabBeneficiamento({ loja, toast, user }: any) {
   const somaSaidas = pesoFinal + pesoSub + pesoPerda
   const divergePeso = pesoAntes > 0 && Math.abs(somaSaidas - pesoAntes) > 0.05
 
-  const upFoto = async (f: File) => {
+  const upFoto = async (tipo: string, f: File) => {
     setUpBusy(true)
     try {
       const ext = (f.name.split('.').pop() || 'jpg').toLowerCase()
       const path = `beneficiamento/${crypto.randomUUID()}.${ext}`
       const { error } = await sb.storage.from('anexos').upload(path, f, { upsert: true, contentType: f.type })
       if (error) { toast('Erro ao enviar foto.', 'error'); setUpBusy(false); return }
-      setFotos(fs => [...fs, `${SB_URL}/storage/v1/object/public/anexos/${path}`])
+      setFotos(fs => [...fs, { tipo, url: `${SB_URL}/storage/v1/object/public/anexos/${path}` }])
     } catch {} setUpBusy(false)
   }
 
@@ -1061,11 +1061,17 @@ function TabBeneficiamento({ loja, toast, user }: any) {
         <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Ordem de Produção</label><input style={inp} value={meta.op_numero} onChange={e => setMeta({ ...meta, op_numero: e.target.value })} placeholder="OP-000" /></div>
         <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Observação</label><input style={inp} value={meta.observacao} onChange={e => setMeta({ ...meta, observacao: e.target.value })} /></div>
       </div>
-      <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, padding: '.5rem .8rem', border: '1px dashed #c4b5a8', borderRadius: 8, cursor: 'pointer', background: '#fff' }}>
-          <Camera size={15} />{upBusy ? 'Enviando…' : 'Anexar foto'}<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) upFoto(f) }} />
-        </label>
-        {fotos.map((f, i) => <a key={i} href={f} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#6B1212' }}>foto {i + 1}</a>)}
+      <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: 11.5, color: '#9ca3af', marginBottom: 6 }}>📷 Registro fotográfico para auditoria (Vigilância Sanitária){upBusy ? ' · enviando…' : ''}</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {[['antes', 'Antes'], ['depois', 'Depois/Final'], ['perda', 'Perda/Resíduo'], ['subproduto', 'Subproduto'], ['etiqueta', 'Etiqueta'], ['balanca', 'Balança']].map(([tp, lb]) => {
+            const fs = fotos.filter(x => x.tipo === tp)
+            return <label key={tp} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '.4rem .7rem', border: '1px dashed ' + (fs.length ? '#166534' : '#c4b5a8'), borderRadius: 8, cursor: 'pointer', background: fs.length ? '#DCFCE7' : '#fff' }}>
+              <Camera size={13} />{lb}{fs.length ? ` (${fs.length})` : ''}<input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) upFoto(tp, f) }} />
+            </label>
+          })}
+        </div>
+        {fotos.length > 0 && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>{fotos.map((f, i) => <a key={i} href={f.url} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: '#6B1212' }}>{f.tipo} {i + 1}</a>)}</div>}
       </div>
 
       <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
