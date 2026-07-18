@@ -1180,7 +1180,27 @@ function TabEntrada({ loja, toast, user }: any) {
   const [scanning, setScanning] = useState(false)
   const [busy, setBusy] = useState(false)
   const [novosCodigos, setNovosCodigos] = useState<string[]>([])
+  const [modoLote, setModoLote] = useState(false)
+  const [lista, setLista] = useState<any[]>([])
+  const [fornLote, setFornLote] = useState('')
+  const [notaLote, setNotaLote] = useState('')
   const scannerRef = useRef<any>(null)
+
+  const adicionarLista = () => {
+    if (!info) return
+    if (!form.qtd || Number(form.qtd) <= 0) { toast('Informe a quantidade.', 'error'); return }
+    setLista(l => [...l, { produto_id: info.produto_id, nome: info.produto_nome, unidade: info.unidade, qtd_itens: Number(form.qtd), qtd_item: Number(form.qtd_item) || 1, validade: form.validade || null, lote: form.lote || null, local: form.local || null }])
+    setInfo(null); setCodigo(''); setForm({ qtd: '1', qtd_item: '1', lote: '', validade: '', fornecedor: '', nota: '', obs: '', local: '' })
+  }
+  const confirmarEntradaLote = async () => {
+    if (!lista.length) return
+    setBusy(true)
+    const { data, error } = await sb.rpc('entrada_lote', { p_loja: loja, p_itens: lista, p_fornecedor: fornLote || null, p_nota: notaLote || null, p_por: user?.name || null })
+    setBusy(false)
+    if (error || !data?.ok) { toast('Erro ao registrar entradas.', 'error'); return }
+    toast(`${data.entradas} entrada(s) registrada(s) · ${(data.codigos || []).length} etiqueta(s). ✅`)
+    setNovosCodigos(data.codigos || []); setLista([])
+  }
 
   const consultar = async (cod: string) => {
     const c = (cod || '').trim(); if (!c) return
@@ -1219,7 +1239,15 @@ function TabEntrada({ loja, toast, user }: any) {
   return (
     <div style={card}>
       <b style={{ fontSize: 14 }}>Entrada por leitura</b>
-      <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '4px 0 10px' }}>Leia a etiqueta do produto para identificá-lo, informe a quantidade recebida e salve. Gera novas etiquetas para imprimir.</p>
+      <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '4px 0 8px' }}>Leia a etiqueta do produto para identificá-lo, informe a quantidade recebida e salve. Gera novas etiquetas para imprimir.</p>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 8, fontSize: 13, fontWeight: 600 }}>
+        <input type="checkbox" checked={modoLote} onChange={e => { setModoLote(e.target.checked); setInfo(null); setLista([]) }} />
+        📋 Recebimento em lote — leia vários produtos e confirme de uma vez
+      </label>
+      {modoLote && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+        <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Fornecedor (lote)</label><input style={{ ...inp, width: 180 }} value={fornLote} onChange={e => setFornLote(e.target.value)} /></div>
+        <div><label style={{ fontSize: 11, color: '#9ca3af' }}>Nota fiscal (lote)</label><input style={{ ...inp, width: 140 }} value={notaLote} onChange={e => setNotaLote(e.target.value)} /></div>
+      </div>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         {!scanning ? <button onClick={iniciarScanner} style={btn('#166534')}><Camera size={16} />Ler com a câmera</button> : <button onClick={pararScanner} style={btn('#DC2626')}><X size={16} />Parar câmera</button>}
         <span style={{ fontSize: 12, color: '#9ca3af' }}>ou digite:</span>
@@ -1243,8 +1271,23 @@ function TabEntrada({ loja, toast, user }: any) {
         </div>
         <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>Quem recebeu: <b>{user?.name || '—'}</b> · {new Date().toLocaleString('pt-BR')}</div>
         <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-          {novosCodigos.length > 0 && <button onClick={imprimirNovas} style={{ ...btn('#6B1212') }}><Printer size={16} />Imprimir {novosCodigos.length} etiqueta(s)</button>}
-          <button onClick={salvar} disabled={busy} style={btn('#166534')}><Check size={16} />{busy ? 'Salvando…' : 'Salvar entrada'}</button>
+          {!modoLote && novosCodigos.length > 0 && <button onClick={imprimirNovas} style={{ ...btn('#6B1212') }}><Printer size={16} />Imprimir {novosCodigos.length} etiqueta(s)</button>}
+          {modoLote ? <button onClick={adicionarLista} style={btn('#7C3AED')}><Plus size={16} />Adicionar à lista</button>
+            : <button onClick={salvar} disabled={busy} style={btn('#166534')}><Check size={16} />{busy ? 'Salvando…' : 'Salvar entrada'}</button>}
+        </div>
+      </div>}
+
+      {modoLote && <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: '1px solid #e5e7eb', background: '#f9fafb' }}>
+        <b style={{ fontSize: 13.5 }}>Itens a receber ({lista.length})</b>
+        {lista.length === 0 ? <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 6 }}>Leia um produto e clique em "Adicionar à lista".</div> :
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {lista.map((it, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, background: '#fff', border: '1px solid #e5e7eb', padding: '.4rem .7rem', borderRadius: 8 }}>
+              <b style={{ flex: 1 }}>{it.nome}</b><span>{it.qtd_itens} × {it.qtd_item} {it.unidade}</span>{it.validade ? <span style={{ color: '#9ca3af' }}>val. {fmtD(it.validade)}</span> : null}<button onClick={() => setLista(l => l.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626' }}><Trash2 size={13} /></button>
+            </div>)}
+          </div>}
+        {novosCodigos.length > 0 && <div style={{ marginTop: 8 }}><button onClick={imprimirNovas} style={{ ...btn('#6B1212'), padding: '.4rem .9rem', fontSize: 12 }}><Printer size={15} />Imprimir {novosCodigos.length} etiqueta(s)</button></div>}
+        <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={confirmarEntradaLote} disabled={!lista.length || busy} style={{ ...btn(lista.length ? '#166534' : '#b7cdb7'), cursor: lista.length ? 'pointer' : 'not-allowed' }}><Check size={16} />{busy ? 'Registrando…' : `Confirmar ${lista.length} entrada(s)`}</button>
         </div>
       </div>}
     </div>
