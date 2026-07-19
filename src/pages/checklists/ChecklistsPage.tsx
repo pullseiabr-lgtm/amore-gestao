@@ -38,7 +38,16 @@ const TIPOS: { v: ChecklistItemTipo; lbl: string; emoji: string }[] = [
   { v: 'numero', lbl: 'Número', emoji: '🔢' },
   { v: 'foto', lbl: 'Foto', emoji: '📷' },
   { v: 'avaliacao', lbl: 'Avaliação (1-5)', emoji: '⭐' },
+  { v: 'texto', lbl: 'Comentário', emoji: '📝' },
+  { v: 'temperatura', lbl: 'Temperatura', emoji: '🌡️' },
+  { v: 'quantidade', lbl: 'Quantidade', emoji: '🔢' },
+  { v: 'peso', lbl: 'Peso', emoji: '⚖️' },
+  { v: 'valor', lbl: 'Valor (R$)', emoji: '💰' },
 ]
+// Tipos numéricos que usam o campo "valor" + unidade/limites
+const TIPOS_NUM: ChecklistItemTipo[] = ['numero', 'temperatura', 'quantidade', 'peso', 'valor']
+const unidadePadrao = (t: ChecklistItemTipo) =>
+  t === 'temperatura' ? '°C' : t === 'peso' ? 'kg' : t === 'valor' ? 'R$' : t === 'quantidade' ? 'un' : ''
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const SETORES = ['Geral', 'Cozinha', 'Bar', 'Salão', 'Estoque', 'Limpeza', 'Produção', 'Caixa']
 
@@ -55,14 +64,26 @@ function aplicaHoje(m: ChecklistModelo): boolean {
   return false // avulso → só manual
 }
 
+// Valor numérico está dentro da faixa min/max (quando definida)?
+function dentroDaFaixa(item: ChecklistItem, v: number): boolean {
+  if (item.min != null && v < item.min) return false
+  if (item.max != null && v > item.max) return false
+  return true
+}
+
 // Item respondido de forma satisfatória?
 function itemOk(item: ChecklistItem, r?: ChecklistResposta): boolean {
   if (!r) return false
+  if (r.nao_executou) return false
   switch (item.tipo) {
     case 'confirm': return r.ok === true
-    case 'numero': return r.valor !== null && r.valor !== undefined
-    case 'foto': return !!r.foto_url
+    case 'foto': return !!r.foto_url && r.ia_status !== 'reprovado'
     case 'avaliacao': return (r.nota || 0) > 0
+    case 'texto': return !!(r.texto && r.texto.trim())
+    case 'numero': case 'quantidade': case 'peso': case 'valor':
+      return r.valor !== null && r.valor !== undefined
+    case 'temperatura':
+      return r.valor !== null && r.valor !== undefined && dentroDaFaixa(item, r.valor)
   }
 }
 
@@ -306,12 +327,12 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
     setUploadingId(id)
     try {
       const url = await uploadAnexo(file, 'checklists')
-      setResp(id, { foto_url: url, ia_ok: null, ia_motivo: null })
+      setResp(id, { foto_url: url, ia_ok: null, ia_motivo: null, ia_status: null })
       // Validação por IA (não bloqueante — falha silenciosa se a IA estiver fora)
       try {
         const v = await validarFotoIA(item.txt, file)
-        setResp(id, { ia_ok: v.ok, ia_motivo: v.motivo })
-        toast(v.ok ? '✅ IA validou a foto.' : '⚠️ IA apontou ressalva na foto.', v.ok ? 'success' : 'warning')
+        setResp(id, { ia_ok: v.ok, ia_motivo: v.motivo, ia_status: v.ok ? 'aprovado' : 'revisao' })
+        toast(v.ok ? '✅ IA validou a foto.' : '⚠️ IA pediu revisão da foto.', v.ok ? 'success' : 'warning')
       } catch { /* IA indisponível — segue só com a foto */ }
     } catch (e) { toast('Falha no upload: ' + (e as Error).message, 'error') }
     finally { setUploadingId(null) }
@@ -341,8 +362,13 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
   }
 
   const concluir = async () => {
-    // valida obrigatórios
-    const faltando = itens.filter(i => i.obrigatorio && !itemOk(i, respDe(i.id)))
+    // "Não consigo executar" sem motivo → precisa justificar
+    const semMotivo = itens.filter(i => { const r = respDe(i.id); return r.nao_executou && !(r.motivo_nao && r.motivo_nao.trim()) })
+    if (semMotivo.length) {
+      toast(`Informe o motivo em ${semMotivo.length} item(ns) não executado(s).`, 'warning'); return
+    }
+    // Valida obrigatórios — itens não executados (com motivo) não bloqueiam, mas penalizam o score
+    const faltando = itens.filter(i => { const r = respDe(i.id); return i.obrigatorio && !itemOk(i, r) && !r.nao_executou })
     if (faltando.length) {
       toast(`Faltam ${faltando.length} item(ns) obrigatório(s).`, 'warning'); return
     }
@@ -406,9 +432,40 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
                     {item.obrigatorio && <span style={{ color: '#ef4444' }}> *</span>}
                     {item.critico && <span title="Crítico (peso dobrado)"> 🔴</span>}
                   </span>
-                  {ok && <CheckCircle2 size={15} color="#16a34a" />}
+                  {r.nao_executou
+                    ? <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444' }}>não executado</span>
+                    : ok && <CheckCircle2 size={15} color="#16a34a" />}
                 </div>
 
+                {/* Instrução passo a passo */}
+                {item.instrucao && (
+                  <div style={{ fontSize: 12, color: 'var(--muted)', background: 'var(--bg)', borderRadius: 6, padding: '6px 8px', marginBottom: 6, whiteSpace: 'pre-wrap' }}>
+                    ℹ️ {item.instrucao}
+                  </div>
+                )}
+                {/* Foto de referência (padrão esperado) */}
+                {item.foto_ref && (
+                  <a href={item.foto_ref} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <img src={item.foto_ref} alt="padrão" style={{ width: 54, height: 54, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />
+                    <span style={{ fontSize: 11, color: 'var(--bordo)' }}>padrão esperado</span>
+                  </a>
+                )}
+
+                {r.nao_executou ? (
+                  /* Estado: não consegui executar */
+                  <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 12, color: '#ef4444', fontWeight: 600, marginBottom: 4 }}>⛔ Não executado</div>
+                    <input value={r.motivo_nao || ''} placeholder="Motivo (ex.: falta de insumo, equipamento parado)…"
+                      disabled={concluido}
+                      onChange={e => setResp(item.id, { motivo_nao: e.target.value || null })}
+                      style={{ ...inp, fontSize: 12 }} />
+                    {!concluido && (
+                      <button onClick={() => setResp(item.id, { nao_executou: false, motivo_nao: null })}
+                        style={{ ...btnGhost, marginTop: 6, padding: '5px 10px', fontSize: 12 }}>↩︎ Voltar a executar</button>
+                    )}
+                  </div>
+                ) : (
+                <>
                 {/* Input por tipo */}
                 {item.tipo === 'confirm' && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: concluido ? 'default' : 'pointer' }}>
@@ -416,11 +473,26 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
                     Confirmar conclusão
                   </label>
                 )}
-                {item.tipo === 'numero' && (
-                  <input type="number" disabled={concluido} value={r.valor ?? ''} placeholder="Valor"
-                    onChange={e => setResp(item.id, { valor: e.target.value === '' ? null : Number(e.target.value) })}
-                    style={inp} />
-                )}
+                {TIPOS_NUM.includes(item.tipo) && (() => {
+                  const un = item.unidade || unidadePadrao(item.tipo)
+                  const foraFaixa = item.tipo === 'temperatura' && r.valor != null && !dentroDaFaixa(item, r.valor)
+                  return (
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input type="number" step="any" disabled={concluido} value={r.valor ?? ''} placeholder="Valor"
+                          onChange={e => setResp(item.id, { valor: e.target.value === '' ? null : Number(e.target.value) })}
+                          style={{ ...inp, maxWidth: 160, borderColor: foraFaixa ? '#ef4444' : undefined }} />
+                        {un && <span style={{ fontSize: 13, color: 'var(--muted)' }}>{un}</span>}
+                        {(item.min != null || item.max != null) && (
+                          <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                            faixa {item.min ?? '−∞'}…{item.max ?? '+∞'}
+                          </span>
+                        )}
+                      </div>
+                      {foraFaixa && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 3 }}>⚠️ Fora do limite — não conforme</div>}
+                    </div>
+                  )
+                })()}
                 {item.tipo === 'avaliacao' && (
                   <div style={{ display: 'flex', gap: 4 }}>
                     {[1, 2, 3, 4, 5].map(n => (
@@ -430,18 +502,24 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
                     ))}
                   </div>
                 )}
+                {item.tipo === 'texto' && (
+                  <textarea disabled={concluido} value={r.texto || ''} placeholder="Escreva a resposta…" rows={2}
+                    onChange={e => setResp(item.id, { texto: e.target.value || null })}
+                    style={{ ...inp, resize: 'vertical' }} />
+                )}
                 {item.tipo === 'foto' && (
                   <div>
                     {r.foto_url && <a href={r.foto_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--bordo)', display: 'block', marginBottom: 4 }}>📎 ver foto enviada</a>}
-                    {r.ia_ok != null && (
-                      <div style={{ fontSize: 11, marginBottom: 4, color: r.ia_ok ? '#16a34a' : '#f59e0b' }}>
-                        {r.ia_ok ? '🤖 IA validou' : '🤖 IA com ressalva'}{r.ia_motivo ? `: ${r.ia_motivo}` : ''}
+                    {r.ia_status && (
+                      <div style={{ fontSize: 11, marginBottom: 4, fontWeight: 600, color: r.ia_status === 'aprovado' ? '#16a34a' : r.ia_status === 'reprovado' ? '#ef4444' : '#f59e0b' }}>
+                        {r.ia_status === 'aprovado' ? '🤖 IA aprovou' : r.ia_status === 'reprovado' ? '🤖 IA reprovou' : '🤖 IA: revisão necessária'}
+                        {r.ia_motivo ? `: ${r.ia_motivo}` : ''}
                       </div>
                     )}
                     {!concluido && (
                       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: '1px dashed var(--bordo)', color: 'var(--bordo)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                         {uploadingId === item.id ? <Loader2 className="spin" size={14} /> : <Camera size={14} />}
-                        {r.foto_url ? 'Trocar foto' : 'Enviar foto'}
+                        {r.foto_url ? 'Trocar foto' : 'Tirar foto'}
                         <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
                           onChange={e => uploadFoto(item.id, item, e.target.files)} />
                       </label>
@@ -452,6 +530,14 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
                   <input value={r.obs || ''} placeholder="Observação (opcional)"
                     onChange={e => setResp(item.id, { obs: e.target.value || null })}
                     style={{ ...inp, marginTop: 6, fontSize: 12 }} />
+                )}
+                {!concluido && (
+                  <button onClick={() => setResp(item.id, { nao_executou: true })}
+                    style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 11, cursor: 'pointer', marginTop: 6, padding: 0, textDecoration: 'underline' }}>
+                    Não consigo executar
+                  </button>
+                )}
+                </>
                 )}
               </div>
             )
@@ -556,6 +642,17 @@ function ModeloModal({ modelo, loja, userName, onClose, onSaved, toast }: {
   const [itens, setItens] = useState<ChecklistItem[]>(modelo?.itens || [])
   const [salvando, setSalvando] = useState(false)
   const [gerandoIa, setGerandoIa] = useState(false)
+  const [uploadingRef, setUploadingRef] = useState<string | null>(null)
+
+  const uploadRef = async (id: string, files: FileList | null) => {
+    if (!files || !files[0]) return
+    setUploadingRef(id)
+    try {
+      const url = await uploadAnexo(files[0], 'checklists/ref')
+      setItens(prev => prev.map(i => i.id === id ? { ...i, foto_ref: url } : i))
+    } catch (e) { toast('Falha ao enviar referência: ' + (e as Error).message, 'error') }
+    finally { setUploadingRef(null) }
+  }
 
   const gerarIA = async () => {
     if (!titulo.trim()) { toast('Informe o título antes de gerar com IA.', 'warning'); return }
@@ -688,6 +785,34 @@ function ModeloModal({ modelo, loja, userName, onClose, onSaved, toast }: {
                 <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
                   peso <input type="number" min={1} max={10} value={it.peso} onChange={e => setItem(it.id, { peso: Number(e.target.value) || 1 })} style={{ ...inp, width: 50, padding: '4px 6px', fontSize: 12 }} />
                 </label>
+              </div>
+
+              {/* Config avançada por item: instrução, limites, foto de referência */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', paddingLeft: 18, marginTop: 6 }}>
+                <input value={it.instrucao || ''} onChange={e => setItem(it.id, { instrucao: e.target.value || null })}
+                  placeholder="Instrução / orientação (opcional)" style={{ ...inp, flex: 1, minWidth: 160, fontSize: 12, padding: '5px 8px' }} />
+                {TIPOS_NUM.includes(it.tipo) && (
+                  <>
+                    <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      un <input value={it.unidade ?? ''} onChange={e => setItem(it.id, { unidade: e.target.value || null })}
+                        placeholder={unidadePadrao(it.tipo)} style={{ ...inp, width: 56, padding: '4px 6px', fontSize: 12 }} />
+                    </label>
+                    <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      mín <input type="number" step="any" value={it.min ?? ''} onChange={e => setItem(it.id, { min: e.target.value === '' ? null : Number(e.target.value) })}
+                        style={{ ...inp, width: 64, padding: '4px 6px', fontSize: 12 }} />
+                    </label>
+                    <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      máx <input type="number" step="any" value={it.max ?? ''} onChange={e => setItem(it.id, { max: e.target.value === '' ? null : Number(e.target.value) })}
+                        style={{ ...inp, width: 64, padding: '4px 6px', fontSize: 12 }} />
+                    </label>
+                  </>
+                )}
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 8px', borderRadius: 7, border: '1px dashed var(--border)', fontSize: 12, cursor: 'pointer', color: 'var(--muted)' }}>
+                  {uploadingRef === it.id ? <Loader2 className="spin" size={12} /> : <Camera size={12} />}
+                  {it.foto_ref ? 'Trocar padrão' : 'Foto de referência'}
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => uploadRef(it.id, e.target.files)} />
+                </label>
+                {it.foto_ref && <img src={it.foto_ref} alt="ref" style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />}
               </div>
             </div>
           ))}

@@ -899,6 +899,7 @@ export interface CozinhaSolicitacao {
 // ── Operação Padrão / Checklists Inteligentes ────────────────
 
 export type ChecklistItemTipo    = 'confirm' | 'numero' | 'foto' | 'avaliacao'
+                                 | 'texto' | 'temperatura' | 'quantidade' | 'peso' | 'valor'
 export type ChecklistRecorrencia = 'diario' | 'semanal' | 'mensal' | 'avulso'
 export type ChecklistTurno       = 'abertura' | 'almoco' | 'jantar' | 'fechamento' | 'qualquer'
 export type ChecklistExecStatus  = 'pendente' | 'em_andamento' | 'concluido' | 'atrasado'
@@ -910,6 +911,12 @@ export interface ChecklistItem {
   obrigatorio: boolean
   critico: boolean
   peso: number
+  // Campos opcionais (JSONB — retrocompatível com itens antigos)
+  instrucao?: string | null      // orientação passo a passo exibida na execução
+  foto_ref?: string | null       // foto de referência (padrão esperado)
+  unidade?: string | null        // ex.: °C, kg, un, R$ — exibida ao lado do valor
+  min?: number | null            // limite inferior (temperatura/número) — fora da faixa = não conforme
+  max?: number | null            // limite superior
 }
 
 export interface ChecklistModelo {
@@ -940,6 +947,11 @@ export interface ChecklistResposta {
   ia_ok: boolean | null
   ia_motivo: string | null
   obs: string | null
+  // Campos opcionais (JSONB — retrocompatível)
+  texto?: string | null                                   // resposta do tipo comentário
+  ia_status?: 'aprovado' | 'reprovado' | 'revisao' | null // veredito da IA em 3 estados
+  nao_executou?: boolean                                  // marcou "não consigo executar"
+  motivo_nao?: string | null                              // justificativa da não execução
 }
 
 export interface ChecklistExecucao {
