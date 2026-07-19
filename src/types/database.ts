@@ -986,6 +986,7 @@ export interface ChecklistNC {
   aprovado_por: string | null        // gestor que validou
   aberta_em: string | null
   encerrada_em: string | null
+  tarefa_id?: string | null          // tarefa corretiva gerada na Central de Tarefas
 }
 
 export interface ChecklistExecucao {

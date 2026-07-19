@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Plus, Edit2, Trash2, Loader2, CheckCircle2, Camera, MapPin,
-  Star, ClipboardCheck, Play, RefreshCw, Save, X, Sparkles, FileDown,
+  Star, ClipboardCheck, Play, RefreshCw, Save, X, Sparkles, FileDown, Send,
 } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -10,7 +10,7 @@ import Modal from '../../components/ui/Modal'
 import {
   fetchChecklistModelos, insertChecklistModelo, updateChecklistModelo, deleteChecklistModelo,
   fetchChecklistExecucoes, fetchChecklistExecucoesRange, insertChecklistExecucao, updateChecklistExecucao,
-  uploadAnexo,
+  uploadAnexo, insertTarefa,
 } from '../../lib/db'
 import { gerarItensIA, validarFotoIA } from '../../lib/checklistIa'
 import { enviarWhatsApp, getZapiCfg, carregarZapiCfgRemoto } from '../../lib/notify'
@@ -1339,7 +1339,7 @@ function NcTab({ loja, user, toast }: {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {visiveis.map(row => (
-            <NcCard key={`${row.exec.id}-${row.itemId}`} row={row} userName={user?.name || null}
+            <NcCard key={`${row.exec.id}-${row.itemId}`} row={row} userName={user?.name || null} toast={toast}
               onPatch={patch => patchNc(row.exec, row.itemId, patch)} />
           ))}
         </div>
@@ -1348,9 +1348,10 @@ function NcTab({ loja, user, toast }: {
   )
 }
 
-function NcCard({ row, userName, onPatch }: {
+function NcCard({ row, userName, toast, onPatch }: {
   row: NcRow
   userName: string | null
+  toast: (m: string, t?: 'success' | 'error' | 'warning' | 'info') => void
   onPatch: (patch: Partial<ChecklistNC>) => Promise<void>
 }) {
   const { exec, nc } = row
@@ -1379,6 +1380,34 @@ function NcCard({ row, userName, onPatch }: {
   }
   const encerrar = () => run(() => onPatch({ status: 'encerrada', aprovado_por: userName, encerrada_em: new Date().toISOString() }))
   const reabrir = () => run(() => onPatch({ status: 'em_correcao', aprovado_por: null, encerrada_em: null }))
+
+  // Gera tarefa corretiva na Central de Tarefas (módulo 13 — gatilho por evento)
+  const gerarTarefaCorretiva = () => run(async () => {
+    try {
+      const t = await insertTarefa({
+        loja: exec.loja,
+        titulo: `Corrigir: ${nc.item_txt || 'não conformidade'}`,
+        descricao: `Gerada de não conformidade — ${nc.motivo_reprovacao || 'item reprovado'}. Origem: checklist "${exec.titulo}" (${exec.data}).`,
+        setor: exec.setor || 'Geral', status: 'pendente',
+        prioridade: nc.gravidade === 'alta' ? 'urgente' : nc.gravidade === 'media' ? 'alta' : 'media',
+        responsavel_nome: resp || nc.responsavel || null,
+        solicitante_nome: userName || 'Operação Padrão',
+        prazo: prazo || nc.prazo || null,
+        observacoes: acao || nc.acao || null,
+        objetivo: null, envolvidos: null, competencia: null, data_inicio: null, entregaveis: null,
+        anexos: nc.foto_evidencia || null, tags: 'nao-conformidade',
+        custo_previsto: (impacto === '' ? nc.impacto : Number(impacto)) || null,
+        custo_executado: null, resultado_esperado: null, resultado_final: null, dificuldades: null,
+        iniciado_em: null, concluido_em: null, prazo_extensao_data: null, prazo_extensao_motivo: null,
+        prazo_extensao_status: null, data_solicitacao: new Date().toISOString().slice(0, 10),
+        resultado_status: null, validado_por: null, validado_em: null, observacao_final: null,
+        precisa_aprovacao: false, aprovado_por: null, aprovado_at: null, obs_aprovacao: null,
+        reaberta: false, created_by: userName || null,
+      })
+      await onPatch({ tarefa_id: t.id, status: nc.status === 'aberta' ? 'em_correcao' : nc.status })
+      toast('✅ Tarefa corretiva criada na Central de Tarefas.', 'success')
+    } catch (e) { toast('Erro ao gerar tarefa: ' + (e as Error).message, 'error') }
+  })
 
   return (
     <div style={{ background: 'var(--card)', border: `1px solid ${st.cor}55`, borderLeft: `4px solid ${st.cor}`, borderRadius: 10, padding: 14 }}>
@@ -1438,6 +1467,11 @@ function NcCard({ row, userName, onPatch }: {
             {uploading ? <Loader2 className="spin" size={14} /> : <Camera size={14} />} Foto da correção
             <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => uploadCorrecao(e.target.files)} />
           </label>
+          {nc.tarefa_id
+            ? <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>✅ Tarefa criada</span>
+            : <button onClick={gerarTarefaCorretiva} disabled={busy} style={btnGhost} title="Cria uma tarefa corretiva na Central de Tarefas">
+                <Send size={14} /> Gerar tarefa corretiva
+              </button>}
           <button onClick={encerrar} disabled={busy || nc.status !== 'corrigida'}
             title={nc.status !== 'corrigida' ? 'Envie a foto da correção antes de encerrar' : 'Validar e encerrar'}
             style={{ ...btnPrimary, opacity: nc.status !== 'corrigida' ? 0.5 : 1 }}>
