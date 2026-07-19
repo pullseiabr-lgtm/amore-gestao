@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   Plus, Edit2, Trash2, Loader2, CheckCircle2, Camera, MapPin,
-  Star, ClipboardCheck, Play, RefreshCw, Save, X, Sparkles,
+  Star, ClipboardCheck, Play, RefreshCw, Save, X, Sparkles, FileDown,
 } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -949,6 +949,17 @@ function montaMsgPendencias(loja: string, pend: ChecklistExecucao[]): string {
   return `⚠️ *CHECKLISTS PENDENTES — ${loja}*\n${dataBR}\n\n${pend.length} pendente(s):\n${linhas}\n\n_Operação Padrão · Amore Gestão_`
 }
 
+// Exporta uma matriz para CSV (separador ';' + BOM → abre certinho no Excel pt-BR)
+function baixarCSV(nome: string, linhas: (string | number | null)[][]) {
+  const esc = (v: string | number | null) => { const s = v == null ? '' : String(v); return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+  const csv = linhas.map(l => l.map(esc).join(';')).join('\r\n')
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a'); a.href = url; a.download = nome; a.click(); URL.revokeObjectURL(url)
+}
+const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const fmtDuracao = (h: number) => h < 48 ? `${h.toFixed(1)}h` : `${(h / 24).toFixed(1)}d`
+
 function PainelTab({ loja, toast }: { loja: string; toast: (m: string, t?: 'success' | 'error' | 'warning' | 'info') => void }) {
   const [dias, setDias] = useState(7)
   const [execs, setExecs] = useState<ChecklistExecucao[]>([])
@@ -973,7 +984,43 @@ function PainelTab({ loja, toast }: { loja: string; toast: (m: string, t?: 'succ
   const porColab = useMemo(() => agrupa(execs, e => e.responsavel_nome || '—'), [execs])
   const porSetor = useMemo(() => agrupa(execs, e => e.setor || '—'), [execs])
   const porLoja = useMemo(() => agrupa(execs, e => e.loja || '—'), [execs])
+  const porTurno = useMemo(() => agrupa(execs, e => turnoLbl(e.turno)), [execs])
   const multiLoja = useMemo(() => new Set(execs.map(e => e.loja)).size > 1, [execs])
+
+  // Não Conformidades achatadas + indicadores de qualidade do período
+  const ncs = useMemo(() => {
+    const out: { e: ChecklistExecucao; nc: NonNullable<ChecklistResposta['nc']> }[] = []
+    for (const e of execs) for (const r of (e.respostas || [])) if (r.nc) out.push({ e, nc: r.nc })
+    return out
+  }, [execs])
+  const qual = useMemo(() => {
+    const encerradas = ncs.filter(x => x.nc.status === 'encerrada')
+    const tempos = encerradas
+      .map(x => x.nc.aberta_em && x.nc.encerrada_em ? (new Date(x.nc.encerrada_em).getTime() - new Date(x.nc.aberta_em).getTime()) / 3600000 : null)
+      .filter((v): v is number => v != null && v >= 0)
+    const cont: Record<string, number> = {}
+    for (const x of ncs) { const k = `${x.e.loja}|${x.nc.item_txt || ''}`; cont[k] = (cont[k] || 0) + 1 }
+    return {
+      abertas: ncs.filter(x => x.nc.status !== 'encerrada').length,
+      total: ncs.length,
+      impacto: ncs.reduce((a, x) => a + (x.nc.impacto || 0), 0),
+      tmedio: tempos.length ? tempos.reduce((a, b) => a + b, 0) / tempos.length : null,
+      reincid: Object.values(cont).filter(n => n > 1).length,
+      fotosRecusadas: execs.reduce((a, e) => a + (e.respostas || []).filter(r => r.ia_status === 'reprovado').length, 0),
+    }
+  }, [ncs, execs])
+
+  const exportExecucoesCSV = () => {
+    const head = ['Data', 'Loja', 'Setor', 'Turno', 'Checklist', 'Status', 'Responsável', 'Score', 'Concluído em']
+    const rows = execs.map(e => [e.data, e.loja, e.setor || '', e.turno, e.titulo, e.status, e.responsavel_nome || '', e.score ?? '', e.concluido_em ? new Date(e.concluido_em).toLocaleString('pt-BR') : ''])
+    baixarCSV(`checklists_${loja}_${hoje()}.csv`, [head, ...rows])
+  }
+  const exportNcsCSV = () => {
+    const head = ['Data', 'Loja', 'Setor', 'Checklist', 'Item', 'Gravidade', 'Status', 'Motivo', 'Causa', 'Ação', 'Responsável', 'Prazo', 'Impacto R$', 'Aberta em', 'Encerrada em', 'Aprovada por']
+    const rows = ncs.map(({ e, nc }) => [e.data, e.loja, e.setor || '', e.titulo, nc.item_txt || '', nc.gravidade, nc.status, nc.motivo_reprovacao || '', nc.causa || '', nc.acao || '', nc.responsavel || '', nc.prazo || '', nc.impacto ?? '', nc.aberta_em ? new Date(nc.aberta_em).toLocaleString('pt-BR') : '', nc.encerrada_em ? new Date(nc.encerrada_em).toLocaleString('pt-BR') : '', nc.aprovado_por || ''])
+    if (!ncs.length) { toast('Sem não conformidades no período para exportar.', 'info'); return }
+    baixarCSV(`nao_conformidades_${loja}_${hoje()}.csv`, [head, ...rows])
+  }
 
   const avisarPendencias = async () => {
     setEnviando(true)
@@ -1006,6 +1053,12 @@ function PainelTab({ loja, toast }: { loja: string; toast: (m: string, t?: 'succ
           }}>{d} dias</button>
         ))}
         <div style={{ flex: 1 }} />
+        <button onClick={exportExecucoesCSV} disabled={!execs.length} style={btnGhost} title="Exportar execuções em CSV (Excel)">
+          <FileDown size={14} /> CSV execuções
+        </button>
+        <button onClick={exportNcsCSV} style={btnGhost} title="Exportar não conformidades em CSV (Excel)">
+          <FileDown size={14} /> CSV NCs
+        </button>
         <button onClick={avisarPendencias} disabled={enviando} style={btnPrimary}>
           {enviando ? <Loader2 className="spin" size={14} /> : <span>📲</span>} Avisar pendências (WhatsApp)
         </button>
@@ -1018,6 +1071,16 @@ function PainelTab({ loja, toast }: { loja: string; toast: (m: string, t?: 'succ
         <Kpi label="Score médio" valor={kpi.media == null ? '—' : String(kpi.media)} cor={scoreColor(kpi.media)} />
       </div>
 
+      {/* Indicadores de qualidade / Não Conformidades */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', margin: '4px 0 8px' }}>Qualidade & Não Conformidades</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
+        <Kpi label="NCs abertas" valor={String(qual.abertas)} cor={qual.abertas ? '#ef4444' : '#16a34a'} />
+        <Kpi label="Fotos recusadas (IA)" valor={String(qual.fotosRecusadas)} cor={qual.fotosRecusadas ? '#f59e0b' : 'var(--text)'} />
+        <Kpi label="Tempo médio de correção" valor={qual.tmedio == null ? '—' : fmtDuracao(qual.tmedio)} />
+        <Kpi label="Reincidências" valor={String(qual.reincid)} cor={qual.reincid ? '#f59e0b' : 'var(--text)'} />
+        <Kpi label="Impacto estimado" valor={brl(qual.impacto)} cor={qual.impacto ? '#ef4444' : 'var(--text)'} />
+      </div>
+
       {execs.length === 0 ? (
         <Empty texto="Sem execuções no período. Gere e conclua checklists na aba “Execução do dia”." />
       ) : (
@@ -1025,6 +1088,7 @@ function PainelTab({ loja, toast }: { loja: string; toast: (m: string, t?: 'succ
           {multiLoja && <RankCard titulo="🏪 Ranking por unidade" linhas={porLoja} />}
           <RankCard titulo="🏆 Ranking por colaborador" linhas={porColab} />
           <RankCard titulo="🏢 Desempenho por setor" linhas={porSetor} />
+          <RankCard titulo="⏱️ Conformidade por turno" linhas={porTurno} />
         </div>
       )}
     </div>
