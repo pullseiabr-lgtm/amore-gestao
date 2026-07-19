@@ -16,7 +16,7 @@ import { gerarItensIA, validarFotoIA } from '../../lib/checklistIa'
 import { enviarWhatsApp, getZapiCfg, carregarZapiCfgRemoto } from '../../lib/notify'
 import type {
   ChecklistModelo, ChecklistExecucao, ChecklistItem, ChecklistResposta,
-  ChecklistItemTipo, ChecklistRecorrencia, ChecklistTurno, ChecklistNC,
+  ChecklistItemTipo, ChecklistRecorrencia, ChecklistTurno, ChecklistNC, ChecklistCondicao,
 } from '../../types/database'
 
 // ── Constantes ───────────────────────────────────────────────
@@ -114,6 +114,9 @@ function motivoReprovacao(item: ChecklistItem, r: ChecklistResposta): string | n
   if (item.tipo === 'foto' && r.ia_status === 'reprovado') return `Foto reprovada pela IA${r.ia_motivo ? `: ${r.ia_motivo}` : ''}`
   if (item.tipo === 'temperatura' && r.valor != null && !dentroDaFaixa(item, r.valor))
     return `Temperatura fora do limite (${r.valor}${item.unidade || '°C'})`
+  // Ação condicional: item respondido de forma não conforme com "abrir NC" ligado
+  if (item.cond?.abrir_nc && !itemOk(item, r))
+    return item.cond.mensagem || 'Resposta não conforme (ação condicional)'
   return null
 }
 
@@ -395,6 +398,18 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
     if (faltando.length) {
       toast(`Faltam ${faltando.length} item(ns) obrigatório(s).`, 'warning'); return
     }
+    // Ações condicionais: item respondido de forma não conforme pode exigir foto/observação ou bloquear a conclusão
+    const condPend = respostas.filter(r => {
+      const i = itens.find(x => x.id === r.item_id)
+      if (!i?.cond || r.nao_executou || itemOk(i, r)) return false
+      if (i.cond.bloquear) return true
+      if (i.cond.exigir_foto && !r.foto_url) return true
+      if (i.cond.exigir_obs && !(r.obs && r.obs.trim())) return true
+      return false
+    })
+    if (condPend.length) {
+      toast(`${condPend.length} item(ns) não conforme(s) com ação pendente (foto/observação) ou conclusão bloqueada.`, 'warning'); return
+    }
     setSalvando(true)
     try {
       let gps: { lat: number; lng: number } | null = null
@@ -464,6 +479,8 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
           {itens.map(item => {
             const r = respDe(item.id)
             const ok = itemOk(item, r)
+            const touched = respostas.some(x => x.item_id === item.id)
+            const disparou = !!item.cond && touched && !r.nao_executou && !ok
             return (
               <div key={item.id} style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -570,6 +587,25 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
                   <input value={r.obs || ''} placeholder="Observação (opcional)"
                     onChange={e => setResp(item.id, { obs: e.target.value || null })}
                     style={{ ...inp, marginTop: 6, fontSize: 12 }} />
+                )}
+                {/* Ação condicional disparada (resposta não conforme) */}
+                {disparou && item.cond && (
+                  <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 10px', marginTop: 6 }}>
+                    <div style={{ fontSize: 12, color: '#ef4444', fontWeight: 600 }}>⚠️ {item.cond.mensagem || 'Resposta não conforme — ação necessária'}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      {item.cond.exigir_foto && <span style={{ color: r.foto_url ? '#16a34a' : '#ef4444' }}>{r.foto_url ? '✓ foto anexada' : '• exige foto'}</span>}
+                      {item.cond.exigir_obs && <span style={{ color: (r.obs && r.obs.trim()) ? '#16a34a' : '#ef4444' }}>{(r.obs && r.obs.trim()) ? '✓ observação preenchida' : '• exige observação'}</span>}
+                      {item.cond.abrir_nc && <span>• abrirá não conformidade</span>}
+                      {item.cond.bloquear && <span style={{ color: '#ef4444' }}>• conclusão bloqueada</span>}
+                    </div>
+                    {item.cond.exigir_foto && !r.foto_url && item.tipo !== 'foto' && !concluido && (
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '6px 10px', borderRadius: 8, border: '1px dashed #ef4444', color: '#ef4444', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                        {uploadingId === item.id ? <Loader2 className="spin" size={14} /> : <Camera size={14} />} Anexar foto
+                        <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+                          onChange={e => uploadFoto(item.id, item, e.target.files)} />
+                      </label>
+                    )}
+                  </div>
                 )}
                 {!concluido && (
                   <button onClick={() => setResp(item.id, { nao_executou: true })}
@@ -853,6 +889,21 @@ function ModeloModal({ modelo, loja, userName, onClose, onSaved, toast }: {
                   <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => uploadRef(it.id, e.target.files)} />
                 </label>
                 {it.foto_ref && <img src={it.foto_ref} alt="ref" style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />}
+              </div>
+
+              {/* Ação condicional: quando a resposta for NÃO conforme */}
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', paddingLeft: 18, marginTop: 6 }}>
+                <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Se não conforme:</span>
+                {(([['exigir_foto', 'exige foto'], ['exigir_obs', 'exige obs'], ['abrir_nc', 'abre NC'], ['bloquear', 'bloqueia']]) as [keyof ChecklistCondicao, string][]).map(([k, lb]) => (
+                  <label key={k} style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!it.cond?.[k]}
+                      onChange={e => setItem(it.id, { cond: { ...it.cond, [k]: e.target.checked } as ChecklistCondicao })} /> {lb}
+                  </label>
+                ))}
+                {(it.cond?.exigir_foto || it.cond?.exigir_obs || it.cond?.abrir_nc || it.cond?.bloquear) && (
+                  <input value={it.cond?.mensagem || ''} onChange={e => setItem(it.id, { cond: { ...it.cond, mensagem: e.target.value || null } as ChecklistCondicao })}
+                    placeholder="Mensagem ao operador (opcional)" style={{ ...inp, flex: 1, minWidth: 160, fontSize: 12, padding: '5px 8px' }} />
+                )}
               </div>
             </div>
           ))}

@@ -917,6 +917,17 @@ export interface ChecklistItem {
   unidade?: string | null        // ex.: °C, kg, un, R$ — exibida ao lado do valor
   min?: number | null            // limite inferior (temperatura/número) — fora da faixa = não conforme
   max?: number | null            // limite superior
+  cond?: ChecklistCondicao | null // ações condicionais quando a resposta for não conforme
+}
+
+// Checklist condicionado — quando a resposta do item for NÃO conforme, dispara estas ações
+export interface ChecklistCondicao {
+  mensagem?: string | null   // instrução mostrada ao operador quando dispara
+  exigir_foto?: boolean      // passa a exigir foto neste item
+  exigir_obs?: boolean       // passa a exigir observação/comentário
+  abrir_nc?: boolean         // abre Não Conformidade ao concluir
+  bloquear?: boolean         // bloqueia a conclusão do checklist até resolver
+  alertar?: boolean          // sinaliza para alertar o gestor
 }
 
 export interface ChecklistModelo {
