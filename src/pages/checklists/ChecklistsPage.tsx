@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Plus, Edit2, Trash2, Loader2, CheckCircle2, Camera, MapPin,
   Star, ClipboardCheck, Play, RefreshCw, Save, X, Sparkles, FileDown,
@@ -43,6 +43,8 @@ const TIPOS: { v: ChecklistItemTipo; lbl: string; emoji: string }[] = [
   { v: 'quantidade', lbl: 'Quantidade', emoji: '🔢' },
   { v: 'peso', lbl: 'Peso', emoji: '⚖️' },
   { v: 'valor', lbl: 'Valor (R$)', emoji: '💰' },
+  { v: 'qrcode', lbl: 'QR / Cód. barras', emoji: '🔳' },
+  { v: 'assinatura', lbl: 'Assinatura', emoji: '✍️' },
 ]
 // Tipos numéricos que usam o campo "valor" + unidade/limites
 const TIPOS_NUM: ChecklistItemTipo[] = ['numero', 'temperatura', 'quantidade', 'peso', 'valor']
@@ -79,7 +81,8 @@ function itemOk(item: ChecklistItem, r?: ChecklistResposta): boolean {
     case 'confirm': return r.ok === true
     case 'foto': return !!r.foto_url && r.ia_status !== 'reprovado'
     case 'avaliacao': return (r.nota || 0) > 0
-    case 'texto': return !!(r.texto && r.texto.trim())
+    case 'texto': case 'qrcode': return !!(r.texto && r.texto.trim())
+    case 'assinatura': return !!r.assinatura
     case 'numero': case 'quantidade': case 'peso': case 'valor':
       return r.valor !== null && r.valor !== undefined
     case 'temperatura':
@@ -322,6 +325,83 @@ function Empty({ texto }: { texto: string }) {
   return <div style={{ textAlign: 'center', padding: 32, color: 'var(--muted)', fontSize: 13, background: 'var(--card)', borderRadius: 10, border: '1px dashed var(--border)', marginTop: 14 }}>{texto}</div>
 }
 
+// ── Scanner de QR / código de barras (câmera, lib carregada sob demanda) ──
+function ScannerModal({ onClose, onResult }: { onClose: () => void; onResult: (txt: string) => void }) {
+  const [erro, setErro] = useState<string | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const scannerRef = useRef<any>(null)
+  const doneRef = useRef(false)
+  const onResultRef = useRef(onResult); onResultRef.current = onResult
+  useEffect(() => {
+    let cancel = false
+    ;(async () => {
+      try {
+        const { Html5Qrcode } = await import('html5-qrcode')
+        if (cancel) return
+        const h = new Html5Qrcode('chk-scanner')
+        scannerRef.current = h
+        await h.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 } },
+          (txt: string) => { if (!doneRef.current) { doneRef.current = true; onResultRef.current(txt) } }, () => {})
+      } catch (e) { if (!cancel) setErro((e as Error)?.message || 'Não foi possível abrir a câmera') }
+    })()
+    return () => {
+      cancel = true
+      const h = scannerRef.current
+      if (h) { h.stop().then(() => h.clear()).catch(() => {}); scannerRef.current = null }
+    }
+  }, [])
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: '#0009', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+      <div style={{ background: 'var(--card)', borderRadius: 12, padding: 16, width: '100%', maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <strong style={{ fontSize: 14 }}>Escanear QR / código</strong>
+          <button onClick={onClose} style={iconBtn}><X size={16} /></button>
+        </div>
+        <div id="chk-scanner" style={{ width: '100%', minHeight: 240, borderRadius: 8, overflow: 'hidden', background: '#000' }} />
+        {erro && <div style={{ fontSize: 12, color: '#ef4444', marginTop: 8 }}>{erro}</div>}
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>Aponte a câmera para o código. Se preferir, feche e digite manualmente.</div>
+      </div>
+    </div>
+  )
+}
+
+// ── Assinatura digital (canvas — sem biblioteca) ─────────────
+function SignaturePad({ onSave, uploading }: { onSave: (blob: Blob) => void; uploading: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const drawing = useRef(false)
+  const dirty = useRef(false)
+  const pos = (e: React.MouseEvent | React.TouchEvent) => {
+    const c = canvasRef.current!; const rect = c.getBoundingClientRect()
+    const t = 'touches' in e ? e.touches[0] : e
+    return { x: (t.clientX - rect.left) * (c.width / rect.width), y: (t.clientY - rect.top) * (c.height / rect.height) }
+  }
+  const start = (e: React.MouseEvent | React.TouchEvent) => {
+    drawing.current = true; const ctx = canvasRef.current!.getContext('2d')!; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y)
+  }
+  const move = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!drawing.current) return; e.preventDefault()
+    const ctx = canvasRef.current!.getContext('2d')!; const p = pos(e)
+    ctx.lineTo(p.x, p.y); ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.stroke(); dirty.current = true
+  }
+  const end = () => { drawing.current = false }
+  const limpar = () => { const c = canvasRef.current!; c.getContext('2d')!.clearRect(0, 0, c.width, c.height); dirty.current = false }
+  const salvar = () => { if (!dirty.current) return; canvasRef.current!.toBlob(b => { if (b) onSave(b) }, 'image/png') }
+  return (
+    <div>
+      <canvas ref={canvasRef} width={300} height={100}
+        onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
+        onTouchStart={start} onTouchMove={move} onTouchEnd={end}
+        style={{ border: '1px solid var(--border)', borderRadius: 8, background: '#fff', touchAction: 'none', width: '100%', maxWidth: 300, height: 100 }} />
+      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+        <button type="button" onClick={limpar} style={{ ...btnGhost, padding: '5px 10px', fontSize: 12 }}>Limpar</button>
+        <button type="button" onClick={salvar} disabled={uploading} style={{ ...btnPrimary, padding: '5px 10px', fontSize: 12 }}>
+          {uploading ? <Loader2 className="spin" size={13} /> : <Save size={13} />} Usar assinatura
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Card de execução (preenchimento) ─────────────────────────
 function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
   exec: ChecklistExecucao
@@ -335,6 +415,7 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
   const [aberto, setAberto] = useState(exec.status !== 'concluido')
   const [salvando, setSalvando] = useState(false)
   const [uploadingId, setUploadingId] = useState<string | null>(null)
+  const [scanItemId, setScanItemId] = useState<string | null>(null)
 
   const respDe = (id: string): ChecklistResposta =>
     respostas.find(r => r.item_id === id) || { item_id: id, ok: false, valor: null, foto_url: null, nota: null, ia_ok: null, ia_motivo: null, obs: null }
@@ -564,6 +645,40 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
                     onChange={e => setResp(item.id, { texto: e.target.value || null })}
                     style={{ ...inp, resize: 'vertical' }} />
                 )}
+                {item.tipo === 'qrcode' && (
+                  <div>
+                    {r.texto && <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>🔳 {r.texto}</div>}
+                    {!concluido && (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button type="button" onClick={() => setScanItemId(item.id)} style={{ ...btnGhost, padding: '6px 12px', fontSize: 12 }}>
+                          <Camera size={14} /> {r.texto ? 'Escanear de novo' : 'Escanear código'}
+                        </button>
+                        <input value={r.texto || ''} placeholder="ou digite o código"
+                          onChange={e => setResp(item.id, { texto: e.target.value || null })}
+                          style={{ ...inp, flex: 1, minWidth: 120, fontSize: 12 }} />
+                      </div>
+                    )}
+                  </div>
+                )}
+                {item.tipo === 'assinatura' && (
+                  <div>
+                    {r.assinatura ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <img src={r.assinatura} alt="assinatura" style={{ height: 56, border: '1px solid var(--border)', borderRadius: 6, background: '#fff' }} />
+                        {!concluido && <button onClick={() => setResp(item.id, { assinatura: null })} style={{ ...btnGhost, padding: '4px 10px', fontSize: 12 }}>Refazer</button>}
+                      </div>
+                    ) : !concluido && (
+                      <SignaturePad uploading={uploadingId === item.id} onSave={async (blob) => {
+                        setUploadingId(item.id)
+                        try {
+                          const url = await uploadAnexo(new File([blob], 'assinatura.png', { type: 'image/png' }), 'checklists/assinaturas')
+                          setResp(item.id, { assinatura: url })
+                        } catch { toast('Falha ao salvar a assinatura.', 'error') }
+                        finally { setUploadingId(null) }
+                      }} />
+                    )}
+                  </div>
+                )}
                 {item.tipo === 'foto' && (
                   <div>
                     {r.foto_url && <a href={r.foto_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--bordo)', display: 'block', marginBottom: 4 }}>📎 ver foto enviada</a>}
@@ -637,6 +752,13 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
             </div>
           )}
         </div>
+      )}
+
+      {scanItemId && (
+        <ScannerModal
+          onClose={() => setScanItemId(null)}
+          onResult={txt => { setResp(scanItemId, { texto: txt }); setScanItemId(null) }}
+        />
       )}
     </div>
   )

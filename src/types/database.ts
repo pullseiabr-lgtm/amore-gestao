@@ -900,6 +900,7 @@ export interface CozinhaSolicitacao {
 
 export type ChecklistItemTipo    = 'confirm' | 'numero' | 'foto' | 'avaliacao'
                                  | 'texto' | 'temperatura' | 'quantidade' | 'peso' | 'valor'
+                                 | 'qrcode' | 'assinatura'
 export type ChecklistRecorrencia = 'diario' | 'semanal' | 'mensal' | 'avulso'
 export type ChecklistTurno       = 'abertura' | 'almoco' | 'jantar' | 'fechamento' | 'qualquer'
 export type ChecklistExecStatus  = 'pendente' | 'em_andamento' | 'concluido' | 'atrasado'
@@ -959,7 +960,8 @@ export interface ChecklistResposta {
   ia_motivo: string | null
   obs: string | null
   // Campos opcionais (JSONB — retrocompatível)
-  texto?: string | null                                   // resposta do tipo comentário
+  texto?: string | null                                   // resposta do tipo comentário / código escaneado
+  assinatura?: string | null                              // URL da assinatura digital (tipo assinatura)
   ia_status?: 'aprovado' | 'reprovado' | 'revisao' | null // veredito da IA em 3 estados
   nao_executou?: boolean                                  // marcou "não consigo executar"
   motivo_nao?: string | null                              // justificativa da não execução
