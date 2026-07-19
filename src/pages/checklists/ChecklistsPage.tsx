@@ -16,7 +16,7 @@ import { gerarItensIA, validarFotoIA } from '../../lib/checklistIa'
 import { enviarWhatsApp, getZapiCfg, carregarZapiCfgRemoto } from '../../lib/notify'
 import type {
   ChecklistModelo, ChecklistExecucao, ChecklistItem, ChecklistResposta,
-  ChecklistItemTipo, ChecklistRecorrencia, ChecklistTurno,
+  ChecklistItemTipo, ChecklistRecorrencia, ChecklistTurno, ChecklistNC,
 } from '../../types/database'
 
 // ── Constantes ───────────────────────────────────────────────
@@ -108,13 +108,34 @@ function calcScore(itens: ChecklistItem[], respostas: ChecklistResposta[], atras
 const scoreColor = (s: number | null) =>
   s == null ? 'var(--muted)' : s >= 90 ? '#16a34a' : s >= 70 ? '#f59e0b' : '#ef4444'
 
+// Motivo que faz um item abrir Não Conformidade ao concluir (só casos "ruins", não faltantes)
+function motivoReprovacao(item: ChecklistItem, r: ChecklistResposta): string | null {
+  if (r.nao_executou) return `Não executado: ${r.motivo_nao || 'sem motivo'}`
+  if (item.tipo === 'foto' && r.ia_status === 'reprovado') return `Foto reprovada pela IA${r.ia_motivo ? `: ${r.ia_motivo}` : ''}`
+  if (item.tipo === 'temperatura' && r.valor != null && !dentroDaFaixa(item, r.valor))
+    return `Temperatura fora do limite (${r.valor}${item.unidade || '°C'})`
+  return null
+}
+
+const NC_GRAV: Record<'baixa' | 'media' | 'alta', { lbl: string; cor: string }> = {
+  baixa: { lbl: 'Baixa', cor: '#3b82f6' },
+  media: { lbl: 'Média', cor: '#f59e0b' },
+  alta:  { lbl: 'Alta',  cor: '#ef4444' },
+}
+const NC_STATUS: Record<string, { lbl: string; cor: string }> = {
+  aberta:      { lbl: 'Aberta',       cor: '#ef4444' },
+  em_correcao: { lbl: 'Em correção',  cor: '#f59e0b' },
+  corrigida:   { lbl: 'Corrigida',    cor: '#3b82f6' },
+  encerrada:   { lbl: 'Encerrada',    cor: '#16a34a' },
+}
+
 // ── Componente principal ─────────────────────────────────────
 export default function ChecklistsPage() {
   const { loja, lojas } = useLoja()
   const { user } = useAuth()
   const { toast } = useToast()
 
-  const [tab, setTab] = useState<'hoje' | 'painel' | 'modelos'>('hoje')
+  const [tab, setTab] = useState<'hoje' | 'painel' | 'nc' | 'modelos'>('hoje')
   const [modelos, setModelos] = useState<ChecklistModelo[]>([])
   const [execucoes, setExecucoes] = useState<ChecklistExecucao[]>([])
   const [loading, setLoading] = useState(true)
@@ -220,7 +241,7 @@ export default function ChecklistsPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: 'var(--card)', borderRadius: 10, padding: 4 }}>
-        {([['hoje', '📋 Execução do dia'], ['painel', '📊 Painel'], ['modelos', '⚙️ Modelos']] as const).map(([id, lbl]) => (
+        {([['hoje', '📋 Execução do dia'], ['painel', '📊 Painel'], ['nc', '🚩 Não Conformidades'], ['modelos', '⚙️ Modelos']] as const).map(([id, lbl]) => (
           <button key={id} onClick={() => setTab(id)} style={{
             flex: 1, padding: '10px 8px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 13,
             fontWeight: tab === id ? 700 : 400,
@@ -261,6 +282,8 @@ export default function ChecklistsPage() {
         </>
       ) : tab === 'painel' ? (
         <PainelTab loja={loja} toast={toast} />
+      ) : tab === 'nc' ? (
+        <NcTab loja={loja} user={user} toast={toast} />
       ) : (
         <ModelosTab
           modelos={modelos}
@@ -382,14 +405,31 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
       const agora = new Date()
       const atrasado = !!exec.hora_limite && agora.toTimeString().slice(0, 5) > exec.hora_limite
       const score = calcScore(itens, respostas, atrasado)
+      // Abre Não Conformidade automática nos itens reprovados (foto reprovada, temperatura fora, não executado)
+      let novasNc = 0
+      const respostasFinal: ChecklistResposta[] = respostas.map(r => {
+        const item = itens.find(i => i.id === r.item_id)
+        if (!item || r.nc) return r
+        const motivo = motivoReprovacao(item, r)
+        if (!motivo) return r
+        novasNc++
+        const nc: ChecklistNC = {
+          status: 'aberta', gravidade: item.critico ? 'alta' : 'media',
+          item_txt: item.txt, foto_evidencia: r.foto_url || null, motivo_reprovacao: motivo,
+          causa: null, acao: null, responsavel: null, prazo: null, impacto: null,
+          foto_correcao: null, aprovado_por: null,
+          aberta_em: agora.toISOString(), encerrada_em: null,
+        }
+        return { ...r, nc }
+      })
       await updateChecklistExecucao(exec.id, {
-        respostas, status: 'concluido', score,
+        respostas: respostasFinal, status: 'concluido', score,
         concluido_em: agora.toISOString(),
         iniciado_em: exec.iniciado_em || agora.toISOString(),
         responsavel_nome: exec.responsavel_nome || user?.name || null,
         gps_lat: gps?.lat ?? null, gps_lng: gps?.lng ?? null,
       })
-      toast(`Checklist concluído — score ${score}/100${atrasado ? ' (com atraso)' : ''}.`, 'success')
+      toast(`Checklist concluído — score ${score}/100${atrasado ? ' (com atraso)' : ''}${novasNc ? ` · ${novasNc} não conformidade(s) aberta(s) 🚩` : ''}.`, novasNc ? 'warning' : 'success')
       setAberto(false); onChange()
     } catch (e) { toast('Erro ao concluir: ' + (e as Error).message, 'error') }
     finally { setSalvando(false) }
@@ -956,8 +996,192 @@ function RankCard({ titulo, linhas }: { titulo: string; linhas: Rank[] }) {
   )
 }
 
+// ── Aba Não Conformidades (plano de ação) ────────────────────
+type NcRow = { exec: ChecklistExecucao; nc: ChecklistNC; itemId: string }
+
+function NcTab({ loja, user, toast }: {
+  loja: string
+  user: { name?: string; id?: string } | null
+  toast: (m: string, t?: 'success' | 'error' | 'warning' | 'info') => void
+}) {
+  const [dias, setDias] = useState(30)
+  const [execs, setExecs] = useState<ChecklistExecucao[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filtro, setFiltro] = useState<'abertas' | 'todas'>('abertas')
+
+  const load = useCallback(() => {
+    setLoading(true)
+    const fim = hoje()
+    const ini = new Date(Date.now() - (dias - 1) * 86400000).toISOString().slice(0, 10)
+    fetchChecklistExecucoesRange(loja, ini, fim).then(setExecs).finally(() => setLoading(false))
+  }, [loja, dias])
+  useEffect(() => { load() }, [load])
+
+  const ncs = useMemo<NcRow[]>(() => {
+    const out: NcRow[] = []
+    for (const e of execs) for (const r of (e.respostas || [])) if (r.nc) out.push({ exec: e, nc: r.nc, itemId: r.item_id })
+    const ord: Record<string, number> = { aberta: 0, em_correcao: 1, corrigida: 2, encerrada: 3 }
+    return out.sort((a, b) => (ord[a.nc.status] - ord[b.nc.status]) || (a.exec.data < b.exec.data ? 1 : -1))
+  }, [execs])
+  const visiveis = filtro === 'abertas' ? ncs.filter(n => n.nc.status !== 'encerrada') : ncs
+
+  const kpi = useMemo(() => ({
+    abertas: ncs.filter(n => n.nc.status === 'aberta').length,
+    andamento: ncs.filter(n => n.nc.status === 'em_correcao' || n.nc.status === 'corrigida').length,
+    encerradas: ncs.filter(n => n.nc.status === 'encerrada').length,
+  }), [ncs])
+
+  const patchNc = async (exec: ChecklistExecucao, itemId: string, patch: Partial<ChecklistNC>) => {
+    const novas = (exec.respostas || []).map(r => r.item_id === itemId && r.nc ? { ...r, nc: { ...r.nc, ...patch } } : r)
+    try {
+      await updateChecklistExecucao(exec.id, { respostas: novas })
+      setExecs(prev => prev.map(e => e.id === exec.id ? { ...e, respostas: novas } : e))
+      toast('Não conformidade atualizada.', 'success')
+    } catch (e) { toast('Erro: ' + (e as Error).message, 'error') }
+  }
+
+  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><Loader2 className="spin" size={28} /></div>
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>Período:</span>
+        {[7, 30, 90].map(d => (
+          <button key={d} onClick={() => setDias(d)} style={{
+            padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer',
+            background: dias === d ? 'var(--bordo)' : 'var(--bg)', color: dias === d ? '#fff' : 'var(--text)',
+          }}>{d} dias</button>
+        ))}
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setFiltro(f => f === 'abertas' ? 'todas' : 'abertas')} style={btnGhost}>
+          {filtro === 'abertas' ? 'Mostrar todas' : 'Só abertas'}
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
+        <Kpi label="Abertas" valor={String(kpi.abertas)} cor="#ef4444" />
+        <Kpi label="Em correção" valor={String(kpi.andamento)} cor="#f59e0b" />
+        <Kpi label="Encerradas" valor={String(kpi.encerradas)} cor="#16a34a" />
+      </div>
+
+      {visiveis.length === 0 ? (
+        <Empty texto="Nenhuma não conformidade no período. 🎉 As NCs abrem sozinhas quando um item é reprovado (foto reprovada, temperatura fora do limite ou não executado)." />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {visiveis.map(row => (
+            <NcCard key={`${row.exec.id}-${row.itemId}`} row={row} userName={user?.name || null}
+              onPatch={patch => patchNc(row.exec, row.itemId, patch)} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NcCard({ row, userName, onPatch }: {
+  row: NcRow
+  userName: string | null
+  onPatch: (patch: Partial<ChecklistNC>) => Promise<void>
+}) {
+  const { exec, nc } = row
+  const [g, setG] = useState(nc.gravidade)
+  const [resp, setResp] = useState(nc.responsavel || '')
+  const [prazo, setPrazo] = useState(nc.prazo || '')
+  const [causa, setCausa] = useState(nc.causa || '')
+  const [acao, setAcao] = useState(nc.acao || '')
+  const [impacto, setImpacto] = useState(nc.impacto != null ? String(nc.impacto) : '')
+  const [uploading, setUploading] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const st = NC_STATUS[nc.status]; const gc = NC_GRAV[nc.gravidade]
+  const encerrada = nc.status === 'encerrada'
+
+  const run = async (fn: () => Promise<void>) => { setBusy(true); try { await fn() } finally { setBusy(false) } }
+  const salvar = () => run(() => onPatch({
+    gravidade: g, responsavel: resp || null, prazo: prazo || null, causa: causa || null, acao: acao || null,
+    impacto: impacto === '' ? null : Number(impacto),
+    status: nc.status === 'aberta' ? 'em_correcao' : nc.status,
+  }))
+  const uploadCorrecao = async (files: FileList | null) => {
+    if (!files || !files[0]) return
+    setUploading(true)
+    try { const url = await uploadAnexo(files[0], 'checklists/nc'); await onPatch({ foto_correcao: url, status: 'corrigida' }) }
+    finally { setUploading(false) }
+  }
+  const encerrar = () => run(() => onPatch({ status: 'encerrada', aprovado_por: userName, encerrada_em: new Date().toISOString() }))
+  const reabrir = () => run(() => onPatch({ status: 'em_correcao', aprovado_por: null, encerrada_em: null }))
+
+  return (
+    <div style={{ background: 'var(--card)', border: `1px solid ${st.cor}55`, borderLeft: `4px solid ${st.cor}`, borderRadius: 10, padding: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>{nc.item_txt || 'Item'}</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+            🏪 {exec.loja} · {exec.setor || '—'} · {exec.titulo} · {new Date(exec.data + 'T12:00:00').toLocaleDateString('pt-BR')}
+          </div>
+        </div>
+        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: gc.cor + '20', color: gc.cor }}>{gc.lbl}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: st.cor + '20', color: st.cor }}>{st.lbl}</span>
+      </div>
+
+      {nc.motivo_reprovacao && <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>⚠️ {nc.motivo_reprovacao}</div>}
+
+      {/* Fotos: evidência x correção */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+        {nc.foto_evidencia && (
+          <a href={nc.foto_evidencia} target="_blank" rel="noreferrer" style={{ textAlign: 'center' }}>
+            <img src={nc.foto_evidencia} alt="evidência" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '1px solid #ef4444' }} />
+            <div style={{ fontSize: 10, color: 'var(--muted)' }}>problema</div>
+          </a>
+        )}
+        {nc.foto_correcao && (
+          <a href={nc.foto_correcao} target="_blank" rel="noreferrer" style={{ textAlign: 'center' }}>
+            <img src={nc.foto_correcao} alt="correção" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '1px solid #16a34a' }} />
+            <div style={{ fontSize: 10, color: 'var(--muted)' }}>corrigido</div>
+          </a>
+        )}
+      </div>
+
+      {!encerrada && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginBottom: 10 }}>
+          <div><label style={lbl}>Gravidade</label>
+            <select value={g} onChange={e => setG(e.target.value as 'baixa' | 'media' | 'alta')} style={inp}>
+              {(['baixa', 'media', 'alta'] as const).map(k => <option key={k} value={k}>{NC_GRAV[k].lbl}</option>)}
+            </select></div>
+          <div><label style={lbl}>Responsável pela correção</label><input value={resp} onChange={e => setResp(e.target.value)} placeholder="Nome" style={inp} /></div>
+          <div><label style={lbl}>Prazo</label><input type="date" value={prazo} onChange={e => setPrazo(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Impacto estimado (R$)</label><input type="number" step="any" value={impacto} onChange={e => setImpacto(e.target.value)} placeholder="0,00" style={inp} /></div>
+          <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>Causa-raiz</label><input value={causa} onChange={e => setCausa(e.target.value)} placeholder="Por que aconteceu?" style={inp} /></div>
+          <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>Ação corretiva</label><input value={acao} onChange={e => setAcao(e.target.value)} placeholder="O que foi/será feito?" style={inp} /></div>
+        </div>
+      )}
+
+      {encerrada ? (
+        <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+          ✅ Encerrada por {nc.aprovado_por || '—'} {nc.encerrada_em ? `em ${new Date(nc.encerrada_em).toLocaleString('pt-BR')}` : ''}
+          {nc.acao ? ` · Ação: ${nc.acao}` : ''}
+          <button onClick={reabrir} disabled={busy} style={{ ...btnGhost, marginLeft: 10, padding: '4px 10px', fontSize: 12 }}>Reabrir</button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={salvar} disabled={busy} style={btnGhost}>{busy ? <Loader2 className="spin" size={14} /> : <Save size={14} />} Salvar plano</button>
+          <label style={{ ...btnGhost, cursor: uploading ? 'wait' : 'pointer' }}>
+            {uploading ? <Loader2 className="spin" size={14} /> : <Camera size={14} />} Foto da correção
+            <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => uploadCorrecao(e.target.files)} />
+          </label>
+          <button onClick={encerrar} disabled={busy || nc.status !== 'corrigida'}
+            title={nc.status !== 'corrigida' ? 'Envie a foto da correção antes de encerrar' : 'Validar e encerrar'}
+            style={{ ...btnPrimary, opacity: nc.status !== 'corrigida' ? 0.5 : 1 }}>
+            <CheckCircle2 size={14} /> Validar e encerrar
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Estilos ──────────────────────────────────────────────────
 const inp: React.CSSProperties = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: 13, boxSizing: 'border-box' }
+const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 3 }
 const btnPrimary: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }
 const btnGhost: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }
 const iconBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', cursor: 'pointer', fontSize: 14 }

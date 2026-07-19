@@ -952,6 +952,27 @@ export interface ChecklistResposta {
   ia_status?: 'aprovado' | 'reprovado' | 'revisao' | null // veredito da IA em 3 estados
   nao_executou?: boolean                                  // marcou "não consigo executar"
   motivo_nao?: string | null                              // justificativa da não execução
+  // Não Conformidade (plano de ação) — aberta quando o item é reprovado
+  nc?: ChecklistNC | null
+}
+
+export type ChecklistNCStatus = 'aberta' | 'em_correcao' | 'corrigida' | 'encerrada'
+
+export interface ChecklistNC {
+  status: ChecklistNCStatus
+  gravidade: 'baixa' | 'media' | 'alta'
+  item_txt: string | null            // descrição do item que reprovou (denormalizado)
+  foto_evidencia: string | null      // foto que evidenciou a não conformidade (quando houver)
+  motivo_reprovacao: string | null   // por que abriu (foto reprovada / fora do limite / não executado)
+  causa: string | null               // causa-raiz apontada
+  acao: string | null                // ação corretiva
+  responsavel: string | null         // quem corrige
+  prazo: string | null               // YYYY-MM-DD
+  impacto: number | null             // impacto financeiro estimado (R$)
+  foto_correcao: string | null       // 2ª foto (depois da correção)
+  aprovado_por: string | null        // gestor que validou
+  aberta_em: string | null
+  encerrada_em: string | null
 }
 
 export interface ChecklistExecucao {
