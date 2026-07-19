@@ -1081,6 +1081,7 @@ function baixarCSV(nome: string, linhas: (string | number | null)[][]) {
 }
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtDuracao = (h: number) => h < 48 ? `${h.toFixed(1)}h` : `${(h / 24).toFixed(1)}d`
+const escHtml = (v: unknown) => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
 
 function PainelTab({ loja, toast }: { loja: string; toast: (m: string, t?: 'success' | 'error' | 'warning' | 'info') => void }) {
   const [dias, setDias] = useState(7)
@@ -1144,6 +1145,35 @@ function PainelTab({ loja, toast }: { loja: string; toast: (m: string, t?: 'succ
     baixarCSV(`nao_conformidades_${loja}_${hoje()}.csv`, [head, ...rows])
   }
 
+  const gerarPDF = () => {
+    const dataBR = new Date().toLocaleDateString('pt-BR')
+    const card = (lbl: string, val: string) => `<div class="k"><div class="kl">${lbl}</div><div class="kv">${val}</div></div>`
+    const rank = (titulo: string, linhas: Rank[]) => `<h3>${titulo}</h3><table><thead><tr><th>#</th><th>Nome</th><th>Concl.</th><th>Taxa</th><th>Score</th></tr></thead><tbody>${linhas.map((l, i) => `<tr><td>${i + 1}</td><td>${escHtml(l.chave)}</td><td>${l.concl}/${l.total}</td><td>${l.taxa}%</td><td>${l.score ?? '—'}</td></tr>`).join('') || '<tr><td colspan="5">Sem dados</td></tr>'}</tbody></table>`
+    const ncTable = ncs.length ? `<h3>🚩 Não Conformidades (${ncs.length})</h3><table><thead><tr><th>Data</th><th>Loja</th><th>Item</th><th>Grav.</th><th>Status</th><th>Responsável</th><th>Impacto</th></tr></thead><tbody>${ncs.map(({ e, nc }) => `<tr><td>${escHtml(e.data)}</td><td>${escHtml(e.loja)}</td><td>${escHtml(nc.item_txt || '')}</td><td>${escHtml(nc.gravidade)}</td><td>${escHtml(nc.status)}</td><td>${escHtml(nc.responsavel || '—')}</td><td>${nc.impacto ? escHtml(brl(nc.impacto)) : '—'}</td></tr>`).join('')}</tbody></table>` : ''
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Operação Padrão — Relatório</title><style>
+      body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;padding:28px;max-width:900px;margin:auto}
+      h1{color:#6B1212;margin:0 0 4px} h3{color:#6B1212;margin:22px 0 8px;font-size:15px} .sub{color:#666;font-size:13px;margin-bottom:18px}
+      .kpis{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px} .k{border:1px solid #ddd;border-radius:8px;padding:10px 14px;min-width:130px}
+      .kl{font-size:11px;color:#666} .kv{font-size:20px;font-weight:700}
+      table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:4px} th,td{border:1px solid #e2e2e2;padding:5px 8px;text-align:left} th{background:#f6f0f0;color:#6B1212}
+      @media print{.noprint{display:none}}
+    </style></head><body>
+      <h1>Operação Padrão — Relatório</h1>
+      <div class="sub">Loja <b>${escHtml(loja)}</b> &nbsp;|&nbsp; últimos ${dias} dias &nbsp;|&nbsp; ${dataBR}</div>
+      <div class="kpis">${card('Execuções', String(kpi.tot))}${card('Concluídas', `${kpi.concl}/${kpi.tot}`)}${card('Taxa conclusão', `${kpi.taxa}%`)}${card('Score médio', kpi.media == null ? '—' : String(kpi.media))}</div>
+      <div class="kpis">${card('NCs abertas', String(qual.abertas))}${card('Fotos recusadas', String(qual.fotosRecusadas))}${card('Tempo médio correção', qual.tmedio == null ? '—' : fmtDuracao(qual.tmedio))}${card('Reincidências', String(qual.reincid))}${card('Impacto estimado', brl(qual.impacto))}</div>
+      ${multiLoja ? rank('🏪 Por unidade', porLoja) : ''}
+      ${rank('🏆 Por colaborador', porColab)}
+      ${rank('🏢 Por setor', porSetor)}
+      ${rank('⏱️ Por turno', porTurno)}
+      ${ncTable}
+      <button class="noprint" onclick="window.print()" style="margin-top:20px;padding:8px 16px;background:#6B1212;color:#fff;border:none;border-radius:6px;cursor:pointer">Imprimir / Salvar PDF</button>
+    </body></html>`
+    const w = window.open('', '_blank')
+    if (!w) { toast('Permita pop-ups para exportar o PDF.', 'warning'); return }
+    w.document.write(html); w.document.close()
+  }
+
   const avisarPendencias = async () => {
     setEnviando(true)
     try {
@@ -1175,6 +1205,9 @@ function PainelTab({ loja, toast }: { loja: string; toast: (m: string, t?: 'succ
           }}>{d} dias</button>
         ))}
         <div style={{ flex: 1 }} />
+        <button onClick={gerarPDF} disabled={!execs.length} style={btnGhost} title="Relatório em PDF (imprimir/salvar)">
+          <FileDown size={14} /> PDF
+        </button>
         <button onClick={exportExecucoesCSV} disabled={!execs.length} style={btnGhost} title="Exportar execuções em CSV (Excel)">
           <FileDown size={14} /> CSV execuções
         </button>
