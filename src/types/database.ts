@@ -1047,6 +1047,25 @@ export interface PautaReuniao {
 
 // ── Tarefas Operacionais ─────────────────────────────────────
 
+// ── Configuração de cobranças automáticas (módulo 13 — consumida pelo worker no VPS) ──
+export interface CobrancaNivel {
+  rotulo: string           // ex.: Responsável, Líder do setor, Gerente, Diretoria
+  apos_min: number         // minutos após o prazo para acionar este nível
+  whatsapp: string | null  // número fixo; se vazio, o worker resolve pelo responsável/setor
+}
+export interface CobrancaConfig {
+  ativo: boolean
+  lembretes_antes_min: number[]   // ex.: [30, 10] — minutos ANTES do prazo
+  lembretes_apos_min: number[]    // ex.: [10, 30, 60] — minutos DEPOIS do atraso
+  max_lembretes: number
+  tolerancia_min: number          // atraso tolerado antes de começar a escalar
+  escalonamento: CobrancaNivel[]
+  quiet_inicio: string            // HH:MM — não enviar a partir de
+  quiet_fim: string               // HH:MM — voltar a enviar a partir de
+  dias_semana: number[]           // 0=dom..6=sáb — dias em que pode enviar
+  critico_acelera: boolean        // tarefas urgentes escalam na metade do tempo
+}
+
 export type TarefaStatus     = 'pendente' | 'em_andamento' | 'aguardando_retorno' | 'aguardando_fornecedor' | 'concluido' | 'cancelado'
 export type TarefaPrioridade = 'baixa' | 'media' | 'alta' | 'urgente'
 export type TarefaResultado  = 'resolvido' | 'resolvido_parcial' | 'pendente_ajuste' | 'nao_concluido'

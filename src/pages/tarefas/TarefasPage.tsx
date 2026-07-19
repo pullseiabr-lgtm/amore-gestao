@@ -11,9 +11,10 @@ import {
   fetchTarefas, insertTarefa, updateTarefa, deleteTarefa,
   insertTarefaChecklist, updateTarefaChecklist, deleteTarefaChecklist,
   insertTarefaComentario, insertTarefaHistorico, fetchProfiles,
+  fetchAppConfig, saveAppConfig,
 } from '../../lib/db'
 import { enviarWhatsApp } from '../../lib/notify'
-import type { Tarefa, TarefaStatus, TarefaPrioridade, TarefaResultado, TarefaChecklist, TarefaComentario } from '../../types/database'
+import type { Tarefa, TarefaStatus, TarefaPrioridade, TarefaResultado, TarefaChecklist, TarefaComentario, CobrancaConfig, CobrancaNivel } from '../../types/database'
 import { AnexoUploader, AnexoLinks } from '../../components/ui/AnexoUploader'
 
 // ── Constants ────────────────────────────────────────────────
@@ -42,6 +43,27 @@ const RESULTADOS: { id: TarefaResultado; label: string; cor: string }[] = [
   { id: 'pendente_ajuste',   label: 'Pendente de ajuste', cor: '#9333ea' },
   { id: 'nao_concluido',     label: 'Não concluído',      cor: '#dc2626' },
 ]
+
+const COBRANCA_PADRAO: CobrancaConfig = {
+  ativo: false,
+  lembretes_antes_min: [30, 10],
+  lembretes_apos_min: [10, 30, 60],
+  max_lembretes: 5,
+  tolerancia_min: 10,
+  escalonamento: [
+    { rotulo: 'Responsável', apos_min: 0, whatsapp: null },
+    { rotulo: 'Líder do setor', apos_min: 30, whatsapp: null },
+    { rotulo: 'Gerente da unidade', apos_min: 60, whatsapp: null },
+    { rotulo: 'Diretoria', apos_min: 120, whatsapp: null },
+  ],
+  quiet_inicio: '22:00',
+  quiet_fim: '07:00',
+  dias_semana: [1, 2, 3, 4, 5, 6],
+  critico_acelera: true,
+}
+const DIAS_SEM = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+const numListStr = (a: number[]) => a.join(', ')
+const parseNumList = (s: string) => s.split(/[,\s]+/).map(x => parseInt(x, 10)).filter(n => Number.isFinite(n) && n >= 0)
 
 function prioLabel(p: TarefaPrioridade) {
   return PRIORIDADES.find(x => x.id === p)?.label ?? p
@@ -125,6 +147,11 @@ export default function TarefasPage() {
   const [novoCheckItem, setNovoCheckItem] = useState('')
   const [profiles, setProfiles] = useState<any[]>([])
   useEffect(() => { fetchProfiles().then(setProfiles).catch(() => {}) }, [])
+
+  // Config de cobranças automáticas (módulo 13) — salva em app_config.cobranca_cfg
+  const [showCobranca, setShowCobranca] = useState(false)
+  const [cobrancaCfg, setCobrancaCfg] = useState<CobrancaConfig | null>(null)
+  useEffect(() => { fetchAppConfig<CobrancaConfig>('cobranca_cfg').then(c => setCobrancaCfg(c || COBRANCA_PADRAO)).catch(() => setCobrancaCfg(COBRANCA_PADRAO)) }, [])
 
   // Busca o WhatsApp de um usuário pelo nome (guardado em permissions_override.__perfil__)
   const whatsappDoResponsavel = (nome: string): string => {
@@ -579,6 +606,15 @@ export default function TarefasPage() {
       ══════════════════════════════ */}
       {!loading && view === 'gerencial' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', flex: 1, minHeight: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+              Cobranças automáticas por WhatsApp: <strong style={{ color: cobrancaCfg?.ativo ? '#16a34a' : '#dc2626' }}>{cobrancaCfg?.ativo ? 'ATIVAS' : 'desativadas'}</strong>
+            </div>
+            <button onClick={() => setShowCobranca(true)}
+              style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+              ⚙️ Regras de cobrança
+            </button>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
             {[
               { lbl: 'Prazo hoje', val: ger.hoje, cor: '#2563eb' },
@@ -606,6 +642,11 @@ export default function TarefasPage() {
             {tabelaRank('🏪 Desempenho por unidade', gerPorLoja, false)}
           </div>
         </div>
+      )}
+
+      {showCobranca && cobrancaCfg && (
+        <CobrancaModal cfg={cobrancaCfg} onClose={() => setShowCobranca(false)}
+          onSaved={c => { setCobrancaCfg(c); setShowCobranca(false) }} />
       )}
 
       {/* ══════════════════════════════
@@ -1328,6 +1369,97 @@ function KanbanCard({ tarefa, onClick, onMover, colunas }: {
               ))}
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal: Regras de cobrança automática (módulo 13) ─────────
+function CobrancaModal({ cfg, onClose, onSaved }: {
+  cfg: CobrancaConfig
+  onClose: () => void
+  onSaved: (c: CobrancaConfig) => void
+}) {
+  const [c, setC] = useState<CobrancaConfig>(cfg)
+  const [antesStr, setAntesStr] = useState(numListStr(cfg.lembretes_antes_min))
+  const [aposStr, setAposStr] = useState(numListStr(cfg.lembretes_apos_min))
+  const [salvando, setSalvando] = useState(false)
+  const set = (patch: Partial<CobrancaConfig>) => setC(prev => ({ ...prev, ...patch }))
+  const setNivel = (i: number, patch: Partial<CobrancaNivel>) => setC(prev => ({ ...prev, escalonamento: prev.escalonamento.map((n, j) => j === i ? { ...n, ...patch } : n) }))
+  const toggleDia = (d: number) => setC(prev => ({ ...prev, dias_semana: prev.dias_semana.includes(d) ? prev.dias_semana.filter(x => x !== d) : [...prev.dias_semana, d].sort((a, b) => a - b) }))
+  const salvar = async () => {
+    setSalvando(true)
+    const final: CobrancaConfig = { ...c, lembretes_antes_min: parseNumList(antesStr), lembretes_apos_min: parseNumList(aposStr) }
+    try { await saveAppConfig('cobranca_cfg', final); onSaved(final) }
+    finally { setSalvando(false) }
+  }
+  const inpS: React.CSSProperties = { padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', fontSize: 13, boxSizing: 'border-box' }
+  const lblS: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }
+  const secS: React.CSSProperties = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--bordo)', margin: '6px 0 2px' }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: '#0008', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 14, padding: 22, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>⚙️ Regras de cobrança automática</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={18} /></button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer', background: c.ativo ? '#f0fdf4' : '#fef2f2', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
+            <input type="checkbox" checked={c.ativo} onChange={e => set({ ativo: e.target.checked })} />
+            <strong>Cobranças automáticas por WhatsApp {c.ativo ? 'ativas' : 'desativadas'}</strong>
+          </label>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: -6 }}>
+            Estas regras ficam salvas para o robô de cobrança (worker no VPS). Enquanto o worker não estiver ligado, elas só ficam registradas.
+          </div>
+
+          <div style={secS}>Lembretes</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div><label style={lblS}>Antes do prazo (min)</label><input value={antesStr} onChange={e => setAntesStr(e.target.value)} placeholder="30, 10" style={{ ...inpS, width: '100%' }} /></div>
+            <div><label style={lblS}>Após o atraso (min)</label><input value={aposStr} onChange={e => setAposStr(e.target.value)} placeholder="10, 30, 60" style={{ ...inpS, width: '100%' }} /></div>
+            <div><label style={lblS}>Máx. de lembretes</label><input type="number" min={1} value={c.max_lembretes} onChange={e => set({ max_lembretes: Number(e.target.value) || 1 })} style={{ ...inpS, width: '100%' }} /></div>
+            <div><label style={lblS}>Tolerância de atraso (min)</label><input type="number" min={0} value={c.tolerancia_min} onChange={e => set({ tolerancia_min: Number(e.target.value) || 0 })} style={{ ...inpS, width: '100%' }} /></div>
+          </div>
+
+          <div style={secS}>Escalonamento (níveis)</div>
+          {c.escalonamento.map((n, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '20px 1.4fr 1fr 1.2fr', gap: 6, alignItems: 'center' }}>
+              <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700 }}>{i + 1}</span>
+              <input value={n.rotulo} onChange={e => setNivel(i, { rotulo: e.target.value })} placeholder="Rótulo" style={{ ...inpS, fontSize: 12, padding: '6px 8px' }} />
+              <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>+<input type="number" min={0} value={n.apos_min} onChange={e => setNivel(i, { apos_min: Number(e.target.value) || 0 })} style={{ ...inpS, width: 60, fontSize: 12, padding: '6px 6px' }} />min</label>
+              <input value={n.whatsapp || ''} onChange={e => setNivel(i, { whatsapp: e.target.value || null })} placeholder="WhatsApp (opcional)" style={{ ...inpS, fontSize: 12, padding: '6px 8px' }} />
+            </div>
+          ))}
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: -4 }}>Sem número: o robô resolve pelo responsável/setor da tarefa. "+X min" = tempo após o prazo para acionar o nível.</div>
+
+          <div style={secS}>Janela de envio</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div><label style={lblS}>Silêncio a partir de</label><input type="time" value={c.quiet_inicio} onChange={e => set({ quiet_inicio: e.target.value })} style={{ ...inpS, width: '100%' }} /></div>
+            <div><label style={lblS}>Voltar a enviar às</label><input type="time" value={c.quiet_fim} onChange={e => set({ quiet_fim: e.target.value })} style={{ ...inpS, width: '100%' }} /></div>
+          </div>
+          <div>
+            <label style={lblS}>Dias permitidos</label>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {DIAS_SEM.map((d, i) => (
+                <button key={i} type="button" onClick={() => toggleDia(i)}
+                  style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', background: c.dias_semana.includes(i) ? 'var(--bordo)' : 'var(--card)', color: c.dias_semana.includes(i) ? '#fff' : 'var(--text)' }}>{d}</button>
+              ))}
+            </div>
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={c.critico_acelera} onChange={e => set({ critico_acelera: e.target.checked })} />
+            Tarefas <strong>urgentes/críticas</strong> escalam na metade do tempo
+          </label>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+            <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', cursor: 'pointer', fontWeight: 600 }}>Cancelar</button>
+            <button onClick={salvar} disabled={salvando} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: 'pointer', fontWeight: 600, opacity: salvando ? 0.6 : 1 }}>
+              {salvando ? 'Salvando...' : 'Salvar regras'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
