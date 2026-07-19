@@ -117,7 +117,7 @@ export default function TarefasPage() {
   const [busca, setBusca] = useState('')
   const [filtroSetor, setFiltroSetor] = useState('')
   const [filtroPrio, setFiltroPrio] = useState('')
-  const [view, setView] = useState<'kanban' | 'lista'>('kanban')
+  const [view, setView] = useState<'kanban' | 'lista' | 'gerencial'>('kanban')
 
   // Modal nova tarefa
   const [showForm, setShowForm] = useState(false)
@@ -423,6 +423,77 @@ export default function TarefasPage() {
       : 0,
   }
 
+  // ── Painel Gerencial (módulo 13 — Gerente Operacional) ────
+  const hojeStr = new Date().toISOString().slice(0, 10)
+  const noPrazo = (t: Tarefa) => !t.prazo || !t.concluido_em || String(t.concluido_em).slice(0, 10) <= String(t.prazo).slice(0, 10)
+  const agrupaTarefas = (keyFn: (t: Tarefa) => string | null) => {
+    const m: Record<string, { total: number; concl: number; atras: number; pontuais: number }> = {}
+    for (const t of tarefasFiltradas) {
+      const k = keyFn(t) || '—'
+      if (!m[k]) m[k] = { total: 0, concl: 0, atras: 0, pontuais: 0 }
+      m[k].total++
+      if (t.status === 'concluido') { m[k].concl++; if (noPrazo(t)) m[k].pontuais++ }
+      if (t.status !== 'concluido' && t.status !== 'cancelado' && vencido(t.prazo)) m[k].atras++
+    }
+    return Object.entries(m).map(([chave, v]) => ({
+      chave, ...v,
+      pctConcl: v.total ? Math.round(v.concl / v.total * 100) : 0,
+      pontualidade: v.concl ? Math.round(v.pontuais / v.concl * 100) : 0,
+    }))
+  }
+  const gerPorColab = agrupaTarefas(t => t.responsavel_nome).sort((a, b) => b.pontualidade - a.pontualidade || b.pctConcl - a.pctConcl)
+  const gerPorSetor = agrupaTarefas(t => t.setor).sort((a, b) => b.pctConcl - a.pctConcl)
+  const gerPorLoja = agrupaTarefas(t => t.loja).sort((a, b) => b.pctConcl - a.pctConcl)
+  const concluidas = tarefasFiltradas.filter(t => t.status === 'concluido')
+  const temposExec = concluidas.filter(t => t.iniciado_em && t.concluido_em)
+    .map(t => (new Date(t.concluido_em!).getTime() - new Date(t.iniciado_em!).getTime()) / 3600000).filter(h => h >= 0)
+  const ger = {
+    hoje: tarefasFiltradas.filter(t => String(t.prazo || '').slice(0, 10) === hojeStr).length,
+    andamento: metricas.emAndamento,
+    concluidas: concluidas.length,
+    conclAtraso: concluidas.filter(t => !noPrazo(t)).length,
+    atrasadas: metricas.atrasadas,
+    vencidas: ativas.filter(t => vencido(t.prazo)).length,
+    criticas: ativas.filter(t => t.prioridade === 'urgente').length,
+    aguardAprov: tarefasFiltradas.filter(t => t.precisa_aprovacao && t.status === 'concluido' && !t.aprovado_por).length,
+    impedimento: tarefasFiltradas.filter(t => t.status === 'aguardando_retorno' || t.status === 'aguardando_fornecedor').length,
+    tempoMedioH: temposExec.length ? temposExec.reduce((a, b) => a + b, 0) / temposExec.length : null,
+    produtividade: metricas.pctConclusao,
+    disciplina: concluidas.length ? Math.round(concluidas.filter(noPrazo).length / concluidas.length * 100) : 0,
+  }
+  const fmtDur = (h: number) => h < 48 ? `${h.toFixed(1)}h` : `${(h / 24).toFixed(1)}d`
+
+  const tabelaRank = (titulo: string, linhas: ReturnType<typeof agrupaTarefas>, comPontualidade: boolean) => (
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{titulo}</div>
+      {linhas.length === 0 ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>Sem dados.</div> : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead><tr style={{ color: 'var(--muted)' }}>
+            <th style={{ padding: '4px 6px', textAlign: 'left' }}>#</th>
+            <th style={{ textAlign: 'left' }}>Nome</th>
+            <th style={{ textAlign: 'center' }}>Concl.</th>
+            <th style={{ textAlign: 'center' }}>Atras.</th>
+            <th style={{ textAlign: 'right' }}>{comPontualidade ? 'Pontual.' : '% concl.'}</th>
+          </tr></thead>
+          <tbody>
+            {linhas.map((l, i) => {
+              const val = comPontualidade ? l.pontualidade : l.pctConcl
+              return (
+                <tr key={l.chave} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '5px 6px', color: 'var(--muted)' }}>{i + 1}</td>
+                  <td>{l.chave}</td>
+                  <td style={{ textAlign: 'center' }}>{l.concl}/{l.total}</td>
+                  <td style={{ textAlign: 'center', color: l.atras ? '#dc2626' : 'inherit', fontWeight: l.atras ? 700 : 400 }}>{l.atras}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: val >= 80 ? '#16a34a' : val >= 50 ? '#d97706' : '#dc2626' }}>{val}%</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+
   // ── Render ───────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: '100%' }}>
@@ -436,12 +507,14 @@ export default function TarefasPage() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={() => setView(v => v === 'kanban' ? 'lista' : 'kanban')}
-            style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 13 }}
-          >
-            {view === 'kanban' ? '☰ Lista' : '⊞ Kanban'}
-          </button>
+          <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+            {([['kanban', '⊞ Kanban'], ['lista', '☰ Lista'], ['gerencial', '📊 Painel']] as const).map(([v, lbl]) => (
+              <button key={v} onClick={() => setView(v)}
+                style={{ padding: '8px 12px', border: 'none', cursor: 'pointer', fontSize: 13, background: view === v ? 'var(--bordo)' : 'var(--card)', color: view === v ? '#fff' : 'var(--text)' }}>
+                {lbl}
+              </button>
+            ))}
+          </div>
           <button
             onClick={() => { setForm(emptyForm()); setShowForm(true) }}
             style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
@@ -498,6 +571,40 @@ export default function TarefasPage() {
       {loading && (
         <div style={{ textAlign: 'center', padding: 60, color: 'var(--muted)' }}>
           <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', opacity: 0.4 }} />
+        </div>
+      )}
+
+      {/* ══════════════════════════════
+          PAINEL GERENCIAL (Gerente Operacional)
+      ══════════════════════════════ */}
+      {!loading && view === 'gerencial' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', flex: 1, minHeight: 0 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+            {[
+              { lbl: 'Prazo hoje', val: ger.hoje, cor: '#2563eb' },
+              { lbl: 'Em andamento', val: ger.andamento, cor: '#2563eb' },
+              { lbl: 'Concluídas', val: ger.concluidas, cor: '#16a34a' },
+              { lbl: 'Concluídas c/ atraso', val: ger.conclAtraso, cor: '#d97706' },
+              { lbl: 'Atrasadas', val: ger.atrasadas, cor: '#dc2626' },
+              { lbl: 'Vencidas', val: ger.vencidas, cor: '#dc2626' },
+              { lbl: 'Críticas (urgente)', val: ger.criticas, cor: '#dc2626' },
+              { lbl: 'Aguardando aprovação', val: ger.aguardAprov, cor: '#9333ea' },
+              { lbl: 'Com impedimento', val: ger.impedimento, cor: '#d97706' },
+              { lbl: 'Tempo médio execução', val: ger.tempoMedioH == null ? '—' : fmtDur(ger.tempoMedioH), cor: '#6b7280' },
+              { lbl: 'Índice produtividade', val: `${ger.produtividade}%`, cor: '#9333ea' },
+              { lbl: 'Índice disciplina', val: `${ger.disciplina}%`, cor: ger.disciplina >= 80 ? '#16a34a' : ger.disciplina >= 50 ? '#d97706' : '#dc2626' },
+            ].map(m => (
+              <div key={m.lbl} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderTop: `3px solid ${m.cor}`, borderRadius: 10, padding: '10px 14px' }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: m.cor, lineHeight: 1.1 }}>{m.val}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{m.lbl}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
+            {tabelaRank('🏆 Pontualidade por colaborador', gerPorColab, true)}
+            {tabelaRank('🏢 Desempenho por setor', gerPorSetor, false)}
+            {tabelaRank('🏪 Desempenho por unidade', gerPorLoja, false)}
+          </div>
         </div>
       )}
 
