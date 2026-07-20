@@ -112,10 +112,21 @@ function vencido(prazo: string | null) {
 
 // ── Empty form ───────────────────────────────────────────────
 const hojeISO = () => new Date().toISOString().slice(0, 10)
+// Horários da tarefa (módulo 13 — sem migração: guardados no campo livre `competencia` como JSON)
+function buildHorasComp(hi: string, hl: string): string | null {
+  if (!hi && !hl) return null
+  return JSON.stringify({ hi: hi || null, hl: hl || null })
+}
+function parseHoras(competencia: string | null): { hi: string; hl: string } {
+  if (!competencia) return { hi: '', hl: '' }
+  try { const o = JSON.parse(competencia); if (o && typeof o === 'object') return { hi: o.hi || '', hl: o.hl || '' } } catch { /* texto antigo */ }
+  return { hi: '', hl: '' }
+}
+
 const emptyForm = () => ({
   titulo: '', descricao: '', setor: 'Operação', prioridade: 'media' as TarefaPrioridade,
   responsavel_nome: '', solicitante_nome: '',
-  data_solicitacao: hojeISO(), prazo: '', observacoes: '',
+  data_solicitacao: hojeISO(), prazo: '', horaInicio: '', horaLimite: '', observacoes: '',
   precisa_aprovacao: false,
   enviarWhats: true,
   checklist: [] as string[],
@@ -242,7 +253,7 @@ export default function TarefasPage() {
         observacoes: form.observacoes || null,
         objetivo: form.objetivo || null,
         envolvidos: form.envolvidos || null,
-        competencia: null,
+        competencia: buildHorasComp(form.horaInicio, form.horaLimite),
         data_inicio: null,
         entregaveis: form.entregaveis || null,
         anexos: form.anexos || null,
@@ -817,6 +828,20 @@ export default function TarefasPage() {
                 </div>
               </div>
 
+              {/* Horários (disciplina de horário / cobrança) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>🕐 Hora de início</label>
+                  <input type="time" value={form.horaInicio} onChange={e => setForm(f => ({ ...f, horaInicio: e.target.value }))}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>🕜 Hora limite</label>
+                  <input type="time" value={form.horaLimite} onChange={e => setForm(f => ({ ...f, horaLimite: e.target.value }))}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                </div>
+              </div>
+
               {/* Setores envolvidos */}
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>🤝 Setores envolvidos</label>
@@ -1335,7 +1360,7 @@ function KanbanCard({ tarefa, onClick, onMover, colunas }: {
           <span>{tarefa.responsavel_nome || '—'}</span>
           {tarefa.prazo && (
             <span style={{ color: vencido(tarefa.prazo) ? '#dc2626' : 'var(--muted)', fontWeight: vencido(tarefa.prazo) ? 600 : 400 }}>
-              {vencido(tarefa.prazo) && '⚠ '}{fmtData(tarefa.prazo)}
+              {vencido(tarefa.prazo) && '⚠ '}{fmtData(tarefa.prazo)}{parseHoras(tarefa.competencia).hl ? ` ${parseHoras(tarefa.competencia).hl}` : ''}
             </span>
           )}
         </div>
