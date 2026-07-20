@@ -15,13 +15,14 @@ import {
   fetchEstoqueProdutos, darEntradaEstoquePorNome,
   fetchFinCreditos, insertFinCredito,
   fetchRequisicaoCotacoes, insertRequisicaoCotacao, updateRequisicaoCotacao, deleteRequisicaoCotacao,
+  fetchCotacaoItens, upsertCotacaoItens,
   fetchFornecedores, fetchProfiles,
 } from '../../lib/db'
 import { enviarWhatsApp, perfisDoSetor, soDigitos } from '../../lib/notify'
 import type {
   Requisicao, RequisicaoItem, ReqStatus, ReqPrioridade,
   EstoqueProduto, FinCredito, FinFormaPagamento, ReqTimeline,
-  RequisicaoCotacao, Fornecedor,
+  RequisicaoCotacao, RequisicaoCotacaoItem, Fornecedor,
 } from '../../types/database'
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -30,6 +31,9 @@ const fmtDt  = (d: string | null) => d ? new Date(d + (d.length === 10 ? 'T00:00
 const fmtR$  = (v: number) => v.toLocaleString('pt-BR', { style:'currency', currency:'BRL' })
 const fmtTs  = (d: string) => new Date(d).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
 const today  = () => new Date().toISOString().slice(0, 10)
+// Estilos da grade do comparativo de cotação
+const thCot: React.CSSProperties = { border:'1px solid var(--border)', padding:'6px 8px', textAlign:'center', background:'var(--bg)', fontWeight:700, whiteSpace:'nowrap' }
+const tdCot: React.CSSProperties = { border:'1px solid var(--border)', padding:'4px 6px', textAlign:'center' }
 
 // ── Configs ───────────────────────────────────────────────────
 
@@ -540,6 +544,10 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
   const [cotForm, setCotForm] = useState({ fornecedor_nome:'', total:'', prazo_entrega:'', observacoes:'' })
   const [savingCot, setSavingCot] = useState(false)
+  // Cotação por item / comparativo (Fase 2)
+  const [cotItens, setCotItens] = useState<Record<string, RequisicaoCotacaoItem[]>>({})
+  const [precos, setPrecos] = useState<Record<string, string>>({})
+  const [savingPrecos, setSavingPrecos] = useState(false)
   // Relatório de aprovação de compra (Fase 1)
   const [mRelat, setMRelat] = useState(false)
   const [relatFones, setRelatFones] = useState('')
@@ -548,7 +556,19 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   const load = useCallback(async () => {
     setLoading(true)
     const [is, t, cot] = await Promise.all([fetchRequisicaoItens(req.id), fetchReqTimeline(req.id), fetchRequisicaoCotacoes(req.id).catch(()=>[])])
-    setItens(is); setTl(t); setCotacoes(cot); setLoading(false)
+    setItens(is); setTl(t); setCotacoes(cot)
+    // preços por item de cada cotação (Fase 2)
+    try {
+      const pares = await Promise.all(cot.map(async c => [c.id, await fetchCotacaoItens(c.id).catch(()=>[] as RequisicaoCotacaoItem[])] as const))
+      const map: Record<string, RequisicaoCotacaoItem[]> = {}
+      const pr: Record<string, string> = {}
+      pares.forEach(([cid, arr]) => {
+        map[cid] = arr
+        arr.forEach(r => { if (r.preco_unitario != null) pr[cid + '|' + r.item_id] = String(r.preco_unitario) })
+      })
+      setCotItens(map); setPrecos(pr)
+    } catch { /* comparativo é opcional */ }
+    setLoading(false)
   }, [req.id])
 
   useEffect(() => { fetchFornecedores(loja).then(setFornecedores).catch(()=>{}) }, [loja])
@@ -602,6 +622,49 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   const delCotacao = async (id: string) => {
     await deleteRequisicaoCotacao(id)
     await load()
+  }
+
+  // ── Comparativo por item (Fase 2) ──────────────────────────
+  const keyPreco = (cotId: string, itemId: string) => cotId + '|' + itemId
+  const precoDe = (cotId: string, itemId: string): number | null => {
+    const v = precos[keyPreco(cotId, itemId)]
+    if (v === undefined || v === '') return null
+    const n = Number(String(v).replace(',', '.'))
+    return Number.isFinite(n) ? n : null
+  }
+  const totalCot = (cotId: string) => itens.reduce((s, i) => { const p = precoDe(cotId, i.id); return s + (p != null ? p * i.quantidade : 0) }, 0)
+  const atendCot = (cotId: string) => itens.length ? Math.round(itens.filter(i => precoDe(cotId, i.id) != null).length / itens.length * 100) : 0
+
+  const salvarPrecos = async () => {
+    setSavingPrecos(true)
+    try {
+      const payload: Record<string, unknown>[] = []
+      for (const c of cotacoes) {
+        const existentes = cotItens[c.id] || []
+        for (const i of itens) {
+          const p = precoDe(c.id, i.id)
+          const ex = existentes.find(x => x.item_id === i.id)
+          if (p == null && !ex) continue
+          const row: Record<string, unknown> = {
+            cotacao_id: c.id, item_id: i.id,
+            preco_unitario: p, disponivel: p != null,
+            observacoes: ex?.observacoes ?? null,
+          }
+          if (ex) row.id = ex.id
+          payload.push(row)
+        }
+      }
+      if (payload.length) await upsertCotacaoItens(payload as never)
+      // total da cotação passa a refletir a soma dos itens (quando houver preços)
+      await Promise.all(cotacoes.map(async c => {
+        const t = totalCot(c.id)
+        if (t > 0) await updateRequisicaoCotacao(c.id, { total: t })
+      }))
+      await tEntry('cotacao', `Preços por item atualizados (${payload.length} lançamento(s))`)
+      toast('Preços salvos!')
+      await load()
+    } catch (e) { toast('Erro ao salvar preços: ' + (e as Error).message) }
+    finally { setSavingPrecos(false) }
   }
 
   // ── Relatório de Aprovação de Compra (Fase 1) ──────────────
@@ -986,6 +1049,71 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
               </div>
             })}
             {validas.length>1 && menorTotal!=null && <div style={{ padding:'8px 4px', fontSize:12, color:'var(--muted)' }}>💡 Economia potencial vs maior cotação: <strong style={{ color:'#15803D' }}>{fmtR$(Math.max(...validas.map(c=>c.total??0))-menorTotal)}</strong></div>}
+
+            {/* Comparativo por item (Fase 2) */}
+            {cotacoes.length>0 && itens.length>0 && (
+              <div className="card" style={{ marginTop:12 }}>
+                <div className="card-header" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, flexWrap:'wrap' }}>
+                  <span className="card-tt">📊 Comparativo por item — preencha os preços coletados</span>
+                  <button className="btn" onClick={salvarPrecos} disabled={savingPrecos} style={{ padding:'7px 12px', fontSize:12 }}>
+                    {savingPrecos ? 'Salvando…' : '💾 Salvar preços'}
+                  </button>
+                </div>
+                <div style={{ overflowX:'auto' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ ...thCot, textAlign:'left', minWidth:170, position:'sticky', left:0, zIndex:1 }}>Produto</th>
+                        <th style={{ ...thCot, minWidth:76 }}>Qtd</th>
+                        {cotacoes.map(c => <th key={c.id} style={{ ...thCot, minWidth:118 }}>{c.fornecedor_nome}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itens.map(i => {
+                        const ps = cotacoes.map(c => precoDe(c.id, i.id)).filter((v): v is number => v != null)
+                        const min = ps.length ? Math.min(...ps) : null
+                        const max = ps.length ? Math.max(...ps) : null
+                        return <tr key={i.id}>
+                          <td style={{ ...tdCot, textAlign:'left', position:'sticky', left:0, background:'var(--card)', zIndex:1 }}>{i.produto_nome}</td>
+                          <td style={{ ...tdCot, color:'var(--muted)', whiteSpace:'nowrap' }}>{i.quantidade} {i.unidade}</td>
+                          {cotacoes.map(c => {
+                            const p = precoDe(c.id, i.id)
+                            const bg = p == null ? undefined
+                              : (min != null && p === min) ? '#DCFCE7'
+                              : (max != null && p === max && max !== min) ? '#FEE2E2' : '#FEF3C7'
+                            return <td key={c.id} style={{ ...tdCot, background:bg }}>
+                              <input value={precos[keyPreco(c.id, i.id)] ?? ''} inputMode="decimal" placeholder="—"
+                                onChange={e => setPrecos(prev => ({ ...prev, [keyPreco(c.id, i.id)]: e.target.value }))}
+                                style={{ width:'100%', padding:'5px 6px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg)', fontSize:12, textAlign:'right', boxSizing:'border-box' }} />
+                            </td>
+                          })}
+                        </tr>
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td style={{ ...tdCot, textAlign:'left', fontWeight:700, position:'sticky', left:0, background:'var(--card)', zIndex:1 }}>Total</td>
+                        <td style={tdCot}></td>
+                        {cotacoes.map(c => {
+                          const tots = cotacoes.map(x => totalCot(x.id)).filter(v => v > 0)
+                          const menor = tots.length ? Math.min(...tots) : null
+                          const t = totalCot(c.id)
+                          return <td key={c.id} style={{ ...tdCot, fontWeight:800, color: (menor != null && t === menor && t > 0) ? '#15803D' : 'var(--text)' }}>{fmtR$(t)}</td>
+                        })}
+                      </tr>
+                      <tr>
+                        <td style={{ ...tdCot, textAlign:'left', color:'var(--muted)', position:'sticky', left:0, background:'var(--card)', zIndex:1 }}>Atendimento</td>
+                        <td style={tdCot}></td>
+                        {cotacoes.map(c => { const a = atendCot(c.id); return <td key={c.id} style={{ ...tdCot, fontWeight:700, color: a === 100 ? '#15803D' : a >= 70 ? '#B45309' : '#B91C1C' }}>{a}%</td> })}
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <div style={{ padding:'8px 14px', fontSize:11, color:'var(--muted)' }}>
+                  🟢 menor preço · 🟡 intermediário · 🔴 maior preço. Total = quantidade × preço. <strong>Atendimento</strong> = % dos itens que o fornecedor cotou — atenção a quem é mais barato mas atende pouco.
+                </div>
+              </div>
+            )}
 
             {/* Relatório de aprovação de compra */}
             {cotacoes.length>0 && (
