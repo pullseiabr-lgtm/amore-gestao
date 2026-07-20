@@ -34,6 +34,8 @@ const today  = () => new Date().toISOString().slice(0, 10)
 // Estilos da grade do comparativo de cotação
 const thCot: React.CSSProperties = { border:'1px solid var(--border)', padding:'6px 8px', textAlign:'center', background:'var(--bg)', fontWeight:700, whiteSpace:'nowrap' }
 const tdCot: React.CSSProperties = { border:'1px solid var(--border)', padding:'4px 6px', textAlign:'center' }
+const lblSug: React.CSSProperties = { fontSize:11, color:'var(--muted)', marginBottom:2 }
+const valSug: React.CSSProperties = { fontSize:18, fontWeight:800 }
 
 // ── Configs ───────────────────────────────────────────────────
 
@@ -671,6 +673,35 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   }
   const custoRealTotal = (cotId: string) => totalCot(cotId) + (freteCfgDe(cotId).frete || 0)
 
+  // ── Sugestão de compra fracionada (Fase 3) ─────────────────
+  const calcSugestao = () => {
+    const porForn: Record<string, { itens: { item: RequisicaoItem; preco: number; sub: number }[]; frete: number }> = {}
+    const semCotacao: RequisicaoItem[] = []
+    for (const i of itens) {
+      let melhor: { cotId: string; preco: number } | null = null
+      for (const c of cotacoes) {
+        const p = precoDe(c.id, i.id)
+        if (p == null) continue
+        if (!melhor || p < melhor.preco) melhor = { cotId: c.id, preco: p }
+      }
+      if (!melhor) { semCotacao.push(i); continue }
+      if (!porForn[melhor.cotId]) porForn[melhor.cotId] = { itens: [], frete: 0 }
+      porForn[melhor.cotId].itens.push({ item: i, preco: melhor.preco, sub: melhor.preco * i.quantidade })
+    }
+    // cada fornecedor usado cobra o frete dele uma vez
+    Object.keys(porForn).forEach(cid => { porForn[cid].frete = freteCfgDe(cid).frete || 0 })
+    const totalProdutos = Object.values(porForn).reduce((s, g) => s + g.itens.reduce((a, x) => a + x.sub, 0), 0)
+    const totalFrete = Object.values(porForn).reduce((s, g) => s + g.frete, 0)
+    const totalFracionado = totalProdutos + totalFrete
+    // referência: melhor fornecedor único (preferindo quem cota 100% da lista)
+    const completos = cotacoes.filter(c => atendCot(c.id) === 100)
+    const base = completos.length ? completos : cotacoes.filter(c => totalCot(c.id) > 0)
+    const melhorUnico = base.length ? base.reduce((m, c) => (custoRealTotal(c.id) < custoRealTotal(m.id) ? c : m)) : null
+    const custoUnico = melhorUnico ? custoRealTotal(melhorUnico.id) : 0
+    const economia = custoUnico > 0 ? custoUnico - totalFracionado : 0
+    return { porForn, semCotacao, totalProdutos, totalFrete, totalFracionado, melhorUnico, custoUnico, economia, completos: completos.length }
+  }
+
   const salvarPrecos = async () => {
     setSavingPrecos(true)
     try {
@@ -1201,6 +1232,61 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
                 </div>
               </div>
             )}
+
+            {/* Sugestão de compra fracionada (Fase 3) */}
+            {cotacoes.length>1 && itens.length>0 && (() => {
+              const s = calcSugestao()
+              const usados = Object.keys(s.porForn)
+              if (!usados.length) return null
+              return <div className="card" style={{ marginTop:12 }}>
+                <div className="card-header"><span className="card-tt">🧠 Sugestão de compra — menor custo item a item</span></div>
+                <div style={{ padding:'12px 14px' }}>
+                  {usados.map(cid => {
+                    const g = s.porForn[cid]
+                    const forn = cotacoes.find(c => c.id === cid)
+                    const sub = g.itens.reduce((a, x) => a + x.sub, 0)
+                    return <div key={cid} style={{ marginBottom:10, paddingBottom:10, borderBottom:'1px solid var(--border)' }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', gap:8, flexWrap:'wrap', marginBottom:3 }}>
+                        <strong style={{ fontSize:13 }}>{forn?.fornecedor_nome} — {g.itens.length} item(ns)</strong>
+                        <span style={{ fontSize:13, fontWeight:800 }}>{fmtR$(sub + g.frete)}</span>
+                      </div>
+                      <div style={{ fontSize:11, color:'var(--muted)' }}>{g.itens.map(x => x.item.produto_nome).join(' · ')}</div>
+                      {g.frete > 0 && <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>produtos {fmtR$(sub)} + frete {fmtR$(g.frete)}</div>}
+                    </div>
+                  })}
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:10, marginTop:6 }}>
+                    <div>
+                      <div style={lblSug}>Compra fracionada</div>
+                      <div style={{ ...valSug, color:'#15803D' }}>{fmtR$(s.totalFracionado)}</div>
+                      <div style={{ fontSize:10, color:'var(--muted)' }}>{usados.length} fornecedor(es) · frete {fmtR$(s.totalFrete)}</div>
+                    </div>
+                    <div>
+                      <div style={lblSug}>Melhor fornecedor único</div>
+                      <div style={valSug}>{s.melhorUnico ? fmtR$(s.custoUnico) : '—'}</div>
+                      <div style={{ fontSize:10, color:'var(--muted)' }}>{s.melhorUnico?.fornecedor_nome || ''}</div>
+                    </div>
+                    <div>
+                      <div style={lblSug}>Economia</div>
+                      <div style={{ ...valSug, color: s.economia > 0 ? '#15803D' : 'var(--muted)' }}>{s.economia > 0 ? fmtR$(s.economia) : '—'}</div>
+                      <div style={{ fontSize:10, color:'var(--muted)' }}>vs comprar tudo num só</div>
+                    </div>
+                  </div>
+                  {s.completos === 0 && (
+                    <div style={{ marginTop:10, fontSize:11.5, color:'#B45309', background:'#FEF3C7', border:'1px solid #FDE68A', borderRadius:8, padding:'7px 10px' }}>
+                      ⚠️ Nenhum fornecedor cota 100% da lista — fracionar é necessário. A comparação com "fornecedor único" é apenas referencial.
+                    </div>
+                  )}
+                  {s.semCotacao.length > 0 && (
+                    <div style={{ marginTop:8, fontSize:11.5, color:'#B91C1C' }}>
+                      🔴 {s.semCotacao.length} item(ns) sem nenhuma cotação: {s.semCotacao.map(i => i.produto_nome).join(', ')}
+                    </div>
+                  )}
+                  <div style={{ marginTop:8, fontSize:10.5, color:'var(--muted)' }}>
+                    A sugestão escolhe, item a item, o fornecedor de menor preço unitário e soma o frete de cada fornecedor utilizado — mais fornecedores significa mais fretes e mais operação.
+                  </div>
+                </div>
+              </div>
+            })()}
 
             {/* Relatório de aprovação de compra */}
             {cotacoes.length>0 && (
