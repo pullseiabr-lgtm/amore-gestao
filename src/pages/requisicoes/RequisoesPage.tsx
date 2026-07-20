@@ -15,7 +15,7 @@ import {
   fetchEstoqueProdutos, darEntradaEstoquePorNome,
   fetchFinCreditos, insertFinCredito,
   fetchRequisicaoCotacoes, insertRequisicaoCotacao, updateRequisicaoCotacao, deleteRequisicaoCotacao,
-  fetchCotacaoItens, upsertCotacaoItens,
+  fetchCotacaoItens, upsertCotacaoItens, fetchAppConfig, saveAppConfig,
   fetchFornecedores, fetchProfiles,
 } from '../../lib/db'
 import { enviarWhatsApp, perfisDoSetor, soDigitos } from '../../lib/notify'
@@ -548,6 +548,9 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   const [cotItens, setCotItens] = useState<Record<string, RequisicaoCotacaoItem[]>>({})
   const [precos, setPrecos] = useState<Record<string, string>>({})
   const [savingPrecos, setSavingPrecos] = useState(false)
+  // Frete + rateio por cotação (guardado em app_config: cot_frete:<cotacao_id>)
+  type FreteCfg = { frete: number; rateio: 'valor' | 'quantidade' | 'manual'; manual: Record<string, number> }
+  const [fretes, setFretes] = useState<Record<string, FreteCfg>>({})
   // Relatório de aprovação de compra (Fase 1)
   const [mRelat, setMRelat] = useState(false)
   const [relatFones, setRelatFones] = useState('')
@@ -567,6 +570,13 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
         arr.forEach(r => { if (r.preco_unitario != null) pr[cid + '|' + r.item_id] = String(r.preco_unitario) })
       })
       setCotItens(map); setPrecos(pr)
+      // frete/rateio de cada cotação
+      const fr: Record<string, FreteCfg> = {}
+      await Promise.all(cot.map(async c => {
+        const cfg = await fetchAppConfig<FreteCfg>('cot_frete:' + c.id).catch(() => null)
+        if (cfg) fr[c.id] = { frete: Number(cfg.frete) || 0, rateio: cfg.rateio || 'valor', manual: cfg.manual || {} }
+      }))
+      setFretes(fr)
     } catch { /* comparativo é opcional */ }
     setLoading(false)
   }, [req.id])
@@ -635,6 +645,32 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   const totalCot = (cotId: string) => itens.reduce((s, i) => { const p = precoDe(cotId, i.id); return s + (p != null ? p * i.quantidade : 0) }, 0)
   const atendCot = (cotId: string) => itens.length ? Math.round(itens.filter(i => precoDe(cotId, i.id) != null).length / itens.length * 100) : 0
 
+  // ── Frete rateado → custo real (Fase 2b) ───────────────────
+  const freteCfgDe = (cotId: string): FreteCfg => fretes[cotId] || { frete: 0, rateio: 'valor', manual: {} }
+  const setFreteCfg = (cotId: string, patch: Partial<FreteCfg>) =>
+    setFretes(prev => ({ ...prev, [cotId]: { ...freteCfgDe(cotId), ...patch } }))
+  /** Parcela do frete que cabe a este item (valor total, não unitário). */
+  const rateioDoItem = (cotId: string, item: RequisicaoItem): number => {
+    const cfg = freteCfgDe(cotId)
+    if (!cfg.frete) return 0
+    if (cfg.rateio === 'manual') return Number(cfg.manual?.[item.id]) || 0
+    const cotados = itens.filter(i => precoDe(cotId, i.id) != null)
+    if (!cotados.length || precoDe(cotId, item.id) == null) return 0
+    if (cfg.rateio === 'quantidade') {
+      const tot = cotados.reduce((s, i) => s + i.quantidade, 0)
+      return tot ? cfg.frete * (item.quantidade / tot) : 0
+    }
+    const tot = cotados.reduce((s, i) => s + (precoDe(cotId, i.id) || 0) * i.quantidade, 0)
+    return tot ? cfg.frete * (((precoDe(cotId, item.id) || 0) * item.quantidade) / tot) : 0
+  }
+  /** Custo real UNITÁRIO = preço + frete proporcional dividido pela quantidade. */
+  const custoRealUnit = (cotId: string, item: RequisicaoItem): number | null => {
+    const p = precoDe(cotId, item.id)
+    if (p == null) return null
+    return p + (item.quantidade ? rateioDoItem(cotId, item) / item.quantidade : 0)
+  }
+  const custoRealTotal = (cotId: string) => totalCot(cotId) + (freteCfgDe(cotId).frete || 0)
+
   const salvarPrecos = async () => {
     setSavingPrecos(true)
     try {
@@ -655,9 +691,14 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
         }
       }
       if (payload.length) await upsertCotacaoItens(payload as never)
-      // total da cotação passa a refletir a soma dos itens (quando houver preços)
+      // frete/rateio de cada cotação (app_config, sem migração)
       await Promise.all(cotacoes.map(async c => {
-        const t = totalCot(c.id)
+        const cfg = fretes[c.id]
+        if (cfg) await saveAppConfig('cot_frete:' + c.id, cfg)
+      }))
+      // total da cotação passa a refletir a soma dos itens + frete (custo real)
+      await Promise.all(cotacoes.map(async c => {
+        const t = custoRealTotal(c.id)
         if (t > 0) await updateRequisicaoCotacao(c.id, { total: t })
       }))
       await tEntry('cotacao', `Preços por item atualizados (${payload.length} lançamento(s))`)
@@ -1085,6 +1126,16 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
                               <input value={precos[keyPreco(c.id, i.id)] ?? ''} inputMode="decimal" placeholder="—"
                                 onChange={e => setPrecos(prev => ({ ...prev, [keyPreco(c.id, i.id)]: e.target.value }))}
                                 style={{ width:'100%', padding:'5px 6px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg)', fontSize:12, textAlign:'right', boxSizing:'border-box' }} />
+                              {freteCfgDe(c.id).frete > 0 && p != null && (
+                                <div style={{ fontSize:9.5, color:'var(--muted)', marginTop:2 }} title="preço + frete rateado">
+                                  c/ frete {fmtR$(custoRealUnit(c.id, i) || 0)}
+                                </div>
+                              )}
+                              {freteCfgDe(c.id).rateio === 'manual' && p != null && (
+                                <input value={String(freteCfgDe(c.id).manual?.[i.id] ?? '')} inputMode="decimal" placeholder="frete R$"
+                                  onChange={e => setFreteCfg(c.id, { manual: { ...freteCfgDe(c.id).manual, [i.id]: Number(String(e.target.value).replace(',', '.')) || 0 } })}
+                                  style={{ width:'100%', marginTop:3, padding:'3px 5px', borderRadius:5, border:'1px dashed var(--border)', background:'var(--bg)', fontSize:10, textAlign:'right', boxSizing:'border-box' }} />
+                              )}
                             </td>
                           })}
                         </tr>
@@ -1102,6 +1153,42 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
                         })}
                       </tr>
                       <tr>
+                        <td style={{ ...tdCot, textAlign:'left', color:'var(--muted)', position:'sticky', left:0, background:'var(--card)', zIndex:1 }}>Frete (R$)</td>
+                        <td style={tdCot}></td>
+                        {cotacoes.map(c => (
+                          <td key={c.id} style={tdCot}>
+                            <input value={freteCfgDe(c.id).frete || ''} inputMode="decimal" placeholder="0,00"
+                              onChange={e => setFreteCfg(c.id, { frete: Number(String(e.target.value).replace(',', '.')) || 0 })}
+                              style={{ width:'100%', padding:'4px 6px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg)', fontSize:11, textAlign:'right', boxSizing:'border-box' }} />
+                          </td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td style={{ ...tdCot, textAlign:'left', color:'var(--muted)', position:'sticky', left:0, background:'var(--card)', zIndex:1 }}>Ratear por</td>
+                        <td style={tdCot}></td>
+                        {cotacoes.map(c => (
+                          <td key={c.id} style={tdCot}>
+                            <select value={freteCfgDe(c.id).rateio}
+                              onChange={e => setFreteCfg(c.id, { rateio: e.target.value as FreteCfg['rateio'] })}
+                              style={{ width:'100%', padding:'3px 4px', borderRadius:6, border:'1px solid var(--border)', background:'var(--bg)', fontSize:10.5 }}>
+                              <option value="valor">valor</option>
+                              <option value="quantidade">quantidade</option>
+                              <option value="manual">manual</option>
+                            </select>
+                          </td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td style={{ ...tdCot, textAlign:'left', fontWeight:800, position:'sticky', left:0, background:'var(--card)', zIndex:1 }}>Custo real</td>
+                        <td style={tdCot}></td>
+                        {cotacoes.map(c => {
+                          const reais = cotacoes.map(x => custoRealTotal(x.id)).filter(v => v > 0)
+                          const menorReal = reais.length ? Math.min(...reais) : null
+                          const t = custoRealTotal(c.id)
+                          return <td key={c.id} style={{ ...tdCot, fontWeight:800, background: (menorReal != null && t === menorReal && t > 0) ? '#DCFCE7' : undefined, color: (menorReal != null && t === menorReal && t > 0) ? '#15803D' : 'var(--text)' }}>{fmtR$(t)}</td>
+                        })}
+                      </tr>
+                      <tr>
                         <td style={{ ...tdCot, textAlign:'left', color:'var(--muted)', position:'sticky', left:0, background:'var(--card)', zIndex:1 }}>Atendimento</td>
                         <td style={tdCot}></td>
                         {cotacoes.map(c => { const a = atendCot(c.id); return <td key={c.id} style={{ ...tdCot, fontWeight:700, color: a === 100 ? '#15803D' : a >= 70 ? '#B45309' : '#B91C1C' }}>{a}%</td> })}
@@ -1110,7 +1197,7 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
                   </table>
                 </div>
                 <div style={{ padding:'8px 14px', fontSize:11, color:'var(--muted)' }}>
-                  🟢 menor preço · 🟡 intermediário · 🔴 maior preço. Total = quantidade × preço. <strong>Atendimento</strong> = % dos itens que o fornecedor cotou — atenção a quem é mais barato mas atende pouco.
+                  🟢 menor preço · 🟡 intermediário · 🔴 maior preço. Total = quantidade × preço. <strong>Custo real</strong> = total + frete rateado (é este valor que vale pra decisão). <strong>Atendimento</strong> = % dos itens que o fornecedor cotou — atenção a quem é mais barato mas atende pouco.
                 </div>
               </div>
             )}
