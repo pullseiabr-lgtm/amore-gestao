@@ -540,6 +540,10 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
   const [cotForm, setCotForm] = useState({ fornecedor_nome:'', total:'', prazo_entrega:'', observacoes:'' })
   const [savingCot, setSavingCot] = useState(false)
+  // Relatório de aprovação de compra (Fase 1)
+  const [mRelat, setMRelat] = useState(false)
+  const [relatFones, setRelatFones] = useState('')
+  const [enviandoRelat, setEnviandoRelat] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -598,6 +602,100 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   const delCotacao = async (id: string) => {
     await deleteRequisicaoCotacao(id)
     await load()
+  }
+
+  // ── Relatório de Aprovação de Compra (Fase 1) ──────────────
+  const cotAprovadas = cotacoes.filter(c => c.status === 'aprovada')
+  const numReq = () => `REQ-${String(req.numero).padStart(4, '0')}`
+  const totalAprovado = () => cotAprovadas.reduce((s, c) => s + (c.total || 0), 0)
+  const economiaVsMaior = () => {
+    const validas = cotacoes.filter(c => c.status !== 'rejeitada')
+    const maior = validas.length ? Math.max(...validas.map(c => c.total || 0)) : 0
+    return Math.max(0, maior - totalAprovado())
+  }
+
+  const montarMsgAprovacao = () => {
+    const linhasForn = cotAprovadas.map(c =>
+      `• *${c.fornecedor_nome}* — ${fmtR$(c.total || 0)}` +
+      (c.prazo_entrega != null ? ` · entrega ${c.prazo_entrega} dias` : '') +
+      (c.observacoes ? `\n   _${c.observacoes}_` : '')
+    ).join('\n')
+    const linhasItens = itens.slice(0, 30).map(i =>
+      `• ${i.produto_nome} — ${i.quantidade} ${i.unidade}` +
+      (i.preco_final ? ` · ${fmtR$(i.preco_final)}` : i.preco_cotado ? ` · ${fmtR$(i.preco_cotado)}` : '')
+    ).join('\n')
+    const eco = economiaVsMaior()
+    return `✅ *COMPRA APROVADA*\n\n` +
+      `Requisição: ${numReq()}\n` +
+      `Loja: ${loja}\n` +
+      (req.setor ? `Setor: ${req.setor}\n` : '') +
+      `Solicitante: ${req.responsavel_nome}\n` +
+      `Data: ${new Date().toLocaleDateString('pt-BR')}\n\n` +
+      `*Fornecedor(es) aprovado(s):*\n${linhasForn || '—'}\n\n` +
+      `*Total aprovado:* ${fmtR$(totalAprovado())}\n` +
+      (eco > 0 ? `*Economia vs maior cotação:* ${fmtR$(eco)}\n` : '') +
+      (linhasItens ? `\n*Itens (${itens.length}):*\n${linhasItens}${itens.length > 30 ? '\n…' : ''}\n` : '') +
+      (req.aprovador_nome ? `\n👤 Aprovado por: ${req.aprovador_nome}\n` : '') +
+      `\n_Painel AmoreFood_`
+  }
+
+  const abrirRelatorioPDF = () => {
+    const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
+    const linhasForn = cotAprovadas.map(c => `<tr><td>${esc(c.fornecedor_nome)}</td><td>${c.prazo_entrega != null ? c.prazo_entrega + ' dias' : '—'}</td><td>${esc(c.observacoes || '—')}</td><td style="text-align:right"><b>${fmtR$(c.total || 0)}</b></td></tr>`).join('')
+    const linhasIt = itens.map(i => `<tr><td>${esc(i.produto_nome)}</td><td>${esc(i.categoria || '—')}</td><td>${i.quantidade} ${esc(i.unidade)}</td><td style="text-align:right">${i.preco_final ? fmtR$(i.preco_final) : (i.preco_cotado ? fmtR$(i.preco_cotado) : '—')}</td></tr>`).join('')
+    const eco = economiaVsMaior()
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${numReq()} — Aprovação de Compra</title><style>
+      body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;padding:28px;max-width:880px;margin:auto}
+      h1{color:#6B1212;margin:0 0 4px} h3{color:#6B1212;margin:20px 0 8px;font-size:15px}
+      .sub{color:#666;font-size:13px;margin-bottom:16px}
+      table{width:100%;border-collapse:collapse;font-size:12px} th,td{border:1px solid #e2e2e2;padding:6px 8px;text-align:left} th{background:#f6f0f0;color:#6B1212}
+      .tot{margin-top:10px;font-size:16px;font-weight:700;text-align:right}
+      .eco{text-align:right;color:#15803D;font-size:13px}
+      @media print{.noprint{display:none}}
+    </style></head><body>
+      <h1>Aprovação de Compra — ${numReq()}</h1>
+      <div class="sub">Loja <b>${esc(loja)}</b>${req.setor ? ` &nbsp;|&nbsp; Setor ${esc(req.setor)}` : ''} &nbsp;|&nbsp; Solicitante ${esc(req.responsavel_nome)} &nbsp;|&nbsp; ${new Date().toLocaleDateString('pt-BR')}</div>
+      <h3>Fornecedores aprovados</h3>
+      <table><thead><tr><th>Fornecedor</th><th>Prazo</th><th>Observações</th><th style="text-align:right">Total</th></tr></thead><tbody>${linhasForn || '<tr><td colspan="4">Nenhuma cotação aprovada</td></tr>'}</tbody></table>
+      <div class="tot">Total aprovado: ${fmtR$(totalAprovado())}</div>
+      ${eco > 0 ? `<div class="eco">Economia vs maior cotação: ${fmtR$(eco)}</div>` : ''}
+      <h3>Itens da requisição (${itens.length})</h3>
+      <table><thead><tr><th>Produto</th><th>Categoria</th><th>Qtd</th><th style="text-align:right">Preço</th></tr></thead><tbody>${linhasIt || '<tr><td colspan="4">—</td></tr>'}</tbody></table>
+      ${req.aprovador_nome ? `<p style="margin-top:18px;font-size:13px">Aprovado por: <b>${esc(req.aprovador_nome)}</b></p>` : ''}
+      <button class="noprint" onclick="window.print()" style="margin-top:20px;padding:8px 16px;background:#6B1212;color:#fff;border:none;border-radius:6px;cursor:pointer">Imprimir / Salvar PDF</button>
+    </body></html>`
+    const w = window.open('', '_blank')
+    if (!w) { alert('Permita pop-ups para gerar o PDF.'); return }
+    w.document.write(html); w.document.close()
+  }
+
+  const abrirModalRelat = async () => {
+    let f = localStorage.getItem('compras_relat_fones') || ''
+    if (!f) {
+      try {
+        const profiles = await fetchProfiles()
+        const alvos = [...perfisDoSetor(profiles, 'Compras'), ...perfisDoSetor(profiles, 'Gerência'), ...perfisDoSetor(profiles, 'Gerente')]
+        f = Array.from(new Set(alvos.map(pf => soDigitos((pf?.permissions_override as any)?.__perfil__?.whatsapp)).filter(Boolean))).join(', ')
+      } catch { /* segue vazio */ }
+    }
+    setRelatFones(f); setMRelat(true)
+  }
+
+  const enviarRelatorioWhats = async () => {
+    const fones = Array.from(new Set(relatFones.split(/[,;\n]/).map(s => soDigitos(s)).filter(Boolean)))
+    if (!fones.length) { alert('Informe ao menos um número de WhatsApp.'); return }
+    setEnviandoRelat(true)
+    try {
+      localStorage.setItem('compras_relat_fones', relatFones)
+      const msg = montarMsgAprovacao()
+      let ok = 0
+      for (const f of fones) {
+        if (await enviarWhatsApp(f, msg, undefined, { tipo: 'compra', modulo: 'requisicoes', titulo: `Aprovação ${numReq()}`, loja, created_by: userName })) ok++
+      }
+      await tEntry('relatorio', `Relatório de aprovação enviado por WhatsApp para ${ok}/${fones.length} número(s)`)
+      alert(`Relatório enviado para ${ok} de ${fones.length} número(s).`)
+      setMRelat(false); load()
+    } finally { setEnviandoRelat(false) }
   }
 
   const handleEnviar = async () => {
@@ -888,6 +986,47 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
               </div>
             })}
             {validas.length>1 && menorTotal!=null && <div style={{ padding:'8px 4px', fontSize:12, color:'var(--muted)' }}>💡 Economia potencial vs maior cotação: <strong style={{ color:'#15803D' }}>{fmtR$(Math.max(...validas.map(c=>c.total??0))-menorTotal)}</strong></div>}
+
+            {/* Relatório de aprovação de compra */}
+            {cotacoes.length>0 && (
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center', marginTop:10, paddingTop:10, borderTop:'1px solid var(--border)' }}>
+                <span style={{ fontSize:12, color:'var(--muted)', flex:1, minWidth:170 }}>
+                  {cotAprovadas.length ? `${cotAprovadas.length} fornecedor(es) aprovado(s) · total ${fmtR$(totalAprovado())}` : 'Aprove uma cotação para liberar o relatório.'}
+                </span>
+                <button className="btn" onClick={abrirRelatorioPDF} disabled={!cotAprovadas.length}
+                  style={{ padding:'8px 12px', fontSize:12, background:'var(--bg)', color:'var(--text)', border:'1px solid var(--border)', opacity: cotAprovadas.length?1:.5 }}>
+                  📄 Relatório (PDF)
+                </button>
+                <button className="btn" onClick={abrirModalRelat} disabled={!cotAprovadas.length}
+                  style={{ padding:'8px 12px', fontSize:12, background:'#25D366', opacity: cotAprovadas.length?1:.5 }}>
+                  📲 Enviar por WhatsApp
+                </button>
+              </div>
+            )}
+
+            {/* Modal: enviar relatório por WhatsApp */}
+            {mRelat && (
+              <div style={{ position:'fixed', inset:0, background:'#0008', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick={()=>setMRelat(false)}>
+                <div onClick={e=>e.stopPropagation()} style={{ background:'var(--card)', borderRadius:14, padding:20, width:'100%', maxWidth:520, maxHeight:'90vh', overflowY:'auto' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                    <strong style={{ fontSize:15 }}>📲 Enviar relatório de aprovação</strong>
+                    <button className="ib" onClick={()=>setMRelat(false)} style={{ padding:'4px 9px' }}>✕</button>
+                  </div>
+                  <label style={{ fontSize:11, fontWeight:600, color:'var(--muted)', display:'block', marginBottom:4 }}>Números de WhatsApp (separados por vírgula)</label>
+                  <textarea value={relatFones} onChange={e=>setRelatFones(e.target.value)} rows={2} placeholder="5581999998888, 5581988887777"
+                    style={{ width:'100%', padding:'9px 11px', borderRadius:8, border:'1px solid var(--border)', background:'var(--bg)', fontSize:13, boxSizing:'border-box', resize:'vertical' }} />
+                  <div style={{ fontSize:11, color:'var(--muted)', margin:'6px 0 10px' }}>Ficam salvos para os próximos envios.</div>
+                  <div style={{ fontSize:11, fontWeight:600, color:'var(--muted)', marginBottom:4 }}>Prévia da mensagem</div>
+                  <pre style={{ whiteSpace:'pre-wrap', fontSize:11.5, background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:10, maxHeight:230, overflowY:'auto', margin:0, fontFamily:'inherit' }}>{montarMsgAprovacao()}</pre>
+                  <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginTop:14 }}>
+                    <button className="btn" onClick={()=>setMRelat(false)} style={{ background:'var(--bg)', color:'var(--text)', border:'1px solid var(--border)', padding:'9px 16px' }}>Cancelar</button>
+                    <button className="btn" onClick={enviarRelatorioWhats} disabled={enviandoRelat} style={{ background:'#25D366', padding:'9px 16px' }}>
+                      {enviandoRelat ? 'Enviando…' : 'Enviar agora'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         })()}
 
