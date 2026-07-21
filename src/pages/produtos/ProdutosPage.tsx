@@ -17,14 +17,7 @@ import type { Produto, CategoriaProduto, MarcaProduto, HomologacaoStatus } from 
 
 // ── Constantes (baseadas no scraping do Foozi) ───────────────
 
-const UNIDADES = [
-  'Miligrama','Grama','Quilograma','Tonelada',
-  'Mililitro','Litro',
-  'Unidade','Caixa','Peça','Dúzia','Garrafa','Frasco',
-  'Galão','Pote','Rolo','Pacote','Lata','Saco',
-  'Metro','Centímetro','Par','Barrica','Tambor','Fardo',
-  'Bisnaga','Maço','Bandeja','Embalagem','Display','Pente','Balde',
-]
+import { UNIDADES } from '../../lib/catalogo'
 
 // ── Helpers ──────────────────────────────────────────────────
 

@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Check, Trash2, Loader2 } from 'lucide-react'
+import { UNIDADES, CATEGORIAS } from '../../lib/catalogo'
 import {
   fetchRequisicaoItens, fetchFornecedores, insertRequisicaoItem, deleteRequisicaoItem,
-  updateRequisicaoItem, updateRequisicao,
+  updateRequisicaoItem, updateRequisicao, fetchEstoqueProdutos,
   fetchRequisicaoCotacoes, insertRequisicaoCotacao, updateRequisicaoCotacao, deleteRequisicaoCotacao,
   fetchCotacaoItens, upsertCotacaoItens, fetchAppConfig, saveAppConfig,
   fetchProfiles, insertReqTimeline,
 } from '../../lib/db'
 import { enviarWhatsApp, perfisDoSetor, soDigitos } from '../../lib/notify'
-import type { Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, Fornecedor } from '../../types/database'
+import type { Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, Fornecedor, EstoqueProduto } from '../../types/database'
 
 // ── Helpers ───────────────────────────────────────────────────
 const fmtR$ = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -64,8 +65,9 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
   const [loading, setLoading] = useState(true)
   const [cotForm, setCotForm] = useState({ fornecedor_nome: '', total: '', prazo_entrega: '', observacoes: '' })
   const [savingCot, setSavingCot] = useState(false)
-  const [novoItem, setNovoItem] = useState({ produto_nome: '', quantidade: '1', unidade: 'Unidade' })
+  const [novoItem, setNovoItem] = useState({ produto_nome: '', categoria: '', quantidade: '1', unidade: 'Unidade' })
   const [savingItem, setSavingItem] = useState(false)
+  const [produtosCad, setProdutosCad] = useState<EstoqueProduto[]>([])
   const [salvoEm, setSalvoEm] = useState<Date | null>(null)
   const [autoSalvando, setAutoSalvando] = useState(false)
   const [fechando, setFechando] = useState(false)
@@ -105,6 +107,7 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
 
   useEffect(() => { load() }, [load])
   useEffect(() => { fetchFornecedores(loja).then(setFornecedores).catch(() => {}) }, [loja])
+  useEffect(() => { fetchEstoqueProdutos(loja).then(setProdutosCad).catch(() => {}) }, [loja])
 
   const tEntry = async (tipo: string, desc: string) => {
     try { await insertReqTimeline({ requisicao_id: req.id, tipo, descricao: desc, usuario: userName, dados: null }) } catch { /* opcional */ }
@@ -117,13 +120,14 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
     setSavingItem(true)
     try {
       await insertRequisicaoItem({
-        requisicao_id: req.id, produto_nome: nome, categoria: null,
+        requisicao_id: req.id, produto_nome: nome, categoria: novoItem.categoria || null,
         quantidade: Number(String(novoItem.quantidade).replace(',', '.')) || 1,
         unidade: novoItem.unidade || 'Unidade',
         preco_referencia: null, preco_cotado: null, preco_final: null, fornecedor_nome: null,
         status: 'pendente', observacoes: null, bloqueado: false, motivo_bloqueio: null, quantidade_aprovada: null,
       })
-      setNovoItem({ produto_nome: '', quantidade: '1', unidade: novoItem.unidade || 'Unidade' })
+      // mantém categoria e unidade para o próximo item (agiliza lançar vários da mesma linha)
+      setNovoItem({ produto_nome: '', categoria: novoItem.categoria, quantidade: '1', unidade: novoItem.unidade || 'Unidade' })
       await load(); onAtualizar?.()
     } catch (e) { toast('Erro ao adicionar produto: ' + (e as Error).message) }
     finally { setSavingItem(false) }
@@ -438,12 +442,28 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="card-header"><span className="card-tt">🛒 1. Produtos a cotar ({itens.length})</span></div>
         <div style={{ padding: '12px 14px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(160px,2fr) 90px 120px auto', gap: 8, alignItems: 'end', marginBottom: itens.length ? 12 : 0 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(150px,2fr) minmax(120px,1fr) 80px minmax(120px,1fr) auto', gap: 8, alignItems: 'end', marginBottom: itens.length ? 12 : 0 }}>
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Produto *</label>
-              <input value={novoItem.produto_nome} onChange={e => setNovoItem(f => ({ ...f, produto_nome: e.target.value }))}
-                onKeyDown={e => { if (e.key === 'Enter') addItem() }} placeholder="Ex.: Molho de tomate 340g"
+              <input list="prod-cad-an" value={novoItem.produto_nome}
+                onChange={e => {
+                  const v = e.target.value
+                  const p = produtosCad.find(x => (x.nome || '').toLowerCase() === v.trim().toLowerCase())
+                  setNovoItem(f => ({ ...f, produto_nome: v, categoria: p?.categoria || f.categoria }))
+                }}
+                onKeyDown={e => { if (e.key === 'Enter') addItem() }} placeholder="Digite ou escolha do cadastro"
                 style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box' }} />
+              <datalist id="prod-cad-an">
+                {produtosCad.map(p => <option key={p.id} value={p.nome}>{p.categoria}{p.gramatura ? ` · ${p.gramatura}` : ''}</option>)}
+              </datalist>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Categoria</label>
+              <select value={novoItem.categoria} onChange={e => setNovoItem(f => ({ ...f, categoria: e.target.value }))}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box' }}>
+                <option value="">—</option>
+                {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Qtd</label>
@@ -452,11 +472,10 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
             </div>
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Unidade</label>
-              <input list="un-list-an" value={novoItem.unidade} onChange={e => setNovoItem(f => ({ ...f, unidade: e.target.value }))}
-                style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box' }} />
-              <datalist id="un-list-an">
-                {['Unidade', 'Caixa', 'Fardo', 'Pacote', 'kg', 'g', 'L', 'ml', 'Dúzia', 'Saco'].map(u => <option key={u} value={u} />)}
-              </datalist>
+              <select value={novoItem.unidade} onChange={e => setNovoItem(f => ({ ...f, unidade: e.target.value }))}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box' }}>
+                {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
             </div>
             <button className="btn" onClick={addItem} disabled={savingItem || !novoItem.produto_nome.trim()} style={{ padding: '9px 14px' }}>
               <Plus size={14} /> Adicionar
@@ -468,7 +487,7 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {itens.map(i => (
                 <span key={i.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 20, padding: '4px 8px 4px 11px', fontSize: 12 }}>
-                  {i.produto_nome} <span style={{ color: 'var(--muted)' }}>({i.quantidade} {i.unidade})</span>
+                  {i.produto_nome} <span style={{ color: 'var(--muted)' }}>({i.quantidade} {i.unidade}{i.categoria ? ` · ${i.categoria}` : ''})</span>
                   <button onClick={() => delItem(i.id)} title="Remover"
                     style={{ background: 'none', border: 'none', color: '#B91C1C', cursor: 'pointer', padding: 0, lineHeight: 1, fontSize: 14 }}>×</button>
                 </span>

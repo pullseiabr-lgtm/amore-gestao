@@ -33,7 +33,7 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('pt-BR')
 }
 
-const CATEGORIAS = ['Açaí', 'Bebidas', 'Carnes', 'Condimentos', 'Embalagens', 'Frutas', 'Graos', 'Higiene', 'Laticínios', 'Legumes', 'Limpeza', 'Proteínas']
+import { CATEGORIAS } from '../../lib/catalogo'
 
 // ── Inline number input para edição em massa ───────────────
 
