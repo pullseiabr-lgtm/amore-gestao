@@ -36,6 +36,17 @@ const thCot: React.CSSProperties = { border:'1px solid var(--border)', padding:'
 const tdCot: React.CSSProperties = { border:'1px solid var(--border)', padding:'4px 6px', textAlign:'center' }
 const lblSug: React.CSSProperties = { fontSize:11, color:'var(--muted)', marginBottom:2 }
 const valSug: React.CSSProperties = { fontSize:18, fontWeight:800 }
+// Validade por item cotado (guardada no campo livre observacoes do item de cotação)
+const parseExtraCot = (obs: string | null): { val?: string } => {
+  if (!obs) return {}
+  try { const o = JSON.parse(obs); return (o && typeof o === 'object') ? o : {} } catch { return {} }
+}
+const diasAteValidade = (d?: string) => {
+  if (!d) return null
+  const ms = new Date(d + 'T12:00:00').getTime() - Date.now()
+  return Math.floor(ms / 86400000)
+}
+const corValidade = (dias: number | null) => dias == null ? undefined : dias < 15 ? '#B91C1C' : dias < 60 ? '#B45309' : '#15803D'
 
 // ── Configs ───────────────────────────────────────────────────
 
@@ -553,6 +564,9 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   // Frete + rateio por cotação (guardado em app_config: cot_frete:<cotacao_id>)
   type FreteCfg = { frete: number; rateio: 'valor' | 'quantidade' | 'manual'; manual: Record<string, number> }
   const [fretes, setFretes] = useState<Record<string, FreteCfg>>({})
+  // Validade por item cotado (Fase 4)
+  const [validades, setValidades] = useState<Record<string, string>>({})
+  const [showVal, setShowVal] = useState(false)
   // Relatório de aprovação de compra (Fase 1)
   const [mRelat, setMRelat] = useState(false)
   const [relatFones, setRelatFones] = useState('')
@@ -567,11 +581,16 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
       const pares = await Promise.all(cot.map(async c => [c.id, await fetchCotacaoItens(c.id).catch(()=>[] as RequisicaoCotacaoItem[])] as const))
       const map: Record<string, RequisicaoCotacaoItem[]> = {}
       const pr: Record<string, string> = {}
+      const vl: Record<string, string> = {}
       pares.forEach(([cid, arr]) => {
         map[cid] = arr
-        arr.forEach(r => { if (r.preco_unitario != null) pr[cid + '|' + r.item_id] = String(r.preco_unitario) })
+        arr.forEach(r => {
+          if (r.preco_unitario != null) pr[cid + '|' + r.item_id] = String(r.preco_unitario)
+          const ex = parseExtraCot(r.observacoes)
+          if (ex.val) vl[cid + '|' + r.item_id] = ex.val
+        })
       })
-      setCotItens(map); setPrecos(pr)
+      setCotItens(map); setPrecos(pr); setValidades(vl)
       // frete/rateio de cada cotação
       const fr: Record<string, FreteCfg> = {}
       await Promise.all(cot.map(async c => {
@@ -712,10 +731,11 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
           const p = precoDe(c.id, i.id)
           const ex = existentes.find(x => x.item_id === i.id)
           if (p == null && !ex) continue
+          const val = validades[keyPreco(c.id, i.id)]
           const row: Record<string, unknown> = {
             cotacao_id: c.id, item_id: i.id,
             preco_unitario: p, disponivel: p != null,
-            observacoes: ex?.observacoes ?? null,
+            observacoes: val ? JSON.stringify({ val }) : null,
           }
           if (ex) row.id = ex.id
           payload.push(row)
@@ -1122,14 +1142,61 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
             })}
             {validas.length>1 && menorTotal!=null && <div style={{ padding:'8px 4px', fontSize:12, color:'var(--muted)' }}>💡 Economia potencial vs maior cotação: <strong style={{ color:'#15803D' }}>{fmtR$(Math.max(...validas.map(c=>c.total??0))-menorTotal)}</strong></div>}
 
+            {/* Dashboard executivo da cotação (Fase 4) */}
+            {cotacoes.length>0 && itens.length>0 && (() => {
+              const s = calcSugestao()
+              const totalCotado = cotacoes.reduce((a, c) => a + custoRealTotal(c.id), 0)
+              const competitivos = cotacoes.filter(c => custoRealTotal(c.id) > 0).sort((a, b) => custoRealTotal(a.id) - custoRealTotal(b.id))
+              const maisComp = competitivos[0]
+              const soUmForn = itens.filter(i => cotacoes.filter(c => precoDe(c.id, i.id) != null).length === 1).length
+              let comVal = 0, curtos = 0
+              for (const c of cotacoes) for (const i of itens) {
+                if (precoDe(c.id, i.id) == null) continue
+                const v = validades[keyPreco(c.id, i.id)]
+                if (!v) continue
+                comVal++
+                const d = diasAteValidade(v)
+                if (d != null && d < 30) curtos++
+              }
+              const pctCurto = comVal ? Math.round(curtos / comVal * 100) : 0
+              const atendMedio = cotacoes.length ? Math.round(cotacoes.reduce((a, c) => a + atendCot(c.id), 0) / cotacoes.length) : 0
+              const kpi = (l: string, v: string, cor?: string, sub?: string) => (
+                <div key={l} style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:9, padding:'9px 11px' }}>
+                  <div style={{ fontSize:10.5, color:'var(--muted)' }}>{l}</div>
+                  <div style={{ fontSize:16, fontWeight:800, color: cor || 'var(--text)', wordBreak:'break-word' }}>{v}</div>
+                  {sub && <div style={{ fontSize:9.5, color:'var(--muted)' }}>{sub}</div>}
+                </div>
+              )
+              return <div className="card" style={{ marginTop:12 }}>
+                <div className="card-header"><span className="card-tt">📈 Dashboard da cotação</span></div>
+                <div style={{ padding:'12px 14px', display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(142px,1fr))', gap:9 }}>
+                  {kpi('Total cotado', fmtR$(totalCotado), undefined, `${cotacoes.length} fornecedor(es)`)}
+                  {kpi('Melhor compra', fmtR$(s.totalFracionado), '#15803D', `${Object.keys(s.porForn).length} fornecedor(es)`)}
+                  {kpi('Economia potencial', s.economia > 0 ? fmtR$(s.economia) : '—', s.economia > 0 ? '#15803D' : undefined, 'vs fornecedor único')}
+                  {kpi('Frete total', fmtR$(s.totalFrete), undefined, 'dos fornecedores usados')}
+                  {kpi('Mais competitivo', maisComp?.fornecedor_nome || '—', undefined, maisComp ? fmtR$(custoRealTotal(maisComp.id)) : '')}
+                  {kpi('Atendimento médio', `${atendMedio}%`, atendMedio === 100 ? '#15803D' : atendMedio >= 70 ? '#B45309' : '#B91C1C')}
+                  {kpi('Validade curta', comVal ? `${pctCurto}%` : '—', pctCurto > 0 ? '#B45309' : undefined, comVal ? `${curtos} de ${comVal} cotados` : 'validade não informada')}
+                  {kpi('Sem cotação', String(s.semCotacao.length), s.semCotacao.length ? '#B91C1C' : '#15803D', 'itens')}
+                  {kpi('Só 1 fornecedor', String(soUmForn), soUmForn ? '#B45309' : undefined, 'itens sem concorrência')}
+                </div>
+              </div>
+            })()}
+
             {/* Comparativo por item (Fase 2) */}
             {cotacoes.length>0 && itens.length>0 && (
               <div className="card" style={{ marginTop:12 }}>
                 <div className="card-header" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, flexWrap:'wrap' }}>
                   <span className="card-tt">📊 Comparativo por item — preencha os preços coletados</span>
-                  <button className="btn" onClick={salvarPrecos} disabled={savingPrecos} style={{ padding:'7px 12px', fontSize:12 }}>
-                    {savingPrecos ? 'Salvando…' : '💾 Salvar preços'}
-                  </button>
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                    <button className="btn" onClick={() => setShowVal(v => !v)}
+                      style={{ padding:'7px 12px', fontSize:12, background: showVal ? 'var(--bordo)' : 'var(--bg)', color: showVal ? '#fff' : 'var(--text)', border:'1px solid var(--border)' }}>
+                      🗓️ Validade
+                    </button>
+                    <button className="btn" onClick={salvarPrecos} disabled={savingPrecos} style={{ padding:'7px 12px', fontSize:12 }}>
+                      {savingPrecos ? 'Salvando…' : '💾 Salvar preços'}
+                    </button>
+                  </div>
                 </div>
                 <div style={{ overflowX:'auto' }}>
                   <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
@@ -1162,6 +1229,16 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
                                   c/ frete {fmtR$(custoRealUnit(c.id, i) || 0)}
                                 </div>
                               )}
+                              {showVal && p != null && (() => {
+                                const v = validades[keyPreco(c.id, i.id)] || ''
+                                const d = diasAteValidade(v)
+                                return <div style={{ display:'flex', alignItems:'center', gap:3, marginTop:3 }}>
+                                  <input type="date" value={v}
+                                    onChange={e => setValidades(prev => ({ ...prev, [keyPreco(c.id, i.id)]: e.target.value }))}
+                                    style={{ width:'100%', padding:'2px 4px', borderRadius:5, border:'1px solid var(--border)', background:'var(--bg)', fontSize:9.5, boxSizing:'border-box' }} />
+                                  {d != null && <span title={`${d} dias`} style={{ width:8, height:8, borderRadius:'50%', background:corValidade(d), flexShrink:0 }} />}
+                                </div>
+                              })()}
                               {freteCfgDe(c.id).rateio === 'manual' && p != null && (
                                 <input value={String(freteCfgDe(c.id).manual?.[i.id] ?? '')} inputMode="decimal" placeholder="frete R$"
                                   onChange={e => setFreteCfg(c.id, { manual: { ...freteCfgDe(c.id).manual, [i.id]: Number(String(e.target.value).replace(',', '.')) || 0 } })}
