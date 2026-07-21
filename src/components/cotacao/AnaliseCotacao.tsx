@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Check, Trash2, Loader2 } from 'lucide-react'
+import { Plus, Check, Trash2, Loader2, Pencil, X } from 'lucide-react'
 import { UNIDADES, CATEGORIAS } from '../../lib/catalogo'
 import {
   fetchRequisicaoItens, fetchFornecedores, insertRequisicaoItem, deleteRequisicaoItem,
@@ -68,6 +68,7 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
   const [novoItem, setNovoItem] = useState({ produto_nome: '', categoria: '', quantidade: '1', unidade: 'Unidade' })
   const [savingItem, setSavingItem] = useState(false)
   const [produtosCad, setProdutosCad] = useState<EstoqueProduto[]>([])
+  const [editItem, setEditItem] = useState<{ id: string; produto_nome: string; quantidade: string; unidade: string; categoria: string } | null>(null)
   const [salvoEm, setSalvoEm] = useState<Date | null>(null)
   const [autoSalvando, setAutoSalvando] = useState(false)
   const [fechando, setFechando] = useState(false)
@@ -135,6 +136,21 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
   const delItem = async (id: string) => {
     try { await deleteRequisicaoItem(id); await load(); onAtualizar?.() }
     catch (e) { toast('Erro ao remover: ' + (e as Error).message) }
+  }
+  const salvarEdicaoItem = async () => {
+    if (!editItem || !editItem.produto_nome.trim()) return
+    setSavingItem(true)
+    try {
+      await updateRequisicaoItem(editItem.id, {
+        produto_nome: editItem.produto_nome.trim(),
+        quantidade: Number(String(editItem.quantidade).replace(',', '.')) || 1,
+        unidade: editItem.unidade || 'Unidade',
+        categoria: editItem.categoria || null,
+      })
+      setEditItem(null)
+      await load(); onAtualizar?.()
+    } catch (e) { toast('Erro ao salvar: ' + (e as Error).message) }
+    finally { setSavingItem(false) }
   }
 
   // ── CRUD de cotação ───────────────────────────────────────
@@ -488,11 +504,54 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
               {itens.map(i => (
                 <span key={i.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 20, padding: '4px 8px 4px 11px', fontSize: 12 }}>
                   {i.produto_nome} <span style={{ color: 'var(--muted)' }}>({i.quantidade} {i.unidade}{i.categoria ? ` · ${i.categoria}` : ''})</span>
+                  <button onClick={() => setEditItem({ id: i.id, produto_nome: i.produto_nome, quantidade: String(i.quantidade), unidade: i.unidade || 'Unidade', categoria: i.categoria || '' })} title="Editar"
+                    style={{ background: 'none', border: 'none', color: 'var(--bordo)', cursor: 'pointer', padding: 0, lineHeight: 1, display: 'inline-flex' }}><Pencil size={12} /></button>
                   <button onClick={() => delItem(i.id)} title="Remover"
                     style={{ background: 'none', border: 'none', color: '#B91C1C', cursor: 'pointer', padding: 0, lineHeight: 1, fontSize: 14 }}>×</button>
                 </span>
               ))}
             </div>
+          )}
+
+          {/* Edição inline de um item */}
+          {editItem && (
+              <div style={{ marginTop: 10, padding: '10px 12px', border: '1px solid var(--bordo)', borderRadius: 9, background: 'var(--bg)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <strong style={{ fontSize: 12.5 }}>✏️ Editar produto</strong>
+                  <button onClick={() => setEditItem(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={15} /></button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(150px,2fr) minmax(120px,1fr) 80px minmax(120px,1fr) auto', gap: 8, alignItems: 'end' }}>
+                  <div>
+                    <label style={{ fontSize: 10, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>Produto</label>
+                    <input value={editItem.produto_nome} onChange={e => setEditItem(v => v && ({ ...v, produto_nome: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') salvarEdicaoItem() }}
+                      style={{ width: '100%', padding: '7px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13, boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>Categoria</label>
+                    <select value={editItem.categoria} onChange={e => setEditItem(v => v && ({ ...v, categoria: e.target.value }))}
+                      style={{ width: '100%', padding: '7px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13, boxSizing: 'border-box' }}>
+                      <option value="">—</option>
+                      {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>Qtd</label>
+                    <input value={editItem.quantidade} inputMode="decimal" onChange={e => setEditItem(v => v && ({ ...v, quantidade: e.target.value }))}
+                      style={{ width: '100%', padding: '7px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13, boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, color: 'var(--muted)', display: 'block', marginBottom: 3 }}>Unidade</label>
+                    <select value={editItem.unidade} onChange={e => setEditItem(v => v && ({ ...v, unidade: e.target.value }))}
+                      style={{ width: '100%', padding: '7px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13, boxSizing: 'border-box' }}>
+                      {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
+                  <button className="btn" onClick={salvarEdicaoItem} disabled={savingItem || !editItem.produto_nome.trim()} style={{ padding: '8px 13px' }}>
+                    {savingItem ? '…' : 'Salvar'}
+                  </button>
+                </div>
+              </div>
           )}
         </div>
       </div>
