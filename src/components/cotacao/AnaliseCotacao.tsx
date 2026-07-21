@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Check, Trash2, Loader2 } from 'lucide-react'
 import {
   fetchRequisicaoItens, fetchFornecedores, insertRequisicaoItem, deleteRequisicaoItem,
+  updateRequisicaoItem, updateRequisicao,
   fetchRequisicaoCotacoes, insertRequisicaoCotacao, updateRequisicaoCotacao, deleteRequisicaoCotacao,
   fetchCotacaoItens, upsertCotacaoItens, fetchAppConfig, saveAppConfig,
   fetchProfiles, insertReqTimeline,
@@ -26,7 +27,16 @@ const diasAteValidade = (d?: string) => {
 }
 const corValidade = (dias: number | null) => dias == null ? undefined : dias < 15 ? '#B91C1C' : dias < 60 ? '#B45309' : '#15803D'
 
-type FreteCfg = { frete: number; rateio: 'valor' | 'quantidade' | 'manual'; manual: Record<string, number> }
+/** Metadados por cotação (fornecedor) — guardados em app_config: cot_frete:<cotacao_id> */
+type FreteCfg = {
+  frete: number
+  rateio: 'valor' | 'quantidade' | 'manual'
+  manual: Record<string, number>
+  coleta?: string        // data em que os preços foram coletados
+  entrega?: string       // data prevista de entrega
+  agendamento?: string   // data/hora agendada da entrega
+  validade?: string      // até quando o preço vale (prazo da cotação)
+}
 
 const COT_BADGE: Record<string, { l: string; c: string; bg: string }> = {
   aguardando: { l: 'Aguardando', c: '#B45309', bg: '#FEF3C7' },
@@ -56,6 +66,9 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
   const [savingCot, setSavingCot] = useState(false)
   const [novoItem, setNovoItem] = useState({ produto_nome: '', quantidade: '1', unidade: 'Unidade' })
   const [savingItem, setSavingItem] = useState(false)
+  const [salvoEm, setSalvoEm] = useState<Date | null>(null)
+  const [autoSalvando, setAutoSalvando] = useState(false)
+  const [fechando, setFechando] = useState(false)
   const [savingPrecos, setSavingPrecos] = useState(false)
   const [mRelat, setMRelat] = useState(false)
   const [relatFones, setRelatFones] = useState('')
@@ -211,6 +224,47 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
     return { porForn, semCotacao, totalProdutos, totalFrete, totalFracionado, melhorUnico, custoUnico, economia, completos: completos.length }
   }
 
+  /** Salva UMA célula assim que o campo perde o foco — evita perder coleta feita em dias/lugares diferentes. */
+  const salvarCelula = async (cotId: string, item: RequisicaoItem) => {
+    const p = precoDe(cotId, item.id)
+    const existentes = cotItens[cotId] || []
+    const ex = existentes.find(x => x.item_id === item.id)
+    if (p == null && !ex) return
+    const val = validades[keyPreco(cotId, item.id)]
+    const row: Record<string, unknown> = {
+      cotacao_id: cotId, item_id: item.id,
+      preco_unitario: p, disponivel: p != null,
+      observacoes: val ? JSON.stringify({ val }) : null,
+    }
+    if (ex) row.id = ex.id
+    setAutoSalvando(true)
+    try {
+      await upsertCotacaoItens([row] as never)
+      const t = custoRealTotal(cotId)
+      if (t > 0) await updateRequisicaoCotacao(cotId, { total: t })
+      if (!ex) {
+        const arr = await fetchCotacaoItens(cotId).catch(() => [] as RequisicaoCotacaoItem[])
+        setCotItens(prev => ({ ...prev, [cotId]: arr }))
+      }
+      setSalvoEm(new Date())
+    } catch { /* silencioso: o botão Salvar continua disponível */ }
+    finally { setAutoSalvando(false) }
+  }
+
+  /** Salva frete/rateio/datas do fornecedor (app_config) ao sair do campo. */
+  const salvarMetaCot = async (cotId: string) => {
+    const cfg = fretes[cotId]
+    if (!cfg) return
+    setAutoSalvando(true)
+    try {
+      await saveAppConfig('cot_frete:' + cotId, cfg)
+      const t = custoRealTotal(cotId)
+      if (t > 0) await updateRequisicaoCotacao(cotId, { total: t })
+      setSalvoEm(new Date())
+    } catch { /* silencioso */ }
+    finally { setAutoSalvando(false) }
+  }
+
   const salvarPrecos = async () => {
     setSavingPrecos(true)
     try {
@@ -239,6 +293,49 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
       await load(); onAtualizar?.()
     } catch (e) { toast('Erro ao salvar: ' + (e as Error).message) }
     finally { setSavingPrecos(false) }
+  }
+
+  // ── Aprovação fracionada e fechamento do pedido ───────────
+  /** Aprova todos os fornecedores que a sugestão indicou (compra fracionada). */
+  const aprovarFracionado = async () => {
+    const usados = Object.keys(calcSugestao().porForn)
+    if (!usados.length) return
+    if (!confirm(`Aprovar a compra fracionada em ${usados.length} fornecedor(es), conforme a sugestão?`)) return
+    setSavingCot(true)
+    try {
+      await Promise.all(cotacoes.map(c => updateRequisicaoCotacao(c.id, { status: usados.includes(c.id) ? 'aprovada' : 'rejeitada' })))
+      await tEntry('cotacao', `Compra fracionada aprovada em ${usados.length} fornecedor(es)`)
+      await load(); onAtualizar?.()
+    } finally { setSavingCot(false) }
+  }
+
+  /** Grava os preços aprovados nos itens e fecha o pedido de compra. */
+  const fecharPedido = async () => {
+    const aprovadas = cotacoes.filter(c => c.status === 'aprovada')
+    if (!aprovadas.length) return
+    if (!confirm('Fechar o pedido de compra?\n\nOs preços dos fornecedores aprovados serão gravados nos itens e a requisição será marcada como COMPRA REALIZADA.')) return
+    setFechando(true)
+    try {
+      let total = 0, gravados = 0
+      for (const i of itens) {
+        let melhor: { c: RequisicaoCotacao; p: number } | null = null
+        for (const c of aprovadas) {
+          const p = precoDe(c.id, i.id)
+          if (p == null) continue
+          if (!melhor || p < melhor.p) melhor = { c, p }
+        }
+        if (!melhor) continue
+        const custoUnit = custoRealUnit(melhor.c.id, i) ?? melhor.p
+        total += custoUnit * i.quantidade
+        gravados++
+        await updateRequisicaoItem(i.id, { preco_final: custoUnit, fornecedor_nome: melhor.c.fornecedor_nome, status: 'aprovado' })
+      }
+      await updateRequisicao(req.id, { total_final: total, status: 'compra_realizada' })
+      await tEntry('compra', `Pedido de compra fechado — ${aprovadas.length} fornecedor(es), ${gravados} item(ns), total ${fmtR$(total)}`)
+      toast(`Pedido fechado! ${gravados} item(ns) · ${fmtR$(total)}`)
+      await load(); onAtualizar?.()
+    } catch (e) { toast('Erro ao fechar pedido: ' + (e as Error).message) }
+    finally { setFechando(false) }
   }
 
   // ── Relatório de aprovação ────────────────────────────────
@@ -443,6 +540,18 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
               <button className="ib rd" onClick={() => delCotacao(c.id)} style={{ padding: '5px 9px' }}><Trash2 size={13} /></button>
             </div>
           </div>
+          {/* Datas desta cotação — cada fornecedor tem a sua */}
+          <div style={{ padding: '0 14px 11px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(122px,1fr))', gap: 8 }}>
+            {([['coleta', '📥 Coletado em', 'date'], ['validade', '⏳ Preço vale até', 'date'], ['entrega', '🚚 Entrega prevista', 'date'], ['agendamento', '📅 Agendamento', 'datetime-local']] as const).map(([k, lb, tp]) => (
+              <div key={k}>
+                <label style={{ fontSize: 10, color: 'var(--muted)', display: 'block', marginBottom: 2 }}>{lb}</label>
+                <input type={tp} value={(freteCfgDe(c.id)[k] as string) || ''}
+                  onChange={e => setFreteCfg(c.id, { [k]: e.target.value } as Partial<FreteCfg>)}
+                  onBlur={() => salvarMetaCot(c.id)}
+                  style={{ width: '100%', padding: '4px 6px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 11, boxSizing: 'border-box' }} />
+              </div>
+            ))}
+          </div>
         </div>
       })}
 
@@ -491,7 +600,10 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
         <div className="card" style={{ marginTop: 12 }}>
           <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
             <span className="card-tt">📊 Comparativo por item — preencha os preços coletados</span>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: 10.5, color: autoSalvando ? '#B45309' : '#15803D', marginRight: 4 }}>
+                {autoSalvando ? '💾 salvando…' : salvoEm ? `✓ salvo ${salvoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : '✓ salva sozinho'}
+              </span>
               <button className="btn" onClick={() => setShowVal(v => !v)}
                 style={{ padding: '7px 12px', fontSize: 12, background: showVal ? 'var(--bordo)' : 'var(--bg)', color: showVal ? '#fff' : 'var(--text)', border: '1px solid var(--border)' }}>🗓️ Validade</button>
               <button className="btn" onClick={salvarPrecos} disabled={savingPrecos} style={{ padding: '7px 12px', fontSize: 12 }}>
@@ -524,6 +636,7 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
                       return <td key={c.id} style={{ ...tdCot, background: bg }}>
                         <input value={precos[keyPreco(c.id, i.id)] ?? ''} inputMode="decimal" placeholder="—"
                           onChange={e => setPrecos(prev => ({ ...prev, [keyPreco(c.id, i.id)]: e.target.value }))}
+                          onBlur={() => salvarCelula(c.id, i)}
                           style={{ width: '100%', padding: '5px 6px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 12, textAlign: 'right', boxSizing: 'border-box' }} />
                         {freteCfgDe(c.id).frete > 0 && p != null && (
                           <div style={{ fontSize: 9.5, color: 'var(--muted)', marginTop: 2 }}>c/ frete {fmtR$(custoRealUnit(c.id, i) || 0)}</div>
@@ -533,6 +646,7 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
                           const d = diasAteValidade(v)
                           return <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 3 }}>
                             <input type="date" value={v} onChange={e => setValidades(prev => ({ ...prev, [keyPreco(c.id, i.id)]: e.target.value }))}
+                              onBlur={() => salvarCelula(c.id, i)}
                               style={{ width: '100%', padding: '2px 4px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 9.5, boxSizing: 'border-box' }} />
                             {d != null && <span title={`${d} dias`} style={{ width: 8, height: 8, borderRadius: '50%', background: corValidade(d), flexShrink: 0 }} />}
                           </div>
@@ -565,6 +679,7 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
                     <td key={c.id} style={tdCot}>
                       <input value={freteCfgDe(c.id).frete || ''} inputMode="decimal" placeholder="0,00"
                         onChange={e => setFreteCfg(c.id, { frete: Number(String(e.target.value).replace(',', '.')) || 0 })}
+                        onBlur={() => salvarMetaCot(c.id)}
                         style={{ width: '100%', padding: '4px 6px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 11, textAlign: 'right', boxSizing: 'border-box' }} />
                     </td>
                   ))}
@@ -574,7 +689,7 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
                   <td style={tdCot}></td>
                   {cotacoes.map(c => (
                     <td key={c.id} style={tdCot}>
-                      <select value={freteCfgDe(c.id).rateio} onChange={e => setFreteCfg(c.id, { rateio: e.target.value as FreteCfg['rateio'] })}
+                      <select value={freteCfgDe(c.id).rateio} onChange={e => { setFreteCfg(c.id, { rateio: e.target.value as FreteCfg['rateio'] }); setTimeout(() => salvarMetaCot(c.id), 0) }}
                         style={{ width: '100%', padding: '3px 4px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 10.5 }}>
                         <option value="valor">valor</option>
                         <option value="quantidade">quantidade</option>
@@ -652,9 +767,77 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
                 🔴 {s.semCotacao.length} item(ns) sem nenhuma cotação: {s.semCotacao.map(i => i.produto_nome).join(', ')}
               </div>
             )}
+            <button className="btn" onClick={aprovarFracionado} disabled={savingCot}
+              style={{ marginTop: 12, padding: '9px 14px', background: '#15803D' }}>
+              <Check size={14} /> Aprovar esta compra fracionada
+            </button>
           </div>
         </div>
       )}
+
+      {/* Curva ABC da cotação */}
+      {itens.length > 0 && cotacoes.length > 0 && (() => {
+        const base = itens.map(i => {
+          const ps = cotacoes.map(c => precoDe(c.id, i.id)).filter((v): v is number => v != null)
+          const menor = ps.length ? Math.min(...ps) : null
+          return { item: i, valor: menor != null ? menor * i.quantidade : 0 }
+        }).filter(l => l.valor > 0).sort((a, b) => b.valor - a.valor)
+        if (!base.length) return null
+        const total = base.reduce((s, l) => s + l.valor, 0)
+        let acc = 0
+        const linhas = base.map(l => {
+          acc += l.valor
+          const pctAcc = total ? (acc / total) * 100 : 0
+          return { ...l, pct: total ? (l.valor / total) * 100 : 0, pctAcc, classe: pctAcc <= 80 ? 'A' : pctAcc <= 95 ? 'B' : 'C' }
+        })
+        const corC = (k: string) => k === 'A' ? '#B91C1C' : k === 'B' ? '#B45309' : '#6B7280'
+        const bgC = (k: string) => k === 'A' ? '#FEE2E2' : k === 'B' ? '#FEF3C7' : '#F3F4F6'
+        const resumo = (['A', 'B', 'C'] as const).map(k => {
+          const g = linhas.filter(l => l.classe === k)
+          return { k, n: g.length, v: g.reduce((s, l) => s + l.valor, 0) }
+        })
+        return <div className="card" style={{ marginTop: 12 }}>
+          <div className="card-header"><span className="card-tt">📉 Curva ABC da cotação</span></div>
+          <div style={{ padding: '12px 14px' }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+              {resumo.map(r => (
+                <div key={r.k} style={{ flex: '1 1 120px', background: bgC(r.k), border: `1px solid ${corC(r.k)}33`, borderRadius: 9, padding: '8px 11px' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: corC(r.k) }}>Classe {r.k}</div>
+                  <div style={{ fontSize: 15, fontWeight: 800 }}>{fmtR$(r.v)}</div>
+                  <div style={{ fontSize: 10, color: 'var(--muted)' }}>{r.n} item(ns) · {total ? Math.round(r.v / total * 100) : 0}% do valor</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+                <thead><tr>
+                  <th style={{ ...thCot, textAlign: 'left' }}>Produto</th>
+                  <th style={thCot}>Valor</th>
+                  <th style={thCot}>% do total</th>
+                  <th style={thCot}>% acum.</th>
+                  <th style={thCot}>Classe</th>
+                </tr></thead>
+                <tbody>
+                  {linhas.map(l => (
+                    <tr key={l.item.id}>
+                      <td style={{ ...tdCot, textAlign: 'left' }}>{l.item.produto_nome}</td>
+                      <td style={tdCot}>{fmtR$(l.valor)}</td>
+                      <td style={tdCot}>{l.pct.toFixed(1)}%</td>
+                      <td style={{ ...tdCot, color: 'var(--muted)' }}>{l.pctAcc.toFixed(1)}%</td>
+                      <td style={{ ...tdCot }}>
+                        <span style={{ fontSize: 10.5, fontWeight: 800, padding: '1px 8px', borderRadius: 10, background: bgC(l.classe), color: corC(l.classe) }}>{l.classe}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 10.5, color: 'var(--muted)' }}>
+              Calculada pelo <strong>menor preço</strong> de cada item × quantidade. <strong>Classe A</strong> concentra ~80% do valor — é onde negociar rende mais.
+            </div>
+          </div>
+        </div>
+      })()}
 
       {/* 6. Aprovação e relatório */}
       {cotacoes.length > 0 && (
@@ -668,6 +851,11 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
               style={{ padding: '8px 12px', fontSize: 12, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', opacity: cotAprovadas.length ? 1 : .5 }}>📄 Relatório (PDF)</button>
             <button className="btn" onClick={abrirModalRelat} disabled={!cotAprovadas.length}
               style={{ padding: '8px 12px', fontSize: 12, background: '#25D366', opacity: cotAprovadas.length ? 1 : .5 }}>📲 Enviar por WhatsApp</button>
+            <button className="btn" onClick={fecharPedido} disabled={!cotAprovadas.length || fechando || req.status === 'compra_realizada'}
+              title={req.status === 'compra_realizada' ? 'Pedido já foi fechado' : 'Grava os preços aprovados nos itens e fecha a compra'}
+              style={{ padding: '8px 12px', fontSize: 12, background: '#6B1212', opacity: (!cotAprovadas.length || req.status === 'compra_realizada') ? .5 : 1 }}>
+              {fechando ? 'Fechando…' : req.status === 'compra_realizada' ? '✓ Pedido fechado' : '🛒 Fechar pedido de compra'}
+            </button>
           </div>
         </div>
       )}
