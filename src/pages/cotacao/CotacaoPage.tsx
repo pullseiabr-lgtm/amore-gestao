@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, ArrowLeft, Loader2, RefreshCw, ShoppingCart } from 'lucide-react'
+import { Search, ArrowLeft, Loader2, RefreshCw, ShoppingCart, Plus, X } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../hooks/useToast'
-import { fetchRequisicoes } from '../../lib/db'
+import { fetchRequisicoes, insertRequisicao, insertReqTimeline } from '../../lib/db'
 import AnaliseCotacao from '../../components/cotacao/AnaliseCotacao'
 import type { Requisicao } from '../../types/database'
 
@@ -33,6 +33,34 @@ export default function CotacaoPage() {
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
   const [sel, setSel] = useState<Requisicao | null>(null)
+  const [mNova, setMNova] = useState(false)
+  const [novaTitulo, setNovaTitulo] = useState('')
+  const [novaSetor, setNovaSetor] = useState('')
+  const [criando, setCriando] = useState(false)
+
+  const lojaAlvo = loja && loja !== 'Todas as Lojas' ? loja : ''
+
+  const criarCotacao = async () => {
+    if (!novaTitulo.trim()) return
+    if (!lojaAlvo) { toast('Selecione uma loja específica no topo antes de criar.'); return }
+    setCriando(true)
+    try {
+      const nome = user?.name || 'Sistema'
+      const req = await insertRequisicao({
+        loja: lojaAlvo, titulo: novaTitulo.trim(), setor: novaSetor || null,
+        responsavel_nome: nome, prioridade: 'media',
+        data_necessidade: null, prazo_entrega: null, centro_custo: null,
+        total_estimado: 0, total_final: 0, observacoes: null,
+        status: 'em_cotacao', aprovador_nome: null, aprovador_at: null, obs_aprovacao: null,
+        credito_id: null, created_by: nome,
+      } as never)
+      await insertReqTimeline({ requisicao_id: req.id, tipo: 'criacao', descricao: `Cotação criada por ${nome}`, usuario: nome, dados: null }).catch(() => {})
+      setMNova(false); setNovaTitulo(''); setNovaSetor('')
+      await load()
+      setSel(req)
+    } catch (e) { toast('Erro ao criar cotação: ' + (e as Error).message) }
+    finally { setCriando(false) }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -97,17 +125,23 @@ export default function CotacaoPage() {
         <button className="btn" onClick={load} style={{ padding: '9px 13px', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }}>
           <RefreshCw size={14} />
         </button>
+        <button className="btn" onClick={() => setMNova(true)} style={{ padding: '9px 15px' }}>
+          <Plus size={15} /> Nova cotação
+        </button>
       </div>
 
       <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
-        Escolha a <strong>solicitação de compra</strong> que você quer cotar. Toda cotação nasce de uma solicitação — se ainda não existir, crie em <strong>Compras &amp; Estoque → Requisições</strong>.
+        Clique em <strong>Nova cotação</strong> para começar do zero (digite os produtos e os mercados/fornecedores na hora), ou escolha abaixo uma solicitação de compra já existente para cotar.
       </div>
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><Loader2 className="spin" size={26} /></div>
       ) : filtradas.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 44, color: 'var(--muted)', fontSize: 13, border: '1px dashed var(--border)', borderRadius: 10 }}>
-          Nenhuma requisição encontrada nesta loja.
+        <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 13, border: '1px dashed var(--border)', borderRadius: 10 }}>
+          <div style={{ marginBottom: 12 }}>Nenhuma cotação ou requisição nesta loja ainda.</div>
+          <button className="btn" onClick={() => setMNova(true)} style={{ padding: '9px 16px' }}>
+            <Plus size={15} /> Criar a primeira cotação
+          </button>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -130,6 +164,35 @@ export default function CotacaoPage() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Modal: nova cotação */}
+      {mNova && (
+        <div style={{ position: 'fixed', inset: 0, background: '#0008', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setMNova(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 460 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <strong style={{ fontSize: 16 }}>➕ Nova cotação</strong>
+              <button onClick={() => setMNova(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={18} /></button>
+            </div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Nome da cotação *</label>
+            <input value={novaTitulo} onChange={e => setNovaTitulo(e.target.value)} autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') criarCotacao() }}
+              placeholder="Ex.: Cotação hortifruti — semana 30"
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box' }} />
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', margin: '12px 0 4px' }}>Setor (opcional)</label>
+            <input value={novaSetor} onChange={e => setNovaSetor(e.target.value)} placeholder="Ex.: Cozinha, Bar, Salão"
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box' }} />
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 10 }}>
+              Loja: <strong>{lojaAlvo || '— selecione uma loja específica no topo —'}</strong>. Depois de criar, você adiciona os produtos e os mercados/fornecedores dentro da cotação.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button className="btn" onClick={() => setMNova(false)} style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', padding: '9px 16px' }}>Cancelar</button>
+              <button className="btn" onClick={criarCotacao} disabled={criando || !novaTitulo.trim() || !lojaAlvo} style={{ padding: '9px 16px' }}>
+                {criando ? 'Criando…' : 'Criar e cotar'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

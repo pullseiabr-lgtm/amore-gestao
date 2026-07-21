@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Check, Trash2, Loader2 } from 'lucide-react'
 import {
-  fetchRequisicaoItens, fetchFornecedores,
+  fetchRequisicaoItens, fetchFornecedores, insertRequisicaoItem, deleteRequisicaoItem,
   fetchRequisicaoCotacoes, insertRequisicaoCotacao, updateRequisicaoCotacao, deleteRequisicaoCotacao,
   fetchCotacaoItens, upsertCotacaoItens, fetchAppConfig, saveAppConfig,
   fetchProfiles, insertReqTimeline,
@@ -54,6 +54,8 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
   const [loading, setLoading] = useState(true)
   const [cotForm, setCotForm] = useState({ fornecedor_nome: '', total: '', prazo_entrega: '', observacoes: '' })
   const [savingCot, setSavingCot] = useState(false)
+  const [novoItem, setNovoItem] = useState({ produto_nome: '', quantidade: '1', unidade: 'Unidade' })
+  const [savingItem, setSavingItem] = useState(false)
   const [savingPrecos, setSavingPrecos] = useState(false)
   const [mRelat, setMRelat] = useState(false)
   const [relatFones, setRelatFones] = useState('')
@@ -93,6 +95,29 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
 
   const tEntry = async (tipo: string, desc: string) => {
     try { await insertReqTimeline({ requisicao_id: req.id, tipo, descricao: desc, usuario: userName, dados: null }) } catch { /* opcional */ }
+  }
+
+  // ── Produtos a cotar ──────────────────────────────────────
+  const addItem = async () => {
+    const nome = novoItem.produto_nome.trim()
+    if (!nome) return
+    setSavingItem(true)
+    try {
+      await insertRequisicaoItem({
+        requisicao_id: req.id, produto_nome: nome, categoria: null,
+        quantidade: Number(String(novoItem.quantidade).replace(',', '.')) || 1,
+        unidade: novoItem.unidade || 'Unidade',
+        preco_referencia: null, preco_cotado: null, preco_final: null, fornecedor_nome: null,
+        status: 'pendente', observacoes: null, bloqueado: false, motivo_bloqueio: null, quantidade_aprovada: null,
+      })
+      setNovoItem({ produto_nome: '', quantidade: '1', unidade: novoItem.unidade || 'Unidade' })
+      await load(); onAtualizar?.()
+    } catch (e) { toast('Erro ao adicionar produto: ' + (e as Error).message) }
+    finally { setSavingItem(false) }
+  }
+  const delItem = async (id: string) => {
+    try { await deleteRequisicaoItem(id); await load(); onAtualizar?.() }
+    catch (e) { toast('Erro ao remover: ' + (e as Error).message) }
   }
 
   // ── CRUD de cotação ───────────────────────────────────────
@@ -312,9 +337,53 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
 
   return (
     <div>
-      {/* 1. Nova cotação */}
+      {/* 1. Produtos a cotar */}
       <div className="card" style={{ marginBottom: 12 }}>
-        <div className="card-header"><span className="card-tt">➕ Nova cotação — digite qualquer fornecedor, mercado ou atacadista</span></div>
+        <div className="card-header"><span className="card-tt">🛒 1. Produtos a cotar ({itens.length})</span></div>
+        <div style={{ padding: '12px 14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(160px,2fr) 90px 120px auto', gap: 8, alignItems: 'end', marginBottom: itens.length ? 12 : 0 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Produto *</label>
+              <input value={novoItem.produto_nome} onChange={e => setNovoItem(f => ({ ...f, produto_nome: e.target.value }))}
+                onKeyDown={e => { if (e.key === 'Enter') addItem() }} placeholder="Ex.: Molho de tomate 340g"
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Qtd</label>
+              <input value={novoItem.quantidade} inputMode="decimal" onChange={e => setNovoItem(f => ({ ...f, quantidade: e.target.value }))}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Unidade</label>
+              <input list="un-list-an" value={novoItem.unidade} onChange={e => setNovoItem(f => ({ ...f, unidade: e.target.value }))}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box' }} />
+              <datalist id="un-list-an">
+                {['Unidade', 'Caixa', 'Fardo', 'Pacote', 'kg', 'g', 'L', 'ml', 'Dúzia', 'Saco'].map(u => <option key={u} value={u} />)}
+              </datalist>
+            </div>
+            <button className="btn" onClick={addItem} disabled={savingItem || !novoItem.produto_nome.trim()} style={{ padding: '9px 14px' }}>
+              <Plus size={14} /> Adicionar
+            </button>
+          </div>
+          {itens.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Comece adicionando os produtos que você vai cotar. Depois cadastre os fornecedores/mercados abaixo.</div>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {itens.map(i => (
+                <span key={i.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 20, padding: '4px 8px 4px 11px', fontSize: 12 }}>
+                  {i.produto_nome} <span style={{ color: 'var(--muted)' }}>({i.quantidade} {i.unidade})</span>
+                  <button onClick={() => delItem(i.id)} title="Remover"
+                    style={{ background: 'none', border: 'none', color: '#B91C1C', cursor: 'pointer', padding: 0, lineHeight: 1, fontSize: 14 }}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 2. Nova cotação */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="card-header"><span className="card-tt">➕ 2. Fornecedor / mercado — digite qualquer nome, não precisa estar cadastrado</span></div>
         <div style={{ padding: '12px 14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10, alignItems: 'end' }}>
           <div>
             <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Fornecedor / local *</label>
