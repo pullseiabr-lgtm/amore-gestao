@@ -25,6 +25,7 @@ import SettingsPage from './pages/settings/SettingsPage'
 import EstoquePage from './pages/estoque/EstoquePage'
 import FornecedoresPage from './pages/fornecedores/FornecedoresPage'
 import RequisoesPage from './pages/requisicoes/RequisoesPage'
+import CotacaoPage from './pages/cotacao/CotacaoPage'
 import RequisoesAutomaticasPage from './pages/requisicoes/RequisoesAutomaticasPage'
 import FluxoSuprimentosPage from './pages/suprimentos/FluxoSuprimentosPage'
 import DashboardSuprimentosPage from './pages/suprimentos/DashboardSuprimentosPage'
@@ -66,6 +67,7 @@ export type PageId =
   | 'cmv-abc'
   | 'comprador-ia'
   | 'requisicoes'
+  | 'cotacao'
   | 'req-automaticas'
   | 'pipeline-suprimentos'
   | 'dashboard-suprimentos'
@@ -119,6 +121,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'cmv-abc': 'CMV & Curva ABC',
   'comprador-ia': 'Comprador IA',
   requisicoes: 'Requisições de Compra',
+  cotacao: 'Cotação Inteligente de Compras',
   'req-automaticas': 'Requisições Automáticas',
   'pipeline-suprimentos': 'Pipeline de Suprimentos',
   'dashboard-suprimentos': 'Dashboard de Suprimentos',
@@ -174,6 +177,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'cmv-abc': return <CmvAbcPage />
     case 'comprador-ia': return <CompradorIaPage />
     case 'requisicoes':      return <RequisoesPage />
+    case 'cotacao':          return <CotacaoPage />
     case 'req-automaticas': return <RequisoesAutomaticasPage />
     case 'pipeline-suprimentos': return <FluxoSuprimentosPage />
     case 'dashboard-suprimentos': return <DashboardSuprimentosPage />
