@@ -931,6 +931,96 @@ export async function lancarCaixaFinanceiro(caixa: Caixa, itens: { categoria?: s
   } catch (e) { console.error('lancarCaixaFinanceiro', e) }
 }
 
+// ── Raspadinha: controle de premiações (bloqueio geral + edição/pausa por prêmio) ──
+export interface RaspPrizeCtrl { programada: number; pausado: boolean }
+export interface RaspBloqueio {
+  bloqueada: boolean
+  por?: string; em?: string
+  historico?: { acao: string; por: string; em: string }[]
+  prizes?: Record<string, RaspPrizeCtrl>   // quantidade programada + pausa por prêmio
+}
+const RASP_HUGE = 100000000
+
+export async function fetchRaspBloqueio(): Promise<RaspBloqueio | null> {
+  return fetchAppConfig<RaspBloqueio>('rasp_bloqueio')
+}
+const _raspPremios = async (): Promise<any[]> => (await sdkCall<any[]>(db.from('rasp_premios').select('*')).catch(() => [])) || []
+
+// Garante uma linha "Não foi dessa vez" (is_premio=false) em cada campanha — é o resultado quando não há prêmio a liberar.
+async function _raspGarantirNaoFoi(premios: any[]): Promise<void> {
+  const campanhas = (await sdkCall<any[]>(db.from('rasp_campanhas').select('id')).catch(() => [])) || []
+  for (const c of campanhas) {
+    if (!premios.some(p => p.campanha_id === c.id && p.is_premio === false)) {
+      await sdkCall<null>(db.from('rasp_premios').insert({
+        campanha_id: c.id, nome: 'Não foi dessa vez!', descricao: 'Não foi dessa vez, mas volte sempre! 💛',
+        quantidade: RASP_HUGE, distribuidos: 0, resgatados: 0, is_premio: false, ordem: 99, cor: '#8B8B8B',
+      })).catch(() => {})
+    }
+  }
+}
+
+// Monta o ctrl atual (programada/pausado por prêmio), semeando do backup (original) ou da quantidade atual.
+async function _raspCtrl(): Promise<RaspBloqueio> {
+  const cfg = (await fetchRaspBloqueio()) || { bloqueada: false }
+  const prizes: Record<string, RaspPrizeCtrl> = { ...(cfg.prizes || {}) }
+  const backup = await fetchAppConfig<{ premios: any[] }>('rasp_premios_backup')
+  const bkMap: Record<string, number> = {}
+  ;(backup?.premios || []).forEach((p: any) => { bkMap[p.id] = p.quantidade })
+  for (const p of await _raspPremios()) {
+    if (p.is_premio === false) continue
+    if (!prizes[p.id]) prizes[p.id] = { programada: bkMap[p.id] != null ? bkMap[p.id] : p.quantidade, pausado: false }
+  }
+  return { ...cfg, prizes }
+}
+
+// Aplica bloqueio + pausas nas quantidades reais que a função de sorteio usa.
+async function _raspReaplicar(ctrl: RaspBloqueio): Promise<void> {
+  const premios = await _raspPremios()
+  await _raspGarantirNaoFoi(premios)
+  for (const p of await _raspPremios()) {
+    if (p.is_premio === false) { await sdkCall<null>(db.from('rasp_premios').update({ quantidade: RASP_HUGE }).eq('id', p.id)).catch(() => {}); continue }
+    const c = ctrl.prizes?.[p.id]
+    const prog = c ? c.programada : p.quantidade
+    const off = ctrl.bloqueada || (c?.pausado ?? false)
+    await sdkCall<null>(db.from('rasp_premios').update({ quantidade: off ? p.distribuidos : prog }).eq('id', p.id)).catch(() => {})
+  }
+}
+const _raspLog = (ctrl: RaspBloqueio, acao: string, por: string) => {
+  ctrl.historico = (ctrl.historico || []).concat([{ acao, por: por || 'Sistema', em: new Date().toISOString() }]).slice(-60)
+}
+
+// Bloqueia/ativa a campanha inteira (todas as raspadinhas passam a mostrar "Não foi dessa vez").
+export async function setRaspBloqueio(bloquear: boolean, userName: string): Promise<void> {
+  const ctrl = await _raspCtrl()
+  ctrl.bloqueada = bloquear; ctrl.por = userName || 'Sistema'; ctrl.em = new Date().toISOString()
+  _raspLog(ctrl, bloquear ? 'bloqueou a campanha' : 'ativou a campanha', userName)
+  await _raspReaplicar(ctrl); await saveAppConfig('rasp_bloqueio', ctrl)
+}
+
+// Pausa/retoma um prêmio específico (sem perder a quantidade programada).
+export async function pausarPremio(prizeId: string, pausar: boolean, nomePremio: string, userName: string): Promise<void> {
+  const ctrl = await _raspCtrl()
+  ctrl.prizes = ctrl.prizes || {}
+  if (!ctrl.prizes[prizeId]) ctrl.prizes[prizeId] = { programada: 0, pausado: false }
+  ctrl.prizes[prizeId].pausado = pausar
+  _raspLog(ctrl, `${pausar ? 'pausou' : 'retomou'} o prêmio "${nomePremio}"`, userName)
+  await _raspReaplicar(ctrl); await saveAppConfig('rasp_bloqueio', ctrl)
+}
+
+// Edita nome/descrição/quantidade programada de um prêmio.
+export async function editarPremio(prizeId: string, patch: { nome?: string; descricao?: string; programada?: number }, userName: string): Promise<void> {
+  const upd: Record<string, unknown> = {}
+  if (patch.nome != null) upd.nome = patch.nome
+  if (patch.descricao != null) upd.descricao = patch.descricao
+  if (Object.keys(upd).length) await sdkCall<null>(db.from('rasp_premios').update(upd).eq('id', prizeId)).catch(() => {})
+  const ctrl = await _raspCtrl()
+  ctrl.prizes = ctrl.prizes || {}
+  if (!ctrl.prizes[prizeId]) ctrl.prizes[prizeId] = { programada: patch.programada ?? 0, pausado: false }
+  if (patch.programada != null) ctrl.prizes[prizeId].programada = patch.programada
+  _raspLog(ctrl, `editou o prêmio "${patch.nome ?? ''}"`.trim(), userName)
+  await _raspReaplicar(ctrl); await saveAppConfig('rasp_bloqueio', ctrl)
+}
+
 // ── Upload de anexos (Supabase Storage, bucket "anexos") ────────────────────
 export async function uploadAnexo(file: File, pasta = 'geral'): Promise<string> {
   const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '')

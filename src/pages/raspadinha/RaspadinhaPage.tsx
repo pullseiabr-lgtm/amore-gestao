@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Ticket, BarChart3, Users, QrCode, RefreshCw, CheckCircle2, XCircle } from 'lucide-react'
+import { Ticket, BarChart3, Users, QrCode, RefreshCw, CheckCircle2, XCircle, SlidersHorizontal, Lock, ShieldCheck, Play, Pause, Save } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../hooks/useToast'
 import { useAuth } from '../../contexts/AuthContext'
+import { fetchRaspBloqueio, setRaspBloqueio, pausarPremio, editarPremio, type RaspBloqueio } from '../../lib/db'
 
 const sb = supabase as any
 const RASP_URL = 'https://painel.amorefood.com.br/raspadinha.html'
@@ -12,16 +13,18 @@ const fmtDT = (d: string | null) => d ? new Date(d).toLocaleString('pt-BR', { da
 const fmtD = (d: string | null) => d ? d.split('-').reverse().join('/') : '—'
 const STATUS_COR: Record<string, string> = { disponivel: '#3B82F6', resgatado: '#10B981', expirado: '#9ca3af', cancelado: '#EF4444', bloqueado: '#EF4444' }
 
-type Tab = 'dashboard' | 'validar' | 'participantes' | 'qr'
+type Tab = 'dashboard' | 'gerenciar' | 'validar' | 'participantes' | 'qr'
 
 export default function RaspadinhaPage() {
   const { toast } = useToast()
   const { user } = useAuth()
+  const userName = user?.name || (user as any)?.email || 'Painel'
   const [tab, setTab] = useState<Tab>('dashboard')
   const [campanhas, setCampanhas] = useState<any[]>([])
   const [campId, setCampId] = useState<string>('')
   const [premios, setPremios] = useState<any[]>([])
   const [parts, setParts] = useState<any[]>([])
+  const [bloq, setBloq] = useState<RaspBloqueio | null>(null)
   const [loading, setLoading] = useState(true)
 
   const loadCamps = useCallback(async () => {
@@ -40,8 +43,11 @@ export default function RaspadinhaPage() {
     setPremios(pr.data || []); setParts(pa.data || []); setLoading(false)
   }, [campId])
 
+  const loadBloq = useCallback(async () => { setBloq(await fetchRaspBloqueio()) }, [])
+
   useEffect(() => { loadCamps() }, [loadCamps])
   useEffect(() => { loadCamp() }, [loadCamp])
+  useEffect(() => { loadBloq() }, [loadBloq])
 
   const camp = campanhas.find(c => c.id === campId)
   const kpi = useMemo(() => {
@@ -68,6 +74,12 @@ export default function RaspadinhaPage() {
 
   return (
     <div style={{ padding: '1rem 0' }}>
+      {bloq?.bloqueada && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#B42318', borderRadius: 12, padding: '.7rem 1rem', marginBottom: 14, fontSize: 14 }}>
+          <Lock size={18} />
+          <div><b>Premiações bloqueadas.</b> Os clientes conseguem jogar, mas todas as raspadinhas mostram “Não foi dessa vez”. {bloq.por && <>Bloqueado por {bloq.por}{bloq.em ? ` em ${fmtDT(bloq.em)}` : ''}.</>} Reative na aba <b>Prêmios &amp; Status</b>.</div>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
         <select value={campId} onChange={e => setCampId(e.target.value)} style={{ padding: '.55rem .8rem', borderRadius: 10, border: '1px solid #e5e7eb', maxWidth: 320 }}>
           {campanhas.length === 0 && <option>Nenhuma campanha</option>}
@@ -79,6 +91,7 @@ export default function RaspadinhaPage() {
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18, background: '#f9fafb', padding: 6, borderRadius: 12, width: 'fit-content' }}>
         {tabBtn('dashboard', <BarChart3 size={16} />, 'Dashboard')}
+        {tabBtn('gerenciar', <SlidersHorizontal size={16} />, 'Prêmios & Status')}
         {tabBtn('validar', <Ticket size={16} />, 'Validar Cupom')}
         {tabBtn('participantes', <Users size={16} />, 'Participantes')}
         {tabBtn('qr', <QrCode size={16} />, 'QR Codes')}
@@ -110,6 +123,8 @@ export default function RaspadinhaPage() {
           </table>
         </div>
       </>}
+
+      {tab === 'gerenciar' && <GerenciarTab premios={premios} bloq={bloq} userName={userName} toast={toast} onDone={() => { loadCamp(); loadBloq() }} />}
 
       {tab === 'validar' && <ValidarTab validador={user?.name || (user as any)?.email || 'Atendente'} toast={toast} onDone={loadCamp} />}
 
@@ -157,6 +172,127 @@ export default function RaspadinhaPage() {
       </>}
     </div>
   )
+}
+
+function GerenciarTab({ premios, bloq, userName, toast, onDone }: { premios: any[]; bloq: RaspBloqueio | null; userName: string; toast: (m: string, t?: any) => void; onDone: () => void }) {
+  const [busy, setBusy] = useState('')
+  const [edits, setEdits] = useState<Record<string, { nome: string; descricao: string; programada: string }>>({})
+  const reais = premios.filter(p => p.is_premio !== false)
+
+  useEffect(() => {
+    const m: Record<string, { nome: string; descricao: string; programada: string }> = {}
+    for (const p of premios) {
+      if (p.is_premio === false) continue
+      const prog = bloq?.prizes?.[p.id]?.programada ?? p.quantidade
+      m[p.id] = { nome: p.nome || '', descricao: p.descricao || '', programada: String(prog) }
+    }
+    setEdits(m)
+  }, [premios, bloq])
+
+  const bloqueada = !!bloq?.bloqueada
+  const setField = (id: string, f: 'nome' | 'descricao' | 'programada', v: string) =>
+    setEdits(e => ({ ...e, [id]: { ...(e[id] || { nome: '', descricao: '', programada: '0' }), [f]: v } }))
+
+  const wrap = async (key: string, fn: () => Promise<void>, ok: string) => {
+    setBusy(key)
+    try { await fn(); toast(ok); onDone() }
+    catch { toast('Não foi possível concluir. Tente novamente.', 'error') }
+    setBusy('')
+  }
+  const toggleBloqueio = () => wrap('bloq', () => setRaspBloqueio(!bloqueada, userName), !bloqueada ? 'Premiações bloqueadas.' : 'Premiações reativadas.')
+  const togglePausa = (p: any) => wrap('pz' + p.id, () => pausarPremio(p.id, !(bloq?.prizes?.[p.id]?.pausado), p.nome, userName), !(bloq?.prizes?.[p.id]?.pausado) ? `“${p.nome}” pausado.` : `“${p.nome}” reativado.`)
+  const salvar = (p: any) => {
+    const e = edits[p.id]; if (!e) return
+    const prog = Math.max(0, Math.floor(Number(e.programada) || 0))
+    wrap('pz' + p.id, () => editarPremio(p.id, { nome: e.nome.trim(), descricao: e.descricao.trim(), programada: prog }, userName), `“${e.nome.trim()}” salvo.`)
+  }
+
+  const card: React.CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: '1.1rem 1.3rem' }
+  const inp: React.CSSProperties = { padding: '.5rem .6rem', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, width: '100%' }
+
+  return <>
+    {/* Status da campanha */}
+    <div style={{ ...card, marginBottom: 14, borderColor: bloqueada ? '#FCA5A5' : '#A6F4C5', background: bloqueada ? '#FEF2F2' : '#F0FDF4' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {bloqueada ? <Lock size={26} style={{ color: '#B42318' }} /> : <ShieldCheck size={26} style={{ color: '#067647' }} />}
+          <div>
+            <div style={{ fontSize: 12, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.04em' }}>Status da campanha</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: bloqueada ? '#B42318' : '#067647' }}>{bloqueada ? '🔴 Premiações BLOQUEADAS' : '🟢 Premiações ATIVAS'}</div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+              {bloqueada
+                ? 'Os clientes jogam normalmente, mas todas as raspadinhas mostram “Não foi dessa vez”.'
+                : 'As raspadinhas liberam prêmios conforme o estoque programado abaixo.'}
+            </div>
+          </div>
+        </div>
+        <button onClick={toggleBloqueio} disabled={busy === 'bloq'}
+          style={{ padding: '.7rem 1.2rem', borderRadius: 10, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14, color: '#fff', background: bloqueada ? '#059669' : '#DC2626', opacity: busy === 'bloq' ? .6 : 1 }}>
+          {busy === 'bloq' ? 'Aplicando…' : bloqueada ? '▶ Ativar premiações' : '⏸ Bloquear tudo'}
+        </button>
+      </div>
+      {bloq?.em && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 10 }}>Última alteração: {bloq.por || 'Sistema'} · {fmtDT(bloq.em)}</div>}
+    </div>
+
+    {/* Editor de prêmios */}
+    <div style={{ ...card, marginBottom: 14 }}>
+      <b style={{ fontSize: 14 }}>🎁 Prêmios da campanha</b>
+      <p style={{ fontSize: 13, color: '#9ca3af', margin: '4px 0 6px' }}>
+        Edite o nome, a mensagem e a quantidade programada de cada prêmio. Use <b>Pausar</b> para tirar um prêmio específico do sorteio sem perder a quantidade — ele volta ao ativar.
+      </p>
+      {bloqueada && <div style={{ fontSize: 12, color: '#B42318', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '.5rem .7rem', marginBottom: 10 }}>⚠️ A campanha está bloqueada no geral — nenhum prêmio é liberado agora, independente das pausas individuais. Ative a campanha acima para o sorteio voltar a valer.</div>}
+      <div style={{ overflowX: 'auto', marginTop: 8 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, minWidth: 720 }}>
+          <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 12, textTransform: 'uppercase' }}>
+            <th style={{ padding: 8, minWidth: 150 }}>Prêmio</th><th style={{ minWidth: 220 }}>Mensagem</th><th style={{ width: 110 }}>Qtd. programada</th><th style={{ width: 90 }}>Liberados</th><th style={{ width: 90 }}>Situação</th><th style={{ width: 190 }}>Ações</th>
+          </tr></thead>
+          <tbody>
+            {reais.length === 0 ? <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>Nenhum prêmio cadastrado nesta campanha.</td></tr> :
+              reais.map(p => {
+                const e = edits[p.id] || { nome: p.nome, descricao: p.descricao || '', programada: String(p.quantidade) }
+                const pausado = !!bloq?.prizes?.[p.id]?.pausado
+                const off = bloqueada || pausado
+                const bz = busy === 'pz' + p.id
+                return <tr key={p.id} style={{ borderTop: '1px solid #f3f4f6', opacity: off ? .7 : 1 }}>
+                  <td style={{ padding: 8 }}><input value={e.nome} onChange={ev => setField(p.id, 'nome', ev.target.value)} style={inp} /></td>
+                  <td style={{ padding: 8 }}><input value={e.descricao} onChange={ev => setField(p.id, 'descricao', ev.target.value)} style={inp} /></td>
+                  <td style={{ padding: 8 }}><input type="number" min={0} value={e.programada} onChange={ev => setField(p.id, 'programada', ev.target.value)} style={{ ...inp, width: 90 }} /></td>
+                  <td style={{ padding: 8, color: '#6b7280' }}>{p.distribuidos} / {p.resgatados} resg.</td>
+                  <td style={{ padding: 8 }}>
+                    <span style={{ background: (pausado ? '#F59E0B' : '#10B981') + '22', color: pausado ? '#B45309' : '#067647', padding: '.2rem .55rem', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>{pausado ? 'Pausado' : 'Ativo'}</span>
+                  </td>
+                  <td style={{ padding: 8 }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button onClick={() => salvar(p)} disabled={bz} title="Salvar alterações"
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '.4rem .7rem', borderRadius: 8, border: 'none', cursor: 'pointer', background: '#8B1212', color: '#fff', fontSize: 13, fontWeight: 600, opacity: bz ? .6 : 1 }}><Save size={14} />Salvar</button>
+                      <button onClick={() => togglePausa(p)} disabled={bz} title={pausado ? 'Voltar ao sorteio' : 'Tirar do sorteio'}
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '.4rem .7rem', borderRadius: 8, border: '1px solid #e5e7eb', cursor: 'pointer', background: '#fff', color: pausado ? '#067647' : '#B45309', fontSize: 13, fontWeight: 600, opacity: bz ? .6 : 1 }}>
+                        {pausado ? <><Play size={14} />Retomar</> : <><Pause size={14} />Pausar</>}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {/* Histórico */}
+    <div style={card}>
+      <b style={{ fontSize: 14 }}>📋 Histórico de alterações</b>
+      {(!bloq?.historico || bloq.historico.length === 0)
+        ? <p style={{ fontSize: 13, color: '#9ca3af', margin: '8px 0 0' }}>Nenhuma alteração registrada ainda.</p>
+        : <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {[...bloq.historico].reverse().slice(0, 30).map((h, i) => (
+              <div key={i} style={{ fontSize: 13, display: 'flex', gap: 8, borderTop: i ? '1px solid #f3f4f6' : 'none', paddingTop: i ? 6 : 0 }}>
+                <span style={{ color: '#9ca3af', whiteSpace: 'nowrap' }}>{fmtDT(h.em)}</span>
+                <span><b>{h.por}</b> {h.acao}</span>
+              </div>
+            ))}
+          </div>}
+    </div>
+  </>
 }
 
 function ValidarTab({ validador, toast, onDone }: { validador: string; toast: (m: string, t?: any) => void; onDone: () => void }) {
