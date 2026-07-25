@@ -3,7 +3,7 @@ import { Ticket, BarChart3, Users, QrCode, RefreshCw, CheckCircle2, XCircle, Sli
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../hooks/useToast'
 import { useAuth } from '../../contexts/AuthContext'
-import { fetchRaspBloqueio, setRaspBloqueio, pausarPremio, editarPremio, fetchRaspConfig, saveRaspConfig, type RaspBloqueio, type RaspCronoItem, type RaspReinicio, type RaspEscopo, type RaspCronoTipo } from '../../lib/db'
+import { fetchRaspBloqueio, setRaspBloqueio, pausarPremio, editarPremio, fetchRaspConfig, saveRaspConfig, type RaspBloqueio, type RaspCronoItem, type RaspReinicio, type RaspEscopo, type RaspCronoTipo, type RaspTetos } from '../../lib/db'
 
 const sb = supabase as any
 const RASP_URL = 'https://painel.amorefood.com.br/raspadinha.html'
@@ -214,6 +214,7 @@ function CronogramaTab({ campId, camp, premios, parts, userName, toast }: { camp
   const [reinicio, setReinicio] = useState<RaspReinicio>('campanha')
   const [escopo, setEscopo] = useState<RaspEscopo>('campanha')
   const [desde, setDesde] = useState<string | null>(null)
+  const [tetos, setTetos] = useState<RaspTetos>({})
   const [prev, setPrev] = useState<string>('500')
   const [info, setInfo] = useState<{ by?: string; at?: string }>({})
   const [loading, setLoading] = useState(true)
@@ -228,6 +229,7 @@ function CronogramaTab({ campId, camp, premios, parts, userName, toast }: { camp
     setReinicio(cfg?.reinicio || 'campanha')
     setEscopo(cfg?.escopo || 'campanha')
     setDesde(cfg?.desde || null)
+    setTetos(cfg?.tetos || {})
     setInfo({ by: cfg?.updated_by, at: cfg?.updated_at })
     setLoading(false)
   }, [campId])
@@ -259,14 +261,24 @@ function CronogramaTab({ campId, camp, premios, parts, userName, toast }: { camp
       ? { tipo: 'intervalo' as const, cada: Math.floor(Number(c.cada)), premio_id: c.premio_id, qtd: Math.max(0, Math.floor(Number(c.qtd) || 0)), custo: Number(c.custo) || 0 }
       : { tipo: 'posicao' as const, pos: Math.floor(Number(c.pos)), premio_id: c.premio_id, custo: Number(c.custo) || 0 })
 
+  const tetosLimpo = (): RaspTetos => {
+    const t: RaspTetos = {}
+    const n = (v: unknown) => Math.max(0, Number(v) || 0)
+    if (n(tetos.orcamento)) t.orcamento = n(tetos.orcamento)
+    if (n(tetos.pct_max)) t.pct_max = n(tetos.pct_max)
+    if (n(tetos.max_dia)) t.max_dia = n(tetos.max_dia)
+    if (n(tetos.max_semana)) t.max_semana = n(tetos.max_semana)
+    if (n(tetos.max_mes)) t.max_mes = n(tetos.max_mes)
+    return t
+  }
   const salvar = async () => {
     const limpo = limpar()
     const poss = limpo.filter(c => c.tipo === 'posicao').map(c => c.pos)
     if (new Set(poss).size !== poss.length) { toast('Há posições exatas repetidas no cronograma.', 'error'); return }
     setBusy(true)
     try {
-      await saveRaspConfig(campId, { cronograma: limpo, reinicio, escopo, desde }, userName)
-      toast('Cronograma salvo. ✅'); await load()
+      await saveRaspConfig(campId, { cronograma: limpo, reinicio, escopo, desde, tetos: tetosLimpo() }, userName)
+      toast('Cronograma e tetos salvos. ✅'); await load()
     } catch { toast('Não foi possível salvar. Tente novamente.', 'error') }
     setBusy(false)
   }
@@ -275,7 +287,7 @@ function CronogramaTab({ campId, camp, premios, parts, userName, toast }: { camp
     const agora = new Date().toISOString()
     setBusy(true)
     try {
-      await saveRaspConfig(campId, { cronograma: limpar(), reinicio: 'manual', escopo, desde: agora }, userName)
+      await saveRaspConfig(campId, { cronograma: limpar(), reinicio: 'manual', escopo, desde: agora, tetos: tetosLimpo() }, userName)
       setReinicio('manual'); setDesde(agora)
       toast('Contador zerado. A próxima será a nº 1.'); await load()
     } catch { toast('Não foi possível zerar.', 'error') }
@@ -311,6 +323,20 @@ function CronogramaTab({ campId, camp, premios, parts, userName, toast }: { camp
     return { lista: Object.values(porPremio).sort((a, b) => b.fires - a.fires), premiadas, custoTotal, naoPrem: Math.max(0, N - premiadas), pct: N ? (premiadas / N) * 100 : 0 }
   })()
   const brl = (v: number) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  // status ao vivo dos tetos (§13)
+  const custoMap: Record<string, number> = {}
+  for (const e of crono) if (e.premio_id) custoMap[String(e.premio_id)] = Number(e.custo) || 0
+  const winsPeriodo = noPeriodo.filter(p => p.ganhou)
+  const custoReal = winsPeriodo.reduce((s, p) => s + (custoMap[String(p.premio_id)] || 0), 0)
+  const pctAtual = contadasTotal ? (winsPeriodo.length / contadasTotal) * 100 : 0
+  const iniDia = raspInicioPeriodo('diario', null), iniSem = raspInicioPeriodo('semanal', null), iniMes = raspInicioPeriodo('mensal', null)
+  const winsHoje = parts.filter(p => p.ganhou && iniDia && p.created_at >= iniDia).length
+  const winsSemana = parts.filter(p => p.ganhou && iniSem && p.created_at >= iniSem).length
+  const winsMes = parts.filter(p => p.ganhou && iniMes && p.created_at >= iniMes).length
+  const setT = (f: keyof RaspTetos, v: string) => setTetos(t => ({ ...t, [f]: v === '' ? undefined : Math.max(0, Number(v) || 0) }))
+  const estourou = { orc: !!tetos.orcamento && custoReal >= tetos.orcamento, pct: !!tetos.pct_max && pctAtual >= tetos.pct_max, dia: !!tetos.max_dia && winsHoje >= tetos.max_dia, sem: !!tetos.max_semana && winsSemana >= tetos.max_semana, mes: !!tetos.max_mes && winsMes >= tetos.max_mes }
+  const algumEstourou = Object.values(estourou).some(Boolean)
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Carregando cronograma…</div>
 
@@ -410,6 +436,34 @@ function CronogramaTab({ campId, camp, premios, parts, userName, toast }: { camp
         </table>
       </div>
       {info.at && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 10 }}>Última alteração: {info.by || 'Painel'} · {fmtDT(info.at)}</div>}
+    </div>
+
+    {/* Tetos de segurança (§13) */}
+    <div style={{ ...card, marginBottom: 14, borderColor: algumEstourou ? '#FCA5A5' : '#e5e7eb' }}>
+      <b style={{ fontSize: 14 }}>🛡️ Tetos de segurança & orçamento</b>
+      <p style={{ fontSize: 13, color: '#6b7280', margin: '6px 0 0' }}>
+        Limites que <b>bloqueiam os prêmios automaticamente</b> quando atingidos (a jogada vira “Não foi dessa vez”). Deixe em branco (ou 0) para não limitar. Custo usa o valor que você preencheu em cada prêmio no cronograma.
+      </p>
+      {algumEstourou && <div style={{ fontSize: 13, color: '#B42318', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '.5rem .7rem', margin: '10px 0' }}>⛔ Um teto foi atingido — os prêmios estão bloqueados agora (só “Não foi”). Aumente o limite ou aguarde o período reiniciar.</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginTop: 12 }}>
+        {[
+          { f: 'orcamento' as const, label: 'Orçamento (R$)', atual: brl(custoReal), hit: estourou.orc, hint: 'custo no período' },
+          { f: 'pct_max' as const, label: '% máx. premiadas', atual: pctAtual.toFixed(1) + '%', hit: estourou.pct, hint: 'no período' },
+          { f: 'max_dia' as const, label: 'Máx. prêmios/dia', atual: String(winsHoje), hit: estourou.dia, hint: 'hoje' },
+          { f: 'max_semana' as const, label: 'Máx. prêmios/semana', atual: String(winsSemana), hit: estourou.sem, hint: 'nesta semana' },
+          { f: 'max_mes' as const, label: 'Máx. prêmios/mês', atual: String(winsMes), hit: estourou.mes, hint: 'neste mês' },
+        ].map(t => (
+          <div key={t.f} style={{ border: '1px solid ' + (t.hit ? '#FCA5A5' : '#e5e7eb'), background: t.hit ? '#FEF2F2' : '#fff', borderRadius: 10, padding: '.7rem .8rem' }}>
+            <div style={{ fontSize: 12, color: '#374151', marginBottom: 4 }}>{t.label}</div>
+            <input type="number" min={0} step={t.f === 'orcamento' ? '0.01' : '1'} value={tetos[t.f] ?? ''} onChange={e => setT(t.f, e.target.value)} placeholder="sem limite" style={{ ...inp, width: '100%' }} />
+            <div style={{ fontSize: 11, color: t.hit ? '#B42318' : '#9ca3af', marginTop: 4 }}>Atual: <b>{t.atual}</b> {t.hint}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <button onClick={salvar} disabled={busy} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '.45rem .9rem', borderRadius: 8, border: 'none', background: '#8B1212', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, opacity: busy ? .6 : 1 }}><Save size={14} />{busy ? 'Salvando…' : 'Salvar tetos'}</button>
+        <span style={{ fontSize: 12, color: '#9ca3af', marginLeft: 10 }}>(salva junto com o cronograma)</span>
+      </div>
     </div>
 
     {/* Planejamento (§6) */}

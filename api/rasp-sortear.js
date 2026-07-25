@@ -152,6 +152,33 @@ export default async function handler(req, res) {
       else premio = alvo
     }
   }
+  // ── Tetos de segurança (§13): orçamento, % máx de premiadas, limites por dia/semana/mês ──
+  if (premio) {
+    const tetos = cfg?.tetos || {}
+    const custoMap = {}
+    for (const e of (cfg?.cronograma || [])) if (e.premio_id) custoMap[String(e.premio_id)] = Number(e.custo) || 0
+    const custoEste = custoMap[String(premio.id)] || 0
+    const winsDesde = async (desdeISO) => { let q = 'rasp_participacoes?select=id&campanha_id=eq.' + camp.id + '&ganhou=eq.true'; if (desdeISO) q += '&created_at=gte.' + encodeURIComponent(desdeISO); return count(q) }
+    // % máximo de premiadas (campanha inteira, no período do contador)
+    if (Number(tetos.pct_max) > 0) {
+      let qTot = 'rasp_participacoes?select=id&campanha_id=eq.' + camp.id
+      if (ini) qTot += '&created_at=gte.' + encodeURIComponent(ini)
+      const totalCamp = (await count(qTot)) + 1
+      const winsP = (await winsDesde(ini)) + 1
+      if ((winsP / totalCamp) * 100 > Number(tetos.pct_max)) { premio = null; motivo = 'teto_pct' }
+    }
+    // orçamento (custo acumulado de prêmios no período do contador)
+    if (premio && Number(tetos.orcamento) > 0) {
+      const wonRows = (await getJson('rasp_participacoes?select=premio_id&campanha_id=eq.' + camp.id + '&ganhou=eq.true' + (ini ? '&created_at=gte.' + encodeURIComponent(ini) : ''))) || []
+      const custoAcum = wonRows.reduce((s, r) => s + (custoMap[String(r.premio_id)] || 0), 0)
+      if (custoAcum + custoEste > Number(tetos.orcamento)) { premio = null; motivo = 'teto_orcamento' }
+    }
+    // limites de prêmios por dia / semana / mês
+    if (premio && Number(tetos.max_dia) > 0 && (await winsDesde(inicioPeriodo('diario'))) >= Number(tetos.max_dia)) { premio = null; motivo = 'teto_dia' }
+    if (premio && Number(tetos.max_semana) > 0 && (await winsDesde(inicioPeriodo('semanal'))) >= Number(tetos.max_semana)) { premio = null; motivo = 'teto_semana' }
+    if (premio && Number(tetos.max_mes) > 0 && (await winsDesde(inicioPeriodo('mensal'))) >= Number(tetos.max_mes)) { premio = null; motivo = 'teto_mes' }
+  }
+
   const ganhou = !!premio
   const premioRow = premio || naoFoi
 

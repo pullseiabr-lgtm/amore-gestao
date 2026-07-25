@@ -1033,11 +1033,19 @@ export interface RaspCronoItem {
   qtd?: number              // máx. de vezes que esta entrada libera (0/undefined = até acabar o estoque do prêmio)
   custo?: number            // custo estimado por prêmio (planejamento)
 }
+export interface RaspTetos {
+  orcamento?: number        // R$ máximo de custo de prêmios (no período do contador)
+  pct_max?: number          // % máximo de raspadinhas premiadas (no período do contador)
+  max_dia?: number          // máx. de prêmios por dia
+  max_semana?: number       // máx. de prêmios por semana
+  max_mes?: number          // máx. de prêmios por mês
+}
 export interface RaspCampConfig {
   cronograma: RaspCronoItem[]
   reinicio?: RaspReinicio   // quando o contador reinicia (padrão 'campanha')
   escopo?: RaspEscopo       // contador único (campanha) ou por unidade
   desde?: string | null     // ISO — usado com reinicio='manual' ("zerar a fila")
+  tetos?: RaspTetos         // limites de segurança / orçamento (§13)
   ciclo?: number            // (legado) mantido por compatibilidade
   updated_by?: string
   updated_at?: string
