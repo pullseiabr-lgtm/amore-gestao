@@ -1021,12 +1021,24 @@ export async function editarPremio(prizeId: string, patch: { nome?: string; desc
   await _raspReaplicar(ctrl); await saveAppConfig('rasp_bloqueio', ctrl)
 }
 
-// ── Raspadinha: cronograma por posição (config do motor /api/rasp-sortear) ──
-export interface RaspCronoItem { pos: number; premio_id: string }
+// ── Raspadinha: cronograma por avaliações (config do motor /api/rasp-sortear) ──
+export type RaspCronoTipo = 'posicao' | 'intervalo'
+export type RaspReinicio = 'campanha' | 'diario' | 'semanal' | 'mensal' | 'manual'
+export type RaspEscopo = 'campanha' | 'unidade'
+export interface RaspCronoItem {
+  tipo?: RaspCronoTipo      // 'posicao' (padrão) = avaliação nº X | 'intervalo' = a cada N avaliações
+  pos?: number              // quando tipo='posicao'
+  cada?: number             // quando tipo='intervalo'
+  premio_id: string
+  qtd?: number              // máx. de vezes que esta entrada libera (0/undefined = até acabar o estoque do prêmio)
+  custo?: number            // custo estimado por prêmio (planejamento)
+}
 export interface RaspCampConfig {
   cronograma: RaspCronoItem[]
-  ciclo?: number            // repete o padrão a cada N posições (0/undefined = não repete)
-  desde?: string | null     // ISO — só conta participações a partir daqui (permite "zerar a fila")
+  reinicio?: RaspReinicio   // quando o contador reinicia (padrão 'campanha')
+  escopo?: RaspEscopo       // contador único (campanha) ou por unidade
+  desde?: string | null     // ISO — usado com reinicio='manual' ("zerar a fila")
+  ciclo?: number            // (legado) mantido por compatibilidade
   updated_by?: string
   updated_at?: string
 }

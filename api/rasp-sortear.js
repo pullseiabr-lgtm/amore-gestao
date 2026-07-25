@@ -40,13 +40,39 @@ function gerarCupom() {
   return 'AMR-' + r(3) + '-' + r(4)
 }
 
-// Decide o prêmio programado para uma posição, considerando ciclo (repetição) e "desde" (offset já aplicado antes).
-function premioIdNaPosicao(cfg, pos) {
-  if (!cfg || !Array.isArray(cfg.cronograma) || !cfg.cronograma.length) return null
-  const ciclo = Number(cfg.ciclo) || 0
-  const k = ciclo > 0 ? ((pos - 1) % ciclo) + 1 : pos
-  const entry = cfg.cronograma.find((e) => Number(e.pos) === k)
-  return entry && entry.premio_id ? String(entry.premio_id) : null
+// Início do período de contagem conforme o reinício escolhido (fuso America/Recife = UTC-3).
+function inicioPeriodo(reinicio, desde, dataInicio) {
+  const TZ = -3
+  const loc = new Date(Date.now() + TZ * 3600 * 1000) // relógio local representado em campos UTC
+  const y = loc.getUTCFullYear(), m = loc.getUTCMonth(), d = loc.getUTCDate(), dow = loc.getUTCDay()
+  const utcDeLocal = (Y, M, D) => new Date(Date.UTC(Y, M, D, 0, 0, 0) - TZ * 3600 * 1000).toISOString()
+  switch (reinicio) {
+    case 'diario': return utcDeLocal(y, m, d)
+    case 'semanal': { const diff = (dow + 6) % 7; const mon = new Date(Date.UTC(y, m, d) - diff * 86400000); return new Date(mon.getTime() - TZ * 3600 * 1000).toISOString() }
+    case 'mensal': return utcDeLocal(y, m, 1)
+    case 'manual': return desde || null
+    default: return dataInicio ? dataInicio + 'T00:00:00Z' : null // 'campanha'
+  }
+}
+
+// Escolhe a entrada do cronograma que se aplica a esta posição (prioridade = ordem da lista).
+// Suporta posição exata e intervalo ("a cada N"), respeitando a quantidade máxima de sorteios (qtd) da entrada.
+function escolherEntrada(cfg, posicao) {
+  if (!cfg || !Array.isArray(cfg.cronograma)) return null
+  for (const e of cfg.cronograma) {
+    if (!e || !e.premio_id) continue
+    if ((e.tipo || 'posicao') === 'intervalo') {
+      const cada = Number(e.cada) || 0
+      if (cada <= 0 || posicao % cada !== 0) continue
+      const vez = posicao / cada          // 1ª, 2ª, 3ª ... liberação deste intervalo
+      const qtd = Number(e.qtd) || 0
+      if (qtd > 0 && vez > qtd) continue   // já atingiu o nº máximo de sorteios da entrada
+      return e
+    } else {
+      if (Number(e.pos) === posicao) return e
+    }
+  }
+  return null
 }
 
 export default async function handler(req, res) {
@@ -99,22 +125,24 @@ export default async function handler(req, res) {
   const naoFoi = premios.find((p) => p.is_premio === false) || null
 
   // ── Posição na fila (ordinal) ──
-  // Conta participações da campanha a partir de `desde` (se configurado) — permite "zerar a fila".
-  const desde = cfg?.desde ? String(cfg.desde) : null
+  // Conta participações válidas no período (reinício: campanha/diário/semanal/mensal/manual) e,
+  // se o escopo for por unidade, apenas as da mesma unidade.
+  const ini = inicioPeriodo(cfg?.reinicio, cfg?.desde ? String(cfg.desde) : null, camp.data_inicio)
   let posFilter = 'rasp_participacoes?select=id&campanha_id=eq.' + camp.id
-  if (desde) posFilter += '&created_at=gte.' + encodeURIComponent(desde)
+  if (ini) posFilter += '&created_at=gte.' + encodeURIComponent(ini)
+  if (cfg?.escopo === 'unidade' && unidade) posFilter += '&unidade=eq.' + encodeURIComponent(unidade)
   const anteriores = await count(posFilter)
   const posicao = anteriores + 1 // esta participação
 
   // ── Decide o prêmio ──
   let premio = null
   let motivo = ''
-  const alvoId = premioIdNaPosicao(cfg, posicao)
+  const entrada = escolherEntrada(cfg, posicao)
   if (!cfg || !Array.isArray(cfg.cronograma) || !cfg.cronograma.length) motivo = 'sem_config'
   else if (bloq.bloqueada) motivo = 'bloqueada'
-  else if (!alvoId) motivo = 'posicao_sem_premio'
+  else if (!entrada) motivo = 'posicao_sem_premio'
   else {
-    const alvo = premios.find((p) => String(p.id) === alvoId)
+    const alvo = premios.find((p) => String(p.id) === String(entrada.premio_id))
     if (!alvo || alvo.is_premio === false) motivo = 'premio_invalido'
     else if (bloq?.prizes?.[alvo.id]?.pausado) motivo = 'pausado'
     else {
