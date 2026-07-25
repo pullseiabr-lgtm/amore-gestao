@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Ticket, BarChart3, Users, QrCode, RefreshCw, CheckCircle2, XCircle, SlidersHorizontal, Lock, ShieldCheck, Play, Pause, Save } from 'lucide-react'
+import { Ticket, BarChart3, Users, QrCode, RefreshCw, CheckCircle2, XCircle, SlidersHorizontal, Lock, ShieldCheck, Play, Pause, Save, ListOrdered, Plus, Trash2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../hooks/useToast'
 import { useAuth } from '../../contexts/AuthContext'
-import { fetchRaspBloqueio, setRaspBloqueio, pausarPremio, editarPremio, type RaspBloqueio } from '../../lib/db'
+import { fetchRaspBloqueio, setRaspBloqueio, pausarPremio, editarPremio, fetchRaspConfig, saveRaspConfig, type RaspBloqueio, type RaspCampConfig, type RaspCronoItem } from '../../lib/db'
 
 const sb = supabase as any
 const RASP_URL = 'https://painel.amorefood.com.br/raspadinha.html'
@@ -13,7 +13,7 @@ const fmtDT = (d: string | null) => d ? new Date(d).toLocaleString('pt-BR', { da
 const fmtD = (d: string | null) => d ? d.split('-').reverse().join('/') : '—'
 const STATUS_COR: Record<string, string> = { disponivel: '#3B82F6', resgatado: '#10B981', expirado: '#9ca3af', cancelado: '#EF4444', bloqueado: '#EF4444' }
 
-type Tab = 'dashboard' | 'gerenciar' | 'validar' | 'participantes' | 'qr'
+type Tab = 'dashboard' | 'cronograma' | 'gerenciar' | 'validar' | 'participantes' | 'qr'
 
 export default function RaspadinhaPage() {
   const { toast } = useToast()
@@ -91,6 +91,7 @@ export default function RaspadinhaPage() {
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18, background: '#f9fafb', padding: 6, borderRadius: 12, width: 'fit-content' }}>
         {tabBtn('dashboard', <BarChart3 size={16} />, 'Dashboard')}
+        {tabBtn('cronograma', <ListOrdered size={16} />, 'Cronograma')}
         {tabBtn('gerenciar', <SlidersHorizontal size={16} />, 'Prêmios & Status')}
         {tabBtn('validar', <Ticket size={16} />, 'Validar Cupom')}
         {tabBtn('participantes', <Users size={16} />, 'Participantes')}
@@ -123,6 +124,8 @@ export default function RaspadinhaPage() {
           </table>
         </div>
       </>}
+
+      {tab === 'cronograma' && <CronogramaTab campId={campId} premios={premios} parts={parts} userName={userName} toast={toast} />}
 
       {tab === 'gerenciar' && <GerenciarTab premios={premios} bloq={bloq} userName={userName} toast={toast} onDone={() => { loadCamp(); loadBloq() }} />}
 
@@ -172,6 +175,153 @@ export default function RaspadinhaPage() {
       </>}
     </div>
   )
+}
+
+function CronogramaTab({ campId, premios, parts, userName, toast }: { campId: string; premios: any[]; parts: any[]; userName: string; toast: (m: string, t?: any) => void }) {
+  const [crono, setCrono] = useState<RaspCronoItem[]>([])
+  const [ciclo, setCiclo] = useState<string>('')
+  const [desde, setDesde] = useState<string | null>(null)
+  const [info, setInfo] = useState<{ by?: string; at?: string }>({})
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const reais = premios.filter(p => p.is_premio !== false)
+  const nomePremio = (id: string) => reais.find(p => String(p.id) === String(id))?.nome || '—'
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const cfg = await fetchRaspConfig(campId)
+    setCrono(cfg?.cronograma ? [...cfg.cronograma].sort((a, b) => a.pos - b.pos) : [])
+    setCiclo(cfg?.ciclo ? String(cfg.ciclo) : '')
+    setDesde(cfg?.desde || null)
+    setInfo({ by: cfg?.updated_by, at: cfg?.updated_at })
+    setLoading(false)
+  }, [campId])
+  useEffect(() => { load() }, [load])
+
+  // posição atual da fila (participações contadas a partir de `desde`)
+  const contadas = desde ? parts.filter(p => p.created_at >= desde).length : parts.length
+  const proxima = contadas + 1
+  const nCiclo = Math.max(0, Math.floor(Number(ciclo) || 0))
+
+  const addRow = () => {
+    const usados = new Set(crono.map(c => c.pos))
+    let p = 10; while (usados.has(p)) p += 10
+    setCrono(c => [...c, { pos: p, premio_id: reais[0]?.id || '' }].sort((a, b) => a.pos - b.pos))
+  }
+  const setRow = (i: number, patch: Partial<RaspCronoItem>) => setCrono(c => c.map((r, j) => j === i ? { ...r, ...patch } : r))
+  const delRow = (i: number) => setCrono(c => c.filter((_, j) => j !== i))
+
+  const salvar = async () => {
+    // valida posições
+    const limpo = crono.filter(c => c.premio_id && Number(c.pos) > 0)
+    const poss = limpo.map(c => Number(c.pos))
+    if (new Set(poss).size !== poss.length) { toast('Há posições repetidas no cronograma.', 'error'); return }
+    if (nCiclo > 0 && poss.some(p => p > nCiclo)) { toast(`Com ciclo de ${nCiclo}, as posições devem ir de 1 a ${nCiclo}.`, 'error'); return }
+    setBusy(true)
+    try {
+      const cfg: RaspCampConfig = { cronograma: limpo.map(c => ({ pos: Math.floor(Number(c.pos)), premio_id: c.premio_id })).sort((a, b) => a.pos - b.pos), ciclo: nCiclo || undefined, desde }
+      await saveRaspConfig(campId, cfg, userName)
+      toast('Cronograma salvo. ✅'); await load()
+    } catch { toast('Não foi possível salvar. Tente novamente.', 'error') }
+    setBusy(false)
+  }
+  const zerarFila = async () => {
+    if (!window.confirm('Zerar a fila? A contagem de avaliações para o cronograma recomeça do nº 1 a partir de agora. As participações antigas continuam salvas, apenas não contam mais para as posições.')) return
+    const agora = new Date().toISOString()
+    setBusy(true)
+    try {
+      const cfg: RaspCampConfig = { cronograma: crono.filter(c => c.premio_id).map(c => ({ pos: Math.floor(Number(c.pos)), premio_id: c.premio_id })), ciclo: nCiclo || undefined, desde: agora }
+      await saveRaspConfig(campId, cfg, userName); setDesde(agora)
+      toast('Fila zerada. A próxima raspadinha será a nº 1.'); await load()
+    } catch { toast('Não foi possível zerar.', 'error') }
+    setBusy(false)
+  }
+
+  const card: React.CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: '1.1rem 1.3rem' }
+  const inp: React.CSSProperties = { padding: '.5rem .6rem', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14 }
+
+  const sim = Array.from({ length: 12 }, (_, i) => {
+    const pos = proxima + i
+    const k = nCiclo > 0 ? ((pos - 1) % nCiclo) + 1 : pos
+    const e = crono.find(x => Number(x.pos) === k && x.premio_id)
+    return { pos, premio: e ? nomePremio(e.premio_id) : 'Não foi dessa vez' }
+  })
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Carregando cronograma…</div>
+
+  return <>
+    <div style={{ ...card, marginBottom: 14 }}>
+      <b style={{ fontSize: 14 }}>📅 Cronograma por posição da avaliação</b>
+      <p style={{ fontSize: 13, color: '#6b7280', margin: '6px 0 0' }}>
+        Defina qual prêmio sai em cada posição da fila de avaliações desta campanha. Posições que você <b>não</b> listar entregam automaticamente <b>“Não foi dessa vez”</b>. Enquanto não houver cronograma salvo (ou com a campanha bloqueada), ninguém ganha prêmio.
+      </p>
+      <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginTop: 12, alignItems: 'center' }}>
+        <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 10, padding: '.6rem .9rem' }}>
+          <div style={{ fontSize: 12, color: '#0369A1' }}>Avaliações contadas{desde ? ' (desde a última zeragem)' : ''}</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#0369A1' }}>{contadas}</div>
+        </div>
+        <div style={{ background: '#FEF9C3', border: '1px solid #FDE68A', borderRadius: 10, padding: '.6rem .9rem' }}>
+          <div style={{ fontSize: 12, color: '#92400E' }}>Próxima raspadinha será a nº</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#92400E' }}>{proxima}</div>
+        </div>
+        <label style={{ fontSize: 13, color: '#374151', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          Repetir o padrão a cada (ciclo)
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input type="number" min={0} value={ciclo} onChange={e => setCiclo(e.target.value)} placeholder="0 = não repete" style={{ ...inp, width: 130 }} />
+            <span style={{ fontSize: 12, color: '#9ca3af' }}>avaliações</span>
+          </span>
+        </label>
+        <button onClick={zerarFila} disabled={busy} style={{ padding: '.55rem .9rem', borderRadius: 8, border: '1px solid #FCA5A5', background: '#fff', color: '#B42318', cursor: 'pointer', fontSize: 13, fontWeight: 600, alignSelf: 'flex-end' }}>↺ Zerar a fila</button>
+      </div>
+      {nCiclo > 0 && <p style={{ fontSize: 12, color: '#0369A1', margin: '10px 0 0' }}>🔁 O padrão se repete a cada {nCiclo} avaliações (ex.: as posições valem para a nº 1–{nCiclo}, depois recomeça).</p>}
+    </div>
+
+    <div style={{ ...card, marginBottom: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <b style={{ fontSize: 14 }}>Posições premiadas</b>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={addRow} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '.45rem .8rem', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}><Plus size={14} />Adicionar posição</button>
+          <button onClick={salvar} disabled={busy} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '.45rem .9rem', borderRadius: 8, border: 'none', background: '#8B1212', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, opacity: busy ? .6 : 1 }}><Save size={14} />{busy ? 'Salvando…' : 'Salvar cronograma'}</button>
+        </div>
+      </div>
+      {reais.length === 0 && <div style={{ fontSize: 13, color: '#B42318', marginTop: 10 }}>Cadastre prêmios na aba “Prêmios & Status” antes de montar o cronograma.</div>}
+      <div style={{ overflowX: 'auto', marginTop: 10 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, minWidth: 480 }}>
+          <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 12, textTransform: 'uppercase' }}>
+            <th style={{ padding: 8, width: 140 }}>Avaliação nº</th><th>Prêmio liberado</th><th style={{ width: 60 }}></th>
+          </tr></thead>
+          <tbody>
+            {crono.length === 0 ? <tr><td colSpan={3} style={{ padding: 20, textAlign: 'center', color: '#9ca3af' }}>Nenhuma posição premiada. Todas as raspadinhas mostram “Não foi dessa vez”.</td></tr> :
+              crono.map((r, i) => <tr key={i} style={{ borderTop: '1px solid #f3f4f6' }}>
+                <td style={{ padding: 8 }}><input type="number" min={1} value={r.pos} onChange={e => setRow(i, { pos: Math.floor(Number(e.target.value) || 0) })} style={{ ...inp, width: 100 }} /></td>
+                <td style={{ padding: 8 }}>
+                  <select value={r.premio_id} onChange={e => setRow(i, { premio_id: e.target.value })} style={{ ...inp, minWidth: 220 }}>
+                    <option value="">— escolha o prêmio —</option>
+                    {reais.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </select>
+                </td>
+                <td style={{ padding: 8 }}><button onClick={() => delRow(i)} title="Remover" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#DC2626' }}><Trash2 size={16} /></button></td>
+              </tr>)}
+          </tbody>
+        </table>
+      </div>
+      {info.at && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 10 }}>Última alteração: {info.by || 'Painel'} · {fmtDT(info.at)}</div>}
+    </div>
+
+    <div style={card}>
+      <b style={{ fontSize: 14 }}>🔮 Prévia das próximas 12 raspadinhas</b>
+      <p style={{ fontSize: 12, color: '#9ca3af', margin: '4px 0 10px' }}>Simulação a partir da posição atual, considerando o cronograma acima (ainda não salvo aparece aqui também).</p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {sim.map(s => {
+          const premiado = s.premio !== 'Não foi dessa vez'
+          return <div key={s.pos} style={{ border: '1px solid ' + (premiado ? '#A6F4C5' : '#e5e7eb'), background: premiado ? '#F0FDF4' : '#fff', borderRadius: 10, padding: '.5rem .7rem', minWidth: 120 }}>
+            <div style={{ fontSize: 12, color: '#9ca3af' }}>nº {s.pos}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: premiado ? '#067647' : '#9ca3af' }}>{premiado ? '🎁 ' + s.premio : 'Não foi'}</div>
+          </div>
+        })}
+      </div>
+    </div>
+  </>
 }
 
 function GerenciarTab({ premios, bloq, userName, toast, onDone }: { premios: any[]; bloq: RaspBloqueio | null; userName: string; toast: (m: string, t?: any) => void; onDone: () => void }) {

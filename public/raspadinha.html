@@ -149,8 +149,11 @@ async function liberar(){
   if(!document.getElementById('consent').checked){err.textContent='É preciso aceitar para participar.';return}
   const btn=document.getElementById('btnLiberar'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
   try{
-    const {data,error}=await sb.rpc('rasp_sortear',{p_slug:SLUG,p_nome:nome,p_telefone:fone,p_unidade:UNIDADE,p_nascimento:nasc,p_consent:true,p_origem:ORIGEM,p_garcom:GARCOM});
-    if(error){ err.textContent='Erro ao liberar. Tente novamente.'; btn.disabled=false; btn.textContent='LIBERAR MINHA RASPADINHA'; return }
+    // Motor do sorteio no backend do site (cronograma por posição, tetos e bloqueio) — /api/rasp-sortear
+    let data={};
+    const resp=await fetch('/api/rasp-sortear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:SLUG,nome,telefone:fone,unidade:UNIDADE,nascimento:nasc,consent:true,origem:ORIGEM,garcom:GARCOM})});
+    try{ data=await resp.json() }catch(_){ data={erro:'falha'} }
+    if(!resp.ok && !data.erro){ err.textContent='Erro ao liberar. Tente novamente.'; btn.disabled=false; btn.textContent='LIBERAR MINHA RASPADINHA'; return }
     if(data.erro){ err.textContent=msgErro(data.erro); btn.disabled=false; btn.textContent='LIBERAR MINHA RASPADINHA'; return }
     resultado=data;
     if(data.ja_participou){ mostrarResultado(true); return }   // já jogou: mostra direto

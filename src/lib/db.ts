@@ -1021,6 +1021,25 @@ export async function editarPremio(prizeId: string, patch: { nome?: string; desc
   await _raspReaplicar(ctrl); await saveAppConfig('rasp_bloqueio', ctrl)
 }
 
+// ── Raspadinha: cronograma por posição (config do motor /api/rasp-sortear) ──
+export interface RaspCronoItem { pos: number; premio_id: string }
+export interface RaspCampConfig {
+  cronograma: RaspCronoItem[]
+  ciclo?: number            // repete o padrão a cada N posições (0/undefined = não repete)
+  desde?: string | null     // ISO — só conta participações a partir daqui (permite "zerar a fila")
+  updated_by?: string
+  updated_at?: string
+}
+export async function fetchRaspConfig(campId: string): Promise<RaspCampConfig | null> {
+  const all = await fetchAppConfig<Record<string, RaspCampConfig>>('rasp_config')
+  return all?.[campId] || null
+}
+export async function saveRaspConfig(campId: string, cfg: RaspCampConfig, userName: string): Promise<void> {
+  const all = (await fetchAppConfig<Record<string, RaspCampConfig>>('rasp_config')) || {}
+  all[campId] = { ...cfg, updated_by: userName || 'Painel', updated_at: new Date().toISOString() }
+  await saveAppConfig('rasp_config', all)
+}
+
 // ── Upload de anexos (Supabase Storage, bucket "anexos") ────────────────────
 export async function uploadAnexo(file: File, pasta = 'geral'): Promise<string> {
   const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '')
