@@ -15,7 +15,7 @@ const CAT_KEYWORDS: Record<string, string[]> = {
   Carne: ['carne', 'bovino', 'suino', 'charque', 'bacon', 'embutido', 'defumado', 'proteina animal', 'calabresa', 'presunto', 'linguica'],
   Frango: ['frango', 'ave', 'proteina de frango'],
   Laticinios: ['latic', 'lactic', 'queijo', 'leite', 'frios', 'requeijao', 'manteiga', 'mussarela', 'coalho', 'parmesao'],
-  Mercearia: ['mercearia', 'cereais', 'graos', 'grao', 'arroz', 'feijao', 'acucar', 'oleo', 'farinha', 'trigo', 'tempero', 'massa', 'molho', 'proteina'],
+  Mercearia: ['mercearia', 'cereais', 'graos', 'grao', 'secos', 'insumo'],
   Bebidas: ['bebida', 'refrigerante', 'suco', 'agua', 'cerveja'],
   Congelados: ['congelado', 'sorvete', 'acai', 'petit'],
   Limpeza: ['limpeza', 'higiene', 'saneante'],
