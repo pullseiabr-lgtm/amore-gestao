@@ -1,11 +1,36 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link2, Send, Copy, RefreshCw, Ban, CheckCircle2, Loader2, Users, Package } from 'lucide-react'
-import { fetchFornecedores, fetchRequisicaoItens, fetchCotacaoTokens, saveCotacaoToken, gerarTokenCotacao, insertRequisicaoCotacao, fetchRequisicaoCotacoes, type CotacaoToken } from '../../lib/db'
+import { fetchFornecedores, fetchRequisicaoItens, fetchCotacaoTokens, saveCotacaoToken, gerarTokenCotacao, insertRequisicaoCotacao, fetchRequisicaoCotacoes, updateRequisicaoItem, type CotacaoToken } from '../../lib/db'
 import { enviarWhatsApp } from '../../lib/notify'
 import type { Requisicao, Fornecedor, RequisicaoItem } from '../../types/database'
 
 const soDig = (s?: string | null) => (s || '').replace(/\D/g, '')
 const fmtDT = (s?: string | null) => s ? new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
+const norm = (s?: string | null) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+
+// Palavras-chave por categoria de item → casa com as "categorias atendidas" do fornecedor
+// (robusto a acento/plural: procura qualquer palavra-chave dentro da string do fornecedor).
+const CAT_KEYWORDS: Record<string, string[]> = {
+  Pescados: ['pescado', 'peixe', 'fruto do mar', 'frutos do mar', 'salmao', 'tilapia', 'camarao', 'lagosta', 'linguado', 'mar'],
+  Carne: ['carne', 'bovino', 'suino', 'charque', 'bacon', 'embutido', 'defumado', 'proteina animal', 'calabresa', 'presunto', 'linguica'],
+  Frango: ['frango', 'ave', 'proteina de frango'],
+  Laticinios: ['latic', 'lactic', 'queijo', 'leite', 'frios', 'requeijao', 'manteiga', 'mussarela', 'coalho', 'parmesao'],
+  Mercearia: ['mercearia', 'cereais', 'graos', 'grao', 'arroz', 'feijao', 'acucar', 'oleo', 'farinha', 'trigo', 'tempero', 'massa', 'molho', 'proteina'],
+  Bebidas: ['bebida', 'refrigerante', 'suco', 'agua', 'cerveja'],
+  Congelados: ['congelado', 'sorvete', 'acai', 'petit'],
+  Limpeza: ['limpeza', 'higiene', 'saneante'],
+  Descartaveis: ['descartavel', 'descartaveis', 'embalagem', 'copo', 'papel', 'guardanapo', 'saco', 'kraft', 'isopor', 'pote'],
+  Polpas: ['polpa'],
+  Hortifruti: ['hortifrut', 'verdura', 'fruta', 'legume'],
+  Padaria: ['pao', 'confeitaria', 'panificacao', 'biscoito', 'doce'],
+}
+function fornAtendeItem(fornCategorias: string, itemCat?: string | null): boolean {
+  if (!itemCat) return false
+  const fc = norm(fornCategorias)
+  if (!fc.trim()) return false
+  const kws = CAT_KEYWORDS[itemCat] || [norm(itemCat)]
+  return kws.some(k => fc.includes(k))
+}
 
 const STA: Record<string, { l: string; c: string; bg: string }> = {
   enviado: { l: 'Enviado', c: '#0369A1', bg: '#E0F2FE' },
@@ -47,12 +72,11 @@ export default function CotacaoExterna({ req, userName, toast }: { req: Requisic
   const fornSel = forns.find(f => f.id === selForn)
 
   // ao escolher o fornecedor, pré-seleciona itens cuja categoria bate com as categorias atendidas
+  // (é só uma sugestão — o comprador pode marcar/desmarcar tudo manualmente no Passo 2)
   useEffect(() => {
     if (!selForn) { setSelItens(new Set()); return }
     const f = forns.find(x => x.id === selForn)
-    const fc = (f?.categorias || '').toLowerCase()
-    if (fc.trim()) setSelItens(new Set(itens.filter(i => i.categoria && fc.includes(i.categoria.toLowerCase())).map(i => i.id)))
-    else setSelItens(new Set())
+    setSelItens(new Set(itens.filter(i => fornAtendeItem(f?.categorias || '', i.categoria)).map(i => i.id)))
   }, [selForn]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const linkDe = (tok: string) => `${window.location.origin}/cotacao.html?t=${tok}`
@@ -105,6 +129,11 @@ export default function CotacaoExterna({ req, userName, toast }: { req: Requisic
     await saveCotacaoToken({ ...t, status: 'cancelado' }); toast('Link cancelado.'); load()
   }
   const copiar = (t: CotacaoToken) => { navigator.clipboard?.writeText(linkDe(t.token)); toast('Link copiado.') }
+  const mudarCategoria = async (itemId: string, cat: string) => {
+    setItens(list => list.map(i => i.id === itemId ? { ...i, categoria: cat || null } : i))
+    try { await updateRequisicaoItem(itemId, { categoria: cat || null }) } catch { toast('Não foi possível salvar a categoria.', 'error') }
+  }
+  const CATS = Object.keys(CAT_KEYWORDS)
 
   // cobertura: quais itens já foram para algum fornecedor
   const cobertos = new Set<string>()
@@ -165,8 +194,14 @@ export default function CotacaoExterna({ req, userName, toast }: { req: Requisic
             {itensFiltrados.map(i => { const on = selItens.has(i.id); const outros = tokens.filter(t => t.status !== 'cancelado' && (t.item_ids || []).includes(i.id) && t.fornecedor_nome !== fornSel?.nome).length
               return <label key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 11px', borderTop: '1px solid var(--border)', cursor: 'pointer', background: on ? '#EEF2FF' : 'transparent' }}>
                 <input type="checkbox" checked={on} onChange={e => setSelItens(s => { const n = new Set(s); e.target.checked ? n.add(i.id) : n.delete(i.id); return n })} style={{ width: 16, height: 16, flexShrink: 0 }} />
-                <span style={{ flex: 1, fontSize: 13 }}>{i.produto_nome} <span style={{ color: 'var(--muted)' }}>· {i.quantidade} {i.unidade}</span>{i.categoria ? <span style={{ color: 'var(--muted)', fontSize: 11 }}> · {i.categoria}</span> : ''}</span>
+                <span style={{ flex: 1, fontSize: 13 }}>{i.produto_nome} <span style={{ color: 'var(--muted)' }}>· {i.quantidade} {i.unidade}</span></span>
                 {outros > 0 && <span title={`já em ${outros} outro(s) fornecedor(es)`} style={{ fontSize: 10.5, color: '#0369A1', background: '#E0F2FE', padding: '1px 7px', borderRadius: 20 }}>+{outros}</span>}
+                <select value={i.categoria || ''} onClick={e => e.stopPropagation()} onChange={e => { e.stopPropagation(); mudarCategoria(i.id, e.target.value) }}
+                  title="Categoria (edite se quiser) — usada para a sugestão automática"
+                  style={{ fontSize: 11.5, padding: '3px 5px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--card)', color: i.categoria ? 'var(--text)' : 'var(--muted)', flexShrink: 0 }}>
+                  <option value="">— categoria —</option>
+                  {CATS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
               </label> })}
           </div>
           <button className="btn" onClick={() => gerarParaFornecedor()} disabled={busy || selItens.size === 0} style={{ padding: '10px 16px', marginTop: 10 }}>
