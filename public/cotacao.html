@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Cotação — Amore</title>
+<style>
+  :root { --vinho:#8B1212; --vinho2:#6B1212; --dourado:#E0A83E; --bg:#f5f5f7; --card:#fff; --border:#e5e7eb; --muted:#6b7280; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var(--bg); color:#1f2937; }
+  .wrap { max-width:860px; margin:0 auto; padding:16px; }
+  .hdr { background:linear-gradient(135deg,var(--vinho2),#8a2a2a); color:#fff; border-radius:14px; padding:18px 20px; margin-bottom:14px; }
+  .hdr h1 { margin:0; font-size:19px; }
+  .hdr .sub { font-size:13px; opacity:.9; margin-top:4px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px; margin-bottom:14px; }
+  .msg { text-align:center; padding:40px 20px; }
+  .msg .big { font-size:42px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th { text-align:left; color:var(--muted); font-size:11px; text-transform:uppercase; padding:8px 6px; border-bottom:1px solid var(--border); }
+  td { padding:8px 6px; border-bottom:1px solid #f3f4f6; vertical-align:top; }
+  input, textarea, select { font:inherit; padding:8px 9px; border:1px solid var(--border); border-radius:8px; width:100%; }
+  input[type=number]{ text-align:right; }
+  .prod { font-weight:700; }
+  .lbl { font-size:12px; color:#374151; font-weight:600; display:block; margin-bottom:4px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+  .btns { display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; margin-top:8px; }
+  .btn { border:none; border-radius:10px; padding:12px 18px; font-size:15px; font-weight:700; cursor:pointer; }
+  .btn-prim { background:var(--vinho); color:#fff; }
+  .btn-sec { background:#fff; color:var(--vinho); border:1px solid var(--vinho); }
+  .chip { display:inline-block; font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; }
+  .off { opacity:.5; }
+  .indisp { color:#9ca3af; font-size:12px; }
+  .foot { font-size:11px; color:var(--muted); text-align:center; margin:18px 0; }
+  .spin { display:inline-block; width:20px; height:20px; border:3px solid #fff6; border-top-color:#fff; border-radius:50%; animation:sp 1s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="msg"><div class="big">⏳</div><p>Carregando cotação…</p></div>
+</div>
+
+<script>
+const API='/api/cotacao-portal';
+const p=new URLSearchParams(location.search); const TOKEN=(p.get('t')||'').trim();
+const app=document.getElementById('app');
+const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtDT=s=>s?new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+let DADOS=null;
+
+function msg(emoji,titulo,texto){ app.innerHTML=`<div class="card msg"><div class="big">${emoji}</div><h2 style="color:var(--vinho)">${titulo}</h2><p style="color:var(--muted)">${texto||''}</p></div>`; }
+
+const ERR={ token_invalido:['🔒','Link inválido','Verifique se você abriu o link completo enviado pela Amore.'],
+  nao_encontrado:['🔒','Cotação não encontrada','Este link não é válido. Solicite um novo à Amore.'],
+  cancelado:['🚫','Cotação cancelada','Esta cotação foi cancelada pela Amore.'],
+  expirado:['⌛','Prazo encerrado','O prazo desta cotação já foi encerrado.'],
+  ja_finalizada:['✅','Cotação já enviada','Sua proposta já foi registrada. Obrigado!'] };
+
+async function carregar(){
+  if(!TOKEN){ return msg('🔒','Link inválido','Abra o link completo enviado pela Amore.'); }
+  try{
+    const r=await fetch(API+'?t='+encodeURIComponent(TOKEN));
+    const d=await r.json();
+    if(d.erro){ const e=ERR[d.erro]||['🔒','Não foi possível abrir','Solicite um novo link à Amore.']; return msg(e[0],e[1],e[2]); }
+    DADOS=d;
+    if(d.bloqueado){ return resumo(d); }
+    render(d);
+  }catch(e){ msg('⚠️','Erro de conexão','Tente novamente em instantes.'); }
+}
+
+function resumo(d){
+  const r=d.resposta||{}; const itens=(r.itens||[]);
+  app.innerHTML=`<div class="hdr"><h1>Cotação Nº ${d.cotacao.numero} — ${d.cotacao.titulo}</h1><div class="sub">Amore ${d.cotacao.loja} · Fornecedor: ${d.cotacao.fornecedor_nome}</div></div>
+  <div class="card"><div style="text-align:center;margin-bottom:10px"><span class="chip" style="background:#DCFCE7;color:#15803D">✅ Proposta enviada</span></div>
+  <p style="color:var(--muted);font-size:13px;text-align:center">Sua proposta já foi registrada. Segue o resumo do que você enviou. Para alterar, fale com a Amore.</p>
+  <table><thead><tr><th>Produto</th><th>Disponível</th><th>Preço unit.</th><th>Marca</th></tr></thead><tbody>
+  ${(d.itens||[]).map(it=>{ const a=itens.find(x=>x.item_id===it.item_id)||{}; return `<tr><td class="prod">${it.produto_nome}<div class="indisp">${it.quantidade} ${it.unidade}</div></td><td>${a.disponivel===false?'—':'Sim'}</td><td>${a.disponivel===false?'—':brl(a.preco_unitario)}</td><td>${a.marca||'—'}</td></tr>`; }).join('')}
+  </tbody></table></div>
+  <div class="foot">Amore · Cotação segura. Este link é exclusivo do seu cadastro.</div>`;
+}
+
+function render(d){
+  const c=d.cotacao; const r=d.resposta||{}; const gi=(r.geral||{}); const ri=(r.itens||[]);
+  const val=(id,f,def='')=>{ const x=ri.find(x=>x.item_id===id); return x&&x[f]!=null?x[f]:def; };
+  app.innerHTML=`
+  <div class="hdr"><h1>Cotação Nº ${c.numero} — ${c.titulo}</h1>
+    <div class="sub">Amore ${c.loja} · Olá, <b>${c.fornecedor_nome}</b>${c.prazo_resposta?` · Prazo para resposta: <b>${fmtDT(c.prazo_resposta)}</b>`:''}</div></div>
+  <div class="card">
+    <p style="margin:0 0 12px;font-size:13px;color:var(--muted)">Preencha o preço e as condições dos produtos abaixo. Você pode <b>salvar um rascunho</b> e voltar depois. Ao <b>enviar</b>, a proposta é finalizada.</p>
+    <div style="overflow-x:auto"><table><thead><tr><th>Produto</th><th style="width:90px">Qtd.</th><th style="width:80px">Tenho?</th><th style="width:120px">Preço unit. (R$)</th><th style="width:140px">Marca ofertada</th></tr></thead><tbody id="tb"></tbody></table></div>
+  </div>
+  <div class="card">
+    <b style="font-size:14px">Condições gerais</b>
+    <div class="grid" style="margin-top:12px">
+      <div><label class="lbl">Frete (R$)</label><input type="number" id="g_frete" min="0" step="0.01" value="${gi.frete??''}" placeholder="0,00"></div>
+      <div><label class="lbl">Prazo de entrega (dias)</label><input type="number" id="g_prazo" min="0" value="${gi.prazo_entrega??''}" placeholder="ex.: 2"></div>
+      <div><label class="lbl">Condição de pagamento</label><input id="g_cond" value="${gi.condicao_pagamento||''}" placeholder="ex.: 28 dias / à vista"></div>
+      <div><label class="lbl">Validade da proposta</label><input id="g_val" value="${gi.validade_proposta||''}" placeholder="ex.: 5 dias"></div>
+    </div>
+    <label class="lbl" style="margin-top:12px">Observações</label>
+    <textarea id="g_obs" rows="2" placeholder="Alguma observação sobre a proposta?">${gi.obs||''}</textarea>
+  </div>
+  <div class="btns">
+    <button class="btn btn-sec" id="btnRasc">Salvar rascunho</button>
+    <button class="btn btn-prim" id="btnEnv">Enviar cotação</button>
+  </div>
+  <div class="foot">🔒 Link exclusivo e seguro do seu cadastro. Você vê apenas os produtos direcionados a você — nenhum outro fornecedor ou preço é exibido.</div>`;
+
+  const tb=document.getElementById('tb');
+  tb.innerHTML=(d.itens||[]).map(it=>`<tr data-id="${it.item_id}">
+    <td class="prod">${it.produto_nome}${it.categoria?`<div class="indisp">${it.categoria}</div>`:''}</td>
+    <td>${it.quantidade} ${it.unidade}</td>
+    <td><input type="checkbox" class="ck" ${val(it.item_id,'disponivel',true)===false?'':'checked'} style="width:20px;height:20px"></td>
+    <td><input type="number" class="pr" min="0" step="0.01" value="${val(it.item_id,'preco_unitario','')}" placeholder="0,00"></td>
+    <td><input class="mr" value="${val(it.item_id,'marca','')}" placeholder="marca"></td>
+  </tr>`).join('');
+  tb.querySelectorAll('.ck').forEach(ck=>ck.addEventListener('change',e=>{ const tr=e.target.closest('tr'); tr.classList.toggle('off',!e.target.checked); tr.querySelector('.pr').disabled=!e.target.checked; }));
+  tb.querySelectorAll('.ck').forEach(ck=>{ if(!ck.checked){ const tr=ck.closest('tr'); tr.classList.add('off'); tr.querySelector('.pr').disabled=true; } });
+
+  document.getElementById('btnRasc').onclick=()=>enviar('salvar');
+  document.getElementById('btnEnv').onclick=()=>{ if(confirm('Enviar sua cotação? Após enviar, a proposta é finalizada e não poderá ser alterada por aqui.')) enviar('finalizar'); };
+}
+
+function coletar(){
+  const itens=[...document.querySelectorAll('#tb tr')].map(tr=>({
+    item_id:tr.dataset.id,
+    disponivel:tr.querySelector('.ck').checked,
+    preco_unitario:Number(tr.querySelector('.pr').value)||0,
+    marca:tr.querySelector('.mr').value.trim(),
+  }));
+  const geral={ frete:Number(document.getElementById('g_frete').value)||0, prazo_entrega:Number(document.getElementById('g_prazo').value)||0,
+    condicao_pagamento:document.getElementById('g_cond').value.trim(), validade_proposta:document.getElementById('g_val').value.trim(), obs:document.getElementById('g_obs').value.trim() };
+  return { itens, geral };
+}
+
+async function enviar(action){
+  const btns=document.querySelectorAll('.btn'); btns.forEach(b=>b.disabled=true);
+  const alvo=action==='finalizar'?document.getElementById('btnEnv'):document.getElementById('btnRasc');
+  const txt=alvo.textContent; alvo.innerHTML='<span class="spin"></span>';
+  try{
+    const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:TOKEN,action,resposta:coletar()})});
+    const d=await r.json();
+    if(d.erro){ alert(ERR[d.erro]?ERR[d.erro][2]:'Não foi possível salvar.'); btns.forEach(b=>b.disabled=false); alvo.textContent=txt; return; }
+    if(action==='finalizar'){ msg('🎉','Cotação enviada!','Obrigado! Sua proposta foi registrada com sucesso na Amore.'); }
+    else { alvo.textContent='Rascunho salvo ✓'; setTimeout(()=>{alvo.textContent=txt; btns.forEach(b=>b.disabled=false);},1500); }
+  }catch(e){ alert('Erro de conexão. Tente novamente.'); btns.forEach(b=>b.disabled=false); alvo.textContent=txt; }
+}
+
+carregar();
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../hooks/useToast'
 import { fetchRequisicoes, insertRequisicao, insertReqTimeline } from '../../lib/db'
 import AnaliseCotacao from '../../components/cotacao/AnaliseCotacao'
+import CotacaoExterna from '../../components/cotacao/CotacaoExterna'
 import type { Requisicao } from '../../types/database'
 
 const fmtR$ = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -95,6 +96,7 @@ export default function CotacaoPage() {
           </div>
           <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: st.bg, color: st.c }}>{st.l}</span>
         </div>
+        <CotacaoExterna req={sel} userName={user?.name || 'Sistema'} toast={toast} />
         <AnaliseCotacao
           req={sel} loja={sel.loja} userName={user?.name || 'Sistema'}
           toast={toast} onAtualizar={load}

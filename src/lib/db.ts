@@ -1117,6 +1117,53 @@ export async function upsertCotacaoItens(itens: Omit<RequisicaoCotacaoItem, 'id'
   return restUpsert('requisicao_cotacao_itens', itens)
 }
 
+// ── Portal externo de cotação (link seguro por token) ───────────────────────
+// O fornecedor abre um link exclusivo (?t=token) e preenche preços SEM acessar o
+// painel. O motor /api/cotacao-portal valida o token e devolve só os dados dele.
+// Metadados/rastreio ficam em app_config (chave `cot_tok:<token>`) — sem DDL.
+export type CotTokenStatus = 'enviado' | 'aberto' | 'respondido' | 'bloqueado' | 'cancelado'
+export interface CotacaoToken {
+  token: string
+  requisicao_id: string
+  cotacao_id: string
+  fornecedor_id: string | null
+  fornecedor_nome: string
+  loja: string
+  numero: number
+  titulo: string
+  prazo_resposta: string | null
+  validade: string | null
+  status: CotTokenStatus
+  criado_por: string
+  criado_em: string
+  enviado_em?: string | null
+  aberto_em?: string | null
+  acessos?: number
+  respondido_em?: string | null
+  ip?: string | null
+  device?: string | null
+  resposta?: Record<string, unknown> | null
+}
+const COT_TOK_PREFIX = 'cot_tok:'
+export function gerarTokenCotacao(): string {
+  const a = 'abcdefghijkmnpqrstuvwxyz23456789'
+  let s = ''
+  for (let i = 0; i < 28; i++) s += a[Math.floor(Math.random() * a.length)]
+  return s
+}
+export async function fetchCotacaoTokens(requisicaoId: string): Promise<CotacaoToken[]> {
+  try {
+    const rows = await sdkCall<{ valor: CotacaoToken }[]>(
+      db.from('app_config').select('valor').like('chave', COT_TOK_PREFIX + '%')
+    )
+    return (rows || []).map(r => r.valor).filter(v => v && v.requisicao_id === requisicaoId)
+      .sort((a, b) => (a.criado_em < b.criado_em ? -1 : 1))
+  } catch { return [] }
+}
+export async function saveCotacaoToken(t: CotacaoToken): Promise<void> {
+  await saveAppConfig(COT_TOK_PREFIX + t.token, t)
+}
+
 // ── Timeline de Requisições ──────────────────────────────────────────────────
 
 export async function fetchReqTimeline(requisicaoId: string): Promise<ReqTimeline[]> {
