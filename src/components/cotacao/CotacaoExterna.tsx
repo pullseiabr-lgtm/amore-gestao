@@ -19,7 +19,7 @@ const CAT_KEYWORDS: Record<string, string[]> = {
   Bebidas: ['bebida', 'refrigerante', 'suco', 'agua', 'cerveja'],
   Congelados: ['congelado', 'sorvete', 'acai', 'petit'],
   Limpeza: ['limpeza', 'higiene', 'saneante'],
-  Descartaveis: ['descartavel', 'descartaveis', 'embalagem', 'copo', 'papel', 'guardanapo', 'saco', 'kraft', 'isopor', 'pote'],
+  Descartaveis: ['descartav', 'embala', 'copo', 'papel', 'guardanapo', 'saco', 'kraft', 'isopor', 'pote'],
   Polpas: ['polpa'],
   Hortifruti: ['hortifrut', 'verdura', 'fruta', 'legume'],
   Padaria: ['pao', 'confeitaria', 'panificacao', 'biscoito', 'doce'],
