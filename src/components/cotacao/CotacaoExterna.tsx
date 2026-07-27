@@ -20,11 +20,13 @@ export default function CotacaoExterna({ req, userName, toast }: { req: Requisic
   const [tokens, setTokens] = useState<CotacaoToken[]>([])
   const [nItens, setNItens] = useState(0)
   const [sel, setSel] = useState<Set<string>>(new Set())
+  const [busca, setBusca] = useState('')
   const [prazo, setPrazo] = useState('')
   const [validadeDias, setValidadeDias] = useState('7')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [aberto, setAberto] = useState(false)
+  const [aberto, setAberto] = useState(true)
+  const [manualFone, setManualFone] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -84,6 +86,14 @@ export default function CotacaoExterna({ req, userName, toast }: { req: Requisic
     if (ok) { await saveCotacaoToken({ ...t, enviado_em: new Date().toISOString() }); toast('Lembrete reenviado. ✅'); load() }
     else toast('Falha ao reenviar.', 'error')
   }
+  const enviarComNumero = async (t: CotacaoToken) => {
+    const fone = soDig(manualFone[t.token])
+    if (fone.length < 10) { toast('Digite um WhatsApp válido com DDD (ex.: 81 9XXXX-XXXX).'); return }
+    const f = forns.find(x => x.id === t.fornecedor_id) || forns.find(x => x.nome === t.fornecedor_nome)
+    const ok = await enviarWhatsApp(fone, msgWhats((f || { nome: t.fornecedor_nome }) as Fornecedor, linkDe(t.token)))
+    if (ok) { await saveCotacaoToken({ ...t, enviado_em: new Date().toISOString() }); toast('Enviado ✅'); setManualFone(m => ({ ...m, [t.token]: '' })); load() }
+    else toast('Falha ao enviar.', 'error')
+  }
   const cancelar = async (t: CotacaoToken) => {
     if (!window.confirm(`Cancelar o link de ${t.fornecedor_nome}? O link para de funcionar imediatamente.`)) return
     await saveCotacaoToken({ ...t, status: 'cancelado' }); toast('Link cancelado.'); load()
@@ -113,20 +123,31 @@ export default function CotacaoExterna({ req, userName, toast }: { req: Requisic
             <input type="number" min={1} value={validadeDias} onChange={e => setValidadeDias(e.target.value)} style={{ width: 90, padding: '8px 9px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', marginTop: 4 }} /></label>
         </div>
 
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><Users size={14} /> Fornecedores da loja {req.loja}</div>
-        {forns.length === 0 ? <div style={{ fontSize: 13, color: 'var(--muted)', padding: 8 }}>Nenhum fornecedor cadastrado nesta loja. Cadastre em Fornecedores.</div> :
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-            {forns.map(f => { const conv = jaConvidado(f.nome); const on = sel.has(f.id)
-              return <label key={f.id} title={conv ? 'Já convidado' : (soDig(f.whatsapp) || soDig(f.telefone) ? '' : 'Sem WhatsApp')}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 11px', borderRadius: 20, border: '1px solid ' + (on ? '#4338CA' : 'var(--border)'), background: conv ? '#F3F4F6' : on ? '#EEF2FF' : 'var(--card)', cursor: conv ? 'default' : 'pointer', fontSize: 13, opacity: conv ? .6 : 1 }}>
-                <input type="checkbox" disabled={conv} checked={on} onChange={e => setSel(s => { const n = new Set(s); e.target.checked ? n.add(f.id) : n.delete(f.id); return n })} />
-                {f.nome}{conv ? ' ✓' : (soDig(f.whatsapp) || soDig(f.telefone) ? '' : ' 📵')}
-              </label> })}
-          </div>}
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><Users size={14} /> Escolha os fornecedores da loja {req.loja} <span style={{ fontWeight: 400 }}>({forns.length} cadastrados · {sel.size} selecionado{sel.size === 1 ? '' : 's'})</span></div>
+        {forns.length === 0 ? <div style={{ fontSize: 13, color: 'var(--muted)', padding: 8 }}>Nenhum fornecedor cadastrado nesta loja. Cadastre em Fornecedores.</div> : <>
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="🔍 Buscar fornecedor pelo nome…"
+            style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box', marginBottom: 8 }} />
+          <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 12 }}>
+            {forns.filter(f => !busca || f.nome.toLowerCase().includes(busca.toLowerCase())).map(f => {
+              const conv = jaConvidado(f.nome); const on = sel.has(f.id); const temZap = !!(soDig(f.whatsapp) || soDig(f.telefone))
+              return <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 11px', borderTop: '1px solid var(--border)', cursor: conv ? 'default' : 'pointer', background: on ? '#EEF2FF' : 'transparent', opacity: conv ? .55 : 1 }}>
+                <input type="checkbox" disabled={conv} checked={on} onChange={e => setSel(s => { const n = new Set(s); e.target.checked ? n.add(f.id) : n.delete(f.id); return n })} style={{ width: 17, height: 17, flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: 13 }}>{f.nome}</span>
+                {conv ? <span style={{ fontSize: 11, color: '#15803D', fontWeight: 700 }}>já convidado ✓</span>
+                  : temZap ? <span title="Tem WhatsApp cadastrado" style={{ fontSize: 13 }}>📲</span>
+                  : <span title="Sem WhatsApp — você digita o número ao enviar" style={{ fontSize: 12, color: '#B45309' }}>📵 sem nº</span>}
+              </label>
+            })}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+            {sel.size > 0 && <button onClick={() => setSel(new Set())} style={{ fontSize: 12, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', textDecoration: 'underline' }}>limpar seleção</button>}
+          </div>
+        </>}
 
-        <button className="btn" onClick={gerarEnviar} disabled={busy || sel.size === 0} style={{ padding: '10px 16px', marginBottom: 14 }}>
-          {busy ? <Loader2 className="spin" size={15} /> : <Send size={15} />} Gerar links e enviar por WhatsApp
+        <button className="btn" onClick={gerarEnviar} disabled={busy || sel.size === 0} style={{ padding: '10px 16px', marginBottom: 6 }}>
+          {busy ? <Loader2 className="spin" size={15} /> : <Send size={15} />} Gerar links {sel.size > 0 ? `de ${sel.size} fornecedor${sel.size === 1 ? '' : 'es'} ` : ''}e enviar por WhatsApp
         </button>
+        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 14 }}>Quem tem WhatsApp cadastrado recebe na hora. Quem não tem (📵) aparece no rastreio abaixo — é só digitar o número e enviar, ou copiar o link.</div>
 
         {/* Rastreio */}
         {tokens.length > 0 && <div style={{ overflowX: 'auto' }}>
@@ -136,6 +157,9 @@ export default function CotacaoExterna({ req, userName, toast }: { req: Requisic
             </tr></thead>
             <tbody>
               {tokens.map(t => { const s = STA[t.status] || STA.enviado
+                const f = forns.find(x => x.id === t.fornecedor_id) || forns.find(x => x.nome === t.fornecedor_nome)
+                const temZap = !!(soDig(f?.whatsapp) || soDig(f?.telefone))
+                const ativo = t.status !== 'cancelado' && t.status !== 'respondido'
                 return <tr key={t.token} style={{ borderTop: '1px solid var(--border)' }}>
                   <td style={{ padding: 8, fontWeight: 600 }}>{t.fornecedor_nome}</td>
                   <td><span style={{ background: s.bg, color: s.c, padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{s.l}</span></td>
@@ -143,9 +167,14 @@ export default function CotacaoExterna({ req, userName, toast }: { req: Requisic
                   <td style={{ color: 'var(--muted)' }}>{t.aberto_em ? fmtDT(t.aberto_em) + (t.acessos ? ` (${t.acessos}x)` : '') : '—'}</td>
                   <td style={{ color: 'var(--muted)' }}>{t.respondido_em ? fmtDT(t.respondido_em) : '—'}</td>
                   <td>
-                    <div style={{ display: 'flex', gap: 4 }}>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                       <button onClick={() => copiar(t)} title="Copiar link" style={ico}><Copy size={15} /></button>
-                      {t.status !== 'cancelado' && t.status !== 'respondido' && <button onClick={() => reenviar(t)} title="Reenviar WhatsApp" style={ico}><RefreshCw size={15} /></button>}
+                      {ativo && temZap && <button onClick={() => reenviar(t)} title="Reenviar WhatsApp" style={ico}><RefreshCw size={15} /></button>}
+                      {ativo && !temZap && <>
+                        <input value={manualFone[t.token] || ''} onChange={e => setManualFone(m => ({ ...m, [t.token]: e.target.value }))} placeholder="WhatsApp c/ DDD"
+                          style={{ width: 130, padding: '5px 7px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 12 }} />
+                        <button onClick={() => enviarComNumero(t)} title="Enviar para este número" style={{ ...ico, color: '#15803D' }}><Send size={14} /></button>
+                      </>}
                       {t.status === 'respondido' ? <CheckCircle2 size={16} style={{ color: '#15803D', alignSelf: 'center' }} /> : t.status !== 'cancelado' && <button onClick={() => cancelar(t)} title="Cancelar link" style={{ ...ico, color: '#B91C1C' }}><Ban size={15} /></button>}
                     </div>
                   </td>
