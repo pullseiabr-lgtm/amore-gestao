@@ -1131,6 +1131,7 @@ export interface CotacaoToken {
   loja: string
   numero: number
   titulo: string
+  item_ids?: string[]        // itens direcionados a este fornecedor (vazio = todos)
   prazo_resposta: string | null
   validade: string | null
   status: CotTokenStatus

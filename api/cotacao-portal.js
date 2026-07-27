@@ -61,7 +61,11 @@ export default async function handler(req, res) {
     await saveTok(tok)
 
     const bloqueado = tok.status === 'respondido' || tok.status === 'bloqueado'
-    const itensRaw = (await getJson('requisicao_itens?select=id,produto_nome,categoria,quantidade,unidade&requisicao_id=eq.' + tok.requisicao_id + '&order=produto_nome.asc')) || []
+    // Só os itens direcionados a ESTE fornecedor (subconjunto). Sem item_ids = lista toda (compat).
+    let itQ = 'requisicao_itens?select=id,produto_nome,categoria,quantidade,unidade&requisicao_id=eq.' + tok.requisicao_id
+    if (Array.isArray(tok.item_ids) && tok.item_ids.length) itQ += '&id=in.(' + tok.item_ids.join(',') + ')'
+    itQ += '&order=produto_nome.asc'
+    const itensRaw = (await getJson(itQ)) || []
     const itens = itensRaw.map(i => ({ item_id: i.id, produto_nome: i.produto_nome, categoria: i.categoria, quantidade: i.quantidade, unidade: i.unidade }))
     return res.status(200).json({
       ok: true, bloqueado,
