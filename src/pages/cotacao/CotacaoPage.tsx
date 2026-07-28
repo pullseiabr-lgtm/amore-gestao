@@ -6,6 +6,7 @@ import { useToast } from '../../hooks/useToast'
 import { fetchRequisicoes, insertRequisicao, insertReqTimeline } from '../../lib/db'
 import AnaliseCotacao from '../../components/cotacao/AnaliseCotacao'
 import CotacaoExterna from '../../components/cotacao/CotacaoExterna'
+import { gerarRelatorioPedidos } from '../../lib/relatorioPedidos'
 import type { Requisicao } from '../../types/database'
 
 const fmtR$ = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -94,6 +95,11 @@ export default function CotacaoPage() {
               {sel.loja}{sel.setor ? ` · ${sel.setor}` : ''} · Solicitante {sel.responsavel_nome} · Prazo {fmtDt(sel.prazo_entrega)}
             </div>
           </div>
+          <button onClick={() => gerarRelatorioPedidos(sel).catch(() => toast('Não foi possível gerar o relatório.'))}
+            title="Comparativo de preços + pedidos por fornecedor (imprimir/PDF)"
+            style={{ background: 'rgba(255,255,255,.18)', border: 'none', color: '#fff', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600 }}>
+            📊 Relatório & Pedidos
+          </button>
           <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: st.bg, color: st.c }}>{st.l}</span>
         </div>
         <CotacaoExterna req={sel} userName={user?.name || 'Sistema'} toast={toast} />
