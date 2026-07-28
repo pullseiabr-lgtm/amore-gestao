@@ -26,7 +26,14 @@ tfoot td{padding:12px;font-weight:800;font-size:15px;border-top:2px solid var(--
 .canc{margin-top:14px;padding:11px 14px;border-radius:12px;background:color-mix(in srgb,var(--warn) 10%,var(--card));border:1px solid color-mix(in srgb,var(--warn) 35%,var(--border));color:var(--warn);font-size:13px;font-weight:600}
 .foot{margin-top:22px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
 .msg{text-align:center;padding:60px 20px;color:var(--muted)}
-@media print{.btn{display:none}body{background:#fff}.tw{box-shadow:none}}
+.recbox{margin-top:18px;padding:16px;border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow)}
+.recbox b{font-size:14px}.recbox p{font-size:12.5px;color:var(--muted);margin:4px 0 10px}
+.recbox input,.recbox textarea{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);font:inherit;margin-bottom:8px;box-sizing:border-box}
+.rbtns{display:flex;gap:8px;flex-wrap:wrap}.rb{border:none;border-radius:9px;padding:10px 14px;font-weight:700;font-size:13px;cursor:pointer;color:#fff}
+.rb.ok{background:var(--ok)}.rb.warn{background:var(--warn)}.rb.crit{background:var(--vinho)}.rb:disabled{opacity:.5;cursor:default}
+.recdone{margin-top:18px;padding:14px 16px;border-radius:12px;background:color-mix(in srgb,var(--ok) 12%,var(--card));border:1px solid color-mix(in srgb,var(--ok) 35%,var(--border));color:var(--ok);font-size:14px;font-weight:600}
+.recdone .robs{font-weight:400;color:var(--text);margin-top:4px;font-size:12.5px}
+@media print{.btn,.recbox{display:none}body{background:#fff}.tw{box-shadow:none}}
 </style>
 </head>
 <body>
@@ -40,6 +47,26 @@ const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const qf=v=>Number.isInteger(Number(v))?String(v):Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:3});
 const fD=s=>{if(!s)return '';const p=String(s).slice(0,10).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:s};
+const fmtDT=s=>{if(!s)return '';const dt=new Date(s);return dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});};
+const NOTIFICAR=['5581992573535','5581994135602']; // comprador (Esdras) + gestor (Wagner)
+function recebimentoHTML(d){
+  if(d.recebimento){const r=d.recebimento;return '<div class="recdone">✅ <b>Recebimento confirmado</b> — '+esc(r.status)+' · por '+esc(r.por||'—')+' em '+fmtDT(r.em)+(r.obs?'<div class="robs">Obs: '+esc(r.obs)+'</div>':'')+'</div>';}
+  return '<div class="recbox"><b>📦 Confirmar recebimento</b><p>Conferente: confira os itens (quantidade, validade, estado) e registre. O comprador e o gestor são avisados automaticamente.</p>'
+    +'<input id="rpor" placeholder="Seu nome (conferente)" />'
+    +'<textarea id="robs" rows="2" placeholder="Observação / divergência (opcional)"></textarea>'
+    +'<div class="rbtns"><button class="rb ok" onclick="confirmarReceb(\'Recebido integral\')">✅ Recebido integral</button><button class="rb warn" onclick="confirmarReceb(\'Recebido parcial\')">🟠 Recebido parcial</button><button class="rb crit" onclick="confirmarReceb(\'Com divergência\')">⚠️ Com divergência</button></div></div>';
+}
+async function confirmarReceb(status){
+  const p=window.__ped; if(!p)return; const d=p.d;
+  const por=(document.getElementById('rpor')||{}).value||''; const obs=(document.getElementById('robs')||{}).value||'';
+  if((status==='Com divergência'||status==='Recebido parcial')&&!obs.trim()){ alert('Descreva a divergência/pendência na observação.'); return; }
+  document.querySelectorAll('.rb').forEach(function(b){b.disabled=true});
+  d.recebimento={status:status,por:por,obs:obs,em:new Date().toISOString()};
+  try{ await fetch(SB+'/rest/v1/app_config?chave=eq.'+encodeURIComponent(p.chave),{method:'PATCH',headers:Object.assign({},H,{'Content-Type':'application/json',Prefer:'return=minimal'}),body:JSON.stringify({valor:d})}); }catch(e){}
+  const msg='✅ *Recebimento confirmado*\n'+(d.fornecedor||'')+' — '+(d.loja||'')+'\nRecebido em '+fmtDT(d.recebimento.em)+(por?' por '+por:'')+'\nValor: '+brl(d.total||0)+' · '+(d.itens||[]).length+' itens\nStatus: *'+status+'*'+(obs?'\n📝 Obs: '+obs:'');
+  for(const f of NOTIFICAR){ try{ await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:f,message:msg})}); }catch(e){} }
+  run();
+}
 
 async function run(){
   if(!P){ document.getElementById('app').innerHTML='<div class="msg">Link inválido — falta o identificador do pedido.</div>'; return; }
@@ -59,7 +86,9 @@ async function run(){
    +'</div>'
    +'<div class="tw"><table><thead><tr><th class="num">#</th><th>Produto</th><th class="num">Qtd</th><th class="num">Valor unit.</th><th class="num">Subtotal</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="4" class="num tl">VALOR TOTAL</td><td class="num tl">'+brl(total)+'</td></tr></tfoot></table></div>'
    +((d.cancelados&&d.cancelados.length)?'<div class="canc">⚠️ Item(ns) CANCELADO(S) — não incluído(s): '+d.cancelados.map(esc).join(', ')+'</div>':'')
+   +recebimentoHTML(d)
    +'<div class="foot">Pedido gerado pelo Painel Amore. Confira quantidades, validade e estado no recebimento. Qualquer divergência, sinalizar ao comprador.</div>';
+  window.__ped={chave:chave,d:d};
   document.title='Pedido '+(d.fornecedor||'')+' — '+(d.loja||'');
 }
 run().catch(function(){document.getElementById('app').innerHTML='<div class="msg">Erro ao carregar o pedido.</div>';});

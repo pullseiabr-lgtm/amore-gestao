@@ -8,7 +8,7 @@ const fmtR$ = (v: number) => (Number(v) || 0).toLocaleString('pt-BR', { style: '
 const fmtD = (s?: string) => { if (!s) return '—'; const p = String(s).slice(0, 10).split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : s }
 
 interface PedidoItem { produto: string; qtd: number; un?: string; preco: number; subtotal?: number }
-interface Pedido { chave: string; fornecedor: string; loja: string; data?: string; total?: number; pagamento?: string; cliente?: string; recebimento_responsavel?: string; itens?: PedidoItem[]; cancelados?: string[] }
+interface Pedido { chave: string; fornecedor: string; loja: string; data?: string; total?: number; pagamento?: string; cliente?: string; recebimento_responsavel?: string; itens?: PedidoItem[]; cancelados?: string[]; recebimento?: { status: string; por?: string; obs?: string; em?: string } }
 
 export default function PedidosPage() {
   const { loja } = useLoja()
@@ -51,6 +51,9 @@ export default function PedidosPage() {
                     {p.loja} · {fmtD(p.data)} · {(p.itens || []).length} itens{p.recebimento_responsavel ? ` · recebe ${p.recebimento_responsavel}` : ''}{p.cancelados && p.cancelados.length ? ` · ⚠ ${p.cancelados.length} cancelado(s)` : ''}
                   </div>
                 </div>
+                {p.recebimento
+                  ? <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: p.recebimento.status === 'Recebido integral' ? '#DCFCE7' : '#FEF3C7', color: p.recebimento.status === 'Recebido integral' ? '#15803D' : '#B45309', whiteSpace: 'nowrap' }} title={`${p.recebimento.por || ''} · ${p.recebimento.em ? new Date(p.recebimento.em).toLocaleString('pt-BR') : ''}${p.recebimento.obs ? ' · ' + p.recebimento.obs : ''}`}>✓ {p.recebimento.status}</span>
+                  : <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: '#E0F2FE', color: '#0369A1', whiteSpace: 'nowrap' }}>Aguardando recebimento</span>}
                 <div style={{ textAlign: 'right', minWidth: 90 }}>
                   <div style={{ fontSize: 16, fontWeight: 800, color: '#8B1212' }}>{fmtR$(p.total || 0)}</div>
                 </div>
