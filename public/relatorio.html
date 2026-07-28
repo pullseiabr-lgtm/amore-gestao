@@ -4,37 +4,53 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="robots" content="noindex,nofollow" />
-<title>Comparativo & Pedidos — Amore</title>
+<title>Gestão de Compras — Cotação × Pedidos — Amore</title>
 <style>
-:root{--vinho:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--shadow:0 1px 2px rgba(80,20,25,.05),0 8px 24px -12px rgba(80,20,25,.12)}
+:root{--vinho:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--bad:#B91C1C;--shadow:0 1px 2px rgba(80,20,25,.05),0 8px 24px -12px rgba(80,20,25,.12)}
 @media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6)}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5;font-variant-numeric:tabular-nums}
-.wrap{max-width:1060px;margin:0 auto;padding:26px 18px 60px}
-header.top{border-bottom:2px solid var(--vinho);padding-bottom:14px;margin-bottom:16px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.wrap{max-width:1080px;margin:0 auto;padding:26px 18px 60px}
+header.top{border-bottom:2px solid var(--vinho);padding-bottom:14px;margin-bottom:8px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
 h1{font-size:22px;margin:6px 0 4px}.sub{color:var(--muted);font-size:13.5px}
 .btn{border:1px solid var(--vinho);background:var(--vinho);color:#fff;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer}
-h2{font-size:17px;margin:26px 0 12px;color:var(--vinho)}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px;margin:16px 0}
+h2{font-size:17px;margin:28px 0 10px;color:var(--vinho)}h2 .h2s{font-size:12.5px;font-weight:500;color:var(--muted)}
+.metabar{display:flex;flex-wrap:wrap;gap:6px 18px;margin:10px 0 4px;font-size:12.5px;color:var(--muted)}.metabar b{color:var(--text)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
 .kpi{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow)}
 .kpi.eco{border-left:4px solid var(--ok)}.kpi.eco .kn{color:var(--ok)}
-.kpi .kn{font-size:22px;font-weight:800}.kpi .kl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.kpi.bad{border-left:4px solid var(--bad)}.kpi.bad .kn{color:var(--bad)}
+.kpi.hl{border-left:4px solid var(--vinho)}
+.kpi .kn{font-size:22px;font-weight:800}.kpi .ks{font-size:12px;font-weight:600;color:var(--muted)}.kpi .kl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
 .tw{overflow-x:auto;border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);background:var(--card)}
-table{width:100%;border-collapse:collapse;font-size:13px;min-width:740px}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:720px}
 thead th{text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
 tbody td{padding:9px 12px;border-bottom:1px solid var(--border)}tbody tr:last-child td{border-bottom:none}
 .num{text-align:right;white-space:nowrap}.prod{font-weight:600}.un{color:var(--muted);font-size:11px}.mut{color:var(--muted)}
 .win{color:var(--ok);font-weight:600}.pr b{color:var(--vinho);font-size:14px}.eco{color:var(--ok);font-weight:700}
 .mc{display:block;font-size:10.5px;color:var(--muted);font-weight:400}.semq,.nocot .prod{color:var(--warn)}.semq{text-align:center;font-size:12px}
+.badge{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap}
+.b-ok{background:#DCFCE7;color:#15803D}.b-no{background:#FEE2E2;color:#B91C1C}.b-warn{background:#FEF3C7;color:#B45309}
+@media(prefers-color-scheme:dark){.b-ok{background:#0f2e1b;color:#4ade80}.b-no{background:#3a1414;color:#f87171}.b-warn{background:#33270a;color:#fbbf24}}
+.medal{font-size:14px}
+.cross-ok{color:var(--ok);font-weight:700}.cross-bad{color:var(--bad);font-weight:700}
 .ped{border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);background:var(--card);margin-bottom:14px;overflow:hidden}
 .phd{padding:12px 16px;background:color-mix(in srgb,var(--vinho) 6%,var(--card));border-bottom:1px solid var(--border);font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .phd .pt{margin-left:auto;font-weight:800;color:var(--vinho);font-size:15px}.pt2 thead th{background:transparent}
-.foot{margin-top:24px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
+details.mtx{margin-top:8px;border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow);overflow:hidden}
+details.mtx>summary{cursor:pointer;padding:13px 16px;font-weight:700;color:var(--vinho);list-style:none}
+details.mtx>summary::-webkit-details-marker{display:none}
+details.mtx>summary::before{content:"▸ ";font-size:12px}details.mtx[open]>summary::before{content:"▾ "}
+.mx{padding:0 16px 12px}.mxitem{border-top:1px solid var(--border);padding:9px 0}.mxitem:first-child{border-top:none}
+.mxitem .nm{font-weight:700;font-size:13.5px;margin-bottom:3px}.mxitem .nm .un{font-weight:400}
+.mxof{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;padding:2px 0;color:var(--muted)}
+.mxof.w{color:var(--ok);font-weight:700}.mxof .df{font-size:11px}
+.note{background:color-mix(in srgb,var(--vinho) 5%,var(--card));border:1px solid var(--border);border-left:3px solid var(--vinho);border-radius:10px;padding:11px 14px;font-size:12.5px;color:var(--muted);margin:10px 0}
+.foot{margin-top:26px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
 .msg{text-align:center;padding:60px 20px;color:var(--muted)}
 /* Mobile: cada linha vira um cartão empilhado — nada fica cortado */
 @media(max-width:680px){
-  .wrap{padding:18px 12px 50px}
-  h1{font-size:19px}
+  .wrap{padding:18px 12px 50px}h1{font-size:19px}
   .tw{overflow:visible;border:none;box-shadow:none;background:transparent;border-radius:0}
   table{min-width:0;font-size:13.5px}
   thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
@@ -43,13 +59,12 @@ tbody td{padding:9px 12px;border-bottom:1px solid var(--border)}tbody tr:last-ch
   tbody tr td:last-child{border-bottom:none}
   tbody td::before{content:attr(data-label);color:var(--muted);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;text-align:left;flex:0 0 auto}
   tbody td:not([data-label])::before{content:""}
-  td.prod{display:block;text-align:left;font-size:15.5px;font-weight:800;border-bottom:2px solid var(--vinho);padding:8px 0 7px;margin-bottom:2px}
+  td.prod{display:block;text-align:left;font-size:15.5px;font-weight:800;border-bottom:2px solid var(--vinho);padding:8px 0 7px}
   td.prod::before{display:none}
-  td.semq{display:block;text-align:center}
-  .num{white-space:normal}
-  .win{align-items:baseline}.mc{margin-top:2px}
+  td.semq{display:block;text-align:center}.num{white-space:normal}.win{align-items:baseline}
   .phd{font-size:13.5px}.phd .pt{font-size:15px}
 }
+@media print{.btn{display:none}body{background:#fff}.tw,.kpi,.ped,details.mtx{box-shadow:none}details.mtx{border:1px solid #ddd}details.mtx[open] .mx{display:block}}
 </style>
 </head>
 <body>
@@ -62,49 +77,162 @@ const q=new URLSearchParams(location.search); const REQ=(q.get('r')||q.get('req'
 const g=async p=>(await fetch(SB+'/rest/v1/'+p,{headers:H})).json();
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-const marca=o=>{try{return JSON.parse(o||'{}').marca||''}catch(e){return ''}};
+const pct=v=>(v>=0?'':'')+v.toFixed(0)+'%';
+const parse=o=>{try{return JSON.parse(o||'{}')}catch(e){return {}}};
+const marca=o=>parse(o).marca||'';
+const norm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+const canon=l=>({'Amore Costa Dourada':'Amore CD','Flow Paiva':'Flow CD'})[l]||l;
+const fmtDMY=s=>{if(!s)return '—';const d=new Date(String(s).length>10?s:s+'T12:00:00');return isNaN(d)?'—':d.toLocaleDateString('pt-BR');};
 const hoje=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
 
 async function run(){
   if(!REQ){ document.getElementById('app').innerHTML='<div class="msg">Link inválido — falta o identificador da requisição.</div>'; return; }
-  const req=(await g('requisicoes?select=numero,titulo,loja&id=eq.'+REQ))[0];
+  const req=(await g('requisicoes?select=*&id=eq.'+REQ))[0];
   if(!req){ document.getElementById('app').innerHTML='<div class="msg">Requisição não encontrada.</div>'; return; }
-  const [itens,cots,forns]=await Promise.all([
+  const [itens,cots,forns,pedRows]=await Promise.all([
     g('requisicao_itens?select=id,produto_nome,quantidade,unidade&requisicao_id=eq.'+REQ+'&order=produto_nome.asc'),
-    g('requisicao_cotacoes?select=id,fornecedor_nome&requisicao_id=eq.'+REQ),
-    g('fornecedores?select=nome,whatsapp,telefone,contato_nome&loja=eq.'+encodeURIComponent(req.loja)+'&limit=2000'),
+    g('requisicao_cotacoes?select=id,fornecedor_nome,status,total,prazo_entrega,observacoes,created_at&requisicao_id=eq.'+REQ),
+    g('fornecedores?select=nome,whatsapp,telefone,contato_nome&limit=3000'),
+    g('app_config?chave=like.pedido_*&select=chave,valor'),
   ]);
   const ids=cots.map(c=>c.id); const nomeCot={}; cots.forEach(c=>nomeCot[c.id]=c.fornecedor_nome);
   const ci=ids.length?await g('requisicao_cotacao_itens?select=cotacao_id,item_id,preco_unitario,disponivel,observacoes&cotacao_id=in.('+ids.join(',')+')'):[];
   const contato={}; forns.forEach(f=>{const k=(f.nome||'').toLowerCase(); if(!contato[k])contato[k]={zap:(f.whatsapp||f.telefone||'').replace(/\D/g,''),vend:f.contato_nome||''}});
+
+  // preços por item
   const of={}; itens.forEach(i=>of[i.id]=[]);
-  ci.forEach(r=>{const pr=Number(r.preco_unitario)||0; if(r.disponivel!==false&&pr>0&&of[r.item_id])of[r.item_id].push({forn:nomeCot[r.cotacao_id],preco:pr,marca:marca(r.observacoes)});});
+  const precosPorCot={};
+  ci.forEach(r=>{const pr=Number(r.preco_unitario)||0; (precosPorCot[r.cotacao_id]=precosPorCot[r.cotacao_id]||[]).push(pr);
+    if(r.disponivel!==false&&pr>0&&of[r.item_id])of[r.item_id].push({forn:nomeCot[r.cotacao_id],preco:pr,marca:marca(r.observacoes)});});
+  const respondeu=c=>(precosPorCot[c.id]||[]).some(p=>p>0);
+
+  // comparativo por item
   const comp=itens.map(i=>{const o=of[i.id].slice().sort((a,b)=>a.preco-b.preco);const win=o[0]||null,seg=o[1]||null;
     const base=win&&seg&&seg.preco<=win.preco*3?seg.preco:0;
     const ecoPct=win&&base>0?((base-win.preco)/base)*100:0, ecoVal=win&&base>0?(base-win.preco)*i.quantidade:0;
-    return {prod:i.produto_nome,qtd:i.quantidade,un:i.unidade,nQ:o.length,win,seg,ecoPct,ecoVal};});
-  const pedidos={}; comp.forEach(c=>{if(!c.win)return;const f=c.win.forn;(pedidos[f]=pedidos[f]||{itens:[],total:0,contato:contato[f.toLowerCase()]||{}});const lt=c.win.preco*c.qtd;pedidos[f].itens.push({prod:c.prod,qtd:c.qtd,un:c.un,preco:c.win.preco,marca:c.win.marca,total:lt});pedidos[f].total+=lt;});
-  const semCot=comp.filter(c=>!c.win);
+    return {id:i.id,prod:i.produto_nome,qtd:i.quantidade,un:i.unidade,nQ:o.length,win,seg,ofs:o,ecoPct,ecoVal};});
+
   const totalGeral=comp.reduce((s,c)=>s+(c.win?c.win.preco*c.qtd:0),0);
   const economia=comp.reduce((s,c)=>s+c.ecoVal,0);
-  const fornsPart=new Set(comp.flatMap(c=>(c.win?[c.win.forn]:[]).concat(c.seg?[c.seg.forn]:[]))).size;
   const cotados=comp.filter(c=>c.win).length;
+  const semCot=comp.filter(c=>!c.win);
+  const enviados=cots.length, responderam=cots.filter(respondeu).length;
+  const naoResp=cots.filter(c=>!respondeu(c)).map(c=>c.fornecedor_nome);
+
+  // ranking de fornecedores
+  const SF={}; cots.forEach(c=>{ if(!SF[c.fornecedor_nome])SF[c.fornecedor_nome]={nome:c.fornecedor_nome,respondeu:respondeu(c),itens:0,vit:0,seg:0,valor:0,cond:parse(c.observacoes)}; });
+  Object.values(of).forEach(arr=>arr.forEach(o=>{ if(SF[o.forn])SF[o.forn].itens++; }));
+  comp.forEach(c=>{ if(c.win&&SF[c.win.forn]){SF[c.win.forn].vit++;SF[c.win.forn].valor+=c.win.preco*c.qtd;} if(c.seg&&SF[c.seg.forn])SF[c.seg.forn].seg++; });
+  const rank=Object.values(SF).sort((a,b)=>b.vit-a.vit||b.valor-a.valor||b.itens-a.itens);
+  const campeao=rank.find(r=>r.vit>0);
+
+  // melhor preço cotado por nome (para cruzar com pedidos) — guarda também a unidade
+  const bestByName={}; comp.forEach(c=>{ if(c.win){const k=norm(c.prod); const cur=bestByName[k]; if(!cur||c.win.preco<cur.preco)bestByName[k]={preco:c.win.preco,forn:c.win.forn,prod:c.prod,un:c.un};}});
+  const bkeys=Object.keys(bestByName);
+  const toks=s=>norm(s).split(' ').filter(t=>t.length>2);
+  // classe de unidade — evita comparar preço por kg com preço por unidade/embalagem
+  const uclass=u=>{const n=norm(u); if(/\bkg\b/.test(n)||/^(quilo|quilos|quilograma|quilogramas|kilo|kilos)$/.test(n))return 'kg'; if(/^(g|grama|gramas)$/.test(n))return 'g'; if(/^(l|litro|litros)$/.test(n))return 'l'; if(/\bml\b/.test(n))return 'ml'; return 'un';};
+  // correspondência forte: nome idêntico OU mesmo 1º termo + ≥2 termos em comum (≥50% de similaridade)
+  const findBest=nm=>{const k=norm(nm); if(bestByName[k])return bestByName[k]; const tk=toks(nm); if(!tk.length)return null;
+    let best=null,bs=0; for(const x of bkeys){const tx=toks(x); if(!tx.length||tx[0]!==tk[0])continue; const common=tk.filter(t=>tx.includes(t)).length; const score=common/Math.max(tk.length,tx.length); if(common>=2&&score>bs){bs=score;best=bestByName[x];}} return bs>=0.5?best:null;};
+
+  // pedidos da mesma loja (cruzamento cotação x compra)
+  const pedidos=(pedRows||[]).map(r=>({chave:r.chave,...(r.valor||{})})).filter(p=>canon(p.loja)===canon(req.loja));
+  const cross=[],diverg=[]; let cPago=0,cMelhor=0,cMatch=0,cAcima=0,cNaoCot=0;
+  pedidos.forEach(p=>{ (p.itens||[]).forEach(it=>{ const pago=Number(it.preco)||0, qtd=Number(it.qtd)||0; if(!it.produto)return; const b=findBest(it.produto);
+    if(!b){cNaoCot++;return;}
+    const difU=pago-b.preco, difP=b.preco>0?difU/b.preco*100:0; const unOk=uclass(it.un)===uclass(b.un);
+    const rec={ped:p.fornecedor,prod:it.produto,qtd:qtd,un:it.un||'',pago:pago,best:b.preco,bforn:b.forn,bun:b.un||'',difU:difU,difP:difP,unOk:unOk};
+    if(!unOk||difP>150||difP<-60){ diverg.push(rec); return; } // provável divergência de unidade/embalagem → fora do cálculo
+    cPago+=pago*qtd; cMelhor+=b.preco*qtd; cMatch++; if(difU>0.001)cAcima++; cross.push(rec);
+  }); });
+  const cDif=cPago-cMelhor; // >0 pagou acima do melhor cotado; <0 comprou igual/abaixo
+
+  // ---- render ----
+  const meta='<div class="metabar"><span>📅 Cotação criada: <b>'+fmtDMY(req.created_at)+'</b></span>'
+    +'<span>🎯 Necessidade/chegada: <b>'+fmtDMY(req.data_necessidade||req.prazo_entrega)+'</b></span>'
+    +'<span>🏬 Loja: <b>'+esc(req.loja)+'</b></span>'+(req.setor?'<span>Setor: <b>'+esc(req.setor)+'</b></span>':'')+'</div>';
+
+  const kpiPart='<div class="kpis">'
+    +'<div class="kpi hl"><div class="kn">'+responderam+'<span class="ks"> / '+enviados+'</span></div><div class="kl">Fornecedores responderam</div></div>'
+    +'<div class="kpi"><div class="kn">'+(enviados?Math.round(responderam/enviados*100):0)+'%</div><div class="kl">Taxa de resposta</div></div>'
+    +'<div class="kpi"><div class="kn">'+cotados+'<span class="ks"> / '+itens.length+'</span></div><div class="kl">Itens com vencedor</div></div>'
+    +'<div class="kpi"><div class="kn">'+brl(totalGeral)+'</div><div class="kl">Total pelos menores preços</div></div>'
+    +'<div class="kpi eco"><div class="kn">'+brl(economia)+'</div><div class="kl">Economia vs 2º melhor</div></div>'
+    +(campeao?'<div class="kpi hl"><div class="kn" style="font-size:16px">🥇 '+esc(campeao.nome)+'</div><div class="kl">'+campeao.vit+' itens vencidos · '+(cotados?Math.round(campeao.vit/cotados*100):0)+'%</div></div>':'')
+    +'</div>'
+    +(naoResp.length?'<div class="note">📮 <b>'+naoResp.length+' fornecedor(es) na cotação não retornaram preços:</b> '+esc(naoResp.slice(0,20).join(', '))+(naoResp.length>20?'…':'')+'</div>':'');
+
+  const rankRows=rank.map(function(r){const p=cotados?r.vit/cotados*100:0;const c=r.cond||{};const cond=[c.condicao_pagamento,c.validade_proposta?('validade '+c.validade_proposta):'',(c.frete?'frete '+brl(c.frete):'')].filter(Boolean).join(' · ');
+    return '<tr><td class="prod">'+(r===campeao&&r.vit>0?'<span class="medal">🥇</span> ':'')+esc(r.nome)+(cond?'<span class="mc">'+esc(cond)+'</span>':'')+'</td>'
+      +'<td data-label="Respondeu">'+(r.respondeu?'<span class="badge b-ok">Respondeu</span>':'<span class="badge b-no">Não respondeu</span>')+'</td>'
+      +'<td class="num" data-label="Itens cotados">'+r.itens+'</td>'
+      +'<td class="num" data-label="Vitórias"><b>'+r.vit+'</b></td>'
+      +'<td class="num eco" data-label="% do total">'+(r.vit?p.toFixed(0)+'%':'—')+'</td>'
+      +'<td class="num" data-label="2º lugar">'+r.seg+'</td>'
+      +'<td class="num pr" data-label="Valor vencido"><b>'+brl(r.valor)+'</b></td></tr>';}).join('');
+  const rankTable='<h2>🏆 Ranking de fornecedores <span class="h2s">— quem cotou, quem respondeu e quem ganhou mais itens</span></h2>'
+    +'<div class="tw"><table><thead><tr><th>Fornecedor</th><th>Status</th><th class="num">Itens cotados</th><th class="num">Vitórias</th><th class="num">% do total</th><th class="num">2º lugar</th><th class="num">Valor vencido</th></tr></thead><tbody>'+rankRows+'</tbody></table></div>';
 
   const compRows=comp.map(c=>{const w=c.win;const flag=w&&c.seg&&w.preco<c.seg.preco*0.4?'<span title="muito abaixo do 2º — conferir" style="color:var(--warn)">⚠ </span>':'';
     return '<tr class="'+(w?'':'nocot')+'"><td class="prod">'+esc(c.prod)+'</td><td class="num" data-label="Qtd">'+c.qtd+' <span class="un">'+esc(c.un)+'</span></td><td class="num" data-label="Cotações">'+(c.nQ||'—')+'</td>'+(w?'<td class="win" data-label="Vencedor">'+flag+'🏆 '+esc(w.forn)+(w.marca?'<span class="mc">'+esc(w.marca)+'</span>':'')+'</td><td class="num pr" data-label="Preço unit."><b>'+brl(w.preco)+'</b></td><td class="num" data-label="Total">'+brl(w.preco*c.qtd)+'</td><td class="num eco" data-label="Economia">'+(c.ecoPct>0?'-'+c.ecoPct.toFixed(0)+'%':'—')+'</td><td class="num mut" data-label="2º menor">'+(c.seg?brl(c.seg.preco):'—')+'</td>':'<td colspan="5" class="semq">Sem cotação válida</td>')+'</tr>';}).join('');
-  const peds=Object.entries(pedidos).sort((a,b)=>b[1].total-a[1].total).map(function(e){const f=e[0],p=e[1];
+  const compTable='<h2>📊 Comparativo — vencedor por item</h2><div class="tw"><table><thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Cot.</th><th>Vencedor (menor preço)</th><th class="num">Unit.</th><th class="num">Total</th><th class="num">Economia</th><th class="num">2º menor</th></tr></thead><tbody>'+compRows+'</tbody></table></div>';
+
+  // matriz de preços entre fornecedores
+  const mtxBody=comp.filter(c=>c.ofs.length>1).map(function(c){const w=c.ofs[0];
+    const rows=c.ofs.map((o,ix)=>{const df=ix===0?'menor':('+'+((o.preco-w.preco)/w.preco*100).toFixed(0)+'%');
+      return '<div class="mxof'+(ix===0?' w':'')+'"><span>'+(ix===0?'🏆 ':'')+esc(o.forn)+(o.marca?' · '+esc(o.marca):'')+'</span><span>'+brl(o.preco)+' <span class="df mut">'+df+'</span></span></div>';}).join('');
+    return '<div class="mxitem"><div class="nm">'+esc(c.prod)+' <span class="un">('+c.ofs.length+' cotações)</span></div>'+rows+'</div>';}).join('');
+  const mtx=mtxBody?'<details class="mtx"><summary>🔍 Comparação de preços entre fornecedores — todos os preços por item ('+comp.filter(c=>c.ofs.length>1).length+' itens com ≥2 cotações)</summary><div class="mx">'+mtxBody+'</div></details>':'';
+
+  // cruzamento cotação x pedidos
+  const crossRows=cross.slice().sort((a,b)=>b.difP-a.difP).map(x=>{const bad=x.difU>0.001;
+    return '<tr><td class="prod">'+esc(x.prod)+'<span class="mc">comprado de '+esc(x.ped)+'</span></td>'
+      +'<td class="num" data-label="Qtd">'+x.qtd+' '+esc(x.un)+'</td>'
+      +'<td class="num pr" data-label="Pago"><b>'+brl(x.pago)+'</b></td>'
+      +'<td class="num" data-label="Melhor cotado">'+brl(x.best)+'<span class="mc">'+esc(x.bforn)+'</span></td>'
+      +'<td class="num '+(bad?'cross-bad':'cross-ok')+'" data-label="Diferença">'+(x.difU>0.001?'+'+x.difP.toFixed(0)+'%':(x.difU<-0.001?x.difP.toFixed(0)+'%':'0%'))+'</td>'
+      +'<td data-label="Veredito">'+(bad?'<span class="badge b-warn">acima da cotação</span>':'<span class="badge b-ok">comprou bem</span>')+'</td></tr>';}).join('');
+  const divRows=diverg.slice().sort((a,b)=>b.pago-a.pago).map(x=>'<div class="mxof"><span>'+esc(x.prod)+' <span class="mut">('+esc(x.ped)+')</span></span><span>pago '+brl(x.pago)+'/'+esc(x.un||'?')+' · cotado '+brl(x.best)+'/'+esc(x.bun||'?')+'</span></div>').join('');
+  let crossSec='';
+  if(pedidos.length){
+    const margem=cMelhor>0?(Math.abs(cDif)/cMelhor*100):0;
+    crossSec='<h2>🔁 Cotação × Pedidos realizados <span class="h2s">— compramos bem? (loja '+esc(req.loja)+')</span></h2>'
+     +'<div class="kpis">'
+     +'<div class="kpi"><div class="kn">'+pedidos.length+'</div><div class="kl">Pedidos na loja</div></div>'
+     +'<div class="kpi"><div class="kn">'+cMatch+'<span class="ks"> itens</span></div><div class="kl">Comparáveis (mesmo produto e unidade)</div></div>'
+     +'<div class="kpi"><div class="kn">'+brl(cPago)+'</div><div class="kl">Pago nos pedidos (comparáveis)</div></div>'
+     +'<div class="kpi"><div class="kn">'+brl(cMelhor)+'</div><div class="kl">Se comprasse pelo melhor cotado</div></div>'
+     +(cDif>0.5?'<div class="kpi bad"><div class="kn">+'+brl(cDif)+'</div><div class="kl">Pago acima do melhor cotado</div></div>'
+        :'<div class="kpi eco"><div class="kn">'+brl(Math.abs(cDif))+'</div><div class="kl">Economia vs cotação</div></div>')
+     +'<div class="kpi'+(cAcima?' bad':' eco')+'"><div class="kn">'+cAcima+'<span class="ks"> / '+cMatch+'</span></div><div class="kl">Itens pagos acima da cotação</div></div>'
+     +'</div>'
+     +(cMatch?'<div class="note">📉 Margem de redução: <b>'+(cDif<=0?'+':'−')+margem.toFixed(1)+'%</b> '+(cDif<=0?'— nas compras comparáveis pagamos igual ou abaixo do melhor preço cotado (compramos bem).':'— nas compras comparáveis pagamos acima do melhor preço cotado; há espaço para renegociar.')+'</div>'
+        :'<div class="note">Ainda não há itens de pedido com correspondência segura (mesmo produto e unidade) na cotação para calcular a margem.</div>')
+     +(crossRows?'<div class="tw"><table><thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Pago</th><th class="num">Melhor cotado</th><th class="num">Dif.</th><th>Veredito</th></tr></thead><tbody>'+crossRows+'</tbody></table></div>':'')
+     +(diverg.length?'<details class="mtx"><summary>⚠ '+diverg.length+' item(ns) a conferir — unidade/embalagem diferente ou variação fora do padrão (não entram no cálculo)</summary><div class="mx" style="padding-top:8px">'+divRows+'</div></details>':'')
+     +(cNaoCot?'<div class="note" style="border-left-color:var(--muted)">'+cNaoCot+' item(ns) comprado(s) não constavam nesta cotação (sem preço para comparar).</div>':'');
+  } else {
+    crossSec='<h2>🔁 Cotação × Pedidos realizados</h2><div class="note">Ainda não há pedidos de compra registrados para <b>'+esc(req.loja)+'</b>. Assim que os pedidos forem gerados, este bloco cruza automaticamente o preço pago com o melhor preço cotado e mostra a margem de redução.</div>';
+  }
+
+  const peds=Object.entries((function(){const P={};comp.forEach(c=>{if(!c.win)return;const f=c.win.forn;(P[f]=P[f]||{itens:[],total:0,contato:contato[f.toLowerCase()]||{}});const lt=c.win.preco*c.qtd;P[f].itens.push({prod:c.prod,qtd:c.qtd,un:c.un,preco:c.win.preco,marca:c.win.marca,total:lt});P[f].total+=lt;});return P;})()).sort((a,b)=>b[1].total-a[1].total).map(function(e){const f=e[0],p=e[1];
     const rows=p.itens.map(i=>'<tr><td class="prod">'+esc(i.prod)+(i.marca?'<span class="mc">'+esc(i.marca)+'</span>':'')+'</td><td class="num" data-label="Qtd">'+i.qtd+' '+esc(i.un)+'</td><td class="num" data-label="Unit.">'+brl(i.preco)+'</td><td class="num" data-label="Total">'+brl(i.total)+'</td></tr>').join('');
     return '<div class="ped"><div class="phd"><b>'+esc(f)+'</b>'+(p.contato.vend?' · '+esc(p.contato.vend):'')+(p.contato.zap?' · 📲 '+esc(p.contato.zap):'')+'<span class="pt">'+brl(p.total)+'</span></div><table class="pt2"><thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Unit.</th><th class="num">Total</th></tr></thead><tbody>'+rows+'</tbody></table></div>';}).join('');
 
   document.getElementById('app').innerHTML=
-   '<header class="top"><div><div class="eyebrow">Compras Amore · Comparativo & Pedidos</div><h1>Melhor preço por item — '+esc(req.loja)+'</h1><div class="sub">REQ-'+String(req.numero||'').padStart(4,'0')+' '+esc(req.titulo||'')+' · '+fornsPart+' fornecedores · '+cotados+'/'+itens.length+' itens com vencedor · '+hoje+'</div></div><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></header>'
-   +'<div class="kpis"><div class="kpi"><div class="kn">'+fornsPart+'</div><div class="kl">Fornecedores participantes</div></div><div class="kpi"><div class="kn">'+cotados+'/'+itens.length+'</div><div class="kl">Itens com vencedor</div></div><div class="kpi"><div class="kn">'+brl(totalGeral)+'</div><div class="kl">Total (menores preços)</div></div><div class="kpi eco"><div class="kn">'+brl(economia)+'</div><div class="kl">Economia vs 2º melhor preço</div></div></div>'
-   +'<h2>🏆 Comparativo — vencedor por item</h2><div class="tw"><table><thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Cot.</th><th>Vencedor (menor preço)</th><th class="num">Unit.</th><th class="num">Total</th><th class="num">Economia</th><th class="num">2º menor</th></tr></thead><tbody>'+compRows+'</tbody></table></div>'
+   '<header class="top"><div><div class="eyebrow">Compras Amore · Gestão de Compras</div><h1>Cotação × Pedidos — '+esc(req.loja)+'</h1><div class="sub">REQ-'+String(req.numero||'').padStart(4,'0')+' '+esc(req.titulo||'')+' · '+hoje+'</div></div><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></header>'
+   +meta
+   +'<h2>📈 Participação & resultado da cotação</h2>'+kpiPart
+   +rankTable
+   +compTable
+   +mtx
+   +crossSec
    +'<h2>🧾 Pedidos por fornecedor (prontos para enviar)</h2>'+(peds||'<p class="mut">Nenhum item com vencedor ainda.</p>')
    +(semCot.length?'<h2>⚠ Itens sem cotação ('+semCot.length+')</h2><div class="tw"><table><tbody>'+semCot.map(c=>'<tr><td class="prod">'+esc(c.prod)+'</td><td class="num" data-label="Qtd">'+c.qtd+' '+esc(c.un)+'</td></tr>').join('')+'</tbody></table></div>':'')
-   +'<div class="foot">Vencedor = menor preço unitário válido. "Economia" = redução vs o 2º melhor preço (preços mais de 3× acima do menor são ignorados como possível erro). "⚠" = preço muito abaixo do 2º menor. <b>Confira os preços com os fornecedores antes de fechar o pedido.</b> Painel Amore · '+hoje+'</div>';
+   +'<div class="foot"><b>Metodologia:</b> "Responderam" = fornecedores com pelo menos 1 preço lançado. "Vitórias" = itens em que o fornecedor teve o menor preço. "Economia vs 2º" = redução do vencedor frente ao 2º melhor preço (preços 3× acima do menor são ignorados como possível erro). "Cotação × Pedidos" cruza o preço pago nos pedidos de compra da loja com o melhor preço cotado (correspondência por nome do produto). <b>Confira os preços com os fornecedores antes de fechar o pedido.</b> Painel Amore · '+hoje+'</div>';
 }
-run().catch(function(e){document.getElementById('app').innerHTML='<div class="msg">Erro ao carregar o relatório. Tente novamente.</div>';});
+run().catch(function(e){document.getElementById('app').innerHTML='<div class="msg">Erro ao carregar o relatório: '+esc(e&&e.message||e)+'</div>';});
 </script>
 </body>
 </html>
