@@ -6,6 +6,7 @@ import { useToast } from '../../hooks/useToast'
 import { fetchRequisicoes, insertRequisicao, insertReqTimeline } from '../../lib/db'
 import AnaliseCotacao from '../../components/cotacao/AnaliseCotacao'
 import CotacaoExterna from '../../components/cotacao/CotacaoExterna'
+import { enviarWhatsApp } from '../../lib/notify'
 import type { Requisicao } from '../../types/database'
 
 const fmtR$ = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -38,6 +39,27 @@ export default function CotacaoPage() {
   const [novaTitulo, setNovaTitulo] = useState('')
   const [novaSetor, setNovaSetor] = useState('')
   const [criando, setCriando] = useState(false)
+  const [mEnviar, setMEnviar] = useState(false)
+  const [fonesRel, setFonesRel] = useState(() => localStorage.getItem('compras_relat_fones') || '5581992573535\n5581994135602')
+  const [revisado, setRevisado] = useState(false)
+  const [enviandoRel, setEnviandoRel] = useState(false)
+
+  const linkRelatorio = (r: Requisicao) => `${window.location.origin}/relatorio.html?r=${r.id}`
+  const enviarRelatorio = async () => {
+    if (!sel) return
+    const nums = fonesRel.split(/[\n,;]+/).map(s => s.replace(/\D/g, '')).filter(n => n.length >= 10)
+    if (!nums.length) { toast('Informe ao menos um WhatsApp com DDD.'); return }
+    setEnviandoRel(true)
+    try {
+      const msg = `📊 *Relatório de Compras — ${sel.loja}*\nREQ-${String(sel.numero).padStart(4, '0')} · ${sel.titulo}\n\nComparativo de preços + pedidos por fornecedor (revisado pelo comprador):\n${linkRelatorio(sel)}`
+      let ok = 0
+      for (const n of nums) { if (await enviarWhatsApp(n, msg)) ok++ }
+      localStorage.setItem('compras_relat_fones', fonesRel)
+      toast(`Relatório enviado para ${ok} de ${nums.length} número(s). ✅`)
+      setMEnviar(false); setRevisado(false)
+    } catch { toast('Não foi possível enviar.') }
+    finally { setEnviandoRel(false) }
+  }
 
   const lojaAlvo = loja && loja !== 'Todas as Lojas' ? loja : ''
 
@@ -94,10 +116,15 @@ export default function CotacaoPage() {
               {sel.loja}{sel.setor ? ` · ${sel.setor}` : ''} · Solicitante {sel.responsavel_nome} · Prazo {fmtDt(sel.prazo_entrega)}
             </div>
           </div>
-          <button onClick={() => window.open(`${window.location.origin}/relatorio.html?r=${sel.id}`, '_blank')}
+          <button onClick={() => window.open(linkRelatorio(sel), '_blank')}
             title="Abrir o relatório (comparativo de preços + pedidos por fornecedor) em nova aba — dá pra imprimir e compartilhar o link"
             style={{ background: 'rgba(255,255,255,.18)', border: 'none', color: '#fff', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600 }}>
             📊 Relatório & Pedidos
+          </button>
+          <button onClick={() => { setRevisado(false); setMEnviar(true) }}
+            title="Revisar e depois enviar o link do relatório por WhatsApp ao comprador/gestor"
+            style={{ background: 'rgba(255,255,255,.18)', border: 'none', color: '#fff', borderRadius: 9, padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600 }}>
+            📤 Enviar relatório
           </button>
           <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: st.bg, color: st.c }}>{st.l}</span>
         </div>
@@ -106,6 +133,35 @@ export default function CotacaoPage() {
           req={sel} loja={sel.loja} userName={user?.name || 'Sistema'}
           toast={toast} onAtualizar={load}
         />
+
+        {mEnviar && (
+          <div style={{ position: 'fixed', inset: 0, background: '#0008', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setMEnviar(false)}>
+            <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 460 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <strong style={{ fontSize: 16 }}>📤 Enviar relatório</strong>
+                <button onClick={() => setMEnviar(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={18} /></button>
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
+                Antes de disparar, <strong>revise o comparativo e os pedidos</strong>. O envio só libera depois de abrir o relatório.
+              </div>
+              <button onClick={() => { window.open(linkRelatorio(sel), '_blank'); setRevisado(true) }}
+                style={{ width: '100%', padding: '11px', borderRadius: 10, border: '1px solid var(--border)', background: revisado ? '#ECFDF3' : 'var(--bg)', color: revisado ? '#067647' : 'var(--text)', cursor: 'pointer', fontWeight: 600, fontSize: 14, marginBottom: 14 }}>
+                {revisado ? '✓ Relatório revisado — abrir de novo' : '👁 Abrir relatório para revisar'}
+              </button>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Enviar para (um WhatsApp por linha, com DDD)</label>
+              <textarea value={fonesRel} onChange={e => setFonesRel(e.target.value)} rows={3}
+                placeholder="5581999999999" style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>Comprador e gestor de compras já preenchidos — pode editar/adicionar.</div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, alignItems: 'center' }}>
+                {!revisado && <span style={{ fontSize: 11.5, color: '#B45309', marginRight: 'auto' }}>Revise o relatório para liberar o envio</span>}
+                <button className="btn" onClick={() => setMEnviar(false)} style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', padding: '9px 16px' }}>Cancelar</button>
+                <button className="btn" onClick={enviarRelatorio} disabled={!revisado || enviandoRel} style={{ padding: '9px 16px', opacity: (!revisado || enviandoRel) ? .5 : 1 }}>
+                  {enviandoRel ? 'Enviando…' : '📲 Enviar link'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
