@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { ClipboardList, RefreshCw, ExternalLink, Loader2, Package, Plus, Trash2, X, Send } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useLoja } from '../../contexts/LojaContext'
+import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../hooks/useToast'
 import { fetchFornecedores, fetchProdutos, insertProduto } from '../../lib/db'
@@ -13,7 +14,7 @@ const sb = supabase as any
 const fmtR$ = (v: number) => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtD = (s?: string) => { if (!s) return '—'; const p = String(s).slice(0, 10).split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : s }
 const slugify = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 36)
-const LOJAS = ['Amore Paiva', 'Amore Costa Dourada', 'Flow Paiva']
+const LOJAS_FALLBACK = ['Amore CD', 'Amore Paiva', 'Flow CD']
 
 interface PedidoItem { produto: string; qtd: number; un?: string; preco: number; subtotal?: number }
 interface Pedido { chave: string; fornecedor: string; loja: string; data?: string; total?: number; pagamento?: string; cliente?: string; recebimento_responsavel?: string; itens?: PedidoItem[]; cancelados?: string[]; recebimento?: { status: string; por?: string; obs?: string; em?: string } }
@@ -22,6 +23,8 @@ const linhaVazia = (): Linha => ({ produto: '', qtd: '1', un: 'Unidade(s)', prec
 
 export default function PedidosPage() {
   const { loja } = useLoja()
+  const { theme } = useTheme()
+  const LOJAS = (theme?.stores && theme.stores.length ? theme.stores : LOJAS_FALLBACK)
   const { user } = useAuth()
   const { toast } = useToast()
   const [pedidos, setPedidos] = useState<Pedido[]>([])
