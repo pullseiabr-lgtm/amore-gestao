@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Pedido de Compra — Amore</title>
+<style>
+:root{--vinho:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--shadow:0 1px 2px rgba(80,20,25,.05),0 8px 24px -12px rgba(80,20,25,.12)}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6)}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5;font-variant-numeric:tabular-nums}
+.wrap{max-width:760px;margin:0 auto;padding:26px 18px 60px}
+header.top{border-bottom:2px solid var(--vinho);padding-bottom:14px;margin-bottom:14px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
+h1{font-size:22px;margin:6px 0 4px}.sub{color:var(--muted);font-size:13px}
+.btn{border:1px solid var(--vinho);background:var(--vinho);color:#fff;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0 18px}
+.meta div{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 12px}
+.meta .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.meta .v{font-weight:600;font-size:14px}
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);background:var(--card)}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:480px}
+thead th{text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody td{padding:10px 12px;border-bottom:1px solid var(--border)}tbody tr:last-child td{border-bottom:none}
+.num{text-align:right;white-space:nowrap}.prod{font-weight:600}.un{color:var(--muted);font-size:11px}
+tfoot td{padding:12px;font-weight:800;font-size:15px;border-top:2px solid var(--border)}tfoot .tl{color:var(--vinho)}
+.canc{margin-top:14px;padding:11px 14px;border-radius:12px;background:color-mix(in srgb,var(--warn) 10%,var(--card));border:1px solid color-mix(in srgb,var(--warn) 35%,var(--border));color:var(--warn);font-size:13px;font-weight:600}
+.foot{margin-top:22px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
+.msg{text-align:center;padding:60px 20px;color:var(--muted)}
+@media print{.btn{display:none}body{background:#fff}.tw{box-shadow:none}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Carregando pedido…</div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY};
+const q=new URLSearchParams(location.search); const P=(q.get('p')||'').trim();
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const qf=v=>Number.isInteger(Number(v))?String(v):Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:3});
+const fD=s=>{if(!s)return '';const p=String(s).slice(0,10).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:s};
+
+async function run(){
+  if(!P){ document.getElementById('app').innerHTML='<div class="msg">Link inválido — falta o identificador do pedido.</div>'; return; }
+  const chave = P.startsWith('pedido_')?P:('pedido_'+P);
+  const row=(await (await fetch(SB+'/rest/v1/app_config?select=valor&chave=eq.'+encodeURIComponent(chave),{headers:H})).json())[0];
+  if(!row){ document.getElementById('app').innerHTML='<div class="msg">Pedido não encontrado.</div>'; return; }
+  const d=row.valor;
+  const rows=(d.itens||[]).map((i,n)=>'<tr><td class="num">'+(n+1)+'</td><td class="prod">'+esc(i.produto)+'</td><td class="num">'+qf(i.qtd)+' <span class="un">'+esc(i.un||'')+'</span></td><td class="num">'+brl(i.preco)+'</td><td class="num">'+brl(i.subtotal!=null?i.subtotal:(i.preco*i.qtd))+'</td></tr>').join('');
+  const total=d.total!=null?d.total:(d.itens||[]).reduce((s,i)=>s+(i.subtotal!=null?i.subtotal:i.preco*i.qtd),0);
+  document.getElementById('app').innerHTML=
+   '<header class="top"><div><div class="eyebrow">Amore · Pedido de Compra</div><h1>'+esc(d.fornecedor||'Fornecedor')+'</h1><div class="sub">'+esc(d.loja||'')+' · '+fD(d.data)+(d.pagamento?' · '+esc(d.pagamento):'')+'</div></div><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></header>'
+   +'<div class="meta">'
+     +(d.cliente?'<div><div class="l">Cliente</div><div class="v">'+esc(d.cliente)+'</div></div>':'')
+     +'<div><div class="l">Itens</div><div class="v">'+(d.itens||[]).length+'</div></div>'
+     +(d.recebimento_responsavel?'<div><div class="l">Recebimento</div><div class="v">'+esc(d.recebimento_responsavel)+'</div></div>':'')
+     +'<div><div class="l">Total</div><div class="v" style="color:var(--vinho)">'+brl(total)+'</div></div>'
+   +'</div>'
+   +'<div class="tw"><table><thead><tr><th class="num">#</th><th>Produto</th><th class="num">Qtd</th><th class="num">Valor unit.</th><th class="num">Subtotal</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="4" class="num tl">VALOR TOTAL</td><td class="num tl">'+brl(total)+'</td></tr></tfoot></table></div>'
+   +((d.cancelados&&d.cancelados.length)?'<div class="canc">⚠️ Item(ns) CANCELADO(S) — não incluído(s): '+d.cancelados.map(esc).join(', ')+'</div>':'')
+   +'<div class="foot">Pedido gerado pelo Painel Amore. Confira quantidades, validade e estado no recebimento. Qualquer divergência, sinalizar ao comprador.</div>';
+  document.title='Pedido '+(d.fornecedor||'')+' — '+(d.loja||'');
+}
+run().catch(function(){document.getElementById('app').innerHTML='<div class="msg">Erro ao carregar o pedido.</div>';});
+</script>
+</body>
+</html>
