@@ -4,10 +4,10 @@ import { supabase } from '../../lib/supabase'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../hooks/useToast'
-import { fetchFornecedores } from '../../lib/db'
+import { fetchFornecedores, fetchProdutos, insertProduto } from '../../lib/db'
 import { enviarWhatsApp } from '../../lib/notify'
 import { UNIDADES } from '../../lib/catalogo'
-import type { Fornecedor } from '../../types/database'
+import type { Fornecedor, Produto } from '../../types/database'
 
 const sb = supabase as any
 const fmtR$ = (v: number) => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -38,6 +38,7 @@ export default function PedidosPage() {
   const [fCliente, setFCliente] = useState('')
   const [fReceb, setFReceb] = useState('')
   const [linhas, setLinhas] = useState<Linha[]>([linhaVazia()])
+  const [produtosLoja, setProdutosLoja] = useState<Produto[]>([])
   // envio do link
   const [fornMap, setFornMap] = useState<Record<string, string>>({})
   const [profMap, setProfMap] = useState<Record<string, string>>({})
@@ -56,6 +57,7 @@ export default function PedidosPage() {
   }, [])
   useEffect(() => { load() }, [load])
   useEffect(() => { fetchFornecedores(fLoja).then(f => setForns(f.filter(x => x.ativo !== false))).catch(() => setForns([])) }, [fLoja])
+  useEffect(() => { if (!mNovo) return; fetchProdutos(fLoja, { ativo: true }).then(setProdutosLoja).catch(() => setProdutosLoja([])) }, [mNovo, fLoja])
   useEffect(() => { (async () => {
     const [{ data: fs }, { data: ps }] = await Promise.all([
       sb.from('fornecedores').select('nome,loja,whatsapp,telefone'),
@@ -107,11 +109,29 @@ export default function PedidosPage() {
     if (!itens.length) { toast('Adicione ao menos 1 item com quantidade.', 'error'); return }
     setSalvando(true)
     try {
+      // cadastra produtos novos (nome não existente na loja) com nome + embalagem
+      const existentes = new Set(produtosLoja.map(p => p.nome.trim().toLowerCase()))
+      const novos = itens.filter(it => !existentes.has(it.produto.toLowerCase()))
+      let cadastrados = 0
+      for (const it of novos) {
+        try {
+          await insertProduto({
+            loja: fLoja, codigo_interno: 'PED-' + Date.now().toString(36).slice(-4).toUpperCase() + Math.floor(Math.random() * 900 + 100),
+            nome: it.produto.toUpperCase(), descricao: null, categoria_id: null, categoria_nome: 'Cadastrado via Pedido',
+            gramatura: null, unidade: it.un, marca_id: null, marca_nome: null, imagem_url: null, ativo: true,
+            estoque_atual: 0, estoque_minimo: 0, status_homologacao: 'homologado', feedback_teste: null,
+            data_inicio_teste: null, aprovado_por: null, aprovacao_at: null, created_by: user?.name ?? 'Pedido',
+            ultimo_preco_compra: it.preco || null, preco_anterior_compra: null, data_ultima_compra: fData,
+            fornecedor_padrao_id: null, fornecedor_padrao_nome: fForn.trim() || null, preco_venda: null, disponivel_pdv: false,
+          } as any)
+          cadastrados++
+        } catch { /* nome duplicado / código repetido — ignora e segue o pedido */ }
+      }
       const total = Math.round(itens.reduce((s, i) => s + i.subtotal, 0) * 100) / 100
       const chave = `pedido_${slugify(fForn)}_${slugify(fLoja)}_${Date.now().toString(36).slice(-6)}`
       const valor = { fornecedor: fForn.trim(), loja: fLoja, data: fData, pagamento: fPagto || null, cliente: fCliente || null, recebimento_responsavel: fReceb || null, itens, total, cancelados: [], em: new Date().toISOString(), created_by: user?.name || 'Painel' }
       await sb.from('app_config').upsert({ chave, valor }, { onConflict: 'chave' })
-      toast('Pedido gerado. ✅')
+      toast(cadastrados ? `Pedido gerado. ✅ ${cadastrados} produto(s) novo(s) cadastrado(s).` : 'Pedido gerado. ✅')
       setMNovo(false); resetForm(); await load()
     } catch (e) { toast('Não foi possível gerar o pedido.', 'error') }
     finally { setSalvando(false) }
@@ -201,8 +221,18 @@ export default function PedidosPage() {
                 <tbody>
                   {linhas.map((l, i) => {
                     const sub = (Number(l.qtd) || 0) * (Number(l.preco) || 0)
+                    const nomeTrim = l.produto.trim().toLowerCase()
+                    const existe = !!nomeTrim && produtosLoja.some(p => p.nome.trim().toLowerCase() === nomeTrim)
+                    const novo = !!nomeTrim && !existe
                     return <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                      <td style={{ padding: 6 }}><input value={l.produto} onChange={e => setLinha(i, { produto: e.target.value })} placeholder="Produto" style={{ ...inp, width: '100%' }} /></td>
+                      <td style={{ padding: 6 }}>
+                        <input list="prod-list" value={l.produto} onChange={e => {
+                          const v = e.target.value
+                          const prod = produtosLoja.find(p => p.nome.trim().toLowerCase() === v.trim().toLowerCase())
+                          setLinha(i, { produto: v, ...(prod ? { un: prod.unidade || l.un, ...(!l.preco && prod.ultimo_preco_compra ? { preco: String(prod.ultimo_preco_compra) } : {}) } : {}) })
+                        }} placeholder="Produto (busque ou digite um novo)" style={{ ...inp, width: '100%' }} />
+                        {novo && <div style={{ fontSize: 10.5, color: '#15803D', marginTop: 3, fontWeight: 600 }}>✨ Produto novo — será cadastrado na loja</div>}
+                      </td>
                       <td style={{ padding: 6 }}><input type="number" min={0} step="0.001" value={l.qtd} onChange={e => setLinha(i, { qtd: e.target.value })} style={{ ...inp, width: 74 }} /></td>
                       <td style={{ padding: 6 }}><select value={l.un} onChange={e => setLinha(i, { un: e.target.value })} style={{ ...inp, width: 114 }}>{UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}</select></td>
                       <td style={{ padding: 6 }}><input type="number" min={0} step="0.01" value={l.preco} onChange={e => setLinha(i, { preco: e.target.value })} placeholder="0,00" style={{ ...inp, width: 94 }} /></td>
@@ -212,7 +242,9 @@ export default function PedidosPage() {
                   })}
                 </tbody>
               </table>
+              <datalist id="prod-list">{produtosLoja.map(p => <option key={p.id} value={p.nome}>{p.unidade ? `${p.unidade}${p.ultimo_preco_compra ? ' · últ. ' + fmtR$(p.ultimo_preco_compra) : ''}` : ''}</option>)}</datalist>
             </div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>💡 {produtosLoja.length} produtos cadastrados em <strong>{fLoja}</strong>. Escolha da lista (a embalagem e o último preço entram sozinhos) ou digite um nome novo — na hora de gerar, o produto novo é cadastrado com a embalagem escolhida.</div>
             <button onClick={() => setLinhas(ls => [...ls, linhaVazia()])} style={{ marginTop: 8, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Plus size={14} /> Adicionar item</button>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, flexWrap: 'wrap', gap: 10 }}>
