@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ClipboardList, RefreshCw, ExternalLink, Loader2, Package, Plus, Trash2, X } from 'lucide-react'
+import { ClipboardList, RefreshCw, ExternalLink, Loader2, Package, Plus, Trash2, X, Send } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../hooks/useToast'
 import { fetchFornecedores } from '../../lib/db'
+import { enviarWhatsApp } from '../../lib/notify'
 import { UNIDADES } from '../../lib/catalogo'
 import type { Fornecedor } from '../../types/database'
 
@@ -37,6 +38,14 @@ export default function PedidosPage() {
   const [fCliente, setFCliente] = useState('')
   const [fReceb, setFReceb] = useState('')
   const [linhas, setLinhas] = useState<Linha[]>([linhaVazia()])
+  // envio do link
+  const [fornMap, setFornMap] = useState<Record<string, string>>({})
+  const [profMap, setProfMap] = useState<Record<string, string>>({})
+  const [mEnviar, setMEnviar] = useState(false)
+  const [pedSel, setPedSel] = useState<Pedido | null>(null)
+  const [foneForn, setFoneForn] = useState('')
+  const [foneReceb, setFoneReceb] = useState('')
+  const [enviandoP, setEnviandoP] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -47,9 +56,43 @@ export default function PedidosPage() {
   }, [])
   useEffect(() => { load() }, [load])
   useEffect(() => { fetchFornecedores(fLoja).then(f => setForns(f.filter(x => x.ativo !== false))).catch(() => setForns([])) }, [fLoja])
+  useEffect(() => { (async () => {
+    const [{ data: fs }, { data: ps }] = await Promise.all([
+      sb.from('fornecedores').select('nome,loja,whatsapp,telefone'),
+      sb.from('profiles').select('name,permissions_override'),
+    ])
+    const fm: Record<string, string> = {}; (fs || []).forEach((f: any) => { const k = f.loja + '|' + (f.nome || '').toLowerCase(); if (!fm[k]) fm[k] = (f.whatsapp || f.telefone || '').replace(/\D/g, '') })
+    setFornMap(fm)
+    const pm: Record<string, string> = {}; (ps || []).forEach((p: any) => { const perf = p.permissions_override?.__perfil__ || {}; if (p.name) pm[p.name.toLowerCase()] = String(perf.whatsapp || perf.telefone || '').replace(/\D/g, '') })
+    setProfMap(pm)
+  })() }, [])
 
   const filtrados = pedidos.filter(p => loja === 'Todas as Lojas' || !loja || p.loja === loja)
   const link = (p: Pedido) => `${window.location.origin}/pedido.html?p=${encodeURIComponent(p.chave.replace(/^pedido_/, ''))}`
+
+  const abrirEnviar = (p: Pedido) => {
+    setPedSel(p)
+    setFoneForn(fornMap[p.loja + '|' + (p.fornecedor || '').toLowerCase()] || '')
+    setFoneReceb(profMap[(p.recebimento_responsavel || '').toLowerCase()] || '')
+    setMEnviar(true)
+  }
+  const enviarPedido = async () => {
+    if (!pedSel) return
+    const ff = foneForn.replace(/\D/g, ''), fr = foneReceb.replace(/\D/g, '')
+    if (ff.length < 10 && fr.length < 10) { toast('Informe ao menos um WhatsApp com DDD.', 'error'); return }
+    setEnviandoP(true)
+    try {
+      const l = link(pedSel)
+      const msgF = `🧾 *Pedido de Compra — ${pedSel.loja}*\nFornecedor: ${pedSel.fornecedor}${pedSel.pagamento ? ` · ${pedSel.pagamento}` : ''}\n\nSegue nosso pedido (${(pedSel.itens || []).length} itens · ${fmtR$(pedSel.total || 0)}). Abra o link:\n${l}\n📍 Entrega ${pedSel.loja}${pedSel.recebimento_responsavel ? ` · Recebimento: ${pedSel.recebimento_responsavel}` : ''}\n— Compras Amore`
+      const msgR = `📦 *Pedido a receber — ${pedSel.loja}*\nFornecedor: ${pedSel.fornecedor} · ${fmtR$(pedSel.total || 0)}\n\nConfira na chegada (link com a lista organizada):\n${l}\n— Compras Amore`
+      let ok = 0, alvos = 0
+      if (ff.length >= 10) { alvos++; if (await enviarWhatsApp(ff, msgF)) ok++ }
+      if (fr.length >= 10) { alvos++; if (await enviarWhatsApp(fr, msgR)) ok++ }
+      toast(`Link enviado para ${ok} de ${alvos} destino(s). ✅`)
+      setMEnviar(false)
+    } catch { toast('Não foi possível enviar.', 'error') }
+    finally { setEnviandoP(false) }
+  }
 
   const setLinha = (i: number, patch: Partial<Linha>) => setLinhas(ls => ls.map((l, j) => j === i ? { ...l, ...patch } : l))
   const totalForm = linhas.reduce((s, l) => s + (Number(l.qtd) || 0) * (Number(l.preco) || 0), 0)
@@ -109,9 +152,12 @@ export default function PedidosPage() {
                 <div style={{ textAlign: 'right', minWidth: 90 }}>
                   <div style={{ fontSize: 16, fontWeight: 800, color: '#8B1212' }}>{fmtR$(p.total || 0)}</div>
                 </div>
-                <a href={link(p)} target="_blank" rel="noreferrer" className="btn" style={{ padding: '8px 14px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <ExternalLink size={15} /> Abrir pedido
+                <a href={link(p)} target="_blank" rel="noreferrer" className="btn" style={{ padding: '8px 14px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+                  <ExternalLink size={15} /> Abrir
                 </a>
+                <button onClick={() => abrirEnviar(p)} className="btn" style={{ padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Send size={15} /> Enviar
+                </button>
               </div>
             ))}
           </div>}
@@ -175,6 +221,30 @@ export default function PedidosPage() {
                 <button className="btn" onClick={() => setMNovo(false)} style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', padding: '9px 16px' }}>Cancelar</button>
                 <button className="btn" onClick={salvar} disabled={salvando} style={{ padding: '9px 18px', opacity: salvando ? .6 : 1 }}>{salvando ? 'Gerando…' : '✅ Gerar pedido'}</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: enviar link do pedido */}
+      {mEnviar && pedSel && (
+        <div style={{ position: 'fixed', inset: 0, background: '#0008', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setMEnviar(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 460 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <strong style={{ fontSize: 16 }}>📤 Enviar pedido</strong>
+              <button onClick={() => setMEnviar(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={18} /></button>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
+              {pedSel.fornecedor} · {pedSel.loja} · {fmtR$(pedSel.total || 0)} — dispara o <strong>link do pedido</strong> por WhatsApp.
+            </div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Fornecedor ({pedSel.fornecedor})</label>
+            <input value={foneForn} onChange={e => setFoneForn(e.target.value)} placeholder="WhatsApp do fornecedor c/ DDD" style={{ ...inp, width: '100%', marginBottom: 4 }} />
+            {!foneForn && <div style={{ fontSize: 11, color: '#B45309', marginBottom: 8 }}>Sem WhatsApp cadastrado — digite para enviar.</div>}
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', margin: '10px 0 4px' }}>Recebimento{pedSel.recebimento_responsavel ? ` (${pedSel.recebimento_responsavel})` : ''}</label>
+            <input value={foneReceb} onChange={e => setFoneReceb(e.target.value)} placeholder="WhatsApp do responsável c/ DDD" style={{ ...inp, width: '100%' }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button className="btn" onClick={() => setMEnviar(false)} style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', padding: '9px 16px' }}>Cancelar</button>
+              <button className="btn" onClick={enviarPedido} disabled={enviandoP} style={{ padding: '9px 16px', opacity: enviandoP ? .6 : 1 }}>{enviandoP ? 'Enviando…' : '📲 Enviar link'}</button>
             </div>
           </div>
         </div>
