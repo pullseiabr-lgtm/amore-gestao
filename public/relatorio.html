@@ -31,7 +31,25 @@ tbody td{padding:9px 12px;border-bottom:1px solid var(--border)}tbody tr:last-ch
 .phd .pt{margin-left:auto;font-weight:800;color:var(--vinho);font-size:15px}.pt2 thead th{background:transparent}
 .foot{margin-top:24px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
 .msg{text-align:center;padding:60px 20px;color:var(--muted)}
-@media print{.btn{display:none}body{background:#fff}.tw,.kpi,.ped{box-shadow:none}}
+/* Mobile: cada linha vira um cartão empilhado — nada fica cortado */
+@media(max-width:680px){
+  .wrap{padding:18px 12px 50px}
+  h1{font-size:19px}
+  .tw{overflow:visible;border:none;box-shadow:none;background:transparent;border-radius:0}
+  table{min-width:0;font-size:13.5px}
+  thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  tbody tr{display:block;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:4px 14px;margin-bottom:12px}
+  tbody td{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:7px 0;border-bottom:1px dashed var(--border);text-align:right;white-space:normal}
+  tbody tr td:last-child{border-bottom:none}
+  tbody td::before{content:attr(data-label);color:var(--muted);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;text-align:left;flex:0 0 auto}
+  tbody td:not([data-label])::before{content:""}
+  td.prod{display:block;text-align:left;font-size:15.5px;font-weight:800;border-bottom:2px solid var(--vinho);padding:8px 0 7px;margin-bottom:2px}
+  td.prod::before{display:none}
+  td.semq{display:block;text-align:center}
+  .num{white-space:normal}
+  .win{align-items:baseline}.mc{margin-top:2px}
+  .phd{font-size:13.5px}.phd .pt{font-size:15px}
+}
 </style>
 </head>
 <body>
@@ -73,9 +91,9 @@ async function run(){
   const cotados=comp.filter(c=>c.win).length;
 
   const compRows=comp.map(c=>{const w=c.win;const flag=w&&c.seg&&w.preco<c.seg.preco*0.4?'<span title="muito abaixo do 2º — conferir" style="color:var(--warn)">⚠ </span>':'';
-    return '<tr class="'+(w?'':'nocot')+'"><td class="prod">'+esc(c.prod)+'</td><td class="num">'+c.qtd+' <span class="un">'+esc(c.un)+'</span></td><td class="num">'+(c.nQ||'—')+'</td>'+(w?'<td class="win">'+flag+'🏆 '+esc(w.forn)+(w.marca?'<span class="mc">'+esc(w.marca)+'</span>':'')+'</td><td class="num pr"><b>'+brl(w.preco)+'</b></td><td class="num">'+brl(w.preco*c.qtd)+'</td><td class="num eco">'+(c.ecoPct>0?'-'+c.ecoPct.toFixed(0)+'%':'—')+'</td><td class="num mut">'+(c.seg?brl(c.seg.preco):'—')+'</td>':'<td colspan="5" class="semq">Sem cotação válida</td>')+'</tr>';}).join('');
+    return '<tr class="'+(w?'':'nocot')+'"><td class="prod">'+esc(c.prod)+'</td><td class="num" data-label="Qtd">'+c.qtd+' <span class="un">'+esc(c.un)+'</span></td><td class="num" data-label="Cotações">'+(c.nQ||'—')+'</td>'+(w?'<td class="win" data-label="Vencedor">'+flag+'🏆 '+esc(w.forn)+(w.marca?'<span class="mc">'+esc(w.marca)+'</span>':'')+'</td><td class="num pr" data-label="Preço unit."><b>'+brl(w.preco)+'</b></td><td class="num" data-label="Total">'+brl(w.preco*c.qtd)+'</td><td class="num eco" data-label="Economia">'+(c.ecoPct>0?'-'+c.ecoPct.toFixed(0)+'%':'—')+'</td><td class="num mut" data-label="2º menor">'+(c.seg?brl(c.seg.preco):'—')+'</td>':'<td colspan="5" class="semq">Sem cotação válida</td>')+'</tr>';}).join('');
   const peds=Object.entries(pedidos).sort((a,b)=>b[1].total-a[1].total).map(function(e){const f=e[0],p=e[1];
-    const rows=p.itens.map(i=>'<tr><td>'+esc(i.prod)+(i.marca?'<span class="mc">'+esc(i.marca)+'</span>':'')+'</td><td class="num">'+i.qtd+' '+esc(i.un)+'</td><td class="num">'+brl(i.preco)+'</td><td class="num">'+brl(i.total)+'</td></tr>').join('');
+    const rows=p.itens.map(i=>'<tr><td class="prod">'+esc(i.prod)+(i.marca?'<span class="mc">'+esc(i.marca)+'</span>':'')+'</td><td class="num" data-label="Qtd">'+i.qtd+' '+esc(i.un)+'</td><td class="num" data-label="Unit.">'+brl(i.preco)+'</td><td class="num" data-label="Total">'+brl(i.total)+'</td></tr>').join('');
     return '<div class="ped"><div class="phd"><b>'+esc(f)+'</b>'+(p.contato.vend?' · '+esc(p.contato.vend):'')+(p.contato.zap?' · 📲 '+esc(p.contato.zap):'')+'<span class="pt">'+brl(p.total)+'</span></div><table class="pt2"><thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Unit.</th><th class="num">Total</th></tr></thead><tbody>'+rows+'</tbody></table></div>';}).join('');
 
   document.getElementById('app').innerHTML=
@@ -83,7 +101,7 @@ async function run(){
    +'<div class="kpis"><div class="kpi"><div class="kn">'+fornsPart+'</div><div class="kl">Fornecedores participantes</div></div><div class="kpi"><div class="kn">'+cotados+'/'+itens.length+'</div><div class="kl">Itens com vencedor</div></div><div class="kpi"><div class="kn">'+brl(totalGeral)+'</div><div class="kl">Total (menores preços)</div></div><div class="kpi eco"><div class="kn">'+brl(economia)+'</div><div class="kl">Economia vs 2º melhor preço</div></div></div>'
    +'<h2>🏆 Comparativo — vencedor por item</h2><div class="tw"><table><thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Cot.</th><th>Vencedor (menor preço)</th><th class="num">Unit.</th><th class="num">Total</th><th class="num">Economia</th><th class="num">2º menor</th></tr></thead><tbody>'+compRows+'</tbody></table></div>'
    +'<h2>🧾 Pedidos por fornecedor (prontos para enviar)</h2>'+(peds||'<p class="mut">Nenhum item com vencedor ainda.</p>')
-   +(semCot.length?'<h2>⚠ Itens sem cotação ('+semCot.length+')</h2><div class="tw"><table><tbody>'+semCot.map(c=>'<tr><td class="prod">'+esc(c.prod)+'</td><td class="num">'+c.qtd+' '+esc(c.un)+'</td></tr>').join('')+'</tbody></table></div>':'')
+   +(semCot.length?'<h2>⚠ Itens sem cotação ('+semCot.length+')</h2><div class="tw"><table><tbody>'+semCot.map(c=>'<tr><td class="prod">'+esc(c.prod)+'</td><td class="num" data-label="Qtd">'+c.qtd+' '+esc(c.un)+'</td></tr>').join('')+'</tbody></table></div>':'')
    +'<div class="foot">Vencedor = menor preço unitário válido. "Economia" = redução vs o 2º melhor preço (preços mais de 3× acima do menor são ignorados como possível erro). "⚠" = preço muito abaixo do 2º menor. <b>Confira os preços com os fornecedores antes de fechar o pedido.</b> Painel Amore · '+hoje+'</div>';
 }
 run().catch(function(e){document.getElementById('app').innerHTML='<div class="msg">Erro ao carregar o relatório. Tente novamente.</div>';});
