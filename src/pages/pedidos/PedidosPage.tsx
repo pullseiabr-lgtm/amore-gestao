@@ -15,6 +15,7 @@ const fmtR$ = (v: number) => (Number(v) || 0).toLocaleString('pt-BR', { style: '
 const fmtD = (s?: string) => { if (!s) return '—'; const p = String(s).slice(0, 10).split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : s }
 const slugify = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 36)
 const LOJAS_FALLBACK = ['Amore CD', 'Amore Paiva', 'Flow CD']
+const DRAFT_KEY = 'pedido_rascunho_v1'
 
 interface PedidoItem { produto: string; qtd: number; un?: string; preco: number; subtotal?: number }
 interface Pedido { chave: string; fornecedor: string; loja: string; data?: string; total?: number; pagamento?: string; cliente?: string; recebimento_responsavel?: string; itens?: PedidoItem[]; cancelados?: string[]; recebimento?: { status: string; por?: string; obs?: string; em?: string } }
@@ -101,7 +102,33 @@ export default function PedidosPage() {
 
   const setLinha = (i: number, patch: Partial<Linha>) => setLinhas(ls => ls.map((l, j) => j === i ? { ...l, ...patch } : l))
   const totalForm = linhas.reduce((s, l) => s + (Number(l.qtd) || 0) * (Number(l.preco) || 0), 0)
-  const resetForm = () => { setFForn(''); setFCliente(''); setFReceb(''); setFPagto('à vista'); setFData(new Date().toISOString().slice(0, 10)); setLinhas([linhaVazia()]) }
+  const resetForm = () => { setFForn(''); setFCliente(''); setFReceb(''); setFPagto('à vista'); setFData(new Date().toISOString().slice(0, 10)); setLinhas([linhaVazia()]); try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ } }
+
+  // salva rascunho automaticamente enquanto o modal está aberto (não perde o pedido se fechar)
+  useEffect(() => {
+    if (!mNovo) return
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ fForn, fLoja, fData, fPagto, fCliente, fReceb, linhas })) } catch { /* ignore */ }
+  }, [mNovo, fForn, fLoja, fData, fPagto, fCliente, fReceb, linhas])
+
+  const abrirNovo = () => {
+    let restaurou = false
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY)
+      if (raw) {
+        const d = JSON.parse(raw)
+        const temItens = Array.isArray(d.linhas) && d.linhas.some((l: any) => (l?.produto || '').trim())
+        if (temItens || (d.fForn || '').trim()) {
+          setFForn(d.fForn || ''); setFLoja(d.fLoja || lojaDef); setFData(d.fData || new Date().toISOString().slice(0, 10))
+          setFPagto(d.fPagto || 'à vista'); setFCliente(d.fCliente || ''); setFReceb(d.fReceb || '')
+          setLinhas(Array.isArray(d.linhas) && d.linhas.length ? d.linhas : [linhaVazia()])
+          restaurou = true
+        }
+      }
+    } catch { /* ignore */ }
+    if (!restaurou) { resetForm(); setFLoja(lojaDef) }
+    setMNovo(true)
+    if (restaurou) setTimeout(() => toast('📝 Rascunho recuperado — continue de onde parou.'), 300)
+  }
 
   const salvar = async () => {
     if (!fForn.trim()) { toast('Informe o fornecedor.', 'error'); return }
@@ -113,7 +140,7 @@ export default function PedidosPage() {
     setSalvando(true)
     try {
       // cadastra produtos novos (nome não existente na loja) com nome + embalagem
-      const existentes = new Set(produtosLoja.map(p => p.nome.trim().toLowerCase()))
+      const existentes = new Set(produtosLoja.map(p => (p.nome || '').trim().toLowerCase()))
       const novos = itens.filter(it => !existentes.has(it.produto.toLowerCase()))
       let cadastrados = 0
       for (const it of novos) {
@@ -151,13 +178,13 @@ export default function PedidosPage() {
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Pedidos de Compra</h2>
           <div style={{ fontSize: 13, opacity: 0.85 }}>Gere o pedido, abra o link (imprimir/compartilhar) e acompanhe o recebimento — Loja <strong>{loja}</strong></div>
         </div>
-        <button className="btn" onClick={() => { resetForm(); setFLoja(lojaDef); setMNovo(true) }} style={{ padding: '9px 15px', background: '#fff', color: '#8B1212' }}><Plus size={16} /> Novo pedido</button>
+        <button className="btn" onClick={abrirNovo} style={{ padding: '9px 15px', background: '#fff', color: '#8B1212' }}><Plus size={16} /> Novo pedido</button>
         <button onClick={load} title="Atualizar" style={{ background: 'rgba(255,255,255,.18)', border: 'none', color: '#fff', borderRadius: 10, padding: '9px 11px', cursor: 'pointer' }}><RefreshCw size={16} /></button>
       </div>
 
       {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><Loader2 className="spin" size={26} /></div>
         : filtrados.length === 0 ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 13, border: '1px dashed var(--border)', borderRadius: 10 }}>
-            Nenhum pedido nesta loja ainda. <button className="btn" onClick={() => { resetForm(); setMNovo(true) }} style={{ padding: '7px 14px', marginLeft: 8 }}><Plus size={14} /> Novo pedido</button>
+            Nenhum pedido nesta loja ainda. <button className="btn" onClick={abrirNovo} style={{ padding: '7px 14px', marginLeft: 8 }}><Plus size={14} /> Novo pedido</button>
           </div>
         : <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {filtrados.map(p => (
@@ -187,11 +214,11 @@ export default function PedidosPage() {
 
       {/* Modal: novo pedido manual */}
       {mNovo && (
-        <div style={{ position: 'fixed', inset: 0, background: '#0008', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflowY: 'auto' }} onClick={() => setMNovo(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 720, margin: '24px 0' }}>
+        <div style={{ position: 'fixed', inset: 0, background: '#0008', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
+          <div style={{ background: 'var(--card)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 720, margin: '24px 0' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
               <strong style={{ fontSize: 16 }}>🧾 Novo pedido de compra</strong>
-              <button onClick={() => setMNovo(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={18} /></button>
+              <button onClick={() => setMNovo(false)} title="Fechar (mantém o rascunho)" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={18} /></button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 14 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>Fornecedor *
@@ -224,14 +251,14 @@ export default function PedidosPage() {
                 <tbody>
                   {linhas.map((l, i) => {
                     const sub = (Number(l.qtd) || 0) * (Number(l.preco) || 0)
-                    const nomeTrim = l.produto.trim().toLowerCase()
-                    const existe = !!nomeTrim && produtosLoja.some(p => p.nome.trim().toLowerCase() === nomeTrim)
+                    const nomeTrim = (l.produto || '').trim().toLowerCase()
+                    const existe = !!nomeTrim && produtosLoja.some(p => (p.nome || '').trim().toLowerCase() === nomeTrim)
                     const novo = !!nomeTrim && !existe
                     return <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
                       <td style={{ padding: 6 }}>
                         <input list="prod-list" value={l.produto} onChange={e => {
                           const v = e.target.value
-                          const prod = produtosLoja.find(p => p.nome.trim().toLowerCase() === v.trim().toLowerCase())
+                          const prod = produtosLoja.find(p => (p.nome || '').trim().toLowerCase() === v.trim().toLowerCase())
                           setLinha(i, { produto: v, ...(prod ? { un: prod.unidade || l.un, ...(!l.preco && prod.ultimo_preco_compra ? { preco: String(prod.ultimo_preco_compra) } : {}) } : {}) })
                         }} placeholder="Produto (busque ou digite um novo)" style={{ ...inp, width: '100%' }} />
                         {novo && <div style={{ fontSize: 10.5, color: '#15803D', marginTop: 3, fontWeight: 600 }}>✨ Produto novo — será cadastrado na loja</div>}
@@ -245,15 +272,16 @@ export default function PedidosPage() {
                   })}
                 </tbody>
               </table>
-              <datalist id="prod-list">{produtosLoja.map(p => <option key={p.id} value={p.nome}>{p.unidade ? `${p.unidade}${p.ultimo_preco_compra ? ' · últ. ' + fmtR$(p.ultimo_preco_compra) : ''}` : ''}</option>)}</datalist>
+              <datalist id="prod-list">{produtosLoja.filter(p => p.nome).map(p => <option key={p.id} value={p.nome}>{p.unidade ? `${p.unidade}${p.ultimo_preco_compra ? ' · últ. ' + fmtR$(p.ultimo_preco_compra) : ''}` : ''}</option>)}</datalist>
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>💡 {produtosLoja.length} produtos cadastrados em <strong>{fLoja}</strong>. Escolha da lista (a embalagem e o último preço entram sozinhos) ou digite um nome novo — na hora de gerar, o produto novo é cadastrado com a embalagem escolhida.</div>
             <button onClick={() => setLinhas(ls => [...ls, linhaVazia()])} style={{ marginTop: 8, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Plus size={14} /> Adicionar item</button>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, flexWrap: 'wrap', gap: 10 }}>
-              <div style={{ fontSize: 17, fontWeight: 800 }}>Total: <span style={{ color: '#8B1212' }}>{fmtR$(totalForm)}</span></div>
+              <div style={{ fontSize: 17, fontWeight: 800 }}>Total: <span style={{ color: '#8B1212' }}>{fmtR$(totalForm)}</span> <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--muted)' }}>· {linhas.filter(l => (l.produto || '').trim()).length} itens · rascunho salvo automaticamente</span></div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn" onClick={() => setMNovo(false)} style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', padding: '9px 16px' }}>Cancelar</button>
+                <button className="btn" onClick={() => { if (linhas.some(l => (l.produto || '').trim()) && !confirm('Limpar todos os itens deste pedido? Não dá para desfazer.')) return; resetForm() }} style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', padding: '9px 16px' }} title="Apaga tudo e começa do zero">🗑️ Limpar</button>
+                <button className="btn" onClick={() => setMNovo(false)} style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', padding: '9px 16px' }} title="Fecha sem perder — o rascunho fica salvo">Fechar</button>
                 <button className="btn" onClick={salvar} disabled={salvando} style={{ padding: '9px 18px', opacity: salvando ? .6 : 1 }}>{salvando ? 'Gerando…' : '✅ Gerar pedido'}</button>
               </div>
             </div>
