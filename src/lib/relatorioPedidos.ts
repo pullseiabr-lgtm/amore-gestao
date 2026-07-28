@@ -31,9 +31,11 @@ export async function gerarRelatorioPedidos(req: { id: string; numero?: number; 
 
   const comp = (itens || []).map((i: any) => {
     const of = ofertas[i.id].slice().sort((a, b) => a.preco - b.preco)
-    const win2 = of[0] || null, seg = of[1] || null, maior = of.length ? of[of.length - 1].preco : 0
-    const ecoPct = win2 && of.length >= 2 && maior > 0 ? ((maior - win2.preco) / maior) * 100 : 0
-    const ecoVal = win2 && of.length >= 2 ? (maior - win2.preco) * i.quantidade : 0
+    const win2 = of[0] || null, seg = of[1] || null
+    // Economia = redução vs o 2º melhor preço; ignora 2º preço absurdo (>3x o menor = provável erro de digitação)
+    const baseSeg = win2 && seg && seg.preco <= win2.preco * 3 ? seg.preco : 0
+    const ecoPct = win2 && baseSeg > 0 ? ((baseSeg - win2.preco) / baseSeg) * 100 : 0
+    const ecoVal = win2 && baseSeg > 0 ? (baseSeg - win2.preco) * i.quantidade : 0
     return { prod: i.produto_nome, qtd: i.quantidade, un: i.unidade, nQ: of.length, win: win2, seg, ecoPct, ecoVal }
   })
   const pedidos: Record<string, { itens: any[]; total: number; contato: any }> = {}
@@ -87,14 +89,14 @@ tbody td{padding:9px 12px;border-bottom:1px solid var(--border)}tbody tr:last-ch
 <div class="kpi"><div class="kn">${fornsPart}</div><div class="kl">Fornecedores participantes</div></div>
 <div class="kpi"><div class="kn">${cotados}/${(itens || []).length}</div><div class="kl">Itens com vencedor</div></div>
 <div class="kpi"><div class="kn">${brl(totalGeral)}</div><div class="kl">Total (menores preços)</div></div>
-<div class="kpi eco"><div class="kn">${brl(economia)}</div><div class="kl">Economia vs maior preço cotado</div></div>
+<div class="kpi eco"><div class="kn">${brl(economia)}</div><div class="kl">Economia vs 2º melhor preço</div></div>
 </div>
 <h2>🏆 Comparativo — vencedor por item</h2>
 <div class="tw"><table><thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Cot.</th><th>Vencedor (menor preço)</th><th class="num">Unit.</th><th class="num">Total</th><th class="num">Economia</th><th class="num">2º menor</th></tr></thead><tbody>${compRows}</tbody></table></div>
 <h2>🧾 Pedidos por fornecedor (prontos para enviar)</h2>
 ${peds || '<p class="mut">Nenhum item com vencedor ainda.</p>'}
 ${semCot.length ? `<h2>⚠ Itens sem cotação (${semCot.length})</h2><div class="tw"><table><tbody>${semCot.map((c: any) => `<tr><td class="prod">${esc(c.prod)}</td><td class="num">${c.qtd} ${esc(c.un)}</td></tr>`).join('')}</tbody></table></div>` : ''}
-<div class="foot">Vencedor = menor preço unitário válido. "Economia" = redução do menor preço vs o maior preço cotado do item. "⚠" = preço muito abaixo do 2º menor (conferir possível erro). Gerado pelo Painel Amore em ${hoje}.</div>
+<div class="foot">Vencedor = menor preço unitário válido. "Economia" = redução vs o 2º melhor preço (preços mais de 3× acima do menor são ignorados como possível erro). "⚠" = preço muito abaixo do 2º menor. <b>Confira os preços com os fornecedores antes de fechar o pedido.</b> Gerado pelo Painel Amore em ${hoje}.</div>
 </div></body></html>`
 
   if (win) { win.document.open(); win.document.write(html); win.document.close() }
