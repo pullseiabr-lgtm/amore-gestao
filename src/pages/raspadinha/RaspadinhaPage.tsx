@@ -45,9 +45,17 @@ export default function RaspadinhaPage() {
 
   const loadBloq = useCallback(async () => { setBloq(await fetchRaspBloqueio()) }, [])
 
+  const [resgates, setResgates] = useState<Record<string, any>>({})
+  const loadResgates = useCallback(async () => {
+    const { data } = await sb.from('app_config').select('chave,valor').like('chave', 'resgate_%')
+    const m: Record<string, any> = {}; (data || []).forEach((r: any) => { m[r.chave.replace(/^resgate_/, '')] = r.valor || {} })
+    setResgates(m)
+  }, [])
+
   useEffect(() => { loadCamps() }, [loadCamps])
   useEffect(() => { loadCamp() }, [loadCamp])
   useEffect(() => { loadBloq() }, [loadBloq])
+  useEffect(() => { loadResgates() }, [loadResgates])
 
   const camp = campanhas.find(c => c.id === campId)
   const kpi = useMemo(() => {
@@ -129,27 +137,28 @@ export default function RaspadinhaPage() {
 
       {tab === 'gerenciar' && <GerenciarTab premios={premios} bloq={bloq} userName={userName} toast={toast} onDone={() => { loadCamp(); loadBloq() }} />}
 
-      {tab === 'validar' && <ValidarTab validador={user?.name || (user as any)?.email || 'Atendente'} toast={toast} onDone={loadCamp} />}
+      {tab === 'validar' && <ValidarTab validador={user?.name || (user as any)?.email || 'Atendente'} toast={toast} onDone={() => { loadCamp(); loadResgates() }} />}
 
       {tab === 'participantes' && <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <b style={{ fontSize: 14 }}>Participantes ({parts.length})</b>
-          <button onClick={() => exportCsv(parts)} style={{ padding: '.45rem .9rem', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 13 }}>⬇ Exportar CSV</button>
+          <button onClick={() => exportCsv(parts, resgates)} style={{ padding: '.45rem .9rem', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 13 }}>⬇ Exportar CSV</button>
         </div>
         <div style={{ overflowX: 'auto', marginTop: 10 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 640 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 720 }}>
             <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 12, textTransform: 'uppercase' }}>
-              <th style={{ padding: 8 }}>Data</th><th>Cliente</th><th>WhatsApp</th><th>Unidade</th><th>Prêmio</th><th>Cupom</th><th>Status</th>
+              <th style={{ padding: 8 }}>Data</th><th>Cliente</th><th>WhatsApp</th><th>Unidade</th><th>Prêmio</th><th>Cupom</th><th>Status</th><th>Retirada</th>
             </tr></thead>
             <tbody>
-              {parts.length === 0 ? <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>Nenhuma participação ainda.</td></tr> :
-                parts.map(p => <tr key={p.id} style={{ borderTop: '1px solid #f3f4f6' }}>
+              {parts.length === 0 ? <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>Nenhuma participação ainda.</td></tr> :
+                parts.map(p => { const rg = p.cupom ? resgates[p.cupom] : null; return <tr key={p.id} style={{ borderTop: '1px solid #f3f4f6' }}>
                   <td style={{ padding: 8, whiteSpace: 'nowrap' }}>{fmtDT(p.created_at)}</td>
                   <td style={{ fontWeight: 600 }}>{p.nome}</td><td>{p.telefone}</td><td>{p.unidade}</td>
                   <td>{p.ganhou ? p.premio_nome : '—'}</td>
                   <td style={{ fontFamily: 'monospace' }}>{p.cupom || '—'}</td>
                   <td><span style={{ background: (STATUS_COR[p.status] || '#9ca3af') + '22', color: STATUS_COR[p.status] || '#6b7280', padding: '.2rem .6rem', borderRadius: 20, fontSize: 12, fontWeight: 600 }}>{p.status}</span></td>
-                </tr>)}
+                  <td style={{ fontSize: 12, color: '#6b7280' }}>{p.status === 'resgatado' ? (rg ? <>{rg.recebido_por ? <b style={{ color: '#374151' }}>{rg.recebido_por}</b> : <span style={{ color: '#9ca3af' }}>—</span>}{rg.obs ? <div style={{ fontStyle: 'italic' }}>{rg.obs}</div> : null}{rg.por ? <div style={{ fontSize: 11, color: '#9ca3af' }}>baixa: {rg.por}{rg.em ? ' · ' + fmtDT(rg.em) : ''}</div> : null}</> : <span style={{ color: '#9ca3af' }}>—</span>) : ''}</td>
+                </tr> })}
             </tbody>
           </table>
         </div>
@@ -622,6 +631,8 @@ function GerenciarTab({ premios, bloq, userName, toast, onDone }: { premios: any
 
 function ValidarTab({ validador, toast, onDone }: { validador: string; toast: (m: string, t?: any) => void; onDone: () => void }) {
   const [codigo, setCodigo] = useState('')
+  const [recebido, setRecebido] = useState('')
+  const [obs, setObs] = useState('')
   const [res, setRes] = useState<any>(null)
   const [busy, setBusy] = useState(false)
   const validar = async () => {
@@ -630,18 +641,31 @@ function ValidarTab({ validador, toast, onDone }: { validador: string; toast: (m
     try {
       const { data, error } = await sb.rpc('rasp_resgatar', { p_cupom: cod, p_validador: validador })
       if (error) { setRes({ erro: 'falha' }) }
-      else { setRes(data); if (data.ok) { toast('Cupom resgatado! ✅'); onDone() } }
+      else if (data.ok) {
+        const valor = { cupom: cod, recebido_por: recebido.trim() || null, obs: obs.trim() || null, por: validador, em: new Date().toISOString() }
+        try { await sb.from('app_config').upsert({ chave: 'resgate_' + cod, valor }, { onConflict: 'chave' }) } catch { /* registro da baixa é best-effort */ }
+        setRes({ ...data, _recebido: valor.recebido_por, _obs: valor.obs })
+        toast('Cupom resgatado! ✅'); setCodigo(''); setRecebido(''); setObs(''); onDone()
+      } else {
+        // já resgatado / erro: tenta trazer a observação registrada na baixa
+        let extra = {}
+        if (data.erro === 'ja_resgatado') { try { const r = await sb.from('app_config').select('valor').eq('chave', 'resgate_' + cod).maybeSingle(); if (r.data?.valor) extra = { _recebido: r.data.valor.recebido_por, _obs: r.data.valor.obs } } catch { /* ignore */ } }
+        setRes({ ...data, ...extra })
+      }
     } catch { setRes({ erro: 'falha' }) }
     setBusy(false)
   }
   const ERRMSG: Record<string, string> = { cupom_inexistente: 'Cupom não encontrado.', ja_resgatado: 'Este cupom JÁ foi resgatado.', expirado: 'Cupom expirado.', cupom_cancelado: 'Cupom cancelado.', cupom_bloqueado: 'Cupom bloqueado.', falha: 'Erro ao validar. Tente novamente.' }
+  const inp: React.CSSProperties = { width: '100%', padding: '.7rem .9rem', border: '1px solid #e5e7eb', borderRadius: 10, fontSize: 14, marginTop: 8, boxSizing: 'border-box' }
   return <div style={{ maxWidth: 460, margin: '0 auto' }}>
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 16, padding: '1.6rem', textAlign: 'center' }}>
       <Ticket size={34} style={{ color: '#8B1212' }} />
       <h3 style={{ color: '#8B1212', margin: '.5rem 0 .2rem' }}>Validar cupom</h3>
       <p style={{ fontSize: 13, color: '#9ca3af', marginBottom: 16 }}>Digite o código apresentado pelo cliente.</p>
       <input value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} onKeyDown={e => e.key === 'Enter' && validar()} placeholder="AMR-XXX-XXXX"
-        style={{ width: '100%', padding: '.9rem 1rem', border: '2px solid #e5e7eb', borderRadius: 12, fontSize: 20, fontWeight: 700, textAlign: 'center', letterSpacing: '.05em', fontFamily: 'monospace' }} />
+        style={{ width: '100%', padding: '.9rem 1rem', border: '2px solid #e5e7eb', borderRadius: 12, fontSize: 20, fontWeight: 700, textAlign: 'center', letterSpacing: '.05em', fontFamily: 'monospace', boxSizing: 'border-box' }} />
+      <input value={recebido} onChange={e => setRecebido(e.target.value)} placeholder="Quem retirou (nome) — opcional" style={inp} />
+      <input value={obs} onChange={e => setObs(e.target.value)} placeholder="Observação da retirada — opcional" style={inp} />
       <button onClick={validar} disabled={busy} style={{ width: '100%', marginTop: 12, padding: '1rem', border: 'none', borderRadius: 12, background: '#8B1212', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>{busy ? 'Verificando…' : 'Validar e utilizar'}</button>
       {res && <div style={{ marginTop: 18, padding: '1.1rem', borderRadius: 12, background: res.ok ? '#ECFDF3' : '#FEF2F2', border: `1px solid ${res.ok ? '#A6F4C5' : '#FCA5A5'}` }}>
         {res.ok ? <>
@@ -649,19 +673,23 @@ function ValidarTab({ validador, toast, onDone }: { validador: string; toast: (m
           <div style={{ fontSize: 18, fontWeight: 800, color: '#067647', marginTop: 6 }}>Resgate confirmado!</div>
           <div style={{ fontSize: 15, marginTop: 4 }}><b>{res.premio}</b></div>
           <div style={{ fontSize: 13, color: '#6b7280' }}>Cliente: {res.nome} · {res.unidade}</div>
+          {res._recebido && <div style={{ fontSize: 13, color: '#374151', marginTop: 4 }}>Retirado por: <b>{res._recebido}</b></div>}
+          {res._obs && <div style={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>Obs.: {res._obs}</div>}
         </> : <>
           <XCircle size={40} style={{ color: '#EF4444' }} />
           <div style={{ fontSize: 16, fontWeight: 700, color: '#B42318', marginTop: 6 }}>{ERRMSG[res.erro] || 'Não foi possível resgatar.'}</div>
           {res.resgatado_em && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Resgatado em {fmtDT(res.resgatado_em)} por {res.validado_por}</div>}
+          {res._recebido && <div style={{ fontSize: 12, color: '#6b7280' }}>Retirado por: {res._recebido}</div>}
+          {res._obs && <div style={{ fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>Obs.: {res._obs}</div>}
         </>}
       </div>}
     </div>
   </div>
 }
 
-function exportCsv(parts: any[]) {
-  const head = ['Data', 'Nome', 'WhatsApp', 'Unidade', 'Premio', 'Cupom', 'Status', 'Validade']
-  const linhas = parts.map(p => [fmtDT(p.created_at), p.nome, p.telefone, p.unidade, p.ganhou ? p.premio_nome : '', p.cupom || '', p.status, fmtD(p.validade)].map(x => `"${(x || '').toString().replace(/"/g, '""')}"`).join(','))
+function exportCsv(parts: any[], resgates: Record<string, any> = {}) {
+  const head = ['Data', 'Nome', 'WhatsApp', 'Unidade', 'Premio', 'Cupom', 'Status', 'Validade', 'Retirado por', 'Obs. retirada', 'Baixa por']
+  const linhas = parts.map(p => { const rg = (p.cupom && resgates[p.cupom]) || {}; return [fmtDT(p.created_at), p.nome, p.telefone, p.unidade, p.ganhou ? p.premio_nome : '', p.cupom || '', p.status, fmtD(p.validade), rg.recebido_por || '', rg.obs || '', rg.por || ''].map(x => `"${(x || '').toString().replace(/"/g, '""')}"`).join(',') })
   const csv = [head.join(','), ...linhas].join('\n')
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'raspadinha_participantes.csv'; a.click()
