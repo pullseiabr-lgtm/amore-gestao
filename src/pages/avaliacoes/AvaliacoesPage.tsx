@@ -166,7 +166,10 @@ export default function AvaliacoesPage() {
           {kcard('Avaliações', kpi.total, `${kpi.semana} nesta semana`)}
           {kcard('Nota média', kpi.notaM.toFixed(1) + ' ⭐', 'de 5,0', '#F59E0B')}
           {kcard('Satisfação', kpi.pctSat + '%', `${kpi.sat} satisfeitos`, '#10B981')}
-          {kcard('Foram ao Google', kpi.google, `${kpi.convGoogle}% de conversão`, '#3B82F6')}
+          {kcard('Encaminhados ao Google', kpi.google, `${kpi.convGoogle}% dos satisfeitos clicaram`, '#3B82F6')}
+        </div>
+        <div style={{ ...card, marginBottom: 14, borderLeft: '3px solid #3B82F6', fontSize: 12.5, color: '#6b7280' }}>
+          ℹ️ <b>"Encaminhados ao Google"</b> conta quem <b>clicou no botão "Avaliar no Google"</b> no funil — é a intenção, não a avaliação publicada. Esse número é naturalmente <b>maior</b> que o total real de avaliações no Google (parte dos clientes clica e não posta). Para comparar com o Google, use o total real que aparece na página do estabelecimento.
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ ...card, flex: 2, minWidth: 280 }}>
@@ -203,7 +206,7 @@ export default function AvaliacoesPage() {
         <b style={{ fontSize: 14 }}>Ranking de garçons — gamificação (+10 por avaliação Google, +2 por satisfeito)</b>
         <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12, fontSize: 14 }}>
           <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 12, textTransform: 'uppercase' }}>
-            <th style={{ padding: 8 }}>#</th><th>Garçom</th><th>Avaliações</th><th>Nota média</th><th>Satisfação</th><th>Google</th><th>Pontos</th>
+            <th style={{ padding: 8 }}>#</th><th>Garçom</th><th>Avaliações</th><th>Nota média</th><th>Satisfação</th><th>Encam. Google</th><th>Pontos</th>
           </tr></thead>
           <tbody>
             {ranking.length === 0 ? <tr><td colSpan={7} style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>Sem dados no período.</td></tr> :
@@ -273,7 +276,7 @@ export default function AvaliacoesPage() {
                     Atend. {f.nota_atendimento ?? '–'}⭐ · Comida {f.nota_comida ?? '–'}⭐ · Agil. {f.nota_agilidade ?? '–'}⭐
                     {f.voltaria === false && <span style={{ color: '#B91C1C', fontWeight: 600 }}> · não voltaria</span>}
                     {f.motivo && <span style={{ color: '#B91C1C' }}> · {f.motivo}</span>}
-                    {f.foi_google && <span style={{ color: '#3B82F6' }}> · avaliou no Google ✓</span>}
+                    {f.foi_google && <span style={{ color: '#3B82F6' }}> · clicou p/ avaliar no Google ✓</span>}
                   </div>
                   {f.observacoes && <div style={{ fontSize: 13, color: '#374151', marginTop: 6, padding: '.5rem .7rem', background: '#fff', borderRadius: 8, borderLeft: '3px solid #6B1212', fontStyle: 'italic' }}>💬 “{f.observacoes}”</div>}
                 </div>
