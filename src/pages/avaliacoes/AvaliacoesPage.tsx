@@ -34,6 +34,11 @@ export default function AvaliacoesPage() {
   const [config, setConfig] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [meta, setMeta] = useState<number>(() => Number(localStorage.getItem('amore_fb_meta') || 100))
+  const [googleReal, setGoogleReal] = useState<Record<string, any>>({})
+  const loadGoogleReal = useCallback(async () => {
+    const { data } = await sb.from('app_config').select('valor').eq('chave', 'google_real').maybeSingle()
+    setGoogleReal(data?.valor || {})
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -49,6 +54,7 @@ export default function AvaliacoesPage() {
   }, [toast])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { loadGoogleReal() }, [loadGoogleReal])
 
   // Alerta em tempo real para notas baixas
   useEffect(() => {
@@ -88,6 +94,18 @@ export default function AvaliacoesPage() {
       motivos: Object.entries(motivos).sort((a, b) => b[1] - a[1]),
     }
   }, [fbFiltrado, feedbacks, loja])
+
+  // Google real (informado) x encaminhados acumulados (todo o período) → conversão real
+  const googleStats = useMemo(() => {
+    const lojas = loja ? [loja] : ['Amore Paiva', 'Amore CD']
+    let real = 0, encAll = 0, temReal = false, em: string | null = null
+    lojas.forEach(l => {
+      const r = googleReal[l]
+      if (r && r.total != null) { real += Number(r.total) || 0; temReal = true; if (r.em && (!em || r.em > em)) em = r.em }
+      encAll += feedbacks.filter(f => f.loja === l && f.foi_google).length
+    })
+    return { real, encAll, temReal, em, conv: encAll ? Math.round((real / encAll) * 100) : 0 }
+  }, [googleReal, feedbacks, loja])
 
   const ranking = useMemo(() => {
     const m: Record<string, any> = {}
@@ -167,9 +185,11 @@ export default function AvaliacoesPage() {
           {kcard('Nota média', kpi.notaM.toFixed(1) + ' ⭐', 'de 5,0', '#F59E0B')}
           {kcard('Satisfação', kpi.pctSat + '%', `${kpi.sat} satisfeitos`, '#10B981')}
           {kcard('Encaminhados ao Google', kpi.google, `${kpi.convGoogle}% dos satisfeitos clicaram`, '#3B82F6')}
+          {kcard('Avaliações no Google (real)', googleStats.temReal ? googleStats.real : '—', googleStats.temReal ? `${googleStats.conv}% dos encaminhados viraram avaliação` : 'informe na aba Garçons & Config', '#F59E0B')}
         </div>
         <div style={{ ...card, marginBottom: 14, borderLeft: '3px solid #3B82F6', fontSize: 12.5, color: '#6b7280' }}>
-          ℹ️ <b>"Encaminhados ao Google"</b> conta quem <b>clicou no botão "Avaliar no Google"</b> no funil — é a intenção, não a avaliação publicada. Esse número é naturalmente <b>maior</b> que o total real de avaliações no Google (parte dos clientes clica e não posta). Para comparar com o Google, use o total real que aparece na página do estabelecimento.
+          ℹ️ <b>"Encaminhados ao Google"</b> conta quem <b>clicou no botão "Avaliar no Google"</b> no funil (intenção, no período selecionado) — sempre <b>maior</b> que as avaliações realmente publicadas, pois parte clica e não posta.
+          {' '}<b>"Avaliações no Google (real)"</b> é o total que você informa a partir da página do Google (acumulado); a <b>conversão</b> = real ÷ encaminhados acumulados{googleStats.em ? ` · atualizado em ${new Date(googleStats.em).toLocaleDateString('pt-BR')}` : ''}. Atualize o total real na aba <b>Garçons & Config</b>.
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ ...card, flex: 2, minWidth: 280 }}>
@@ -287,14 +307,14 @@ export default function AvaliacoesPage() {
       </div>}
 
       {/* ===== GARÇONS & QR + CONFIG ===== */}
-      {tab === 'garcons' && <GarconsTab garcons={garcons} config={config} reload={load} toast={toast} />}
+      {tab === 'garcons' && <GarconsTab garcons={garcons} config={config} reload={load} toast={toast} googleReal={googleReal} reloadGoogleReal={loadGoogleReal} />}
 
       </>}
     </div>
   )
 }
 
-function GarconsTab({ garcons, config, reload, toast }: { garcons: any[]; config: any[]; reload: () => void; toast: (m: string, t?: any) => void }) {
+function GarconsTab({ garcons, config, reload, toast, googleReal, reloadGoogleReal }: { garcons: any[]; config: any[]; reload: () => void; toast: (m: string, t?: any) => void; googleReal: Record<string, any>; reloadGoogleReal: () => void }) {
   const [nome, setNome] = useState(''); const [lojaG, setLojaG] = useState('Amore Paiva')
   const add = async () => {
     if (!nome.trim()) { toast('Informe o nome do garçom.', 'error'); return }
@@ -304,6 +324,11 @@ function GarconsTab({ garcons, config, reload, toast }: { garcons: any[]; config
   }
   const del = async (id: string) => { await sb.from('garcons').delete().eq('id', id); reload() }
   const salvarGoogle = async (l: string, url: string) => { await sb.from('fb_config').upsert({ loja: l, google_url: url }, { onConflict: 'loja' }); toast('Link do Google salvo!') }
+  const salvarGoogleReal = async (l: string, total: string) => {
+    const novo = { ...googleReal, [l]: { total: Number(total) || 0, em: new Date().toISOString() } }
+    await sb.from('app_config').upsert({ chave: 'google_real', valor: novo }, { onConflict: 'chave' })
+    reloadGoogleReal(); toast('Total do Google salvo!')
+  }
   const card: React.CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: '1.2rem' }
 
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -314,6 +339,16 @@ function GarconsTab({ garcons, config, reload, toast }: { garcons: any[]; config
       {['Amore Paiva', 'Amore CD'].map(l => {
         const cfg = config.find(c => c.loja === l)
         return <ConfigRow key={l} loja={l} label={l === 'Amore CD' ? 'Amore Costa Dourada' : l} url={cfg?.google_url || ''} onSave={salvarGoogle} />
+      })}
+    </div>
+
+    {/* total real de avaliações no Google */}
+    <div style={card}>
+      <b style={{ fontSize: 14 }}>Total real de avaliações no Google (por loja)</b>
+      <p style={{ fontSize: 13, color: '#9ca3af', margin: '4px 0 12px' }}>Abra a página de cada loja no Google e informe o número total de avaliações exibido. O painel calcula a conversão (avaliações reais ÷ encaminhados) no dashboard. Atualize periodicamente.</p>
+      {['Amore Paiva', 'Amore CD'].map(l => {
+        const r = googleReal[l]
+        return <GoogleRealRow key={l} loja={l} label={l === 'Amore CD' ? 'Amore Costa Dourada' : l} total={r?.total != null ? String(r.total) : ''} em={r?.em || ''} onSave={salvarGoogleReal} />
       })}
     </div>
 
@@ -355,5 +390,16 @@ function ConfigRow({ loja, label, url, onSave }: { loja: string; label: string; 
     <span style={{ width: 140, fontSize: 13, fontWeight: 500 }}>{label}</span>
     <input value={v} onChange={e => setV(e.target.value)} placeholder="https://g.page/... ou maps.app.goo.gl/..." style={{ flex: 1, minWidth: 220, padding: '.5rem .7rem', borderRadius: 10, border: '1px solid #e5e7eb' }} />
     <button onClick={() => onSave(loja, v)} style={{ padding: '.5rem .9rem', borderRadius: 10, border: 'none', background: '#6B1212', color: '#fff', cursor: 'pointer', fontSize: 13 }}>Salvar</button>
+  </div>
+}
+
+function GoogleRealRow({ loja, label, total, em, onSave }: { loja: string; label: string; total: string; em: string; onSave: (l: string, t: string) => void }) {
+  const [v, setV] = useState(total)
+  useEffect(() => { setV(total) }, [total])
+  return <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+    <span style={{ width: 140, fontSize: 13, fontWeight: 500 }}>{label}</span>
+    <input type="number" min={0} value={v} onChange={e => setV(e.target.value)} placeholder="Ex.: 16" style={{ width: 120, padding: '.5rem .7rem', borderRadius: 10, border: '1px solid #e5e7eb' }} />
+    <button onClick={() => onSave(loja, v)} style={{ padding: '.5rem .9rem', borderRadius: 10, border: 'none', background: '#6B1212', color: '#fff', cursor: 'pointer', fontSize: 13 }}>Salvar</button>
+    {em && <span style={{ fontSize: 11.5, color: '#9ca3af' }}>atualizado em {new Date(em).toLocaleDateString('pt-BR')}</span>}
   </div>
 }
