@@ -3,6 +3,7 @@ import { Ticket, BarChart3, Users, QrCode, RefreshCw, CheckCircle2, XCircle, Sli
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../hooks/useToast'
 import { useAuth } from '../../contexts/AuthContext'
+import { useLoja } from '../../contexts/LojaContext'
 import { fetchRaspBloqueio, setRaspBloqueio, pausarPremio, editarPremio, fetchRaspConfig, saveRaspConfig, type RaspBloqueio, type RaspCronoItem, type RaspReinicio, type RaspEscopo, type RaspCronoTipo, type RaspTetos } from '../../lib/db'
 
 const sb = supabase as any
@@ -12,6 +13,7 @@ const qrImg = (data: string, size = 200) => `https://api.qrserver.com/v1/create-
 const fmtDT = (d: string | null) => d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
 const fmtD = (d: string | null) => d ? d.split('-').reverse().join('/') : '—'
 const STATUS_COR: Record<string, string> = { disponivel: '#3B82F6', resgatado: '#10B981', expirado: '#9ca3af', cancelado: '#EF4444', bloqueado: '#EF4444' }
+const canonLoja = (l: string) => (l === 'Amore Costa Dourada' ? 'Amore CD' : l === 'Flow Paiva' ? 'Flow CD' : (l || ''))
 
 type Tab = 'dashboard' | 'cronograma' | 'gerenciar' | 'validar' | 'participantes' | 'qr'
 
@@ -630,19 +632,22 @@ function GerenciarTab({ premios, bloq, userName, toast, onDone }: { premios: any
 }
 
 function ValidarTab({ validador, toast, onDone }: { validador: string; toast: (m: string, t?: any) => void; onDone: () => void }) {
+  const { loja } = useLoja()
+  const lojaAtual = loja && loja !== 'Todas as Lojas' ? loja : ''
   const [codigo, setCodigo] = useState('')
   const [recebido, setRecebido] = useState('')
   const [obs, setObs] = useState('')
   const [res, setRes] = useState<any>(null)
   const [busy, setBusy] = useState(false)
-  const validar = async () => {
-    const cod = codigo.trim(); if (!cod) return
-    setBusy(true); setRes(null)
+  const [pendente, setPendente] = useState<{ cod: string; unidadeCupom: string } | null>(null)
+
+  const executar = async (cod: string) => {
+    setBusy(true); setRes(null); setPendente(null)
     try {
       const { data, error } = await sb.rpc('rasp_resgatar', { p_cupom: cod, p_validador: validador })
       if (error) { setRes({ erro: 'falha' }) }
       else if (data.ok) {
-        const valor = { cupom: cod, recebido_por: recebido.trim() || null, obs: obs.trim() || null, por: validador, em: new Date().toISOString() }
+        const valor = { cupom: cod, recebido_por: recebido.trim() || null, obs: obs.trim() || null, por: validador, em: new Date().toISOString(), loja_baixa: lojaAtual || null }
         try { await sb.from('app_config').upsert({ chave: 'resgate_' + cod, valor }, { onConflict: 'chave' }) } catch { /* registro da baixa é best-effort */ }
         setRes({ ...data, _recebido: valor.recebido_por, _obs: valor.obs })
         toast('Cupom resgatado! ✅'); setCodigo(''); setRecebido(''); setObs(''); onDone()
@@ -655,6 +660,23 @@ function ValidarTab({ validador, toast, onDone }: { validador: string; toast: (m
     } catch { setRes({ erro: 'falha' }) }
     setBusy(false)
   }
+
+  const validar = async () => {
+    const cod = codigo.trim(); if (!cod) return
+    setRes(null); setPendente(null)
+    // Trava por unidade: se o cupom for de outra loja, avisa e pede confirmação
+    if (lojaAtual) {
+      setBusy(true)
+      try {
+        const r = await sb.from('rasp_participacoes').select('unidade,status').eq('cupom', cod).maybeSingle()
+        if (r.data && r.data.status !== 'resgatado' && r.data.unidade && canonLoja(r.data.unidade) !== canonLoja(lojaAtual)) {
+          setPendente({ cod, unidadeCupom: r.data.unidade }); setBusy(false); return
+        }
+      } catch { /* se a checagem falhar, segue para a RPC (que ainda protege contra reuso) */ }
+      setBusy(false)
+    }
+    executar(cod)
+  }
   const ERRMSG: Record<string, string> = { cupom_inexistente: 'Cupom não encontrado.', ja_resgatado: 'Este cupom JÁ foi resgatado.', expirado: 'Cupom expirado.', cupom_cancelado: 'Cupom cancelado.', cupom_bloqueado: 'Cupom bloqueado.', falha: 'Erro ao validar. Tente novamente.' }
   const inp: React.CSSProperties = { width: '100%', padding: '.7rem .9rem', border: '1px solid #e5e7eb', borderRadius: 10, fontSize: 14, marginTop: 8, boxSizing: 'border-box' }
   return <div style={{ maxWidth: 460, margin: '0 auto' }}>
@@ -666,7 +688,16 @@ function ValidarTab({ validador, toast, onDone }: { validador: string; toast: (m
         style={{ width: '100%', padding: '.9rem 1rem', border: '2px solid #e5e7eb', borderRadius: 12, fontSize: 20, fontWeight: 700, textAlign: 'center', letterSpacing: '.05em', fontFamily: 'monospace', boxSizing: 'border-box' }} />
       <input value={recebido} onChange={e => setRecebido(e.target.value)} placeholder="Quem retirou (nome) — opcional" style={inp} />
       <input value={obs} onChange={e => setObs(e.target.value)} placeholder="Observação da retirada — opcional" style={inp} />
+      {lojaAtual && <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 8 }}>Validando na loja <b style={{ color: '#6b7280' }}>{lojaAtual}</b></div>}
       <button onClick={validar} disabled={busy} style={{ width: '100%', marginTop: 12, padding: '1rem', border: 'none', borderRadius: 12, background: '#8B1212', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>{busy ? 'Verificando…' : 'Validar e utilizar'}</button>
+      {pendente && <div style={{ marginTop: 18, padding: '1.1rem', borderRadius: 12, background: '#FFFBEB', border: '1px solid #FDE68A' }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: '#B45309' }}>⚠ Cupom de outra loja</div>
+        <div style={{ fontSize: 13, color: '#6b7280', margin: '6px 0 12px' }}>Este cupom é da <b>{pendente.unidadeCupom}</b>, mas você está validando na <b>{lojaAtual}</b>. Confirme apenas se o cliente realmente está sendo atendido aqui.</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setPendente(null)} style={{ flex: 1, padding: '.7rem', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Cancelar</button>
+          <button onClick={() => executar(pendente.cod)} disabled={busy} style={{ flex: 1, padding: '.7rem', borderRadius: 10, border: 'none', background: '#B45309', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>Validar mesmo assim</button>
+        </div>
+      </div>}
       {res && <div style={{ marginTop: 18, padding: '1.1rem', borderRadius: 12, background: res.ok ? '#ECFDF3' : '#FEF2F2', border: `1px solid ${res.ok ? '#A6F4C5' : '#FCA5A5'}` }}>
         {res.ok ? <>
           <CheckCircle2 size={40} style={{ color: '#10B981' }} />
