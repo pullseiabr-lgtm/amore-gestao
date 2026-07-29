@@ -46,6 +46,8 @@ details.mtx>summary::before{content:"▸ ";font-size:12px}details.mtx[open]>summ
 .mxof{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;padding:2px 0;color:var(--muted)}
 .mxof.w{color:var(--ok);font-weight:700}.mxof .df{font-size:11px}
 .note{background:color-mix(in srgb,var(--vinho) 5%,var(--card));border:1px solid var(--border);border-left:3px solid var(--vinho);border-radius:10px;padding:11px 14px;font-size:12.5px;color:var(--muted);margin:10px 0}
+textarea.obs{width:100%;min-width:150px;min-height:36px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font:inherit;font-size:11.5px;padding:6px 8px;resize:vertical;transition:border-color .2s}
+textarea.obs:focus{outline:none;border-color:var(--vinho)}
 .foot{margin-top:26px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
 .msg{text-align:center;padding:60px 20px;color:var(--muted)}
 /* Mobile: cada linha vira um cartão empilhado — nada fica cortado */
@@ -63,6 +65,9 @@ details.mtx>summary::before{content:"▸ ";font-size:12px}details.mtx[open]>summ
   td.prod::before{display:none}
   td.semq{display:block;text-align:center}.num{white-space:normal}.win{align-items:baseline}
   .phd{font-size:13.5px}.phd .pt{font-size:15px}
+  td[data-label="Observação"]{flex-direction:column;align-items:stretch;gap:4px}
+  td[data-label="Observação"]::before{text-align:left}
+  td[data-label="Situação"]{align-items:flex-start}
 }
 @media print{.btn{display:none}body{background:#fff}.tw,.kpi,.ped,details.mtx{box-shadow:none}details.mtx{border:1px solid #ddd}details.mtx[open] .mx{display:block}}
 </style>
@@ -126,27 +131,59 @@ async function run(){
   const rank=Object.values(SF).sort((a,b)=>b.vit-a.vit||b.valor-a.valor||b.itens-a.itens);
   const campeao=rank.find(r=>r.vit>0);
 
-  // melhor preço cotado por nome (para cruzar com pedidos) — guarda também a unidade
-  const bestByName={}; comp.forEach(c=>{ if(c.win){const k=norm(c.prod); const cur=bestByName[k]; if(!cur||c.win.preco<cur.preco)bestByName[k]={preco:c.win.preco,forn:c.win.forn,prod:c.prod,un:c.un};}});
-  const bkeys=Object.keys(bestByName);
+  // ---- cruzamento cotação x pedidos (item a item, por pedido) ----
   const toks=s=>norm(s).split(' ').filter(t=>t.length>2);
   // classe de unidade — evita comparar preço por kg com preço por unidade/embalagem
-  const uclass=u=>{const n=norm(u); if(/\bkg\b/.test(n)||/^(quilo|quilos|quilograma|quilogramas|kilo|kilos)$/.test(n))return 'kg'; if(/^(g|grama|gramas)$/.test(n))return 'g'; if(/^(l|litro|litros)$/.test(n))return 'l'; if(/\bml\b/.test(n))return 'ml'; return 'un';};
-  // correspondência forte: nome idêntico OU mesmo 1º termo + ≥2 termos em comum (≥50% de similaridade)
-  const findBest=nm=>{const k=norm(nm); if(bestByName[k])return bestByName[k]; const tk=toks(nm); if(!tk.length)return null;
-    let best=null,bs=0; for(const x of bkeys){const tx=toks(x); if(!tx.length||tx[0]!==tk[0])continue; const common=tk.filter(t=>tx.includes(t)).length; const score=common/Math.max(tk.length,tx.length); if(common>=2&&score>bs){bs=score;best=bestByName[x];}} return bs>=0.5?best:null;};
+  const uclass=u=>{const n=norm(u); if(/\bkg\b/.test(n)||/^(quilo|quilos|quilograma|quilogramas|kilo|kilos)$/.test(n))return 'kg'; if(/^(g|grama|gramas)$/.test(n))return 'g'; if(/^(l|litro|litros|lt)$/.test(n))return 'l'; if(/\bml\b/.test(n))return 'ml'; return 'un';};
+  // índice da cotação (itens com vencedor) — casa pelo item MAIS ESPECÍFICO cujos termos estão contidos no item comprado
+  const cotIdx=comp.filter(c=>c.win).map(c=>({toks:toks(c.prod),prod:c.prod,un:c.un,preco:c.win.preco,forn:c.win.forn}));
+  const matchCot=nm=>{const set=new Set(toks(nm)); if(!set.size)return null; let best=null,bn=0;
+    for(const c of cotIdx){ if(!c.toks.length)continue; if(c.toks.every(t=>set.has(t))){ if(c.toks.length>bn){bn=c.toks.length;best=c;} } } return best;};
 
-  // pedidos da mesma loja (cruzamento cotação x compra)
   const pedidos=(pedRows||[]).map(r=>({chave:r.chave,...(r.valor||{})})).filter(p=>canon(p.loja)===canon(req.loja));
-  const cross=[],diverg=[]; let cPago=0,cMelhor=0,cMatch=0,cAcima=0,cNaoCot=0;
-  pedidos.forEach(p=>{ (p.itens||[]).forEach(it=>{ const pago=Number(it.preco)||0, qtd=Number(it.qtd)||0; if(!it.produto)return; const b=findBest(it.produto);
-    if(!b){cNaoCot++;return;}
-    const difU=pago-b.preco, difP=b.preco>0?difU/b.preco*100:0; const unOk=uclass(it.un)===uclass(b.un);
-    const rec={ped:p.fornecedor,prod:it.produto,qtd:qtd,un:it.un||'',pago:pago,best:b.preco,bforn:b.forn,bun:b.un||'',difU:difU,difP:difP,unOk:unOk};
-    if(!unOk||difP>150||difP<-60){ diverg.push(rec); return; } // provável divergência de unidade/embalagem → fora do cálculo
-    cPago+=pago*qtd; cMelhor+=b.preco*qtd; cMatch++; if(difU>0.001)cAcima++; cross.push(rec);
-  }); });
-  const cDif=cPago-cMelhor; // >0 pagou acima do melhor cotado; <0 comprou igual/abaixo
+
+  // observações persistidas (por que não comprou do mais barato)
+  const obsRow=await g('app_config?chave=eq.cross_obs_'+REQ+'&select=valor');
+  window.OBS=(obsRow&&obsRow[0]&&obsRow[0].valor)||{};
+  window.saveObs=async function(k,v,el){ window.OBS[k]=v; el.style.borderColor='#B45309';
+    try{ const r=await fetch(SB+'/rest/v1/app_config?on_conflict=chave',{method:'POST',headers:Object.assign({'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'},H),body:JSON.stringify({chave:'cross_obs_'+REQ,valor:window.OBS})}); el.style.borderColor=r.ok?'#15803D':'#B91C1C'; }catch(e){ el.style.borderColor='#B91C1C'; } };
+  const OBS=window.OBS;
+
+  let cPago=0,cMelhor=0,cMatch=0,cAcima=0,cConf=0,cNaoCot=0;
+  const pedCards=pedidos.map(function(p){
+    const slug=p.chave.replace(/^pedido_/,'');
+    const rows=(p.itens||[]).map(function(it){
+      const pago=Number(it.preco)||0, qtd=Number(it.qtd)||0; const b=matchCot(it.produto||'');
+      let cotHtml='<span class="mut">—</span>', sit, showObs=true;
+      if(!b){ cNaoCot++; sit='<span class="mut">— fora desta cotação</span>'; }
+      else {
+        const sameForn=norm(p.fornecedor||'')===norm(b.forn);
+        const compat=uclass(it.un)===uclass(b.un);
+        const difU=pago-b.preco, difP=b.preco>0?difU/b.preco*100:0;
+        cotHtml=brl(b.preco)+' <span class="un">'+esc(b.un)+'</span><span class="mc">🏆 '+esc(b.forn)+'</span>';
+        const outlier=compat&&(difP>120||difP<-55); // diferença extrema = provável embalagem/quantidade diferente
+        if(!compat||outlier){ cConf++; sit='<span class="badge b-warn">⚠ conferir</span><span class="mc">'+(!compat?('comprado por '+esc(it.un||'?')+', cotado por '+esc(b.un||'?')):('diferença de '+(difP>0?'+':'')+difP.toFixed(0)+'% — provável embalagem/quantidade diferente'))+'</span>'; }
+        else { cPago+=pago*qtd; cMelhor+=b.preco*qtd; cMatch++;
+          if(difU>0.005){ cAcima++; sit='<span class="badge b-warn">▲ pagou +'+difP.toFixed(0)+'%</span>'+(!sameForn?'<span class="mc">vencedor: '+esc(b.forn)+' a '+brl(b.preco)+'</span>':''); }
+          else if(difU<-0.005){ sit='<span class="badge b-ok">✔ '+(sameForn?'abaixo do cotado':'comprou bem')+' ('+difP.toFixed(0)+'%)</span>'; showObs=false; }
+          else { sit='<span class="badge b-ok">✔ '+(sameForn?'comprou do vencedor':'igual ao cotado')+'</span>'; showObs=false; }
+        }
+      }
+      const key=slug+'|'+norm(it.produto||'');
+      const obsVal=esc(OBS[key]||'');
+      const obsCell=showObs
+        ? '<textarea class="obs" data-k="'+esc(key)+'" onblur="saveObs(this.dataset.k,this.value,this)" placeholder="Por quê? (qualidade, prazo, pedido mínimo, frete, disponibilidade…)">'+obsVal+'</textarea>'
+        : (obsVal?'<span class="mc">📝 '+obsVal+'</span>':'<span class="mut" style="font-size:11px">—</span>');
+      return '<tr><td class="prod">'+esc(it.produto||'')+'</td>'
+        +'<td class="num pr" data-label="Comprado"><b>'+brl(pago)+'</b> <span class="un">'+esc(it.un||'')+'</span></td>'
+        +'<td class="num" data-label="Melhor cotado">'+cotHtml+'</td>'
+        +'<td data-label="Situação">'+sit+'</td>'
+        +'<td data-label="Observação">'+obsCell+'</td></tr>';
+    }).join('');
+    return '<div class="ped"><div class="phd"><b>'+esc(p.fornecedor||'Fornecedor')+'</b>'+(p.data?' · '+fmtDMY(p.data):'')+(p.recebimento_responsavel?' · recebe '+esc(p.recebimento_responsavel):'')+'<span class="pt">'+brl(p.total||0)+'</span></div>'
+      +'<table class="pt2"><thead><tr><th>Item comprado</th><th class="num">Comprado</th><th class="num">Melhor cotado</th><th>Situação</th><th>Observação</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }).join('');
+  const cDif=cPago-cMelhor; // >0 pagou acima do melhor cotado; <0 igual/abaixo
 
   // ---- render ----
   const meta='<div class="metabar"><span>📅 Cotação criada: <b>'+fmtDMY(req.created_at)+'</b></span>'
@@ -185,35 +222,25 @@ async function run(){
     return '<div class="mxitem"><div class="nm">'+esc(c.prod)+' <span class="un">('+c.ofs.length+' cotações)</span></div>'+rows+'</div>';}).join('');
   const mtx=mtxBody?'<details class="mtx"><summary>🔍 Comparação de preços entre fornecedores — todos os preços por item ('+comp.filter(c=>c.ofs.length>1).length+' itens com ≥2 cotações)</summary><div class="mx">'+mtxBody+'</div></details>':'';
 
-  // cruzamento cotação x pedidos
-  const crossRows=cross.slice().sort((a,b)=>b.difP-a.difP).map(x=>{const bad=x.difU>0.001;
-    return '<tr><td class="prod">'+esc(x.prod)+'<span class="mc">comprado de '+esc(x.ped)+'</span></td>'
-      +'<td class="num" data-label="Qtd">'+x.qtd+' '+esc(x.un)+'</td>'
-      +'<td class="num pr" data-label="Pago"><b>'+brl(x.pago)+'</b></td>'
-      +'<td class="num" data-label="Melhor cotado">'+brl(x.best)+'<span class="mc">'+esc(x.bforn)+'</span></td>'
-      +'<td class="num '+(bad?'cross-bad':'cross-ok')+'" data-label="Diferença">'+(x.difU>0.001?'+'+x.difP.toFixed(0)+'%':(x.difU<-0.001?x.difP.toFixed(0)+'%':'0%'))+'</td>'
-      +'<td data-label="Veredito">'+(bad?'<span class="badge b-warn">acima da cotação</span>':'<span class="badge b-ok">comprou bem</span>')+'</td></tr>';}).join('');
-  const divRows=diverg.slice().sort((a,b)=>b.pago-a.pago).map(x=>'<div class="mxof"><span>'+esc(x.prod)+' <span class="mut">('+esc(x.ped)+')</span></span><span>pago '+brl(x.pago)+'/'+esc(x.un||'?')+' · cotado '+brl(x.best)+'/'+esc(x.bun||'?')+'</span></div>').join('');
+  // render do cruzamento cotação × pedidos
   let crossSec='';
   if(pedidos.length){
-    const margem=cMelhor>0?(Math.abs(cDif)/cMelhor*100):0;
-    crossSec='<h2>🔁 Cotação × Pedidos realizados <span class="h2s">— compramos bem? (loja '+esc(req.loja)+')</span></h2>'
+    const margem=cMelhor>0?(cDif/cMelhor*100):0;
+    crossSec='<h2>🔁 Cotação × Pedidos de compra — item a item <span class="h2s">— compramos bem? (loja '+esc(req.loja)+' · '+pedidos.length+' pedidos)</span></h2>'
      +'<div class="kpis">'
-     +'<div class="kpi"><div class="kn">'+pedidos.length+'</div><div class="kl">Pedidos na loja</div></div>'
-     +'<div class="kpi"><div class="kn">'+cMatch+'<span class="ks"> itens</span></div><div class="kl">Comparáveis (mesmo produto e unidade)</div></div>'
-     +'<div class="kpi"><div class="kn">'+brl(cPago)+'</div><div class="kl">Pago nos pedidos (comparáveis)</div></div>'
+     +'<div class="kpi"><div class="kn">'+pedidos.length+'</div><div class="kl">Pedidos de compra</div></div>'
+     +'<div class="kpi"><div class="kn">'+cMatch+'</div><div class="kl">Itens comparáveis</div></div>'
+     +'<div class="kpi"><div class="kn">'+brl(cPago)+'</div><div class="kl">Pago (itens comparáveis)</div></div>'
      +'<div class="kpi"><div class="kn">'+brl(cMelhor)+'</div><div class="kl">Se comprasse pelo melhor cotado</div></div>'
-     +(cDif>0.5?'<div class="kpi bad"><div class="kn">+'+brl(cDif)+'</div><div class="kl">Pago acima do melhor cotado</div></div>'
-        :'<div class="kpi eco"><div class="kn">'+brl(Math.abs(cDif))+'</div><div class="kl">Economia vs cotação</div></div>')
-     +'<div class="kpi'+(cAcima?' bad':' eco')+'"><div class="kn">'+cAcima+'<span class="ks"> / '+cMatch+'</span></div><div class="kl">Itens pagos acima da cotação</div></div>'
+     +(cDif>0.5?'<div class="kpi bad"><div class="kn">+'+brl(cDif)+'</div><div class="kl">Pago acima do cotado</div></div>'
+        :'<div class="kpi eco"><div class="kn">'+brl(Math.abs(cDif))+'</div><div class="kl">Economia vs cotado</div></div>')
+     +'<div class="kpi'+(cAcima?' bad':' eco')+'"><div class="kn">'+cAcima+'<span class="ks"> / '+cMatch+'</span></div><div class="kl">Itens acima do cotado</div></div>'
      +'</div>'
-     +(cMatch?'<div class="note">📉 Margem de redução: <b>'+(cDif<=0?'+':'−')+margem.toFixed(1)+'%</b> '+(cDif<=0?'— nas compras comparáveis pagamos igual ou abaixo do melhor preço cotado (compramos bem).':'— nas compras comparáveis pagamos acima do melhor preço cotado; há espaço para renegociar.')+'</div>'
-        :'<div class="note">Ainda não há itens de pedido com correspondência segura (mesmo produto e unidade) na cotação para calcular a margem.</div>')
-     +(crossRows?'<div class="tw"><table><thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Pago</th><th class="num">Melhor cotado</th><th class="num">Dif.</th><th>Veredito</th></tr></thead><tbody>'+crossRows+'</tbody></table></div>':'')
-     +(diverg.length?'<details class="mtx"><summary>⚠ '+diverg.length+' item(ns) a conferir — unidade/embalagem diferente ou variação fora do padrão (não entram no cálculo)</summary><div class="mx" style="padding-top:8px">'+divRows+'</div></details>':'')
-     +(cNaoCot?'<div class="note" style="border-left-color:var(--muted)">'+cNaoCot+' item(ns) comprado(s) não constavam nesta cotação (sem preço para comparar).</div>':'');
+     +(cMatch?'<div class="note">📉 Margem da compra: <b>'+(cDif<=0?'+':'−')+Math.abs(margem).toFixed(1)+'%</b> '+(cDif<=0?'— nos itens comparáveis pagamos igual ou abaixo do melhor preço cotado (compra bem feita).':'— nos itens comparáveis pagamos acima do melhor cotado; use a coluna <b>Observação</b> para justificar (qualidade, prazo, pedido mínimo…) ou renegociar.')+(cConf?' · '+cConf+' item(ns) marcados “conferir embalagem”.':'')+(cNaoCot?' · '+cNaoCot+' item(ns) fora desta cotação.':'')+'</div>':'<div class="note">Os pedidos desta loja não têm itens que casem com a cotação. Verifique os nomes dos produtos.</div>')
+     +'<div class="note" style="border-left-color:var(--muted)">💬 A coluna <b>Observação</b> é editável e fica salva: escreva por que comprou de outro fornecedor / mais caro (ex.: qualidade, prazo de entrega, pedido mínimo, frete). Salva sozinho ao sair do campo.</div>'
+     +pedCards;
   } else {
-    crossSec='<h2>🔁 Cotação × Pedidos realizados</h2><div class="note">Ainda não há pedidos de compra registrados para <b>'+esc(req.loja)+'</b>. Assim que os pedidos forem gerados, este bloco cruza automaticamente o preço pago com o melhor preço cotado e mostra a margem de redução.</div>';
+    crossSec='<h2>🔁 Cotação × Pedidos de compra</h2><div class="note">Ainda não há pedidos de compra registrados para <b>'+esc(req.loja)+'</b>. Assim que os pedidos forem gerados nesta loja, este bloco cruza cada item comprado com o melhor preço cotado.</div>';
   }
 
   const peds=Object.entries((function(){const P={};comp.forEach(c=>{if(!c.win)return;const f=c.win.forn;(P[f]=P[f]||{itens:[],total:0,contato:contato[f.toLowerCase()]||{}});const lt=c.win.preco*c.qtd;P[f].itens.push({prod:c.prod,qtd:c.qtd,un:c.un,preco:c.win.preco,marca:c.win.marca,total:lt});P[f].total+=lt;});return P;})()).sort((a,b)=>b[1].total-a[1].total).map(function(e){const f=e[0],p=e[1];
@@ -230,7 +257,7 @@ async function run(){
    +crossSec
    +'<h2>🧾 Pedidos por fornecedor (prontos para enviar)</h2>'+(peds||'<p class="mut">Nenhum item com vencedor ainda.</p>')
    +(semCot.length?'<h2>⚠ Itens sem cotação ('+semCot.length+')</h2><div class="tw"><table><tbody>'+semCot.map(c=>'<tr><td class="prod">'+esc(c.prod)+'</td><td class="num" data-label="Qtd">'+c.qtd+' '+esc(c.un)+'</td></tr>').join('')+'</tbody></table></div>':'')
-   +'<div class="foot"><b>Metodologia:</b> "Responderam" = fornecedores com pelo menos 1 preço lançado. "Vitórias" = itens em que o fornecedor teve o menor preço. "Economia vs 2º" = redução do vencedor frente ao 2º melhor preço (preços 3× acima do menor são ignorados como possível erro). "Cotação × Pedidos" cruza o preço pago nos pedidos de compra da loja com o melhor preço cotado (correspondência por nome do produto). <b>Confira os preços com os fornecedores antes de fechar o pedido.</b> Painel Amore · '+hoje+'</div>';
+   +'<div class="foot"><b>Metodologia:</b> "Responderam" = fornecedores com pelo menos 1 preço lançado. "Vitórias" = itens em que o fornecedor teve o menor preço. "Economia vs 2º" = redução do vencedor frente ao 2º melhor preço (preços 3× acima do menor são ignorados como possível erro). "Cotação × Pedidos" compara, item a item de cada pedido, o preço pago com o melhor preço cotado do mesmo produto (casado pelo nome mais específico da cotação). Itens com embalagem/unidade diferente entram como "conferir embalagem" e ficam fora do cálculo da margem, para não distorcer. A margem considera apenas itens comparáveis (mesma unidade). <b>Confira os preços com os fornecedores antes de fechar o pedido.</b> Painel Amore · '+hoje+'</div>';
 }
 run().catch(function(e){document.getElementById('app').innerHTML='<div class="msg">Erro ao carregar o relatório: '+esc(e&&e.message||e)+'</div>';});
 </script>
