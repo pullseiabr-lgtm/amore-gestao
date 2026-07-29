@@ -13,6 +13,9 @@ import type { Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoIt
 
 // ── Helpers ───────────────────────────────────────────────────
 const fmtR$ = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const slugify = (s: string) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 36)
+const canonLoja = (l: string) => (l === 'Amore Costa Dourada' ? 'Amore CD' : l === 'Flow Paiva' ? 'Flow CD' : (l || ''))
+const MOTIVOS_ESCOLHA = ['Melhor qualidade', 'Marca homologada', 'Prazo de entrega menor', 'Melhor condição de pagamento', 'Maior validade', 'Fornecedor estratégico', 'Menor custo logístico', 'Produto disponível imediatamente', 'Outro motivo']
 const thCot: React.CSSProperties = { border: '1px solid var(--border)', padding: '6px 8px', textAlign: 'center', background: 'var(--bg)', fontWeight: 700, whiteSpace: 'nowrap' }
 const tdCot: React.CSSProperties = { border: '1px solid var(--border)', padding: '4px 6px', textAlign: 'center' }
 const lblSug: React.CSSProperties = { fontSize: 11, color: 'var(--muted)', marginBottom: 2 }
@@ -76,6 +79,11 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
   const [mRelat, setMRelat] = useState(false)
   const [relatFones, setRelatFones] = useState('')
   const [enviandoRelat, setEnviandoRelat] = useState(false)
+  // Preço Campeão + geração de pedidos
+  const [campeoes, setCampeoes] = useState<Record<string, { cotId: string; motivo?: string }>>({})
+  const [mPedidos, setMPedidos] = useState(false)
+  const [pedGrupos, setPedGrupos] = useState<{ cotId: string; forn: string; receb: string; obs: string; pagamento: string; itens: { itemId: string; produto: string; qtd: number; un: string; preco: number }[] }[]>([])
+  const [gerandoPed, setGerandoPed] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -109,6 +117,7 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
   useEffect(() => { load() }, [load])
   useEffect(() => { fetchFornecedores(loja).then(setFornecedores).catch(() => {}) }, [loja])
   useEffect(() => { fetchEstoqueProdutos(loja).then(setProdutosCad).catch(() => {}) }, [loja])
+  useEffect(() => { fetchAppConfig<Record<string, { cotId: string; motivo?: string }>>('cot_campeoes:' + req.id).then(v => { if (v) setCampeoes(v) }).catch(() => {}) }, [req.id])
 
   const tEntry = async (tipo: string, desc: string) => {
     try { await insertReqTimeline({ requisicao_id: req.id, tipo, descricao: desc, usuario: userName, dados: null }) } catch { /* opcional */ }
@@ -242,6 +251,80 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
     const custoUnico = melhorUnico ? custoRealTotal(melhorUnico.id) : 0
     const economia = custoUnico > 0 ? custoUnico - totalFracionado : 0
     return { porForn, semCotacao, totalProdutos, totalFrete, totalFracionado, melhorUnico, custoUnico, economia, completos: completos.length }
+  }
+
+  // ── Preço Campeão: vencedor por item (auto = menor custo real; manual = escolha do comprador) ──
+  const campeaoDe = (item: RequisicaoItem) => {
+    const cands = cotacoes
+      .map(c => ({ cotId: c.id, forn: c.fornecedor_nome, preco: precoDe(c.id, item.id), cr: custoRealUnit(c.id, item) }))
+      .filter(x => x.preco != null) as { cotId: string; forn: string; preco: number; cr: number }[]
+    if (!cands.length) return null
+    const auto = cands.reduce((m, x) => (x.cr < m.cr ? x : m))
+    const man = campeoes[item.id]
+    const chosen = man?.cotId ? (cands.find(x => x.cotId === man.cotId) || auto) : auto
+    return { chosen, auto, cands, manual: chosen.cotId !== auto.cotId, motivo: man?.motivo || '', ehMaisBarato: chosen.cr <= auto.cr + 0.001 }
+  }
+  const setCampeaoManual = (itemId: string, cotId: string) => {
+    const next = { ...campeoes }
+    // ao voltar para o mais barato, remove o override
+    const item = itens.find(i => i.id === itemId)
+    const info = item ? campeaoDe(item) : null
+    if (info && cotId === info.auto.cotId) delete next[itemId]
+    else next[itemId] = { cotId, motivo: next[itemId]?.motivo || '' }
+    setCampeoes(next); saveAppConfig('cot_campeoes:' + req.id, next).catch(() => {})
+  }
+  const setCampeaoMotivo = (itemId: string, motivo: string) => {
+    const next = { ...campeoes, [itemId]: { ...(campeoes[itemId] || { cotId: '' }), motivo } }
+    setCampeoes(next); saveAppConfig('cot_campeoes:' + req.id, next).catch(() => {})
+  }
+
+  const gruposPedido = () => {
+    const g: Record<string, { cotId: string; forn: string; itens: { itemId: string; produto: string; qtd: number; un: string; preco: number }[] }> = {}
+    for (const i of itens) {
+      const info = campeaoDe(i); if (!info) continue
+      const c = info.chosen
+      if (!g[c.cotId]) g[c.cotId] = { cotId: c.cotId, forn: c.forn, itens: [] }
+      g[c.cotId].itens.push({ itemId: i.id, produto: i.produto_nome, qtd: i.quantidade, un: i.unidade || 'Unidade', preco: c.preco })
+    }
+    return Object.values(g)
+  }
+  const abrirGerarPedidos = () => {
+    // exige justificativa quando o vencedor não é o mais barato
+    const semJust = itens.map(campeaoDe).filter((x): x is NonNullable<typeof x> => !!x).filter(x => x.manual && !x.ehMaisBarato && !x.motivo.trim())
+    if (semJust.length) { toast(`Justifique a escolha de ${semJust.length} item(ns) que não são o menor preço.`); return }
+    const grupos = gruposPedido().map(g => {
+      const cot = cotacoes.find(c => c.id === g.cotId)
+      return { ...g, receb: '', obs: '', pagamento: cot?.observacoes || '' }
+    })
+    if (!grupos.length) { toast('Nenhum item com preço para gerar pedido.'); return }
+    setPedGrupos(grupos); setMPedidos(true)
+  }
+  const gerarPedidos = async () => {
+    setGerandoPed(true)
+    try {
+      const lojaPed = canonLoja(req.loja || loja)
+      const hoje = new Date().toISOString().slice(0, 10)
+      let n = 0
+      for (const [ix, g] of pedGrupos.entries()) {
+        const linhas = g.itens.filter(it => it.qtd > 0 && it.preco > 0)
+        if (!linhas.length) continue
+        const itensPed = linhas.map(it => ({ produto: it.produto, qtd: it.qtd, un: it.un, preco: it.preco, subtotal: Math.round(it.qtd * it.preco * 100) / 100 }))
+        const total = Math.round(itensPed.reduce((s, x) => s + x.subtotal, 0) * 100) / 100
+        const chave = `pedido_${slugify(g.forn)}_${slugify(lojaPed)}_${Date.now().toString(36).slice(-5)}${ix}`
+        const valor = {
+          fornecedor: g.forn, loja: lojaPed, data: hoje,
+          pagamento: g.pagamento || null, cliente: null, recebimento_responsavel: g.receb || null,
+          itens: itensPed, total, cancelados: [], em: new Date().toISOString(),
+          created_by: userName, origem_cotacao: `REQ-${String(req.numero).padStart(4, '0')}`, obs: g.obs || null,
+        }
+        await saveAppConfig(chave, valor)
+        n++
+      }
+      await tEntry('compra', `Gerados ${n} pedido(s) por fornecedor a partir dos preços campeões`)
+      toast(`✅ ${n} pedido(s) gerado(s)! Veja em "Pedidos de Compra".`)
+      setMPedidos(false); onAtualizar?.()
+    } catch (e) { toast('Erro ao gerar pedidos: ' + (e as Error).message) }
+    finally { setGerandoPed(false) }
   }
 
   /** Salva UMA célula assim que o campo perde o foco — evita perder coleta feita em dias/lugares diferentes. */
@@ -853,6 +936,91 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
         </div>
       )}
 
+      {/* 5b. Preços Campeões & geração de pedidos */}
+      {cotacoes.length > 0 && itens.length > 0 && (() => {
+        const camps = itens.map(i => ({ item: i, info: campeaoDe(i) }))
+        const comCamp = camps.filter((x): x is { item: RequisicaoItem; info: NonNullable<ReturnType<typeof campeaoDe>> } => !!x.info)
+        const valorSelecao = comCamp.reduce((s, x) => s + x.info.chosen.cr * x.item.quantidade, 0)
+        const valorMenores = comCamp.reduce((s, x) => s + x.info.auto.cr * x.item.quantidade, 0)
+        const fornVenc = new Set(comCamp.map(x => x.info.chosen.cotId)).size
+        const semCot = itens.length - comCamp.length
+        const economiaUnico = s.custoUnico > 0 ? s.custoUnico - valorSelecao : 0
+        const nGrupos = gruposPedido().length
+        const kchip = (l: string, v: string, cor?: string, sub?: string) => (
+          <div key={l} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 9, padding: '9px 11px' }}>
+            <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{l}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: cor || 'var(--text)' }}>{v}</div>
+            {sub && <div style={{ fontSize: 9.5, color: 'var(--muted)' }}>{sub}</div>}
+          </div>
+        )
+        return <div className="card" style={{ marginTop: 12 }}>
+          <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <span className="card-tt">🏆 Preços Campeões & Pedidos</span>
+            <button className="btn" onClick={abrirGerarPedidos} disabled={!nGrupos} style={{ padding: '7px 13px', fontSize: 12.5, background: '#15803D', opacity: nGrupos ? 1 : .5 }}>🧾 Gerar pedidos por fornecedor ({nGrupos})</button>
+          </div>
+          <div style={{ padding: '12px 14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 9, marginBottom: 12 }}>
+              {kchip('Produtos cotados', `${comCamp.length}/${itens.length}`, undefined, `${fornVenc} fornecedor(es) vencedor(es)`)}
+              {kchip('Compra pelos campeões', fmtR$(valorSelecao), '#15803D', 'custo real (c/ frete)')}
+              {kchip('Só menores preços', fmtR$(valorMenores), undefined, 'ignorando escolhas manuais')}
+              {kchip('Fornecedor único', s.melhorUnico ? fmtR$(s.custoUnico) : '—', undefined, s.melhorUnico?.fornecedor_nome || '')}
+              {kchip('Economia', economiaUnico > 0 ? fmtR$(economiaUnico) : '—', economiaUnico > 0 ? '#15803D' : undefined, 'vs fornecedor único')}
+              {kchip('Sem cotação', String(semCot), semCot ? '#B91C1C' : '#15803D', 'itens')}
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead><tr>
+                  <th style={{ ...thCot, textAlign: 'left', minWidth: 150 }}>Produto</th>
+                  <th style={{ ...thCot, minWidth: 70 }}>Qtd</th>
+                  <th style={{ ...thCot, minWidth: 150 }}>🏆 Vencedor</th>
+                  <th style={{ ...thCot, minWidth: 90 }}>Preço unit.</th>
+                  <th style={{ ...thCot, minWidth: 95 }}>Custo real</th>
+                  <th style={{ ...thCot, minWidth: 80 }}>vs menor</th>
+                  <th style={{ ...thCot, minWidth: 180 }}>Justificativa</th>
+                </tr></thead>
+                <tbody>
+                  {camps.map(({ item, info }) => {
+                    if (!info) return <tr key={item.id}>
+                      <td style={{ ...tdCot, textAlign: 'left' }}>{item.produto_nome}</td>
+                      <td style={{ ...tdCot, color: 'var(--muted)' }}>{item.quantidade} {item.unidade}</td>
+                      <td colSpan={5} style={{ ...tdCot, color: '#B91C1C', textAlign: 'left' }}>⬜ Sem cotação</td>
+                    </tr>
+                    const dif = info.chosen.cr - info.auto.cr
+                    const bgSel = info.manual ? '#DBEAFE' : '#DCFCE7'
+                    return <tr key={item.id}>
+                      <td style={{ ...tdCot, textAlign: 'left' }}>{item.produto_nome}</td>
+                      <td style={{ ...tdCot, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{item.quantidade} {item.unidade}</td>
+                      <td style={{ ...tdCot, background: bgSel }}>
+                        <select value={info.chosen.cotId} onChange={e => setCampeaoManual(item.id, e.target.value)}
+                          style={{ width: '100%', padding: '4px 6px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 11.5, fontWeight: 700 }}>
+                          {info.cands.slice().sort((a, b) => a.cr - b.cr).map(c => <option key={c.cotId} value={c.cotId}>{c.forn}{c.cotId === info.auto.cotId ? ' (menor)' : ''}</option>)}
+                        </select>
+                        <div style={{ fontSize: 9.5, color: info.manual ? '#1D4ED8' : '#15803D', marginTop: 2, fontWeight: 700 }}>{info.manual ? '🔵 escolha manual' : '🟢 menor custo'}</div>
+                      </td>
+                      <td style={{ ...tdCot, fontWeight: 700 }}>{fmtR$(info.chosen.preco)}</td>
+                      <td style={{ ...tdCot, fontWeight: 800, color: '#8B1212' }}>{fmtR$(info.chosen.cr * item.quantidade)}</td>
+                      <td style={{ ...tdCot, color: dif > 0.001 ? '#B45309' : '#15803D', fontWeight: 700 }}>{dif > 0.001 ? '+' + fmtR$(dif * item.quantidade) : '—'}</td>
+                      <td style={{ ...tdCot, textAlign: 'left' }}>
+                        {info.manual && !info.ehMaisBarato
+                          ? <select value={info.motivo} onChange={e => setCampeaoMotivo(item.id, e.target.value)}
+                              style={{ width: '100%', padding: '4px 6px', borderRadius: 6, border: info.motivo ? '1px solid var(--border)' : '1px solid #F59E0B', background: 'var(--bg)', fontSize: 11 }}>
+                              <option value="">⚠ escolha um motivo…</option>
+                              {MOTIVOS_ESCOLHA.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                          : <span style={{ color: 'var(--muted)', fontSize: 11 }}>—</span>}
+                      </td>
+                    </tr>
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ padding: '8px 2px 0', fontSize: 11, color: 'var(--muted)' }}>
+              🟢 menor custo real · 🔵 escolha manual do comprador (exige justificativa quando não é o menor preço). O botão gera <strong>um pedido por fornecedor vencedor</strong>, prontos no módulo <strong>Pedidos de Compra</strong> para revisar e disparar.
+            </div>
+          </div>
+        </div>
+      })()}
+
       {/* Curva ABC da cotação */}
       {itens.length > 0 && cotacoes.length > 0 && (() => {
         const base = itens.map(i => {
@@ -957,6 +1125,54 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
               <button className="btn" onClick={enviarRelatorioWhats} disabled={enviandoRelat} style={{ background: '#25D366', padding: '9px 16px' }}>
                 {enviandoRelat ? 'Enviando…' : 'Enviar agora'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: conferência e geração de pedidos por fornecedor */}
+      {mPedidos && (
+        <div style={{ position: 'fixed', inset: 0, background: '#0008', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflowY: 'auto' }} onClick={() => setMPedidos(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 760, margin: '24px 0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <strong style={{ fontSize: 15 }}>🧾 Conferência — {pedGrupos.length} pedido(s) por fornecedor</strong>
+              <button className="ib" onClick={() => setMPedidos(false)} style={{ padding: '4px 9px' }}>✕</button>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>Revise antes de gerar. Cada fornecedor vira um pedido no módulo <strong>Pedidos de Compra</strong> (loja {canonLoja(req.loja || loja)}), pronto para disparar por WhatsApp.</div>
+            {pedGrupos.map((g, gi) => {
+              const total = g.itens.reduce((s, it) => s + (it.qtd > 0 && it.preco > 0 ? it.qtd * it.preco : 0), 0)
+              const upd = (fn: (grp: typeof g) => typeof g) => setPedGrupos(prev => prev.map((x, i) => i === gi ? fn({ ...x }) : x))
+              return <div key={g.cotId} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                  <strong style={{ fontSize: 13.5 }}>{g.forn}</strong>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: '#8B1212' }}>{fmtR$(total)}</span>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead><tr style={{ color: 'var(--muted)', fontSize: 10.5, textTransform: 'uppercase' }}>
+                      <th style={{ textAlign: 'left', padding: 5 }}>Produto</th><th style={{ width: 90 }}>Qtd</th><th style={{ width: 90 }}>Unit.</th><th style={{ width: 90 }}>Subtotal</th><th style={{ width: 30 }}></th>
+                    </tr></thead>
+                    <tbody>
+                      {g.itens.map((it, ii) => <tr key={it.itemId} style={{ borderTop: '1px solid var(--border)' }}>
+                        <td style={{ padding: 5 }}>{it.produto} <span style={{ color: 'var(--muted)' }}>({it.un})</span></td>
+                        <td style={{ padding: 5 }}><input value={it.qtd} inputMode="decimal" onChange={e => upd(grp => ({ ...grp, itens: grp.itens.map((x, k) => k === ii ? { ...x, qtd: Number(String(e.target.value).replace(',', '.')) || 0 } : x) }))} style={{ width: 72, padding: '4px 6px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 12, textAlign: 'right' }} /></td>
+                        <td style={{ padding: 5, textAlign: 'right' }}>{fmtR$(it.preco)}</td>
+                        <td style={{ padding: 5, textAlign: 'right', fontWeight: 700 }}>{fmtR$(it.qtd * it.preco)}</td>
+                        <td style={{ padding: 5 }}><button onClick={() => upd(grp => ({ ...grp, itens: grp.itens.filter((_, k) => k !== ii) }))} title="Remover" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#DC2626' }}><Trash2 size={14} /></button></td>
+                      </tr>)}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8, marginTop: 8 }}>
+                  <input value={g.receb} onChange={e => upd(grp => ({ ...grp, receb: e.target.value }))} placeholder="Recebimento (responsável)" style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 12 }} />
+                  <input value={g.pagamento} onChange={e => upd(grp => ({ ...grp, pagamento: e.target.value }))} placeholder="Condição de pagamento" style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 12 }} />
+                  <input value={g.obs} onChange={e => upd(grp => ({ ...grp, obs: e.target.value }))} placeholder="Observação do pedido" style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 12 }} />
+                </div>
+              </div>
+            })}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+              <button className="btn" onClick={() => setMPedidos(false)} style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', padding: '9px 16px' }}>Cancelar</button>
+              <button className="btn" onClick={gerarPedidos} disabled={gerandoPed} style={{ background: '#15803D', padding: '9px 18px' }}>{gerandoPed ? 'Gerando…' : `✅ Gerar ${pedGrupos.length} pedido(s)`}</button>
             </div>
           </div>
         </div>
