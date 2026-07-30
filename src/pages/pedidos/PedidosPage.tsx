@@ -46,6 +46,7 @@ export default function PedidosPage() {
   // envio do link
   const [fornMap, setFornMap] = useState<Record<string, string>>({})
   const [profMap, setProfMap] = useState<Record<string, string>>({})
+  const [recebLoja, setRecebLoja] = useState<Record<string, { nome: string; whatsapp: string }>>({})
   const [mEnviar, setMEnviar] = useState(false)
   const [pedSel, setPedSel] = useState<Pedido | null>(null)
   const [foneForn, setFoneForn] = useState('')
@@ -71,7 +72,12 @@ export default function PedidosPage() {
     setFornMap(fm)
     const pm: Record<string, string> = {}; (ps || []).forEach((p: any) => { const perf = p.permissions_override?.__perfil__ || {}; if (p.name) pm[p.name.toLowerCase()] = String(perf.whatsapp || perf.telefone || '').replace(/\D/g, '') })
     setProfMap(pm)
+    const { data: rl } = await sb.from('app_config').select('valor').eq('chave', 'recebimento_por_loja').maybeSingle()
+    if (rl?.valor) setRecebLoja(rl.valor)
   })() }, [])
+
+  // preenche o responsável de recebimento da loja automaticamente ao abrir/trocar a loja no formulário
+  useEffect(() => { if (mNovo && !fReceb.trim() && recebLoja[fLoja]?.nome) setFReceb(recebLoja[fLoja].nome) }, [mNovo, fLoja, recebLoja]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtrados = pedidos.filter(p => loja === 'Todas as Lojas' || !loja || p.loja === loja)
   const link = (p: Pedido) => `${window.location.origin}/pedido.html?p=${encodeURIComponent(p.chave.replace(/^pedido_/, ''))}`
@@ -79,7 +85,7 @@ export default function PedidosPage() {
   const abrirEnviar = (p: Pedido) => {
     setPedSel(p)
     setFoneForn(fornMap[p.loja + '|' + (p.fornecedor || '').toLowerCase()] || '')
-    setFoneReceb(profMap[(p.recebimento_responsavel || '').toLowerCase()] || '')
+    setFoneReceb(profMap[(p.recebimento_responsavel || '').toLowerCase()] || recebLoja[p.loja]?.whatsapp || '')
     setMEnviar(true)
   }
   const enviarPedido = async () => {

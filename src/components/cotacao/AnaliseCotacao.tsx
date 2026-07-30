@@ -81,6 +81,7 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
   const [enviandoRelat, setEnviandoRelat] = useState(false)
   // Preço Campeão + geração de pedidos
   const [campeoes, setCampeoes] = useState<Record<string, { cotId: string; motivo?: string }>>({})
+  const [recebLoja, setRecebLoja] = useState<Record<string, { nome: string; whatsapp: string }>>({})
   const [mPedidos, setMPedidos] = useState(false)
   const [pedGrupos, setPedGrupos] = useState<{ cotId: string; forn: string; receb: string; obs: string; pagamento: string; itens: { itemId: string; produto: string; qtd: number; un: string; preco: number }[] }[]>([])
   const [gerandoPed, setGerandoPed] = useState(false)
@@ -118,6 +119,7 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
   useEffect(() => { fetchFornecedores(loja).then(setFornecedores).catch(() => {}) }, [loja])
   useEffect(() => { fetchEstoqueProdutos(loja).then(setProdutosCad).catch(() => {}) }, [loja])
   useEffect(() => { fetchAppConfig<Record<string, { cotId: string; motivo?: string }>>('cot_campeoes:' + req.id).then(v => { if (v) setCampeoes(v) }).catch(() => {}) }, [req.id])
+  useEffect(() => { fetchAppConfig<Record<string, { nome: string; whatsapp: string }>>('recebimento_por_loja').then(v => { if (v) setRecebLoja(v) }).catch(() => {}) }, [])
 
   const tEntry = async (tipo: string, desc: string) => {
     try { await insertReqTimeline({ requisicao_id: req.id, tipo, descricao: desc, usuario: userName, dados: null }) } catch { /* opcional */ }
@@ -292,9 +294,10 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
     // exige justificativa quando o vencedor não é o mais barato
     const semJust = itens.map(campeaoDe).filter((x): x is NonNullable<typeof x> => !!x).filter(x => x.manual && !x.ehMaisBarato && !x.motivo.trim())
     if (semJust.length) { toast(`Justifique a escolha de ${semJust.length} item(ns) que não são o menor preço.`); return }
+    const recebDefault = recebLoja[canonLoja(req.loja || loja)]?.nome || ''
     const grupos = gruposPedido().map(g => {
       const cot = cotacoes.find(c => c.id === g.cotId)
-      return { ...g, receb: '', obs: '', pagamento: cot?.observacoes || '' }
+      return { ...g, receb: recebDefault, obs: '', pagamento: cot?.observacoes || '' }
     })
     if (!grupos.length) { toast('Nenhum item com preço para gerar pedido.'); return }
     setPedGrupos(grupos); setMPedidos(true)
