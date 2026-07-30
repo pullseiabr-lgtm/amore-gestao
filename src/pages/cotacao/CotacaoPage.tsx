@@ -6,6 +6,7 @@ import { useToast } from '../../hooks/useToast'
 import { fetchRequisicoes, insertRequisicao, insertReqTimeline } from '../../lib/db'
 import AnaliseCotacao from '../../components/cotacao/AnaliseCotacao'
 import CotacaoExterna from '../../components/cotacao/CotacaoExterna'
+import CotacoesRespondidas from '../../components/cotacao/CotacoesRespondidas'
 import { enviarWhatsApp } from '../../lib/notify'
 import type { Requisicao } from '../../types/database'
 
@@ -34,6 +35,7 @@ export default function CotacaoPage() {
   const [reqs, setReqs] = useState<Requisicao[]>([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
+  const [vista, setVista] = useState<'reqs' | 'respondidas'>('reqs')
   const [sel, setSel] = useState<Requisicao | null>(null)
   const [mNova, setMNova] = useState(false)
   const [novaTitulo, setNovaTitulo] = useState('')
@@ -179,6 +181,15 @@ export default function CotacaoPage() {
         </div>
       </div>
 
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+        {([['reqs', '📋 Requisições / cotar'], ['respondidas', '📥 Cotações respondidas']] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setVista(k)} style={{ padding: '8px 14px', borderRadius: 9, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 13, fontWeight: 700, background: vista === k ? '#6B1212' : 'var(--bg)', color: vista === k ? '#fff' : 'var(--text)' }}>{l}</button>
+        ))}
+      </div>
+
+      {vista === 'respondidas' ? (
+        <CotacoesRespondidas loja={loja} toast={toast} onAbrir={(reqId) => { const r = reqs.find(x => x.id === reqId); if (r) setSel(r) }} />
+      ) : (<>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
@@ -229,6 +240,7 @@ export default function CotacaoPage() {
           })}
         </div>
       )}
+      </>)}
 
       {/* Modal: nova cotação */}
       {mNova && (
