@@ -2,7 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { QrCode, Printer, Camera, ScanLine, PackageMinus, RefreshCw, Plus, AlertTriangle, Check, X, Tag, Trash2, Undo2, ArrowRightLeft, ClipboardList, BarChart3, Clock, Scissors } from 'lucide-react'
 import QRCode from 'qrcode'
 import JsBarcode from 'jsbarcode'
-import { Html5Qrcode } from 'html5-qrcode'
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
+
+// Leitura mais robusta: usa o detector nativo do navegador (quando existe) e aceita QR + Code128 (os dois códigos da etiqueta)
+const SCAN_CFG = { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128], experimentalFeatures: { useBarCodeDetectorIfSupported: true } }
+const SCAN_START = { fps: 12, qrbox: { width: 240, height: 240 }, aspectRatio: 1.0 }
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../hooks/useToast'
 import { useAuth } from '../../contexts/AuthContext'
@@ -374,8 +378,8 @@ function TabLeitura({ loja, toast, user }: any) {
   const iniciarScanner = async () => {
     setScanning(true); setInfo(null)
     try {
-      const h = new Html5Qrcode('leitor-cam'); scannerRef.current = h
-      await h.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 } },
+      const h = new Html5Qrcode('leitor-cam', SCAN_CFG as any); scannerRef.current = h
+      await h.start({ facingMode: 'environment' }, SCAN_START,
         async (txt: string) => { if (modoLote) { addLote(txt) } else { await pararScanner(); consultar(txt) } }, () => {})
     } catch (e: any) { toast('Não foi possível abrir a câmera: ' + (e?.message || ''), 'error'); setScanning(false) }
   }
@@ -526,7 +530,7 @@ function TabTransferencia({ loja, toast, user }: any) {
   const pararScanner = useCallback(async () => { if (scannerRef.current) { try { await scannerRef.current.stop(); await scannerRef.current.clear() } catch {} scannerRef.current = null } setScanning(false) }, [])
   const iniciarScanner = async () => {
     setScanning(true); setInfo(null)
-    try { const h = new Html5Qrcode('leitor-transf'); scannerRef.current = h; await h.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 } }, async (txt: string) => { await pararScanner(); consultar(txt) }, () => {}) }
+    try { const h = new Html5Qrcode('leitor-transf', SCAN_CFG as any); scannerRef.current = h; await h.start({ facingMode: 'environment' }, SCAN_START, async (txt: string) => { await pararScanner(); consultar(txt) }, () => {}) }
     catch (e: any) { toast('Não foi possível abrir a câmera: ' + (e?.message || ''), 'error'); setScanning(false) }
   }
   useEffect(() => () => { pararScanner() }, [pararScanner])
@@ -1211,7 +1215,7 @@ function TabEntrada({ loja, toast, user }: any) {
   const pararScanner = useCallback(async () => { if (scannerRef.current) { try { await scannerRef.current.stop(); await scannerRef.current.clear() } catch {} scannerRef.current = null } setScanning(false) }, [])
   const iniciarScanner = async () => {
     setScanning(true); setInfo(null)
-    try { const h = new Html5Qrcode('leitor-ent'); scannerRef.current = h; await h.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 } }, async (txt: string) => { await pararScanner(); consultar(txt) }, () => {}) }
+    try { const h = new Html5Qrcode('leitor-ent', SCAN_CFG as any); scannerRef.current = h; await h.start({ facingMode: 'environment' }, SCAN_START, async (txt: string) => { await pararScanner(); consultar(txt) }, () => {}) }
     catch (e: any) { toast('Não foi possível abrir a câmera: ' + (e?.message || ''), 'error'); setScanning(false) }
   }
   useEffect(() => () => { pararScanner() }, [pararScanner])
