@@ -43,7 +43,8 @@ function baixarCSV(nome: string, colunas: string[], linhas: any[][]) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; a.click(); URL.revokeObjectURL(a.href)
 }
 
-async function qrDataURL(text: string) { try { return await QRCode.toDataURL(text, { margin: 1, width: 180 }) } catch { return '' } }
+// margin 4 = quiet-zone padrão (essencial p/ ler QR impresso); EC 'L' deixa os módulos maiores (código é curto) → lê melhor de perto
+async function qrDataURL(text: string) { try { return await QRCode.toDataURL(text, { margin: 4, width: 360, errorCorrectionLevel: 'L' }) } catch { return '' } }
 function barcodeDataURL(text: string) {
   try { const c = document.createElement('canvas'); JsBarcode(c, text, { format: 'CODE128', width: 1.5, height: 40, fontSize: 12, margin: 4 }); return c.toDataURL('image/png') } catch { return '' }
 }
@@ -79,7 +80,7 @@ async function imprimirItens(itens: any[], loja: string, tam = '60x40') {
     .et{width:${W}mm;border:1px solid #333;border-radius:2mm;padding:2.5mm;page-break-inside:avoid;display:flex;flex-direction:column;gap:1mm}
     .et-top{display:flex;justify-content:space-between;align-items:flex-start;gap:2mm;border-bottom:1px solid #ccc;padding-bottom:1mm}
     .et-nome{font-size:10pt;font-weight:800;line-height:1.1} .et-cod{font-size:7pt;color:#555;white-space:nowrap}
-    .et-mid{display:flex;gap:2mm;align-items:center} .qr{width:20mm;height:20mm}
+    .et-mid{display:flex;gap:2mm;align-items:center} .qr{width:26mm;height:26mm;image-rendering:pixelated}
     .et-info{font-size:7pt;line-height:1.35} .et-info b{font-weight:700}
     .bc{width:100%;height:12mm;object-fit:contain} .et-foot{font-size:6.5pt;color:#666;text-align:center}
   </style></head><body>${blocos.join('')}
@@ -127,7 +128,7 @@ async function imprimirManipulados(itens: any[], loja: string, tam = '60x40') {
     .body{display:flex;gap:1.5mm;padding:1.5mm 2mm;flex:1}
     .left{flex:1;font-size:6.5pt;line-height:1.3} .nome{font-size:8.5pt;font-weight:800;margin-bottom:.5mm;line-height:1.05}
     .row b{font-weight:700} .val{color:#b30000;font-size:7.5pt}
-    .right{text-align:center} .qr{width:15mm;height:15mm} .cod{font-size:5.5pt;color:#555}
+    .right{text-align:center} .qr{width:20mm;height:20mm;image-rendering:pixelated} .cod{font-size:5.5pt;color:#555}
     .foot{font-size:5.5pt;color:#666;text-align:center;border-top:1px solid #ddd;padding:.5mm}
   </style></head><body>${blocos.join('')}
   <script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script></body></html>`
