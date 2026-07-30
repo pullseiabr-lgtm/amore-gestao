@@ -1021,6 +1021,65 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
         </div>
       })()}
 
+      {/* 5c. Cenários de compra */}
+      {cotacoes.length > 1 && itens.length > 0 && (() => {
+        const condDe = (cotId: string) => { const c = cotacoes.find(x => x.id === cotId); const o = parseExtraCot(c?.observacoes || null) as Record<string, any>; return (o.condicao_pagamento || (typeof c?.observacoes === 'string' && !c.observacoes.startsWith('{') ? c.observacoes : '') || '').trim() }
+        const aPrazo = (cotId: string) => { const t = condDe(cotId).toLowerCase(); return /prazo|dias|dia|\/|parcel|boleto/.test(t) && !/vista/.test(t) }
+        const prazoDe = (cotId: string) => { const c = cotacoes.find(x => x.id === cotId); return c?.prazo_entrega ?? null }
+        // calcula um cenário a partir de uma função que escolhe o fornecedor por item
+        const calcCenario = (pick: (i: RequisicaoItem) => string | null) => {
+          const usados = new Set<string>(); let produtos = 0; const cobertos: string[] = []
+          for (const i of itens) { const cid = pick(i); if (!cid) continue; const p = precoDe(cid, i.id); if (p == null) continue; usados.add(cid); produtos += p * i.quantidade; cobertos.push(i.id) }
+          const frete = [...usados].reduce((s, cid) => s + (freteCfgDe(cid).frete || 0), 0)
+          const prazos = [...usados].map(prazoDe).filter((x): x is number => x != null)
+          return { total: produtos + frete, produtos, frete, forns: usados.size, prazoMedio: prazos.length ? Math.round(prazos.reduce((a, b) => a + b, 0) / prazos.length) : null, cobertos: cobertos.length }
+        }
+        const pickMenorPreco = (i: RequisicaoItem) => { let m: { cid: string; p: number } | null = null; for (const c of cotacoes) { const p = precoDe(c.id, i.id); if (p == null) continue; if (!m || p < m.p) m = { cid: c.id, p } } return m?.cid || null }
+        const pickMenorReal = (i: RequisicaoItem) => { let m: { cid: string; v: number } | null = null; for (const c of cotacoes) { const v = custoRealUnit(c.id, i); if (v == null) continue; if (!m || v < m.v) m = { cid: c.id, v } } return m?.cid || null }
+        const pickUnico = (i: RequisicaoItem) => (s.melhorUnico && precoDe(s.melhorUnico.id, i.id) != null ? s.melhorUnico.id : null)
+        const pickPrazo = (i: RequisicaoItem) => { let m: { cid: string; pr: number; p: number } | null = null; for (const c of cotacoes) { const p = precoDe(c.id, i.id); if (p == null) continue; const pr = prazoDe(c.id) ?? 9999; if (!m || pr < m.pr || (pr === m.pr && p < m.p)) m = { cid: c.id, pr, p } } return m?.cid || null }
+        const pickCondicao = (i: RequisicaoItem) => { const comP = cotacoes.filter(c => precoDe(c.id, i.id) != null && aPrazo(c.id)); const pool = comP.length ? comP : cotacoes.filter(c => precoDe(c.id, i.id) != null); let m: { cid: string; p: number } | null = null; for (const c of pool) { const p = precoDe(c.id, i.id)!; if (!m || p < m.p) m = { cid: c.id, p } } return m?.cid || null }
+        const pickPersonalizado = (i: RequisicaoItem) => { const info = campeaoDe(i); return info ? info.chosen.cotId : null }
+        const cenarios = [
+          { k: '1', nome: 'Menor preço por produto', desc: 'fraciona pelo menor preço unitário', cor: '#15803D', r: calcCenario(pickMenorPreco) },
+          { k: '2', nome: 'Menor custo real', desc: 'considera o frete rateado', cor: '#0369A1', r: calcCenario(pickMenorReal) },
+          { k: '3', nome: 'Concentrar num fornecedor', desc: s.melhorUnico?.fornecedor_nome || 'fornecedor único', cor: '#7C3AED', r: calcCenario(pickUnico) },
+          { k: '4', nome: 'Melhor prazo de entrega', desc: 'prioriza a entrega mais rápida', cor: '#EA580C', r: calcCenario(pickPrazo) },
+          { k: '5', nome: 'Melhor condição de pagamento', desc: 'prioriza compra a prazo', cor: '#7C3AED', r: calcCenario(pickCondicao) },
+          { k: '6', nome: 'Personalizada (seus campeões)', desc: 'as escolhas feitas acima', cor: '#8B1212', r: calcCenario(pickPersonalizado) },
+        ].filter(c => c.r.cobertos > 0)
+        const pior = Math.max(...cenarios.map(c => c.r.total))
+        return <div className="card" style={{ marginTop: 12 }}>
+          <div className="card-header"><span className="card-tt">🎯 Cenários de compra — compare as estratégias</span></div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead><tr>
+                <th style={{ ...thCot, textAlign: 'left', minWidth: 200 }}>Cenário</th>
+                <th style={thCot}>Valor total</th><th style={thCot}>Fornecedores</th><th style={thCot}>Frete</th><th style={thCot}>Prazo médio</th><th style={thCot}>Economia</th>
+              </tr></thead>
+              <tbody>
+                {cenarios.map(c => {
+                  const eco = pior - c.r.total
+                  const barato = c.r.total === Math.min(...cenarios.map(x => x.r.total))
+                  return <tr key={c.k} style={{ background: barato ? '#F0FDF4' : undefined }}>
+                    <td style={{ ...tdCot, textAlign: 'left' }}>
+                      <div style={{ fontWeight: 700, color: c.cor }}>{barato ? '⭐ ' : ''}Cenário {c.k} — {c.nome}</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{c.desc}{c.r.cobertos < itens.length ? ` · cobre ${c.r.cobertos}/${itens.length}` : ''}</div>
+                    </td>
+                    <td style={{ ...tdCot, fontWeight: 800, color: barato ? '#15803D' : 'var(--text)' }}>{fmtR$(c.r.total)}</td>
+                    <td style={tdCot}>{c.r.forns}</td>
+                    <td style={{ ...tdCot, color: 'var(--muted)' }}>{fmtR$(c.r.frete)}</td>
+                    <td style={tdCot}>{c.r.prazoMedio != null ? `${c.r.prazoMedio}d` : '—'}</td>
+                    <td style={{ ...tdCot, color: eco > 0 ? '#15803D' : 'var(--muted)', fontWeight: 700 }}>{eco > 0 ? fmtR$(eco) : '—'}</td>
+                  </tr>
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ padding: '8px 14px', fontSize: 10.5, color: 'var(--muted)' }}>⭐ menor valor total · "Economia" = diferença vs o cenário mais caro. O <strong>Cenário 6</strong> reflete as escolhas de vencedor que você fez em Preços Campeões — use-o para gerar os pedidos.</div>
+        </div>
+      })()}
+
       {/* Curva ABC da cotação */}
       {itens.length > 0 && cotacoes.length > 0 && (() => {
         const base = itens.map(i => {
