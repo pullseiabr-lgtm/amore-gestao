@@ -29,6 +29,8 @@ tbody td{padding:8px 11px;border-bottom:1px solid var(--border)}tbody tr:last-ch
 .b-ok{background:#DCFCE7;color:#15803D}.b-no{background:#FEE2E2;color:#B91C1C}.b-warn{background:#FEF3C7;color:#B45309}.b-info{background:#E0F2FE;color:#0369A1}
 @media(prefers-color-scheme:dark){.b-ok{background:#0f2e1b;color:#4ade80}.b-no{background:#3a1414;color:#f87171}.b-warn{background:#33270a;color:#fbbf24}.b-info{background:#0b2a3a;color:#7dd3fc}}
 .empty{padding:16px;color:var(--muted);font-size:12.5px;border:1px dashed var(--border);border-radius:10px}
+.sub3{font-size:13.5px;font-weight:700;margin:16px 0 6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px}.chip{font-size:11.5px;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:3px 11px}.chip b{color:var(--vinho)}
 .foot{margin-top:26px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
 .msg{text-align:center;padding:60px 20px;color:var(--muted)}
 @media(max-width:680px){
@@ -133,8 +135,12 @@ async function run(){
   const linhasReceb=recHoje.map(p=>`<tr><td class="prod">${esc(p.fornecedor)}<span class="mc">${p.loja}</span></td><td class="num" data-label="Valor">${brl(p.total)}</td><td data-label="Recebido por">${esc(p.recebimento.por||p.recebimento_responsavel||'—')}</td><td data-label="Hora">${horaDe(p.recebimento.em)}</td><td data-label="Status">${(p.recebimento.status||'').includes('integral')?'<span class="badge b-ok">✓ integral</span>':'<span class="badge b-warn">'+esc(p.recebimento.status||'recebido')+'</span>'}</td></tr>`);
   // 4. Cotações pendentes
   const linhasPend=toks.slice().sort((a,b)=>String(a.enviado_em||'').localeCompare(String(b.enviado_em||''))).map(t=>{const dias=t.enviado_em?Math.floor((Date.now()-new Date(t.enviado_em).getTime())/86400000):null; const alerta=dias!=null&&dias>=2; return `<tr><td class="prod">${esc(t.fornecedor_nome)}</td><td data-label="Enviado">${t.enviado_em?dDMY(t.enviado_em):'—'}</td><td class="num" data-label="Aguardando">${dias!=null?dias+'d':'—'}</td><td data-label="Status">${alerta?'<span class="badge b-no">atrasado</span>':(t.status==='aberto'?'<span class="badge b-info">abriu, sem responder</span>':'<span class="badge b-warn">aguardando</span>')}</td></tr>`});
-  // 9. Movimentações
-  const movRow=m=>`<tr><td class="prod">${esc(m.produto_nome)}</td><td class="num" data-label="Qtd">${m.quantidade} ${esc(m.unidade||'')}</td><td data-label="Setor/Motivo">${esc(m.setor||m.motivo||'—')}</td><td data-label="Por">${esc(m.created_by||'—')}</td><td data-label="Hora">${horaDe(m.created_at)}</td></tr>`;
+  // 9. Movimentações — saídas/perdas com destaque + consumo por setor + entradas
+  const saidasEperdas=movs.filter(m=>m.tipo==='saida'||m.tipo==='perda');
+  const saidaRow=m=>`<tr><td class="prod">${esc(m.produto_nome)}</td><td class="num" data-label="Qtd">${m.quantidade} ${esc(m.unidade||'')}</td><td data-label="Tipo">${m.tipo==='perda'?'<span class="badge b-no">perda</span>':'<span class="badge b-info">saída</span>'}</td><td data-label="Setor">${esc(m.setor||'—')}</td><td data-label="Motivo">${esc(m.motivo||'—')}</td><td data-label="Por">${esc(m.created_by||'—')}</td><td data-label="Hora">${horaDe(m.created_at)}</td></tr>`;
+  const entradaRow=m=>`<tr><td class="prod">${esc(m.produto_nome)}</td><td class="num" data-label="Qtd">${m.quantidade} ${esc(m.unidade||'')}</td><td data-label="Motivo">${esc(m.motivo||'—')}</td><td data-label="Por">${esc(m.created_by||'—')}</td><td data-label="Hora">${horaDe(m.created_at)}</td></tr>`;
+  const consumo={}; saidas.forEach(m=>{const k=m.setor||'sem setor';consumo[k]=(consumo[k]||0)+1});
+  const consumoChips=Object.entries(consumo).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<span class="chip">${esc(k)}: <b>${n}</b></span>`).join('');
   // 10. Produtos críticos
   const linhasCrit=criticos.slice(0,40).map(p=>{const cons=0; const cobertura=Number(p.estoque_minimo)>0?(Number(p.estoque_atual)/Number(p.estoque_minimo)):1; return `<tr><td class="prod">${esc(p.nome)}${LOJA?'':`<span class="mc">${esc(p.loja)}</span>`}</td><td class="num" data-label="Atual">${p.estoque_atual} ${esc(p.unidade||'')}</td><td class="num" data-label="Mínimo">${p.estoque_minimo}</td><td data-label="Situação">${p.estoque_atual<=0?'<span class="badge b-no">zerado</span>':cobertura<=0.5?'<span class="badge b-no">crítico</span>':'<span class="badge b-warn">baixo</span>'}</td></tr>`});
 
@@ -159,7 +165,10 @@ async function run(){
    +`<h2>4. Cotações pendentes <span class="h2s">— aguardando fornecedor</span></h2>`+tabela([{h:'Fornecedor'},{h:'Enviado'},{h:'Aguardando',num:1},{h:'Status'}],linhasPend,'Sem cotações pendentes.')
    +`<h2>9. Movimentações de estoque</h2><div class="kpis">`
    +kchip('Entradas',entradas.length,'ok')+kchip('Saídas',saidas.length)+kchip('Transferências',transf.length)+kchip('Perdas',perdas.length,perdas.length?'bad':'')
-   +`</div>`+tabela([{h:'Produto'},{h:'Qtd',num:1},{h:'Setor/Motivo'},{h:'Por'},{h:'Hora'}],movs.slice(0,60).map(movRow),'Sem movimentações de estoque neste dia.')
+   +`</div>`
+   +`<div class="sub3">📤 Saídas & perdas do dia</div>`+tabela([{h:'Produto'},{h:'Qtd',num:1},{h:'Tipo'},{h:'Setor'},{h:'Motivo'},{h:'Por'},{h:'Hora'}],saidasEperdas.slice(0,80).map(saidaRow),'Nenhuma saída registrada neste dia.')
+   +(consumoChips?`<div class="sub3">Consumo por setor</div><div class="chips">${consumoChips}</div>`:'')
+   +`<div class="sub3">📥 Entradas do dia</div>`+tabela([{h:'Produto'},{h:'Qtd',num:1},{h:'Motivo'},{h:'Por'},{h:'Hora'}],entradas.slice(0,60).map(entradaRow),'Nenhuma entrada neste dia.')
    +`<h2>10. Produtos críticos <span class="h2s">— abaixo do mínimo</span></h2>`+tabela([{h:'Produto'},{h:'Atual',num:1},{h:'Mínimo',num:1},{h:'Situação'}],linhasCrit,'Nenhum produto abaixo do mínimo. 🎉')
    +(criticos.length>40?`<div class="mut" style="font-size:12px;margin-top:6px">…e mais ${criticos.length-40} item(ns). Veja todos no módulo Estoque.</div>`:'')
    +`<div class="foot"><b>Relatório Diário (Fase 1).</b> Consolidado automaticamente de requisições, cotações, pedidos, recebimentos e movimentações de estoque do dia. <b>Próximas fases:</b> comparativo detalhado de cotações, evolução de preços (gráficos 30/90/365 dias), conferência NF × pedido, ranking completo de fornecedores e resumo por IA generativa. Painel Amore · gerado ${new Date().toLocaleString('pt-BR')}</div>`;
