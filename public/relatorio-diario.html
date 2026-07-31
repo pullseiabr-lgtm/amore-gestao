@@ -90,9 +90,11 @@ async function run(){
   const pedHoje=pedidos.filter(p=>(p.data||diaDe(p.em))===D);
   const recHoje=pedidos.filter(p=>p.recebimento&&diaDe(p.recebimento.em)===D);
   // movimentações do dia
-  const movs=await g(`estoque_movimentacoes?select=tipo,produto_nome,quantidade,unidade,loja,setor,motivo,created_by,created_at${lojaEq('loja')}&created_at=gte.${encodeURIComponent(inicioISO)}&created_at=lt.${encodeURIComponent(fimISO)}&order=created_at.desc`);
-  // produtos críticos (abaixo do mínimo)
-  const prods=await g(`produtos?select=nome,loja,unidade,estoque_atual,estoque_minimo,ultimo_preco_compra&ativo=eq.true${lojaEq('loja')}&limit=4000`);
+  const movs=await g(`estoque_movimentacoes?select=tipo,produto_id,produto_nome,quantidade,unidade,loja,setor,motivo,created_by,created_at${lojaEq('loja')}&created_at=gte.${encodeURIComponent(inicioISO)}&created_at=lt.${encodeURIComponent(fimISO)}&order=created_at.desc`);
+  // produtos (críticos + mapa de custo p/ valorar saídas)
+  const prods=await g(`produtos?select=id,nome,loja,unidade,estoque_atual,estoque_minimo,ultimo_preco_compra&ativo=eq.true${lojaEq('loja')}&limit=5000`);
+  const custoById={}; (prods||[]).forEach(p=>{if(p.id)custoById[p.id]=Number(p.ultimo_preco_compra)||0});
+  const valorMov=m=>(custoById[m.produto_id]||0)*(Number(m.quantidade)||0);
   const criticos=(prods||[]).filter(p=>Number(p.estoque_minimo)>0 && Number(p.estoque_atual)<=Number(p.estoque_minimo)).sort((a,b)=>(a.estoque_atual/(a.estoque_minimo||1))-(b.estoque_atual/(b.estoque_minimo||1)));
   // cotações pendentes (portal cot_tok)
   const tokRows=await g('app_config?chave=like.cot_tok:*&select=valor');
@@ -137,7 +139,8 @@ async function run(){
   const linhasPend=toks.slice().sort((a,b)=>String(a.enviado_em||'').localeCompare(String(b.enviado_em||''))).map(t=>{const dias=t.enviado_em?Math.floor((Date.now()-new Date(t.enviado_em).getTime())/86400000):null; const alerta=dias!=null&&dias>=2; return `<tr><td class="prod">${esc(t.fornecedor_nome)}</td><td data-label="Enviado">${t.enviado_em?dDMY(t.enviado_em):'—'}</td><td class="num" data-label="Aguardando">${dias!=null?dias+'d':'—'}</td><td data-label="Status">${alerta?'<span class="badge b-no">atrasado</span>':(t.status==='aberto'?'<span class="badge b-info">abriu, sem responder</span>':'<span class="badge b-warn">aguardando</span>')}</td></tr>`});
   // 9. Movimentações — saídas/perdas com destaque + consumo por setor + entradas
   const saidasEperdas=movs.filter(m=>m.tipo==='saida'||m.tipo==='perda');
-  const saidaRow=m=>`<tr><td class="prod">${esc(m.produto_nome)}</td><td class="num" data-label="Qtd">${m.quantidade} ${esc(m.unidade||'')}</td><td data-label="Tipo">${m.tipo==='perda'?'<span class="badge b-no">perda</span>':'<span class="badge b-info">saída</span>'}</td><td data-label="Setor">${esc(m.setor||'—')}</td><td data-label="Motivo">${esc(m.motivo||'—')}</td><td data-label="Por">${esc(m.created_by||'—')}</td><td data-label="Hora">${horaDe(m.created_at)}</td></tr>`;
+  const valorSaidas=saidas.reduce((s,m)=>s+valorMov(m),0), valorPerdas=perdas.reduce((s,m)=>s+valorMov(m),0);
+  const saidaRow=m=>{const v=valorMov(m); return `<tr><td class="prod">${esc(m.produto_nome)}</td><td class="num" data-label="Qtd">${m.quantidade} ${esc(m.unidade||'')}</td><td data-label="Tipo">${m.tipo==='perda'?'<span class="badge b-no">perda</span>':'<span class="badge b-info">saída</span>'}</td><td data-label="Setor">${esc(m.setor||'—')}</td><td data-label="Motivo">${esc(m.motivo||'—')}</td><td class="num" data-label="Valor">${v>0?brl(v):'—'}</td><td data-label="Por">${esc(m.created_by||'—')}</td><td data-label="Hora">${horaDe(m.created_at)}</td></tr>`;};
   const entradaRow=m=>`<tr><td class="prod">${esc(m.produto_nome)}</td><td class="num" data-label="Qtd">${m.quantidade} ${esc(m.unidade||'')}</td><td data-label="Motivo">${esc(m.motivo||'—')}</td><td data-label="Por">${esc(m.created_by||'—')}</td><td data-label="Hora">${horaDe(m.created_at)}</td></tr>`;
   const consumo={}; saidas.forEach(m=>{const k=m.setor||'sem setor';consumo[k]=(consumo[k]||0)+1});
   const consumoChips=Object.entries(consumo).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<span class="chip">${esc(k)}: <b>${n}</b></span>`).join('');
@@ -164,9 +167,10 @@ async function run(){
    +`<h2>5. Recebimentos do dia</h2>`+tabela([{h:'Fornecedor'},{h:'Valor',num:1},{h:'Recebido por'},{h:'Hora'},{h:'Status'}],linhasReceb,'Nenhum recebimento confirmado neste dia.')
    +`<h2>4. Cotações pendentes <span class="h2s">— aguardando fornecedor</span></h2>`+tabela([{h:'Fornecedor'},{h:'Enviado'},{h:'Aguardando',num:1},{h:'Status'}],linhasPend,'Sem cotações pendentes.')
    +`<h2>9. Movimentações de estoque</h2><div class="kpis">`
-   +kchip('Entradas',entradas.length,'ok')+kchip('Saídas',saidas.length)+kchip('Transferências',transf.length)+kchip('Perdas',perdas.length,perdas.length?'bad':'')
+   +kchip('Entradas',entradas.length,'ok')+kchip('Saídas',saidas.length)+kchip('Valor saídas',brl(valorSaidas),'',`${saidas.length} saída(s)`)+kchip('Perdas',perdas.length,perdas.length?'bad':'')+kchip('Valor perdas',valorPerdas>0?brl(valorPerdas):'—',valorPerdas>0?'bad':'')+kchip('Transferências',transf.length)
    +`</div>`
-   +`<div class="sub3">📤 Saídas & perdas do dia</div>`+tabela([{h:'Produto'},{h:'Qtd',num:1},{h:'Tipo'},{h:'Setor'},{h:'Motivo'},{h:'Por'},{h:'Hora'}],saidasEperdas.slice(0,80).map(saidaRow),'Nenhuma saída registrada neste dia.')
+   +`<div class="sub3">📤 Saídas & perdas do dia</div>`+tabela([{h:'Produto'},{h:'Qtd',num:1},{h:'Tipo'},{h:'Setor'},{h:'Motivo'},{h:'Valor',num:1},{h:'Por'},{h:'Hora'}],saidasEperdas.slice(0,80).map(saidaRow),'Nenhuma saída registrada neste dia.')
+   +((valorSaidas+valorPerdas)>0?`<div style="text-align:right;font-weight:800;margin-top:6px;font-size:14px">Total de saídas: <span style="color:var(--vinho)">${brl(valorSaidas+valorPerdas)}</span>${valorPerdas>0?` <span style="font-weight:500;font-size:12px;color:var(--muted)">(perdas ${brl(valorPerdas)})</span>`:''}</div>`:'')
    +(consumoChips?`<div class="sub3">Consumo por setor</div><div class="chips">${consumoChips}</div>`:'')
    +`<div class="sub3">📥 Entradas do dia</div>`+tabela([{h:'Produto'},{h:'Qtd',num:1},{h:'Motivo'},{h:'Por'},{h:'Hora'}],entradas.slice(0,60).map(entradaRow),'Nenhuma entrada neste dia.')
    +`<h2>10. Produtos críticos <span class="h2s">— abaixo do mínimo</span></h2>`+tabela([{h:'Produto'},{h:'Atual',num:1},{h:'Mínimo',num:1},{h:'Situação'}],linhasCrit,'Nenhum produto abaixo do mínimo. 🎉')

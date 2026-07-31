@@ -48,12 +48,16 @@ async function montar(dia, loja, host) {
   const pedDia = pedidos.filter(p => (p.data || diaDe(p.em)) === dia)
   const recDia = pedidos.filter(p => p.recebimento && diaDe(p.recebimento.em) === dia)
   const valor = pedDia.reduce((s, p) => s + (Number(p.total) || 0), 0)
-  const movs = await sb(`estoque_movimentacoes?select=tipo,setor${lojaEq('loja')}&created_at=gte.${encodeURIComponent(ini)}&created_at=lt.${encodeURIComponent(fim)}`)
+  const movs = await sb(`estoque_movimentacoes?select=tipo,setor,produto_id,quantidade${lojaEq('loja')}&created_at=gte.${encodeURIComponent(ini)}&created_at=lt.${encodeURIComponent(fim)}`)
   const ent = movs.filter(m => m.tipo === 'entrada').length, sai = movs.filter(m => m.tipo === 'saida').length, per = movs.filter(m => m.tipo === 'perda').length
   const consumo = {}; movs.filter(m => m.tipo === 'saida').forEach(m => { const k = m.setor || 'sem setor'; consumo[k] = (consumo[k] || 0) + 1 })
   const consumoTxt = Object.entries(consumo).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => `${k} ${n}`).join(' · ')
-  const prods = await sb(`produtos?select=estoque_atual,estoque_minimo&ativo=eq.true${lojaEq('loja')}&limit=5000`)
+  const prods = await sb(`produtos?select=id,estoque_atual,estoque_minimo,ultimo_preco_compra&ativo=eq.true${lojaEq('loja')}&limit=5000`)
   const criticos = (prods || []).filter(p => Number(p.estoque_minimo) > 0 && Number(p.estoque_atual) <= Number(p.estoque_minimo)).length
+  const custoById = {}; (prods || []).forEach(p => { if (p.id) custoById[p.id] = Number(p.ultimo_preco_compra) || 0 })
+  const valMov = m => (custoById[m.produto_id] || 0) * (Number(m.quantidade) || 0)
+  const valorSaidas = movs.filter(m => m.tipo === 'saida').reduce((s, m) => s + valMov(m), 0)
+  const valorPerdas = movs.filter(m => m.tipo === 'perda').reduce((s, m) => s + valMov(m), 0)
   const tokRows = await sb('app_config?chave=like.cot_tok:*&select=valor')
   const pend = (tokRows || []).map(r => r.valor || {}).filter(t => t && t.fornecedor_nome && !['respondido', 'cancelado'].includes(t.status)).length
 
@@ -63,6 +67,7 @@ async function montar(dia, loja, host) {
     `🛒 Compras: *${pedDia.length} pedido(s)* · ${brl(valor)}\n` +
     `📦 Recebimentos: ${recDia.length}\n` +
     `📥 Estoque: ${ent} entrada(s) · ${sai} saída(s)${per ? ` · ${per} perda(s)` : ''}\n` +
+    (valorSaidas > 0 ? `   💵 Valor das saídas: *${brl(valorSaidas)}*${valorPerdas > 0 ? ` (perdas ${brl(valorPerdas)})` : ''}\n` : '') +
     (sai && consumoTxt ? `   Consumo por setor: ${consumoTxt}\n` : '') +
     `⚠️ Produtos abaixo do mínimo: *${criticos}*\n` +
     `⏳ Cotações pendentes: ${pend}\n` +
