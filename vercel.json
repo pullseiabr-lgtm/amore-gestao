@@ -3,7 +3,8 @@
   "outputDirectory": "dist",
   "crons": [
     { "path": "/api/checklists-cron", "schedule": "0 9 * * *" },
-    { "path": "/api/disparo-diario", "schedule": "0 11 * * *" }
+    { "path": "/api/disparo-diario", "schedule": "0 11 * * *" },
+    { "path": "/api/relatorio-diario-cron", "schedule": "30 11 * * *" }
   ],
   "rewrites": [
     { "source": "/((?!api/|.*\\.).*)", "destination": "/index.html" }
