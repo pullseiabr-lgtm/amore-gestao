@@ -33,6 +33,13 @@ tfoot td{padding:12px;font-weight:800;font-size:15px;border-top:2px solid var(--
 .rb.ok{background:var(--ok)}.rb.warn{background:var(--warn)}.rb.crit{background:var(--vinho)}.rb:disabled{opacity:.5;cursor:default}
 .recdone{margin-top:18px;padding:14px 16px;border-radius:12px;background:color-mix(in srgb,var(--ok) 12%,var(--card));border:1px solid color-mix(in srgb,var(--ok) 35%,var(--border));color:var(--ok);font-size:14px;font-weight:600}
 .recdone .robs{font-weight:400;color:var(--text);margin-top:4px;font-size:12.5px}
+.recdone .nfinfo{font-weight:400;color:var(--text);margin-top:6px;font-size:12.5px;display:flex;flex-wrap:wrap;gap:4px 14px}
+.recdone .nfinfo b{color:var(--vinho)}
+.vernota{display:inline-flex;align-items:center;gap:6px;margin-top:10px;text-decoration:none;background:var(--vinho);color:#fff;border-radius:9px;padding:8px 13px;font-size:13px;font-weight:700}
+.rgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.ranx{display:block;font-size:12px;color:var(--muted);font-weight:600;margin:2px 0 10px}
+.ranx input{margin-top:5px}
+.rest{margin-top:8px;font-size:12.5px;font-weight:400;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:8px 11px}
 @media print{.btn,.recbox{display:none}body{background:#fff}.tw{box-shadow:none}}
 </style>
 </head>
@@ -50,20 +57,35 @@ const fD=s=>{if(!s)return '';const p=String(s).slice(0,10).split('-');return p.l
 const fmtDT=s=>{if(!s)return '';const dt=new Date(s);return dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});};
 const NOTIFICAR=['5581992573535','5581994135602']; // comprador (Esdras) + gestor (Wagner)
 function recebimentoHTML(d){
-  if(d.recebimento){const r=d.recebimento;return '<div class="recdone">✅ <b>Recebimento confirmado</b> — '+esc(r.status)+' · por '+esc(r.por||'—')+' em '+fmtDT(r.em)+(r.obs?'<div class="robs">Obs: '+esc(r.obs)+'</div>':'')+'</div>';}
-  return '<div class="recbox"><b>📦 Confirmar recebimento</b><p>Conferente: confira os itens (quantidade, validade, estado) e registre. O comprador e o gestor são avisados automaticamente.</p>'
+  if(d.recebimento){const r=d.recebimento;const nf=r.nota||{};
+    const nfLinha=(nf.numero||nf.valor!=null||nf.data)?'<div class="nfinfo">'+(nf.numero?'<span>NF <b>'+esc(nf.numero)+'</b></span>':'')+(nf.valor!=null?'<span>Valor da nota <b>'+brl(nf.valor)+'</b></span>':'')+(nf.data?'<span>Emissão <b>'+fD(nf.data)+'</b></span>':'')+'</div>':'';
+    const estoque=r.estoque?'<div class="rest">📦 Estoque: '+(r.estoque.entradas||0)+' item(ns) deram entrada'+((r.estoque.naoCadastrados&&r.estoque.naoCadastrados.length)?' · ⚠ '+r.estoque.naoCadastrados.length+' sem cadastro: '+r.estoque.naoCadastrados.slice(0,6).map(esc).join(', '):'')+'</div>':'';
+    return '<div class="recdone">✅ <b>Recebimento confirmado</b> — '+esc(r.status)+' · por '+esc(r.por||'—')+' em '+fmtDT(r.em)+nfLinha+(r.obs?'<div class="robs">Obs: '+esc(r.obs)+'</div>':'')+estoque+(r.anexo_url?'<div><a class="vernota" href="'+esc(r.anexo_url)+'" target="_blank" rel="noreferrer">📎 Ver nota fiscal</a></div>':'')+'</div>';}
+  return '<div class="recbox"><b>📦 Confirmar recebimento</b><p>Conferente: confira os itens (quantidade, validade, estado), informe os dados da nota fiscal e anexe a NF para auditoria. O comprador e o gestor são avisados automaticamente.</p>'
     +'<input id="rpor" placeholder="Seu nome (conferente)" />'
+    +'<div class="rgrid"><input id="rnf" placeholder="Nº da nota fiscal" /><input id="rval" inputmode="decimal" placeholder="Valor da nota (R$)" /><input id="rdata" type="date" title="Data de emissão da nota" /></div>'
+    +'<label class="ranx">📎 Anexar nota fiscal (foto ou PDF)<input id="ranx" type="file" accept="image/*,application/pdf" /></label>'
     +'<textarea id="robs" rows="2" placeholder="Observação / divergência (opcional)"></textarea>'
     +'<div class="rbtns"><button class="rb ok" onclick="confirmarReceb(\'Recebido integral\')">✅ Recebido integral</button><button class="rb warn" onclick="confirmarReceb(\'Recebido parcial\')">🟠 Recebido parcial</button><button class="rb crit" onclick="confirmarReceb(\'Com divergência\')">⚠️ Com divergência</button></div></div>';
 }
+function parseBRL(s){ s=String(s||'').trim(); if(!s)return null; if(s.indexOf(',')>=0)return Number(s.replace(/\./g,'').replace(',','.'))||null; return Number(s)||null; }
 async function confirmarReceb(status){
   const p=window.__ped; if(!p)return; const d=p.d;
-  const por=(document.getElementById('rpor')||{}).value||''; const obs=(document.getElementById('robs')||{}).value||'';
-  if((status==='Com divergência'||status==='Recebido parcial')&&!obs.trim()){ alert('Descreva a divergência/pendência na observação.'); return; }
-  document.querySelectorAll('.rb').forEach(function(b){b.disabled=true});
-  d.recebimento={status:status,por:por,obs:obs,em:new Date().toISOString()};
+  const val=function(id){return ((document.getElementById(id)||{}).value||'').trim();};
+  const por=val('rpor'), obs=val('robs'), nf=val('rnf'), dataNota=val('rdata')||null, valorNota=parseBRL(val('rval'));
+  if((status==='Com divergência'||status==='Recebido parcial')&&!obs){ alert('Descreva a divergência/pendência na observação.'); return; }
+  document.querySelectorAll('.rb').forEach(function(b){b.disabled=true;b.textContent='Enviando…';});
+  // anexo da NF (bucket público 'anexos')
+  var anexo_url=null; var fe=document.getElementById('ranx'); var file=fe&&fe.files&&fe.files[0];
+  if(file){ try{ var ext=(file.name.split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,''); var path='recebimentos/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.'+ext;
+    var up=await fetch(SB+'/storage/v1/object/anexos/'+path,{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':file.type||'application/octet-stream'},body:file});
+    if(up.ok) anexo_url=SB+'/storage/v1/object/public/anexos/'+path; }catch(e){} }
+  d.recebimento={status:status,por:por,obs:obs,em:new Date().toISOString(),nota:{numero:nf||null,valor:valorNota,data:dataNota},anexo_url:anexo_url};
+  // entrada automática no estoque (só no recebimento integral) — casa produtos e dá entrada
+  if(status==='Recebido integral'){ try{ var er=await fetch('/api/recebimento-estoque',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chave:p.chave,nf:nf,por:por})}); var ej=await er.json().catch(function(){return null;}); if(ej&&ej.ok) d.recebimento.estoque={entradas:ej.entradas,naoCadastrados:ej.naoCadastrados||[]}; }catch(e){} }
   try{ await fetch(SB+'/rest/v1/app_config?chave=eq.'+encodeURIComponent(p.chave),{method:'PATCH',headers:Object.assign({},H,{'Content-Type':'application/json',Prefer:'return=minimal'}),body:JSON.stringify({valor:d})}); }catch(e){}
-  const msg='✅ *Recebimento confirmado*\n'+(d.fornecedor||'')+' — '+(d.loja||'')+'\nRecebido em '+fmtDT(d.recebimento.em)+(por?' por '+por:'')+'\nValor: '+brl(d.total||0)+' · '+(d.itens||[]).length+' itens\nStatus: *'+status+'*'+(obs?'\n📝 Obs: '+obs:'');
+  var est=d.recebimento.estoque;
+  const msg='✅ *Recebimento confirmado*\n'+(d.fornecedor||'')+' — '+(d.loja||'')+'\nRecebido em '+fmtDT(d.recebimento.em)+(por?' por '+por:'')+'\nStatus: *'+status+'*'+(nf?'\nNF nº '+nf:'')+'\nValor da nota: '+brl(valorNota!=null?valorNota:(d.total||0))+' · '+(d.itens||[]).length+' itens'+(obs?'\n📝 Obs: '+obs:'')+(est?'\n📦 Estoque: '+(est.entradas||0)+' item(ns) deram entrada'+((est.naoCadastrados||[]).length?' · '+est.naoCadastrados.length+' sem cadastro':''):'')+(anexo_url?'\n📎 NF: '+anexo_url:'');
   for(const f of NOTIFICAR){ try{ await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:f,message:msg})}); }catch(e){} }
   run();
 }
