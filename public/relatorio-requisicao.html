@@ -27,6 +27,8 @@ tbody td{padding:8px 10px;border-bottom:1px solid var(--border)}tbody tr:last-ch
 .num{text-align:right;white-space:nowrap}.prod{font-weight:600}.mut{color:var(--muted)}.mc{display:block;font-size:10.5px;color:var(--muted);font-weight:400}
 .pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap}
 .p-crit{background:#FEE2E2;color:#B91C1C}.p-alta{background:#FFEDD5;color:#C2410C}.p-media{background:#FEF3C7;color:#B45309}.p-baixa{background:#DCFCE7;color:#15803D}
+.p-sp{background:#FEF3C7;color:#92400E;border:1px dashed #D97706}
+tr.semp td.prod{border-left:3px solid #D97706;padding-left:7px}
 @media(prefers-color-scheme:dark){.p-crit{background:#3a1414;color:#f87171}.p-alta{background:#3a2410;color:#fb923c}.p-media{background:#33270a;color:#fbbf24}.p-baixa{background:#0f2e1b;color:#4ade80}}
 .foot{margin-top:26px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
 .msg{text-align:center;padding:60px 20px;color:var(--muted)}
@@ -57,6 +59,19 @@ const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const nf=v=>Number.isInteger(v)?String(v):(Math.round(v*100)/100).toLocaleString('pt-BR');
 const hoje=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+const NORM=s=>(s||'').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+const TOKS=s=>NORM(s).split(' ').filter(w=>w.length>2);
+
+// Mapa de preço de referência: NF (nf_praso) + pedidos + caixas (caixa_itens). Preenche o que não tem preço no cadastro.
+async function montarPrecos(){
+  const map={};
+  const add=(nm,pr,em)=>{nm=NORM(nm);if(!nm||!(pr>0))return;if(!map[nm]||(em||'')>(map[nm].em||''))map[nm]={preco:pr,em:em||''};};
+  const cfg=await g(`app_config?select=chave,valor&or=(chave.like.nf_praso:*,chave.like.pedido_*)&limit=2000`);
+  (cfg||[]).forEach(row=>{const v=row.valor;if(!v||!Array.isArray(v.itens))return;const em=v.em||v.data||'';v.itens.forEach(it=>add(it.prod||it.produto||it.desc,Number(it.unit)||Number(it.preco)||0,em));});
+  const ci=await g(`caixa_itens?select=descricao,valor,quantidade,preco_unit,created_at&limit=20000`);
+  (ci||[]).forEach(it=>{const pr=Number(it.preco_unit)>0?Number(it.preco_unit):(Number(it.valor)>0&&Number(it.quantidade)>0?Number(it.valor)/Number(it.quantidade):0);add(it.descricao,pr,it.created_at||'');});
+  return {map,idx:Object.entries(map)};
+}
 
 async function run(){
   const prods=await g(`estoque_produtos?loja=eq.${encodeURIComponent(LOJA)}&ativo=eq.true&select=id,nome,nivel_atual,nivel_minimo,nivel_ideal,preco_unitario&limit=8000`);
@@ -65,8 +80,17 @@ async function run(){
   const cons30={}, cons7={}; const lim7=Date.now()-7*864e5;
   movs.forEach(m=>{const pid=m.produto_id,qq=Number(m.quantidade)||0;cons30[pid]=(cons30[pid]||0)+qq;if(new Date(m.created_at).getTime()>=lim7)cons7[pid]=(cons7[pid]||0)+qq;});
 
+  const {map:PMAP,idx:PIDX}=await montarPrecos();
+  const preçoRef=(nome,precoUnit)=>{
+    if(precoUnit>0) return {preco:precoUnit,fonte:'cad'};
+    const n=NORM(nome); if(PMAP[n]) return {preco:PMAP[n].preco,fonte:'ref'};
+    const t=TOKS(nome); if(t.length){for(const [k,v] of PIDX){if(t.every(w=>k.includes(w))) return {preco:v.preco,fonte:'ref'};}}
+    return {preco:0,fonte:''};
+  };
+
   const linhas=prods.map(p=>{
-    const atual=Number(p.nivel_atual)||0, min=Number(p.nivel_minimo)||0, ideal=Number(p.nivel_ideal)||0, preco=Number(p.preco_unitario)||0;
+    const atual=Number(p.nivel_atual)||0, min=Number(p.nivel_minimo)||0, ideal=Number(p.nivel_ideal)||0;
+    const _pr=preçoRef(p.nome,Number(p.preco_unitario)||0), preco=_pr.preco;
     const cd=(cons30[p.id]||0)/30; const temCons=cd>0;
     const diasRest= atual<=0?0 : (temCons? atual/cd : Infinity);
     const necessSemana= temCons? cd*7 : 0;
@@ -89,31 +113,35 @@ async function run(){
     else if(atual<ideal) jus='Abaixo do ideal — recomposição planejada.';
     else jus='Estoque suficiente.';
     if(!temCons && precisa) jus+=' (sem histórico de consumo — base: mínimo/ideal, conferir contagem)';
-    return {nome:p.nome,atual,min,ideal,preco,cd,diasRest,sugerido,prio,jus,temCons,precisa,valorEst:sugerido*preco};
+    return {nome:p.nome,atual,min,ideal,preco,precoFonte:_pr.fonte,cd,diasRest,sugerido,prio,jus,temCons,precisa,valorEst:sugerido*preco,temPreco:preco>0};
   }).filter(l=>l.precisa);
 
   const ord={crit:0,alta:1,media:2,baixa:3};
   linhas.sort((a,b)=>ord[a.prio]-ord[b.prio] || (a.diasRest-b.diasRest));
   const nCrit=linhas.filter(l=>l.prio==='crit').length, nAlta=linhas.filter(l=>l.prio==='alta').length, nMed=linhas.filter(l=>l.prio==='media').length;
   const semCons=linhas.filter(l=>!l.temCons).length;
+  const semPreco=linhas.filter(l=>!l.temPreco).length;
+  const comPreco=linhas.length-semPreco;
+  const covPct=linhas.length? Math.round(comPreco/linhas.length*100):0;
   const valorTotal=linhas.reduce((s,l)=>s+l.valorEst,0);
 
   const resumo= linhas.length
     ? `A análise do estoque × consumo (30 dias) da <b>${esc(LOJA)}</b> identificou <b>${linhas.length} produto(s)</b> que precisam de reposição: `+
       `${nCrit? `<b style="color:var(--bad)">${nCrit} crítico(s)</b>, `:''}${nAlta?`<b style="color:var(--warn)">${nAlta} alta(s)</b>, `:''}${nMed?`${nMed} média(s). `:''}`+
-      `Valor estimado de compra: <b>${brl(valorTotal)}</b>${valorTotal===0?' (preços a definir na cotação)':''}. `+
+      `Valor estimado de compra: <b>${brl(valorTotal)}</b> — calculado sobre <b>${comPreco} de ${linhas.length}</b> itens com preço de referência (cadastro, notas fiscais, pedidos e caixas). `+
+      (semPreco? `<b style="color:var(--warn)">${semPreco} item(ns) ainda sem preço</b> não entram no valor — cadastre o preço para chegar a 100%. `:'Todos os itens têm preço de referência. ')+
       (semCons? `${semCons} item(ns) sem histórico de consumo — sugestão baseada no mínimo/ideal, conferir contagem física.`:'Sugestões baseadas no consumo real dos últimos 30 dias.')
     : `Nenhum produto abaixo da necessidade projetada na <b>${esc(LOJA)}</b>. Sem reposição recomendada neste momento. 🎉`;
 
   const pillTxt={crit:'🔴 Crítica',alta:'🟠 Alta',media:'🟡 Média',baixa:'🟢 Baixa'};
-  const row=l=>`<tr>`+
+  const row=l=>`<tr class="${l.temPreco?'':'semp'}">`+
     `<td class="prod">${esc(l.nome)}</td>`+
     `<td class="num" data-label="Atual">${nf(l.atual)}</td>`+
     `<td class="num" data-label="Mín / Ideal">${nf(l.min)} / ${nf(l.ideal)}</td>`+
     `<td class="num" data-label="Consumo/dia">${l.temCons?nf(l.cd):'—'}</td>`+
     `<td class="num" data-label="Dias autonomia">${l.atual<=0?'0':(l.temCons?nf(l.diasRest):'—')}</td>`+
     `<td class="num" data-label="Sugerido"><b>${nf(l.sugerido)}</b></td>`+
-    `<td class="num" data-label="Valor est.">${l.valorEst>0?brl(l.valorEst):'—'}</td>`+
+    `<td class="num" data-label="Valor est.">${l.valorEst>0?(l.precoFonte==='ref'?'<span title="preço médio da última compra (nota/pedido/caixa)">≈ </span>':'')+brl(l.valorEst):'<span class="pill p-sp" title="produto sem preço de referência — não entra no valor. Cadastre o preço.">⚠ sem preço</span>'}</td>`+
     `<td data-label="Prioridade"><span class="pill p-${l.prio}">${pillTxt[l.prio]}</span></td>`+
     `<td data-label="Justificativa"><span class="mut" style="font-size:11.5px">${esc(l.jus)}</span></td></tr>`;
 
@@ -125,8 +153,8 @@ async function run(){
    +`<div class="kpi warn"><div class="kn">${nAlta}</div><div class="kl">🟠 Alta</div></div>`
    +`<div class="kpi"><div class="kn">${nMed}</div><div class="kl">🟡 Média</div></div>`
    +`<div class="kpi"><div class="kn">${linhas.length}</div><div class="kl">Total a repor</div></div>`
-   +`<div class="kpi ok"><div class="kn">${brl(valorTotal)}</div><div class="kl">Valor estimado</div></div>`
-   +`<div class="kpi"><div class="kn">${semCons}</div><div class="kl">Sem consumo (conferir)</div></div>`
+   +`<div class="kpi ok"><div class="kn">${brl(valorTotal)}</div><div class="kl">Valor estimado</div><div class="ks">${comPreco}/${linhas.length} c/ preço (${covPct}%)</div></div>`
+   +`<div class="kpi ${semPreco?'warn':''}"><div class="kn">${semPreco}</div><div class="kl">Sem preço (fora do valor)</div></div>`
    +`</div>`
    +`<h2>Sugestão de compra por prioridade <span class="h2s">— estoque × consumo (30 dias)</span></h2>`
    +(linhas.length?`<div class="tw"><table><thead><tr><th>Produto</th><th class="num">Atual</th><th class="num">Mín / Ideal</th><th class="num">Cons/dia</th><th class="num">Dias auton.</th><th class="num">Sugerido</th><th class="num">Valor est.</th><th>Prioridade</th><th>Justificativa</th></tr></thead><tbody>${linhas.map(row).join('')}</tbody></table></div>`:`<div class="ia">Nenhuma reposição recomendada. 🎉</div>`)

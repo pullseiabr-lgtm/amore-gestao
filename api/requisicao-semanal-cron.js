@@ -30,14 +30,35 @@ async function enviarEvolution(to, texto, cfg) {
   return res.ok
 }
 
-async function analisar(loja) {
-  const prods = await sb(`estoque_produtos?loja=eq.${encodeURIComponent(loja)}&ativo=eq.true&select=id,nivel_atual,nivel_minimo,nivel_ideal,preco_unitario&limit=8000`)
+const NORM = s => (s || '').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+const TOKS = s => NORM(s).split(' ').filter(w => w.length > 2)
+
+// Mapa de preço de referência (último preço comprado): notas fiscais + pedidos + caixas.
+async function montarPrecos() {
+  const map = {}
+  const add = (nm, pr, em) => { nm = NORM(nm); if (!nm || !(pr > 0)) return; if (!map[nm] || (em || '') > (map[nm].em || '')) map[nm] = { preco: pr, em: em || '' } }
+  const cfg = await sb('app_config?select=chave,valor&or=(chave.like.nf_praso:*,chave.like.pedido_*)&limit=2000')
+  ;(cfg || []).forEach(row => { const v = row.valor; if (!v || !Array.isArray(v.itens)) return; const em = v.em || v.data || ''; v.itens.forEach(it => add(it.prod || it.produto || it.desc, Number(it.unit) || Number(it.preco) || 0, em)) })
+  const ci = await sb('caixa_itens?select=descricao,valor,quantidade,preco_unit,created_at&limit=20000')
+  ;(ci || []).forEach(it => { const pr = Number(it.preco_unit) > 0 ? Number(it.preco_unit) : (Number(it.valor) > 0 && Number(it.quantidade) > 0 ? Number(it.valor) / Number(it.quantidade) : 0); add(it.descricao, pr, it.created_at || '') })
+  return { map, idx: Object.entries(map) }
+}
+
+async function analisar(loja, PRECOS) {
+  const prods = await sb(`estoque_produtos?loja=eq.${encodeURIComponent(loja)}&ativo=eq.true&select=id,nome,nivel_atual,nivel_minimo,nivel_ideal,preco_unitario&limit=8000`)
   const ini30 = new Date(Date.now() - 30 * 864e5).toISOString()
   const movs = await sb(`estoque_movimentacoes?loja=eq.${encodeURIComponent(loja)}&tipo=in.(saida,perda)&created_at=gte.${encodeURIComponent(ini30)}&select=produto_id,quantidade&limit=8000`)
   const cons = {}; movs.forEach(m => { cons[m.produto_id] = (cons[m.produto_id] || 0) + (Number(m.quantidade) || 0) })
-  let crit = 0, alta = 0, total = 0, valor = 0
+  const precoRef = (nome, precoUnit) => {
+    if (precoUnit > 0) return precoUnit
+    const n = NORM(nome); if (PRECOS.map[n]) return PRECOS.map[n].preco
+    const t = TOKS(nome); if (t.length) { for (const [k, v] of PRECOS.idx) { if (t.every(w => k.includes(w))) return v.preco } }
+    return 0
+  }
+  let crit = 0, alta = 0, total = 0, valor = 0, semPreco = 0
   for (const p of (prods || [])) {
-    const atual = Number(p.nivel_atual) || 0, min = Number(p.nivel_minimo) || 0, ideal = Number(p.nivel_ideal) || 0, preco = Number(p.preco_unitario) || 0
+    const atual = Number(p.nivel_atual) || 0, min = Number(p.nivel_minimo) || 0, ideal = Number(p.nivel_ideal) || 0
+    const preco = precoRef(p.nome, Number(p.preco_unitario) || 0)
     const cd = (cons[p.id] || 0) / 30, temCons = cd > 0
     const diasRest = atual <= 0 ? 0 : (temCons ? atual / cd : Infinity)
     const sugerido = temCons ? Math.max(0, Math.ceil(cd * 7 + min - atual)) : (atual < ideal ? Math.max(0, Math.ceil(ideal - atual)) : (atual < min ? Math.ceil(min - atual) : 0))
@@ -49,10 +70,11 @@ async function analisar(loja) {
     else if (atual < ideal) prio = 'media'
     else prio = 'baixa'
     if (sugerido > 0 || atual < min || prio === 'crit' || prio === 'alta') {
-      total++; if (prio === 'crit') crit++; else if (prio === 'alta') alta++; valor += sugerido * preco
+      total++; if (prio === 'crit') crit++; else if (prio === 'alta') alta++
+      if (preco > 0) valor += sugerido * preco; else semPreco++
     }
   }
-  return { crit, alta, total, valor }
+  return { crit, alta, total, valor, semPreco }
 }
 
 export default async function handler(req, res) {
@@ -72,12 +94,15 @@ export default async function handler(req, res) {
   const hojeBR = new Date(Date.now() - 3 * 3600e3).toLocaleDateString('pt-BR')
 
   try {
+    const PRECOS = await montarPrecos()
     const resumos = []
     for (const loja of lojas) {
-      const a = await analisar(loja)
+      const a = await analisar(loja, PRECOS)
+      const comPreco = a.total - a.semPreco
       const link = `https://${host}/relatorio-requisicao.html?loja=${encodeURIComponent(loja)}`
       const texto = `🧠 *Requisição Semanal de Compra — ${loja}*\n${hojeBR}\n━━━━━━━━━━━━\n` +
-        `📦 ${a.total} produto(s) a repor\n🔴 Críticos: ${a.crit} · 🟠 Alta: ${a.alta}\n💰 Valor estimado: ${brl(a.valor)}\n━━━━━━━━━━━━\n` +
+        `📦 ${a.total} produto(s) a repor\n🔴 Críticos: ${a.crit} · 🟠 Alta: ${a.alta}\n` +
+        `💰 Valor estimado: ${brl(a.valor)}\n_(sobre ${comPreco}/${a.total} itens com preço${a.semPreco ? ` · ${a.semPreco} sem preço a cadastrar` : ''})_\n━━━━━━━━━━━━\n` +
         `Análise completa (estoque × consumo, prioridade e justificativa):\n${link}\n\n_Gerado automaticamente · valide o estoque antes de enviar à cotação._`
       resumos.push({ loja, ...a, link, texto })
     }
