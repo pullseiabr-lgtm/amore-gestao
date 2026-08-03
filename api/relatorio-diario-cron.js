@@ -111,7 +111,18 @@ export default async function handler(req, res) {
 
     const resultados = []
     for (const to of dest) { const r = await enviarEvolution(to, texto, cfg); resultados.push({ to, ok: r.ok }) ; await new Promise(x => setTimeout(x, 1200)) }
-    return res.status(200).json({ dia, enviados: resultados.filter(r => r.ok).length, total: dest.length, resumo, resultados })
+
+    // Requisição Semanal de Compra: dobrada aqui (evita 4º cron / limite do plano).
+    // Dispara às SEGUNDAS (fuso Recife) ou sob demanda com ?req=1. Nunca quebra o relatório diário.
+    let requisicao = null
+    const isSegunda = new Date(Date.now() - 3 * 3600e3).getUTCDay() === 1
+    if (isSegunda || req.query?.req === '1') {
+      try {
+        const rr = await fetch(`https://${host}/api/requisicao-semanal-cron`, { headers: { Authorization: `Bearer ${process.env.CRON_SECRET || ''}` } })
+        requisicao = await rr.json().catch(() => ({ ok: rr.ok, status: rr.status }))
+      } catch (e) { requisicao = { error: String((e && e.message) || e) } }
+    }
+    return res.status(200).json({ dia, enviados: resultados.filter(r => r.ok).length, total: dest.length, resumo, resultados, requisicao })
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Erro no relatório diário' })
   }
