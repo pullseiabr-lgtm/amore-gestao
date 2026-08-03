@@ -10,8 +10,9 @@ import {
   fetchEstoqueContagens, insertEstoqueContagem,
   fetchEstoqueContagemItens, upsertEstoqueContagemItens,
   fetchEstoquePerdas, insertEstoquePerda, deleteEstoquePerda,
+  deleteEstoqueProduto, logEstoqueProduto, fetchEstoqueProdutoLogs, fetchCategoriasCustom, saveCategoriasCustom,
 } from '../../lib/db'
-import type { EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, NivelStatus, EstoquePerda, PerdaTipo } from '../../types/database'
+import type { EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, NivelStatus, EstoquePerda, PerdaTipo, EstoqueProdutoLog } from '../../types/database'
 
 // ── helpers ────────────────────────────────────────────────
 
@@ -71,7 +72,14 @@ type BulkRow = { nivel_atual: number; nivel_minimo: number; nivel_ideal: number;
 function TabLista({ loja }: { loja: string }) {
   const { lojas } = useLoja()
   const { toast } = useToast()
+  const { user, can } = useAuth()
   const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
+  const [catCustom, setCatCustom] = useState<string[]>([])
+  const [confirmDel, setConfirmDel] = useState<EstoqueProduto | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [showLogs, setShowLogs] = useState(false)
+  const [logs, setLogs] = useState<EstoqueProdutoLog[]>([])
+  const [logsLoading, setLogsLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
   const buscaDebounced = useDebounce(busca, 280)
@@ -95,6 +103,46 @@ function TabLista({ loja }: { loja: string }) {
   }, [loja])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { fetchCategoriasCustom().then(setCatCustom).catch(() => {}) }, [])
+
+  // Lista de categorias = fixas + personalizadas + as já usadas nos produtos (editável/ampliável)
+  const catList = useMemo(() => {
+    const set = new Set<string>([...CATEGORIAS, ...catCustom, ...produtos.map(p => p.categoria).filter(Boolean)])
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [catCustom, produtos])
+
+  const criarCategoria = () => {
+    const nome = (window.prompt('Nome da nova categoria de produto:') || '').trim()
+    if (!nome) return
+    if (catList.some(c => c.toLowerCase() === nome.toLowerCase())) { toast('Essa categoria já existe.'); setForm(f => ({ ...f, categoria: catList.find(c => c.toLowerCase() === nome.toLowerCase()) || nome })); return }
+    const nova = [...catCustom, nome]
+    setCatCustom(nova)
+    saveCategoriasCustom(nova).catch(() => {})
+    setForm(f => ({ ...f, categoria: nome }))
+    toast(`Categoria "${nome}" criada.`)
+  }
+
+  const excluir = async (p: EstoqueProduto) => {
+    setDeleting(true)
+    try {
+      await deleteEstoqueProduto(p.id)
+      await logEstoqueProduto({
+        loja: p.loja, produto_id: p.id, produto_nome: p.nome, acao: 'exclusao', campo_alterado: null,
+        antes: { nome: p.nome, categoria: p.categoria, gramatura: p.gramatura, nivel_atual: p.nivel_atual, nivel_minimo: p.nivel_minimo, nivel_ideal: p.nivel_ideal, preco_unitario: p.preco_unitario },
+        depois: null, usuario: user?.name || null,
+      })
+      toast('Produto excluído.')
+      setConfirmDel(null)
+      await load()
+    } catch { toast('Erro ao excluir produto.', 'error') }
+    setDeleting(false)
+  }
+
+  const abrirLogs = async () => {
+    setShowLogs(true); setLogsLoading(true)
+    try { setLogs(await fetchEstoqueProdutoLogs(loja)) } catch {}
+    setLogsLoading(false)
+  }
 
   const filtrados = produtos
     .filter(p => p.nome.toLowerCase().includes(buscaDebounced.toLowerCase()))
@@ -191,10 +239,16 @@ function TabLista({ loja }: { loja: string }) {
         registrar_perdas: false,
       }
       if (editProduto) {
+        const campos: (keyof typeof payload)[] = ['nome', 'gramatura', 'categoria', 'nivel_minimo', 'nivel_ideal', 'preco_unitario']
+        const antes: any = {}, depois: any = {}
+        campos.forEach(k => { antes[k] = (editProduto as any)[k]; depois[k] = (payload as any)[k] })
+        const mudou = campos.filter(k => antes[k] !== depois[k])
         await updateEstoqueProduto(editProduto.id, payload)
+        if (mudou.length) await logEstoqueProduto({ loja: editProduto.loja, produto_id: editProduto.id, produto_nome: payload.nome, acao: 'edicao', campo_alterado: mudou.join(', '), antes, depois, usuario: user?.name || null })
         toast('Produto atualizado!')
       } else {
-        await insertEstoqueProduto(payload)
+        const novo = await insertEstoqueProduto(payload)
+        await logEstoqueProduto({ loja: payload.loja, produto_id: novo?.id || null, produto_nome: payload.nome, acao: 'criacao', campo_alterado: null, antes: null, depois: payload, usuario: user?.name || null })
         toast('Produto cadastrado!')
       }
       setShowModal(false)
@@ -289,9 +343,10 @@ function TabLista({ loja }: { loja: string }) {
           </select>
           <select className="flt" value={categoria} onChange={e => setCategoria(e.target.value)}>
             <option value="">Todas as categorias</option>
-            {CATEGORIAS.map(c => <option key={c}>{c}</option>)}
+            {catList.map(c => <option key={c}>{c}</option>)}
           </select>
           {(busca || categoria) && <button className="btn bo bsm" onClick={() => { setBusca(''); setCategoria('') }}>Limpar filtros</button>}
+          <button className="btn bo bsm" onClick={abrirLogs} title="Registro de alterações e exclusões" style={{ marginLeft: 'auto' }}><History size={12} style={{ marginRight: 4 }} />Registro</button>
         </div>
 
         <div className="tw">
@@ -355,7 +410,10 @@ function TabLista({ loja }: { loja: string }) {
                       </td>
                       <td>
                         {!editMode && (
-                          <div className="ab"><button className="ib" onClick={() => openEdit(p)} title="Editar">✏️</button></div>
+                          <div className="ab">
+                            <button className="ib" onClick={() => openEdit(p)} title="Editar">✏️</button>
+                            {can('estoque', 'delete') && <button className="ib" onClick={() => setConfirmDel(p)} title="Excluir produto">🗑️</button>}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -386,8 +444,10 @@ function TabLista({ loja }: { loja: string }) {
                   </select>
                 </div>
                 <div className="fg"><label className="fl">Categoria</label>
-                  <select className="sel" value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}>
-                    {CATEGORIAS.map(c => <option key={c}>{c}</option>)}
+                  <select className="sel" value={form.categoria} onChange={e => { if (e.target.value === '__nova__') { criarCategoria() } else { setForm(f => ({ ...f, categoria: e.target.value })) } }}>
+                    {!catList.includes(form.categoria) && form.categoria && <option>{form.categoria}</option>}
+                    {catList.map(c => <option key={c}>{c}</option>)}
+                    <option value="__nova__">➕ Nova categoria…</option>
                   </select>
                 </div>
               </div>
@@ -401,6 +461,64 @@ function TabLista({ loja }: { loja: string }) {
               <button className="btn bo" onClick={() => setShowModal(false)}>Cancelar</button>
               <button className="btn bp" onClick={salvar} disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDel && (
+        <div className="ov open" onClick={() => !deleting && setConfirmDel(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <div className="mhd"><span className="mtt">Excluir Produto</span><button className="mx" onClick={() => setConfirmDel(null)}>✕</button></div>
+            <div className="mbd">
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <AlertTriangle size={22} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: 2 }} />
+                <div style={{ fontSize: 13.5 }}>
+                  Excluir <strong>{confirmDel.nome}</strong> ({confirmDel.categoria})?<br />
+                  <span style={{ color: 'var(--muted)', fontSize: 12 }}>O produto sai das listas mas o histórico e as movimentações são preservados. A ação fica registrada no <strong>Registro de alterações</strong> (quem e quando).</span>
+                </div>
+              </div>
+            </div>
+            <div className="mft">
+              <button className="btn bo" onClick={() => setConfirmDel(null)} disabled={deleting}>Cancelar</button>
+              <button className="btn bd" onClick={() => excluir(confirmDel)} disabled={deleting}>{deleting ? 'Excluindo...' : 'Excluir'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLogs && (
+        <div className="ov open" onClick={() => setShowLogs(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 720 }}>
+            <div className="mhd"><span className="mtt">🕓 Registro de alterações e exclusões</span><button className="mx" onClick={() => setShowLogs(false)}>✕</button></div>
+            <div className="mbd" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
+              {logsLoading ? (
+                <div className="empty"><Loader size={20} className="spin" /><div style={{ marginTop: 8 }}>Carregando...</div></div>
+              ) : logs.length === 0 ? (
+                <div className="empty"><History size={30} /><div>Nenhum registro ainda.</div></div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {logs.map(l => {
+                    const cor = l.acao === 'exclusao' ? 'var(--danger)' : l.acao === 'criacao' ? 'var(--green)' : 'var(--blue)'
+                    const rot = l.acao === 'exclusao' ? 'Exclusão' : l.acao === 'criacao' ? 'Criação' : 'Edição'
+                    const det = l.acao === 'edicao' && l.antes && l.depois
+                      ? (l.campo_alterado || '').split(', ').filter(Boolean).map(c => `${c}: ${l.antes[c] ?? '—'} → ${l.depois[c] ?? '—'}`).join(' · ')
+                      : ''
+                    return (
+                      <div key={l.id} style={{ border: '1px solid var(--border)', borderLeft: `3px solid ${cor}`, borderRadius: 8, padding: '8px 11px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                          <div style={{ fontWeight: 700, fontSize: 13 }}><span style={{ color: cor }}>{rot}</span> — {l.produto_nome || '—'}</div>
+                          <div style={{ fontSize: 11, color: 'var(--muted)' }}>{new Date(l.created_at).toLocaleString('pt-BR')}</div>
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
+                          por <strong>{l.usuario || 'sistema'}</strong>{l.loja ? ` · ${l.loja}` : ''}{det ? ` · ${det}` : ''}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="mft"><button className="btn bo" onClick={() => setShowLogs(false)}>Fechar</button></div>
           </div>
         </div>
       )}

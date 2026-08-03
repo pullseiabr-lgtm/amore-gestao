@@ -1,7 +1,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
 import type { NFeParsed } from './nfe'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, ChecklistModelo, ChecklistExecucao, PautaReuniao, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig, Boleto, Notificacao, Caixa, CaixaItem } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueProdutoLog, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, ChecklistModelo, ChecklistExecucao, PautaReuniao, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig, Boleto, Notificacao, Caixa, CaixaItem } from '../types/database'
 
 const db = supabase as any
 
@@ -528,6 +528,30 @@ export async function insertEstoqueProduto(p: Omit<EstoqueProduto, 'id' | 'creat
 
 export async function updateEstoqueProduto(id: string, p: Partial<EstoqueProduto>): Promise<EstoqueProduto> {
   return estoquePatch('estoque_produtos', id, { ...p, updated_at: new Date().toISOString() })
+}
+
+/** "Exclusão" segura: inativa o produto (some das listas, preserva histórico e movimentações). */
+export async function deleteEstoqueProduto(id: string): Promise<void> {
+  await estoquePatch('estoque_produtos', id, { ativo: false, updated_at: new Date().toISOString() })
+}
+
+// ── Auditoria de produtos (criação/edição/exclusão) — rastreabilidade ──
+export async function logEstoqueProduto(entry: Omit<EstoqueProdutoLog, 'id' | 'created_at'>): Promise<void> {
+  try { await estoquePost('estoque_produto_logs', entry) } catch (e) { console.warn('logEstoqueProduto:', e) }
+}
+export async function fetchEstoqueProdutoLogs(loja?: string, limit = 200): Promise<EstoqueProdutoLog[]> {
+  const q = (loja && loja !== 'Todas as Lojas' ? `loja=eq.${encodeURIComponent(loja)}&` : '') + `order=created_at.desc&limit=${limit}`
+  try { return await estoqueFetch('estoque_produto_logs', q) } catch { return [] }
+}
+
+// ── Categorias de produto editáveis (guardadas em app_config, sem DDL) ──
+export async function fetchCategoriasCustom(): Promise<string[]> {
+  const v = await fetchAppConfig<string[]>('estoque_categorias')
+  return Array.isArray(v) ? v : []
+}
+export async function saveCategoriasCustom(cats: string[]): Promise<void> {
+  const limpa = Array.from(new Set(cats.map(c => (c || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+  await saveAppConfig('estoque_categorias', limpa)
 }
 
 /** Atualiza preco_unitario de estoque_produtos pelo nome (busca case-insensitive) */

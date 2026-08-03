@@ -612,6 +612,19 @@ export interface EstoqueProduto {
   updated_at: string
 }
 
+export interface EstoqueProdutoLog {
+  id: string
+  loja: string | null
+  produto_id: string | null
+  produto_nome: string | null
+  acao: 'criacao' | 'edicao' | 'exclusao'
+  campo_alterado: string | null
+  antes: any
+  depois: any
+  usuario: string | null
+  created_at: string
+}
+
 export interface EstoquePerda {
   id: string
   loja: string
