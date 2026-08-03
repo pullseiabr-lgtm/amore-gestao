@@ -34,6 +34,19 @@
   .foot { font-size:11px; color:var(--muted); text-align:center; margin:18px 0; }
   .spin { display:inline-block; width:20px; height:20px; border:3px solid #fff6; border-top-color:#fff; border-radius:50%; animation:sp 1s linear infinite; }
   @keyframes sp { to { transform:rotate(360deg); } }
+  .hdr .loja { display:inline-block; background:rgba(255,255,255,.2); border:1px solid rgba(255,255,255,.45); padding:4px 13px; border-radius:20px; font-weight:800; font-size:15px; margin-bottom:8px; letter-spacing:.02em; }
+  @media (max-width:640px){
+    .wrap { padding:12px; }
+    .itab thead { display:none; }
+    .itab, .itab tbody, .itab tr, .itab td { display:block; width:100%; }
+    .itab tr { border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:12px; background:#fff; }
+    .itab td { border:none; padding:5px 0; }
+    .itab td.prod { font-size:15.5px; border-bottom:1px solid #f3f4f6; padding-bottom:7px; margin-bottom:2px; }
+    .itab td[data-label]::before { content:attr(data-label); display:block; font-size:11px; color:var(--muted); font-weight:700; text-transform:uppercase; margin-bottom:4px; }
+    .itab td .pr { font-size:17px; padding:12px; }
+    .itab td .mr { padding:11px; }
+    .grid { grid-template-columns:1fr; }
+  }
 </style>
 </head>
 <body>
@@ -46,6 +59,7 @@ const API='/api/cotacao-portal';
 const p=new URLSearchParams(location.search); const TOKEN=(p.get('t')||'').trim();
 const app=document.getElementById('app');
 const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const lojaLabel=l=>({'Amore CD':'Amore Costa Dourada','Flow CD':'Flow Costa Dourada'}[l]||l);
 const fmtDT=s=>s?new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
 let DADOS=null;
 
@@ -71,11 +85,11 @@ async function carregar(){
 
 function resumo(d){
   const r=d.resposta||{}; const itens=(r.itens||[]);
-  app.innerHTML=`<div class="hdr"><h1>Cotação Nº ${d.cotacao.numero} — ${d.cotacao.titulo}</h1><div class="sub">Amore ${d.cotacao.loja} · Fornecedor: ${d.cotacao.fornecedor_nome}</div></div>
+  app.innerHTML=`<div class="hdr"><div class="loja">🏪 ${lojaLabel(d.cotacao.loja)}</div><h1>Cotação de Preços Nº ${d.cotacao.numero}</h1><div class="sub">Fornecedor: ${d.cotacao.fornecedor_nome}</div></div>
   <div class="card"><div style="text-align:center;margin-bottom:10px"><span class="chip" style="background:#DCFCE7;color:#15803D">✅ Proposta enviada</span></div>
   <p style="color:var(--muted);font-size:13px;text-align:center">Sua proposta já foi registrada. Segue o resumo do que você enviou. Para alterar, fale com a Amore.</p>
-  <table><thead><tr><th>Produto</th><th>Disponível</th><th>Preço unit.</th><th>Marca</th></tr></thead><tbody>
-  ${(d.itens||[]).map(it=>{ const a=itens.find(x=>x.item_id===it.item_id)||{}; return `<tr><td class="prod">${it.produto_nome}<div class="indisp">${it.quantidade} ${it.unidade}</div></td><td>${a.disponivel===false?'—':'Sim'}</td><td>${a.disponivel===false?'—':brl(a.preco_unitario)}</td><td>${a.marca||'—'}</td></tr>`; }).join('')}
+  <table class="itab"><thead><tr><th>Produto</th><th>Disponível</th><th>Preço unit.</th><th>Marca</th></tr></thead><tbody>
+  ${(d.itens||[]).map(it=>{ const a=itens.find(x=>x.item_id===it.item_id)||{}; return `<tr><td class="prod">${it.produto_nome}<div class="indisp">${it.quantidade} ${it.unidade}</div></td><td data-label="Disponível">${a.disponivel===false?'—':'Sim'}</td><td data-label="Preço unit.">${a.disponivel===false?'—':brl(a.preco_unitario)}</td><td data-label="Marca">${a.marca||'—'}</td></tr>`; }).join('')}
   </tbody></table></div>
   <div class="foot">Amore · Cotação segura. Este link é exclusivo do seu cadastro.</div>`;
 }
@@ -84,11 +98,21 @@ function render(d){
   const c=d.cotacao; const r=d.resposta||{}; const gi=(r.geral||{}); const ri=(r.itens||[]);
   const val=(id,f,def='')=>{ const x=ri.find(x=>x.item_id===id); return x&&x[f]!=null?x[f]:def; };
   app.innerHTML=`
-  <div class="hdr"><h1>Cotação Nº ${c.numero} — ${c.titulo}</h1>
-    <div class="sub">Amore ${c.loja} · Olá, <b>${c.fornecedor_nome}</b>${c.prazo_resposta?` · Prazo para resposta: <b>${fmtDT(c.prazo_resposta)}</b>`:''}</div></div>
+  <div class="hdr">
+    <div class="loja">🏪 ${lojaLabel(c.loja)}</div>
+    <h1>Cotação de Preços Nº ${c.numero}</h1>
+    <div class="sub">Olá, <b>${c.fornecedor_nome}</b>${c.prazo_resposta?` · Prazo para resposta: <b>${fmtDT(c.prazo_resposta)}</b>`:''}</div></div>
   <div class="card">
-    <p style="margin:0 0 12px;font-size:13px;color:var(--muted)">Preencha o preço e as condições dos produtos abaixo. Você pode <b>salvar um rascunho</b> e voltar depois. Ao <b>enviar</b>, a proposta é finalizada.</p>
-    <div style="overflow-x:auto"><table><thead><tr><th>Produto</th><th style="width:90px">Qtd.</th><th style="width:80px">Tenho?</th><th style="width:120px">Preço unit. (R$)</th><th style="width:140px">Marca ofertada</th></tr></thead><tbody id="tb"></tbody></table></div>
+    <b style="font-size:14px">👤 Seus dados (quem está cotando)</b>
+    <div class="grid" style="margin-top:12px">
+      <div><label class="lbl">Nome do vendedor</label><input id="g_vend" value="${gi.vendedor_nome||''}" placeholder="seu nome"></div>
+      <div><label class="lbl">WhatsApp / contato</label><input id="g_vfone" inputmode="tel" value="${gi.vendedor_fone||''}" placeholder="(81) 9...."></div>
+      <div><label class="lbl">Empresa (fornecedor)</label><input id="g_emp" value="${gi.empresa||c.fornecedor_nome||''}" placeholder="nome da empresa"></div>
+    </div>
+  </div>
+  <div class="card">
+    <p style="margin:0 0 12px;font-size:13px;color:var(--muted)">Preencha o <b>preço unitário</b> de cada produto. Marque "Sim, tenho" nos que você fornece. Pode <b>salvar rascunho</b> e voltar depois; ao <b>enviar</b>, a proposta é finalizada.</p>
+    <div style="overflow-x:auto"><table class="itab"><thead><tr><th>Produto</th><th style="width:90px">Qtd.</th><th style="width:90px">Tem?</th><th style="width:130px">Preço unit. (R$)</th><th style="width:140px">Marca ofertada</th></tr></thead><tbody id="tb"></tbody></table></div>
   </div>
   <div class="card">
     <b style="font-size:14px">Condições gerais</b>
@@ -110,10 +134,10 @@ function render(d){
   const tb=document.getElementById('tb');
   tb.innerHTML=(d.itens||[]).map(it=>`<tr data-id="${it.item_id}">
     <td class="prod">${it.produto_nome}${it.categoria?`<div class="indisp">${it.categoria}</div>`:''}</td>
-    <td>${it.quantidade} ${it.unidade}</td>
-    <td><input type="checkbox" class="ck" ${val(it.item_id,'disponivel',true)===false?'':'checked'} style="width:20px;height:20px"></td>
-    <td><input type="number" class="pr" min="0" step="0.01" value="${val(it.item_id,'preco_unitario','')}" placeholder="0,00"></td>
-    <td><input class="mr" value="${val(it.item_id,'marca','')}" placeholder="marca"></td>
+    <td data-label="Quantidade">${it.quantidade} ${it.unidade}</td>
+    <td data-label="Tem este item?"><label style="display:inline-flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" class="ck" ${val(it.item_id,'disponivel',true)===false?'':'checked'} style="width:20px;height:20px"><span>Sim, tenho</span></label></td>
+    <td data-label="Preço unitário (R$)"><input type="number" class="pr" inputmode="decimal" min="0" step="0.01" value="${val(it.item_id,'preco_unitario','')}" placeholder="0,00"></td>
+    <td data-label="Marca ofertada"><input class="mr" value="${val(it.item_id,'marca','')}" placeholder="marca (opcional)"></td>
   </tr>`).join('');
   tb.querySelectorAll('.ck').forEach(ck=>ck.addEventListener('change',e=>{ const tr=e.target.closest('tr'); tr.classList.toggle('off',!e.target.checked); tr.querySelector('.pr').disabled=!e.target.checked; }));
   tb.querySelectorAll('.ck').forEach(ck=>{ if(!ck.checked){ const tr=ck.closest('tr'); tr.classList.add('off'); tr.querySelector('.pr').disabled=true; } });
@@ -129,8 +153,10 @@ function coletar(){
     preco_unitario:Number(tr.querySelector('.pr').value)||0,
     marca:tr.querySelector('.mr').value.trim(),
   }));
-  const geral={ frete:Number(document.getElementById('g_frete').value)||0, prazo_entrega:Number(document.getElementById('g_prazo').value)||0,
-    condicao_pagamento:document.getElementById('g_cond').value.trim(), validade_proposta:document.getElementById('g_val').value.trim(), obs:document.getElementById('g_obs').value.trim() };
+  const gv=id=>{const el=document.getElementById(id);return el?el.value.trim():''};
+  const geral={ vendedor_nome:gv('g_vend'), vendedor_fone:gv('g_vfone'), empresa:gv('g_emp'),
+    frete:Number(document.getElementById('g_frete').value)||0, prazo_entrega:Number(document.getElementById('g_prazo').value)||0,
+    condicao_pagamento:gv('g_cond'), validade_proposta:gv('g_val'), obs:gv('g_obs') };
   return { itens, geral };
 }
 

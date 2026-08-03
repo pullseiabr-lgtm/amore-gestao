@@ -111,7 +111,7 @@ export default async function handler(req, res) {
     body: JSON.stringify({
       status: 'respondida', total,
       prazo_entrega: Number(geral.prazo_entrega) || null,
-      observacoes: JSON.stringify({ frete: Number(geral.frete) || 0, condicao_pagamento: geral.condicao_pagamento || '', validade_proposta: geral.validade_proposta || '', obs: geral.obs || '', portal: true }),
+      observacoes: JSON.stringify({ frete: Number(geral.frete) || 0, condicao_pagamento: geral.condicao_pagamento || '', validade_proposta: geral.validade_proposta || '', obs: geral.obs || '', vendedor_nome: geral.vendedor_nome || '', vendedor_fone: geral.vendedor_fone || '', empresa: geral.empresa || '', portal: true }),
       updated_at: new Date().toISOString(),
     }),
   }).catch(() => {})
