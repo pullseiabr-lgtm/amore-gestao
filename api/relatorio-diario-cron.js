@@ -76,6 +76,56 @@ async function montar(dia, loja, host) {
   return { texto, resumo: { pedidos: pedDia.length, valor, recebimentos: recDia.length, entradas: ent, saidas: sai, perdas: per, criticos, pendentes: pend }, link }
 }
 
+// ——— Requisição Semanal de Compra (inlined aqui p/ não criar 13ª função serverless / limite Hobby=12) ———
+const NORM = s => (s || '').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+const TOKS = s => NORM(s).split(' ').filter(w => w.length > 2)
+const LOJAS_REQ = ['Amore Paiva', 'Amore CD', 'Flow CD']
+async function montarPrecosReq() {
+  const map = {}
+  const add = (nm, pr, em) => { nm = NORM(nm); if (!nm || !(pr > 0)) return; if (!map[nm] || (em || '') > (map[nm].em || '')) map[nm] = { preco: pr, em: em || '' } }
+  const cfg = await sb('app_config?select=chave,valor&or=(chave.like.nf_praso:*,chave.like.pedido_*)&limit=2000')
+  ;(cfg || []).forEach(row => { const v = row.valor; if (!v || !Array.isArray(v.itens)) return; const em = v.em || v.data || ''; v.itens.forEach(it => add(it.prod || it.produto || it.desc, Number(it.unit) || Number(it.preco) || 0, em)) })
+  const ci = await sb('caixa_itens?select=descricao,valor,quantidade,preco_unit,created_at&limit=20000')
+  ;(ci || []).forEach(it => { const pr = Number(it.preco_unit) > 0 ? Number(it.preco_unit) : (Number(it.valor) > 0 && Number(it.quantidade) > 0 ? Number(it.valor) / Number(it.quantidade) : 0); add(it.descricao, pr, it.created_at || '') })
+  return { map, idx: Object.entries(map) }
+}
+async function analisarReq(loja, P) {
+  const prods = await sb(`estoque_produtos?loja=eq.${encodeURIComponent(loja)}&ativo=eq.true&select=id,nome,nivel_atual,nivel_minimo,nivel_ideal,preco_unitario&limit=8000`)
+  const ini30 = new Date(Date.now() - 30 * 864e5).toISOString()
+  const movs = await sb(`estoque_movimentacoes?loja=eq.${encodeURIComponent(loja)}&tipo=in.(saida,perda)&created_at=gte.${encodeURIComponent(ini30)}&select=produto_id,quantidade&limit=8000`)
+  const cons = {}; movs.forEach(m => { cons[m.produto_id] = (cons[m.produto_id] || 0) + (Number(m.quantidade) || 0) })
+  const precoRef = (nome, pu) => { if (pu > 0) return pu; const n = NORM(nome); if (P.map[n]) return P.map[n].preco; const t = TOKS(nome); if (t.length) { for (const [k, v] of P.idx) { if (t.every(w => k.includes(w))) return v.preco } } return 0 }
+  let crit = 0, alta = 0, total = 0, valor = 0, semPreco = 0
+  for (const p of (prods || [])) {
+    const atual = Number(p.nivel_atual) || 0, min = Number(p.nivel_minimo) || 0, ideal = Number(p.nivel_ideal) || 0
+    const preco = precoRef(p.nome, Number(p.preco_unitario) || 0)
+    const cd = (cons[p.id] || 0) / 30, temCons = cd > 0
+    const diasRest = atual <= 0 ? 0 : (temCons ? atual / cd : Infinity)
+    const sug = temCons ? Math.max(0, Math.ceil(cd * 7 + min - atual)) : (atual < ideal ? Math.max(0, Math.ceil(ideal - atual)) : (atual < min ? Math.ceil(min - atual) : 0))
+    let prio; if (atual <= 0) prio = 'crit'; else if (temCons && diasRest < 2) prio = 'crit'; else if (atual < min) prio = 'alta'; else if (temCons && diasRest < 7) prio = 'alta'; else if (atual < ideal) prio = 'media'; else prio = 'baixa'
+    if (sug > 0 || atual < min || prio === 'crit' || prio === 'alta') { total++; if (prio === 'crit') crit++; else if (prio === 'alta') alta++; if (preco > 0) valor += sug * preco; else semPreco++ }
+  }
+  return { crit, alta, total, valor, semPreco }
+}
+async function enviarRequisicaoSemanal(host, cfg, dest) {
+  const P = await montarPrecosReq()
+  const hojeBR = new Date(Date.now() - 3 * 3600e3).toLocaleDateString('pt-BR')
+  const out = []
+  for (const loja of LOJAS_REQ) {
+    const a = await analisarReq(loja, P)
+    const comPreco = a.total - a.semPreco
+    const link = `https://${host}/relatorio-requisicao.html?loja=${encodeURIComponent(loja)}`
+    const texto = `🧠 *Requisição Semanal de Compra — ${loja}*\n${hojeBR}\n━━━━━━━━━━━━\n` +
+      `📦 ${a.total} produto(s) a repor\n🔴 Críticos: ${a.crit} · 🟠 Alta: ${a.alta}\n` +
+      `💰 Valor estimado: ${brl(a.valor)}\n_(sobre ${comPreco}/${a.total} itens com preço${a.semPreco ? ` · ${a.semPreco} sem preço a cadastrar` : ''})_\n━━━━━━━━━━━━\n` +
+      `Análise completa (estoque × consumo, prioridade e justificativa):\n${link}\n\n_Gerado automaticamente · valide o estoque antes de enviar à cotação._`
+    let env = 0
+    for (const to of dest) { const r = await enviarEvolution(to, texto, cfg); if (r.ok) env++; await new Promise(x => setTimeout(x, 1200)) }
+    out.push({ loja, total: a.total, crit: a.crit, valor: a.valor, semPreco: a.semPreco, enviados: env })
+  }
+  return out
+}
+
 export default async function handler(req, res) {
   const preview = req.query?.preview === '1' || req.query?.preview === 'true'
   // segurança do ENVIO (preview é liberado p/ conferência)
@@ -117,10 +167,8 @@ export default async function handler(req, res) {
     let requisicao = null
     const isSegunda = new Date(Date.now() - 3 * 3600e3).getUTCDay() === 1
     if (isSegunda || req.query?.req === '1') {
-      try {
-        const rr = await fetch(`https://${host}/api/requisicao-semanal-cron`, { headers: { Authorization: `Bearer ${process.env.CRON_SECRET || ''}` } })
-        requisicao = await rr.json().catch(() => ({ ok: rr.ok, status: rr.status }))
-      } catch (e) { requisicao = { error: String((e && e.message) || e) } }
+      try { requisicao = await enviarRequisicaoSemanal(host, cfg, dest) }
+      catch (e) { requisicao = { error: String((e && e.message) || e) } }
     }
     return res.status(200).json({ dia, enviados: resultados.filter(r => r.ok).length, total: dest.length, resumo, resultados, requisicao })
   } catch (err) {
