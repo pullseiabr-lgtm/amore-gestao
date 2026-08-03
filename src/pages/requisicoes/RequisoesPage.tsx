@@ -571,6 +571,9 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   const [mRelat, setMRelat] = useState(false)
   const [relatFones, setRelatFones] = useState('')
   const [enviandoRelat, setEnviandoRelat] = useState(false)
+  const [mLink, setMLink] = useState(false)
+  const [linkFones, setLinkFones] = useState('')
+  const [enviandoLink, setEnviandoLink] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -859,6 +862,28 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
     onAtualizar(u); toast('Enviada para aprovação!'); load()
   }
 
+  // Enviar a requisição por WhatsApp como LINK da página no layout do painel
+  const abrirModalLink = () => {
+    setLinkFones(localStorage.getItem('req_link_fones') || '5581992573535')
+    setMLink(true)
+  }
+  const enviarLinkWhats = async () => {
+    const fones = Array.from(new Set(linkFones.split(/[,;\n]/).map(s => soDigitos(s)).filter(Boolean)))
+    if (!fones.length) { toast('Informe ao menos um número de WhatsApp.'); return }
+    setEnviandoLink(true)
+    try {
+      localStorage.setItem('req_link_fones', linkFones)
+      const link = `${window.location.origin}/requisicao.html?id=${req.id}`
+      const lojaLabel = ({ 'Amore CD': 'Amore Costa Dourada', 'Flow CD': 'Flow Costa Dourada' } as Record<string, string>)[req.loja] || req.loja
+      const msg = `🧾 *Requisição de Compra — ${numReq()}*\n🏪 ${lojaLabel}\n👤 Solicitante: ${req.responsavel_nome}\n📦 ${itens.length} itens · para cotação\n\nAbra a requisição completa (organizada por categoria, com quantidades):\n${link}\n\n_Painel Amore_`
+      let ok = 0
+      for (const f of fones) { if (await enviarWhatsApp(f, msg, undefined, { tipo: 'compra', modulo: 'requisicoes', titulo: `Requisição ${numReq()}`, loja, created_by: userName })) ok++ }
+      await tEntry('envio', `Link da requisição enviado por WhatsApp para ${ok}/${fones.length} número(s)`)
+      toast(`Requisição enviada para ${ok} de ${fones.length} número(s). ✅`)
+      setMLink(false)
+    } finally { setEnviandoLink(false) }
+  }
+
   const handleAprov = async (acao: 'aprovada'|'parcialmente_aprovada'|'reprovada'|'rascunho', st: Record<string, IS>, obs: string) => {
     for (const item of itens) {
       const s = st[item.id]
@@ -1011,6 +1036,7 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
           <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>{req.loja} · {req.setor||'—'} · {req.responsavel_nome} · {fmtDt(req.created_at)}{req.prazo_entrega ? ` · Prazo entrega: ${fmtDt(req.prazo_entrega)}` : ''}</div>
         </div>
         <div className="ab" style={{ flexWrap:'wrap', justifyContent:'flex-end', gap:5 }}>
+          <button className="btn" style={{ background:'#25D366', padding:'5px 11px', fontSize:12 }} onClick={abrirModalLink} title="Enviar a requisição por WhatsApp (link no layout do painel)"><Send size={12}/> WhatsApp</button>
           {canEnviar&&<button className="btn" style={{ background:'#B45309', padding:'5px 11px', fontSize:12 }} onClick={handleEnviar}><Send size={12}/> Enviar</button>}
           {canAprovar&&<button className="btn" style={{ padding:'5px 11px', fontSize:12 }} onClick={()=>setMAprov(true)}><CheckCircle2 size={12}/> Analisar</button>}
           {canCompra&&<button className="btn" style={{ background:'#0891B2', padding:'5px 11px', fontSize:12 }} onClick={handleCompra}><ShoppingCart size={12}/> Compra Realiz.</button>}
@@ -1022,6 +1048,27 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
           {canCancel&&<button className="ib rd" style={{ padding:'5px 9px' }} onClick={handleCancelar}><X size={13}/></button>}
         </div>
       </div>
+
+      {/* Modal: enviar requisição por WhatsApp (link no layout do painel) */}
+      {mLink && (
+        <div style={{ position:'fixed', inset:0, background:'#0008', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick={()=>setMLink(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:'var(--card)', borderRadius:14, padding:20, width:'100%', maxWidth:480 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+              <strong style={{ fontSize:15 }}>📲 Enviar requisição — {numReq()}</strong>
+              <button className="ib" onClick={()=>setMLink(false)} style={{ padding:'4px 9px' }}>✕</button>
+            </div>
+            <div style={{ fontSize:12, color:'var(--muted)', marginBottom:10 }}>Envia o <strong>link da requisição</strong> no layout do painel (organizada por categoria, com quantidades e botão de impressão) — mais fácil de entender que texto.</div>
+            <label style={{ fontSize:11, fontWeight:600, color:'var(--muted)', display:'block', marginBottom:4 }}>Números de WhatsApp (um por linha ou separados por vírgula)</label>
+            <textarea value={linkFones} onChange={e=>setLinkFones(e.target.value)} rows={2} placeholder="5581999998888, 5581988887777"
+              style={{ width:'100%', padding:'9px 11px', borderRadius:8, border:'1px solid var(--border)', background:'var(--bg)', fontSize:13, boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
+            <div style={{ fontSize:11, color:'var(--muted)', margin:'6px 0 10px' }}>Ficam salvos para os próximos envios.</div>
+            <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginTop:8 }}>
+              <button className="btn" onClick={()=>setMLink(false)} style={{ background:'var(--bg)', color:'var(--text)', border:'1px solid var(--border)', padding:'9px 16px' }}>Cancelar</button>
+              <button className="btn" onClick={enviarLinkWhats} disabled={enviandoLink} style={{ background:'#25D366', padding:'9px 16px' }}>{enviandoLink ? 'Enviando…' : '📲 Enviar link'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sub-tabs */}
       <div style={{ display:'flex', gap:3, borderBottom:'2px solid var(--border)', marginBottom:14 }}>
