@@ -3,6 +3,7 @@ import { CalendarDays, ExternalLink, Send, X } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useToast } from '../../hooks/useToast'
 import { enviarWhatsApp } from '../../lib/notify'
+import { siteOrigin } from '../../lib/site'
 
 const canon = (l: string) => (l === 'Amore Costa Dourada' ? 'Amore CD' : l === 'Flow Paiva' ? 'Flow CD' : (l || ''))
 const dDMY = (d: string) => { const p = d.split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d }
@@ -17,7 +18,7 @@ export default function RelatorioDiarioPage() {
   const [fones, setFones] = useState(() => localStorage.getItem('rel_diario_fones') || '5581992573535\n5581994135602')
   const [enviando, setEnviando] = useState(false)
 
-  const link = `${window.location.origin}/relatorio-diario.html?d=${data}${lojaEsp ? `&loja=${encodeURIComponent(lojaEsp)}` : ''}`
+  const link = `${siteOrigin()}/relatorio-diario.html?d=${data}${lojaEsp ? `&loja=${encodeURIComponent(lojaEsp)}` : ''}`
   const abrir = () => window.open(link, '_blank')
 
   const enviar = async () => {

@@ -57,10 +57,13 @@ const dDMY=s=>{if(!s)return '';const p=String(s).slice(0,10).split('-');return p
 
 async function run(){
   if(!ID){document.getElementById('app').innerHTML='<div class="msg">Requisição não informada.</div>';return;}
-  const reqs=await g(`requisicoes?id=eq.${ID}&select=numero,loja,titulo,responsavel_nome,status,prioridade,data_necessidade,prazo_entrega,observacoes,created_at,created_by`);
+  // Busca requisição e itens em PARALELO — abre mais rápido.
+  const [reqs, itens]=await Promise.all([
+    g(`requisicoes?id=eq.${ID}&select=numero,loja,titulo,responsavel_nome,status,prioridade,data_necessidade,prazo_entrega,observacoes,created_at,created_by`),
+    g(`requisicao_itens?requisicao_id=eq.${ID}&select=produto_nome,categoria,quantidade,unidade,observacoes&order=produto_nome.asc`),
+  ]);
   const req=reqs&&reqs[0];
   if(!req){document.getElementById('app').innerHTML='<div class="msg">Requisição não encontrada.</div>';return;}
-  const itens=await g(`requisicao_itens?requisicao_id=eq.${ID}&select=produto_nome,categoria,quantidade,unidade,observacoes&order=produto_nome.asc`);
   const num='REQ-'+String(req.numero||0).padStart(4,'0');
   const lojaLabel={'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'}[req.loja]||req.loja;
 

@@ -3,6 +3,7 @@ import { Brain, ExternalLink, Send, X } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useToast } from '../../hooks/useToast'
 import { enviarWhatsApp } from '../../lib/notify'
+import { siteOrigin } from '../../lib/site'
 
 const canon = (l: string) => (l === 'Amore Costa Dourada' ? 'Amore CD' : l === 'Flow Paiva' ? 'Amore Paiva' : (l || ''))
 const LOJAS = ['Amore Paiva', 'Amore CD', 'Flow CD']
@@ -16,7 +17,7 @@ export default function RequisicaoInteligentePage() {
   const [fones, setFones] = useState(() => localStorage.getItem('req_intel_fones') || '5581992573535\n5581994135602')
   const [enviando, setEnviando] = useState(false)
 
-  const link = `${window.location.origin}/relatorio-requisicao.html?loja=${encodeURIComponent(lojaSel)}`
+  const link = `${siteOrigin()}/relatorio-requisicao.html?loja=${encodeURIComponent(lojaSel)}`
   const abrir = () => window.open(link, '_blank')
 
   const enviar = async () => {

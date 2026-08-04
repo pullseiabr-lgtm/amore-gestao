@@ -144,7 +144,9 @@ export default async function handler(req, res) {
   rNow.setUTCDate(rNow.getUTCDate() - 1)
   const dia = (req.query?.d || rNow.toISOString().slice(0, 10)).slice(0, 10)
   const loja = req.query?.loja || process.env.WHATSAPP_LOJA || ''
-  const host = req.headers['x-forwarded-host'] || req.headers.host || 'painel.amorefood.com.br'
+  // Domínio público oficial para os LINKS (nunca a URL *.vercel.app, que é protegida por login).
+  const reqHost = req.headers['x-forwarded-host'] || req.headers.host || ''
+  const host = (!reqHost || /vercel\.app$/i.test(reqHost)) ? 'painel.amorefood.com.br' : reqHost
 
   try {
     const { texto, resumo, link } = await montar(dia, loja, host)

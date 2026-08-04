@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../hooks/useToast'
 import { fetchFornecedores, fetchProdutos, insertProduto } from '../../lib/db'
 import { enviarWhatsApp } from '../../lib/notify'
+import { siteOrigin } from '../../lib/site'
 import { UNIDADES } from '../../lib/catalogo'
 import type { Fornecedor, Produto } from '../../types/database'
 
@@ -80,7 +81,7 @@ export default function PedidosPage() {
   useEffect(() => { if (mNovo && !fReceb.trim() && recebLoja[fLoja]?.nome) setFReceb(recebLoja[fLoja].nome) }, [mNovo, fLoja, recebLoja]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtrados = pedidos.filter(p => loja === 'Todas as Lojas' || !loja || p.loja === loja)
-  const link = (p: Pedido) => `${window.location.origin}/pedido.html?p=${encodeURIComponent(p.chave.replace(/^pedido_/, ''))}`
+  const link = (p: Pedido) => `${siteOrigin()}/pedido.html?p=${encodeURIComponent(p.chave.replace(/^pedido_/, ''))}`
 
   const abrirEnviar = (p: Pedido) => {
     setPedSel(p)

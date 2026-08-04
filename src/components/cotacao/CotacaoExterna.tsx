@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link2, Send, Copy, RefreshCw, Ban, CheckCircle2, Loader2, Users, Package } from 'lucide-react'
 import { fetchFornecedores, fetchRequisicaoItens, fetchCotacaoTokens, saveCotacaoToken, gerarTokenCotacao, insertRequisicaoCotacao, fetchRequisicaoCotacoes, updateRequisicaoItem, type CotacaoToken } from '../../lib/db'
 import { enviarWhatsApp } from '../../lib/notify'
+import { siteOrigin } from '../../lib/site'
 import type { Requisicao, Fornecedor, RequisicaoItem } from '../../types/database'
 
 const soDig = (s?: string | null) => (s || '').replace(/\D/g, '')
@@ -79,7 +80,7 @@ export default function CotacaoExterna({ req, userName, toast }: { req: Requisic
     setSelItens(new Set(itens.filter(i => fornAtendeItem(f?.categorias || '', i.categoria)).map(i => i.id)))
   }, [selForn]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const linkDe = (tok: string) => `${window.location.origin}/cotacao.html?t=${tok}`
+  const linkDe = (tok: string) => `${siteOrigin()}/cotacao.html?t=${tok}`
   const msgWhats = (forn: { nome: string }, link: string, nItens: number) => {
     const prazoTxt = prazo ? `⏰ Prazo para resposta: ${new Date(prazo).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''
     return `Olá, ${forn.nome}! 👋\n\nA Amore ${req.loja} está com uma *cotação* e gostaria do seu melhor preço em ${nItens} item(ns).\n\n📋 Cotação Nº ${req.numero} — ${req.titulo}\n${prazoTxt}\n\nÉ rápido e seguro, direto pelo link exclusivo do seu cadastro (você vê só os produtos direcionados a você):\n${link}\n\n${userName} — Compras Amore`

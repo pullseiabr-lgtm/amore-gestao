@@ -63,24 +63,28 @@ const NORM=s=>(s||'').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]
 const TOKS=s=>NORM(s).split(' ').filter(w=>w.length>2);
 
 // Mapa de preço de referência: NF (nf_praso) + pedidos + caixas (caixa_itens). Preenche o que não tem preço no cadastro.
-async function montarPrecos(){
+// Monta o mapa de preço a partir de dados já carregados (app_config + caixa_itens) — sem novas idas ao servidor.
+function montarPrecos(cfg, ci){
   const map={};
   const add=(nm,pr,em)=>{nm=NORM(nm);if(!nm||!(pr>0))return;if(!map[nm]||(em||'')>(map[nm].em||''))map[nm]={preco:pr,em:em||''};};
-  const cfg=await g(`app_config?select=chave,valor&or=(chave.like.nf_praso:*,chave.like.pedido_*)&limit=2000`);
   (cfg||[]).forEach(row=>{const v=row.valor;if(!v||!Array.isArray(v.itens))return;const em=v.em||v.data||'';v.itens.forEach(it=>add(it.prod||it.produto||it.desc,Number(it.unit)||Number(it.preco)||0,em));});
-  const ci=await g(`caixa_itens?select=descricao,valor,quantidade,preco_unit,created_at&limit=20000`);
   (ci||[]).forEach(it=>{const pr=Number(it.preco_unit)>0?Number(it.preco_unit):(Number(it.valor)>0&&Number(it.quantidade)>0?Number(it.valor)/Number(it.quantidade):0);add(it.descricao,pr,it.created_at||'');});
   return {map,idx:Object.entries(map)};
 }
 
 async function run(){
-  const prods=await g(`estoque_produtos?loja=eq.${encodeURIComponent(LOJA)}&ativo=eq.true&select=id,nome,nivel_atual,nivel_minimo,nivel_ideal,preco_unitario&limit=8000`);
   const ini30=new Date(Date.now()-30*864e5).toISOString();
-  const movs=await g(`estoque_movimentacoes?loja=eq.${encodeURIComponent(LOJA)}&tipo=in.(saida,perda)&created_at=gte.${encodeURIComponent(ini30)}&select=produto_id,quantidade,created_at&limit=8000`);
+  // Todas as buscas em PARALELO (antes eram sequenciais) — abre bem mais rápido.
+  const [prods, movs, cfg, ci]=await Promise.all([
+    g(`estoque_produtos?loja=eq.${encodeURIComponent(LOJA)}&ativo=eq.true&select=id,nome,nivel_atual,nivel_minimo,nivel_ideal,preco_unitario&limit=8000`),
+    g(`estoque_movimentacoes?loja=eq.${encodeURIComponent(LOJA)}&tipo=in.(saida,perda)&created_at=gte.${encodeURIComponent(ini30)}&select=produto_id,quantidade,created_at&limit=8000`),
+    g(`app_config?select=chave,valor&or=(chave.like.nf_praso:*,chave.like.pedido_*)&limit=2000`),
+    g(`caixa_itens?select=descricao,valor,quantidade,preco_unit,created_at&limit=20000`),
+  ]);
   const cons30={}, cons7={}; const lim7=Date.now()-7*864e5;
   movs.forEach(m=>{const pid=m.produto_id,qq=Number(m.quantidade)||0;cons30[pid]=(cons30[pid]||0)+qq;if(new Date(m.created_at).getTime()>=lim7)cons7[pid]=(cons7[pid]||0)+qq;});
 
-  const {map:PMAP,idx:PIDX}=await montarPrecos();
+  const {map:PMAP,idx:PIDX}=montarPrecos(cfg, ci);
   const preçoRef=(nome,precoUnit)=>{
     if(precoUnit>0) return {preco:precoUnit,fonte:'cad'};
     const n=NORM(nome); if(PMAP[n]) return {preco:PMAP[n].preco,fonte:'ref'};

@@ -10,6 +10,7 @@ import CotacoesRespondidas from '../../components/cotacao/CotacoesRespondidas'
 import PainelFornecedores from '../../components/cotacao/PainelFornecedores'
 import RelatoriosGerenciais from '../../components/cotacao/RelatoriosGerenciais'
 import { enviarWhatsApp } from '../../lib/notify'
+import { siteOrigin } from '../../lib/site'
 import type { Requisicao } from '../../types/database'
 
 const fmtR$ = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -48,7 +49,7 @@ export default function CotacaoPage() {
   const [revisado, setRevisado] = useState(false)
   const [enviandoRel, setEnviandoRel] = useState(false)
 
-  const linkRelatorio = (r: Requisicao) => `${window.location.origin}/relatorio.html?r=${r.id}`
+  const linkRelatorio = (r: Requisicao) => `${siteOrigin()}/relatorio.html?r=${r.id}`
   const enviarRelatorio = async () => {
     if (!sel) return
     const nums = fonesRel.split(/[\n,;]+/).map(s => s.replace(/\D/g, '')).filter(n => n.length >= 10)

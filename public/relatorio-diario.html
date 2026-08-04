@@ -73,31 +73,32 @@ const lojaEq=col=>LOJA?`&${col}=eq.`+encodeURIComponent(LOJA):'';
 async function run(){
   const dataFmt=dDMY(D);
   // ── coletas ──
-  const reqs=await g(`requisicoes?select=id,numero,titulo,loja,responsavel_nome,status,created_at${lojaEq('loja')}&created_at=gte.${encodeURIComponent(inicioISO)}&created_at=lt.${encodeURIComponent(fimISO)}`);
-  // cotações (para pendentes e economia) — dos reqs recentes
-  const reqsRec=await g(`requisicoes?select=id,numero,loja${lojaEq('loja')}&order=numero.desc&limit=60`);
+  // Buscas independentes em PARALELO (antes eram ~9 em sequência) — abre bem mais rápido.
+  const [reqs, reqsRec, pedRows, movs, prods, tokRows]=await Promise.all([
+    g(`requisicoes?select=id,numero,titulo,loja,responsavel_nome,status,created_at${lojaEq('loja')}&created_at=gte.${encodeURIComponent(inicioISO)}&created_at=lt.${encodeURIComponent(fimISO)}`),
+    g(`requisicoes?select=id,numero,loja${lojaEq('loja')}&order=numero.desc&limit=60`),
+    g('app_config?chave=like.pedido_*&select=chave,valor'),
+    g(`estoque_movimentacoes?select=tipo,produto_id,produto_nome,quantidade,unidade,loja,setor,motivo,created_by,created_at${lojaEq('loja')}&created_at=gte.${encodeURIComponent(inicioISO)}&created_at=lt.${encodeURIComponent(fimISO)}&order=created_at.desc`),
+    g(`produtos?select=id,nome,loja,unidade,estoque_atual,estoque_minimo,ultimo_preco_compra&ativo=eq.true${lojaEq('loja')}&limit=5000`),
+    g('app_config?chave=like.cot_tok:*&select=valor'),
+  ]);
+  // cotações dos reqs recentes (dependem de reqsRec) — as duas em paralelo
   const reqIds=(reqsRec||[]).map(r=>r.id);
   let cots=[],itens=[],ci=[];
   if(reqIds.length){
-    cots=await g(`requisicao_cotacoes?select=id,requisicao_id,fornecedor_nome,status,total,created_at,updated_at,observacoes&requisicao_id=in.(${reqIds.join(',')})`);
-    itens=await g(`requisicao_itens?select=id,requisicao_id,produto_nome,quantidade&requisicao_id=in.(${reqIds.join(',')})`);
+    [cots, itens]=await Promise.all([
+      g(`requisicao_cotacoes?select=id,requisicao_id,fornecedor_nome,status,total,created_at,updated_at,observacoes&requisicao_id=in.(${reqIds.join(',')})`),
+      g(`requisicao_itens?select=id,requisicao_id,produto_nome,quantidade&requisicao_id=in.(${reqIds.join(',')})`),
+    ]);
     const cotIds=(cots||[]).map(c=>c.id);
     if(cotIds.length) ci=await g(`requisicao_cotacao_itens?select=cotacao_id,item_id,preco_unitario,disponivel&cotacao_id=in.(${cotIds.join(',')})`);
   }
-  // pedidos (app_config)
-  const pedRows=await g('app_config?chave=like.pedido_*&select=chave,valor');
   const pedidos=(pedRows||[]).map(r=>({chave:r.chave,...(r.valor||{})})).filter(p=>(!LOJA||canon(p.loja)===LOJA));
   const pedHoje=pedidos.filter(p=>(p.data||diaDe(p.em))===D);
   const recHoje=pedidos.filter(p=>p.recebimento&&diaDe(p.recebimento.em)===D);
-  // movimentações do dia
-  const movs=await g(`estoque_movimentacoes?select=tipo,produto_id,produto_nome,quantidade,unidade,loja,setor,motivo,created_by,created_at${lojaEq('loja')}&created_at=gte.${encodeURIComponent(inicioISO)}&created_at=lt.${encodeURIComponent(fimISO)}&order=created_at.desc`);
-  // produtos (críticos + mapa de custo p/ valorar saídas)
-  const prods=await g(`produtos?select=id,nome,loja,unidade,estoque_atual,estoque_minimo,ultimo_preco_compra&ativo=eq.true${lojaEq('loja')}&limit=5000`);
   const custoById={}; (prods||[]).forEach(p=>{if(p.id)custoById[p.id]=Number(p.ultimo_preco_compra)||0});
   const valorMov=m=>(custoById[m.produto_id]||0)*(Number(m.quantidade)||0);
   const criticos=(prods||[]).filter(p=>Number(p.estoque_minimo)>0 && Number(p.estoque_atual)<=Number(p.estoque_minimo)).sort((a,b)=>(a.estoque_atual/(a.estoque_minimo||1))-(b.estoque_atual/(b.estoque_minimo||1)));
-  // cotações pendentes (portal cot_tok)
-  const tokRows=await g('app_config?chave=like.cot_tok:*&select=valor');
   const toks=(tokRows||[]).map(r=>r.valor||{}).filter(t=>t&&t.fornecedor_nome&&!['respondido','cancelado'].includes(t.status));
 
   // ── cálculos ──

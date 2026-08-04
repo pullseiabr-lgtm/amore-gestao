@@ -19,6 +19,7 @@ import {
   fetchFornecedores, fetchProfiles,
 } from '../../lib/db'
 import { enviarWhatsApp, perfisDoSetor, soDigitos } from '../../lib/notify'
+import { siteOrigin } from '../../lib/site'
 import type {
   Requisicao, RequisicaoItem, ReqStatus, ReqPrioridade,
   EstoqueProduto, FinCredito, FinFormaPagamento, ReqTimeline,
@@ -873,7 +874,7 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
     setEnviandoLink(true)
     try {
       localStorage.setItem('req_link_fones', linkFones)
-      const link = `${window.location.origin}/requisicao.html?id=${req.id}`
+      const link = `${siteOrigin()}/requisicao.html?id=${req.id}`
       const lojaLabel = ({ 'Amore CD': 'Amore Costa Dourada', 'Flow CD': 'Flow Costa Dourada' } as Record<string, string>)[req.loja] || req.loja
       const msg = `🧾 *Requisição de Compra — ${numReq()}*\n🏪 ${lojaLabel}\n👤 Solicitante: ${req.responsavel_nome}\n📦 ${itens.length} itens · para cotação\n\nAbra a requisição completa (organizada por categoria, com quantidades):\n${link}\n\n_Painel Amore_`
       let ok = 0
