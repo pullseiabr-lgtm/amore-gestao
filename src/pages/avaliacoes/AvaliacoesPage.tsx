@@ -22,7 +22,8 @@ const EXP: Record<string, { v: number; e: string; l: string; c: string }> = {
 const qrImg = (data: string, size = 220) => `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=6&data=${encodeURIComponent(data)}`
 const notaFb = (f: any) => { const n = [f.nota_atendimento, f.nota_comida, f.nota_agilidade].filter((x: any) => x != null); return n.length ? n.reduce((a: number, b: number) => a + b, 0) / n.length : (EXP[f.experiencia]?.v ?? 0) }
 
-type Tab = 'dashboard' | 'ranking' | 'cozinha' | 'feedbacks' | 'garcons'
+type Tab = 'dashboard' | 'ranking' | 'cozinha' | 'feedbacks' | 'recuperacao' | 'garcons'
+const soDigF = (s: string) => (s || '').replace(/\D/g, '')
 
 export default function AvaliacoesPage() {
   const { toast } = useToast()
@@ -30,6 +31,7 @@ export default function AvaliacoesPage() {
   const [loja, setLoja] = useState('')
   const [dias, setDias] = useState(30)
   const [feedbacks, setFeedbacks] = useState<any[]>([])
+  const [raspLink, setRaspLink] = useState<any[]>([])
   const [garcons, setGarcons] = useState<any[]>([])
   const [config, setConfig] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -43,12 +45,13 @@ export default function AvaliacoesPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [f, g, c] = await Promise.all([
+      const [f, g, c, r] = await Promise.all([
         sb.from('feedbacks').select('*').order('created_at', { ascending: false }).limit(2000),
         sb.from('garcons').select('*').order('nome'),
         sb.from('fb_config').select('*'),
+        sb.from('rasp_participacoes').select('nome,telefone,feedback_id,premio_nome,ganhou,unidade,created_at').order('created_at', { ascending: false }).limit(5000),
       ])
-      setFeedbacks(f.data || []); setGarcons(g.data || []); setConfig(c.data || [])
+      setFeedbacks(f.data || []); setGarcons(g.data || []); setConfig(c.data || []); setRaspLink(r.data || [])
     } catch { toast('Erro ao carregar avaliações.', 'error') }
     setLoading(false)
   }, [toast])
@@ -72,6 +75,22 @@ export default function AvaliacoesPage() {
     const lim = Date.now() - dias * 864e5
     return feedbacks.filter(f => (!loja || f.loja === loja) && new Date(f.created_at).getTime() >= lim)
   }, [feedbacks, loja, dias])
+
+  // ── Recuperação de clientes: identidade (por feedback_id) + perfil (por telefone) ──
+  const fbCliente = useMemo(() => {
+    const m: Record<string, { nome: string; telefone: string }> = {}
+    raspLink.forEach(r => { if (r.feedback_id && soDigF(r.telefone).length >= 10) m[r.feedback_id] = { nome: r.nome || '', telefone: soDigF(r.telefone) } })
+    return m
+  }, [raspLink])
+  const perfilTel = useMemo(() => {
+    const m: Record<string, { visitas: number; premios: number; ultima: string; nome: string }> = {}
+    raspLink.forEach(r => { const t = soDigF(r.telefone); if (t.length < 10) return; const p = m[t] || (m[t] = { visitas: 0, premios: 0, ultima: '', nome: r.nome || '' }); p.visitas++; if (r.ganhou) p.premios++; if (!p.ultima || r.created_at > p.ultima) p.ultima = r.created_at; if (!p.nome && r.nome) p.nome = r.nome })
+    return m
+  }, [raspLink])
+  const negativos = useMemo(() => fbFiltrado
+    .filter(f => ['regular', 'ruim', 'pessima'].includes(f.experiencia) || f.voltaria === false || notaFb(f) <= 3)
+    .sort((a, b) => (b.created_at > a.created_at ? 1 : -1)), [fbFiltrado])
+  const negIdent = negativos.filter(f => fbCliente[f.id]).length
 
   const kpi = useMemo(() => {
     const t = fbFiltrado.length
@@ -173,6 +192,7 @@ export default function AvaliacoesPage() {
         {tabBtn('ranking', <Trophy size={16} />, 'Ranking Garçons')}
         {tabBtn('cozinha', <ChefHat size={16} />, 'Cozinha')}
         {tabBtn('feedbacks', <MessageSquare size={16} />, 'Feedbacks')}
+        {tabBtn('recuperacao', <AlertTriangle size={16} />, 'Recuperação')}
         {tabBtn('garcons', <QrCode size={16} />, 'Garçons & QR')}
       </div>
 
@@ -304,6 +324,53 @@ export default function AvaliacoesPage() {
               </div>
             })}
         </div>
+      </div>}
+
+      {/* ===== RECUPERAÇÃO DE CLIENTES ===== */}
+      {tab === 'recuperacao' && <div style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
+          <div>
+            <b style={{ fontSize: 15 }}>🔄 Recuperação de clientes insatisfeitos</b>
+            <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 3, maxWidth: 620 }}>Avaliações negativas do período com o <b>cliente identificado</b> (nome, WhatsApp e perfil) para você <b>entender o motivo e reverter</b> — falar com a pessoa, se desculpar e trazer de volta.</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span style={{ background: '#FEF2F2', color: '#B91C1C', fontWeight: 700, fontSize: 13, padding: '6px 12px', borderRadius: 10 }}>{negativos.length} negativas</span>
+            <span style={{ background: '#ECFDF5', color: '#047857', fontWeight: 700, fontSize: 13, padding: '6px 12px', borderRadius: 10 }}>{negIdent} identificadas</span>
+          </div>
+        </div>
+        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 620, overflowY: 'auto' }}>
+          {negativos.length === 0 ? <div style={{ padding: 24, textAlign: 'center', color: '#9ca3af' }}>Nenhuma avaliação negativa no período. 🎉</div> :
+            negativos.map(f => {
+              const cli = fbCliente[f.id]
+              const perf = cli ? perfilTel[cli.telefone] : null
+              const telFmt = cli ? `(${cli.telefone.slice(2, 4)}) ${cli.telefone.slice(4, 9)}-${cli.telefone.slice(9)}` : ''
+              const msg = `Olá${cli && cli.nome ? ', ' + cli.nome.split(' ')[0] : ''}! 💛 Aqui é da *Amore Food*. Vi seu feedback e quero muito entender o que não saiu como esperado — sua opinião é muito importante pra gente e queremos melhorar pra você. Podemos conversar? Adoraríamos te receber de novo e fazer diferente. 🙏`
+              const wa = cli ? `https://wa.me/55${cli.telefone}?text=${encodeURIComponent(msg)}` : ''
+              return <div key={f.id} style={{ padding: '.8rem 1rem', borderRadius: 12, background: '#FEF2F2', border: '1px solid #FCA5A5' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 22 }}>{EXP[f.experiencia]?.e || '⚠️'}</span>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>{EXP[f.experiencia]?.l || f.experiencia}<span style={{ fontWeight: 400, color: '#9ca3af' }}> · {f.loja}{f.garcom ? ' · ' + f.garcom : ''}{f.mesa ? ' · Mesa ' + f.mesa : ''}</span></div>
+                    <div style={{ fontSize: 12, color: '#6b7280' }}>Atend. {f.nota_atendimento ?? '–'}⭐ · Comida {f.nota_comida ?? '–'}⭐ · Agil. {f.nota_agilidade ?? '–'}⭐{f.voltaria === false && <span style={{ color: '#B91C1C', fontWeight: 600 }}> · não voltaria</span>}{f.motivo && <span style={{ color: '#B91C1C' }}> · {f.motivo}</span>}</div>
+                  </div>
+                  <span style={{ fontSize: 12, color: '#9ca3af', whiteSpace: 'nowrap' }}>{new Date(f.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                {f.observacoes && <div style={{ fontSize: 13, color: '#374151', marginTop: 8, padding: '.5rem .7rem', background: '#fff', borderRadius: 8, borderLeft: '3px solid #B91C1C', fontStyle: 'italic' }}>💬 “{f.observacoes}”</div>}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10, paddingTop: 10, borderTop: '1px dashed #FCA5A5' }}>
+                  {cli ? (
+                    <div style={{ fontSize: 13 }}>
+                      <b style={{ color: '#111827' }}>👤 {cli.nome || 'Cliente'}</b> · <span style={{ color: '#374151' }}>{telFmt}</span>
+                      {perf && <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 2 }}>{perf.visitas} avaliação(ões) · {perf.premios} prêmio(s){perf.ultima ? ` · última em ${new Date(perf.ultima).toLocaleDateString('pt-BR')}` : ''}</div>}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12.5, color: '#9ca3af' }}>Cliente não identificado (não deixou contato no QR).</div>
+                  )}
+                  {cli && <a href={wa} target="_blank" rel="noreferrer" style={{ background: '#25D366', color: '#fff', fontWeight: 700, fontSize: 13, padding: '9px 15px', borderRadius: 10, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>💬 Contatar para reverter</a>}
+                </div>
+              </div>
+            })}
+        </div>
+        <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 10 }}>O cliente é identificado quando ele deixou nome/WhatsApp no fluxo do QR (tela dos insatisfeitos). Os sem contato aparecem como “não identificado”.</div>
       </div>}
 
       {/* ===== GARÇONS & QR + CONFIG ===== */}
