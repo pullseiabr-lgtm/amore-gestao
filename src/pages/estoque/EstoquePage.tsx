@@ -1513,7 +1513,122 @@ function TabAnalise({ loja }: { loja: string }) {
 
 // ── EstoquePage ────────────────────────────────────────────
 
-type EstoqueTab = 'lista' | 'cmv' | 'historico' | 'movimentacoes' | 'contagem' | 'perdas' | 'alertas' | 'analise'
+// ── TabBaixaMassa — lançamento de várias saídas (consumo) de uma vez ──────────
+const SETORES = ['Cozinha', 'Salão', 'Bar', 'Sushi', 'Produção', 'Confeitaria', 'Limpeza', 'Outros']
+function TabBaixaMassa({ loja }: { loja: string }) {
+  const { lojas } = useLoja()
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
+  const [busca, setBusca] = useState('')
+  const buscaDeb = useDebounce(busca, 200)
+  const [linhas, setLinhas] = useState<{ produto: EstoqueProduto; qtd: string }[]>([])
+  const [setor, setSetor] = useState('Cozinha')
+  const [resp, setResp] = useState(user?.name || '')
+  const [data, setData] = useState(() => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10))
+  const [saving, setSaving] = useState(false)
+
+  const lojaReal = loja === 'Todas as Lojas' ? (lojas[0] || loja) : loja
+  const carregar = useCallback(() => { fetchEstoqueProdutos(lojaReal).then(setProdutos).catch(() => {}) }, [lojaReal])
+  useEffect(() => { carregar() }, [carregar])
+
+  const sugestoes = buscaDeb.trim().length >= 2
+    ? produtos.filter(p => p.nome.toLowerCase().includes(buscaDeb.toLowerCase()) && !linhas.some(l => l.produto.id === p.id)).slice(0, 8)
+    : []
+  const addLinha = (p: EstoqueProduto) => { setLinhas(ls => [...ls, { produto: p, qtd: '' }]); setBusca('') }
+  const setQtd = (id: string, v: string) => setLinhas(ls => ls.map(l => l.produto.id === id ? { ...l, qtd: v } : l))
+  const rmLinha = (id: string) => setLinhas(ls => ls.filter(l => l.produto.id !== id))
+  const validas = linhas.filter(l => parseFloat(l.qtd) > 0)
+
+  const registrar = async () => {
+    if (!validas.length) { toast('Adicione ao menos um produto com quantidade.', 'error'); return }
+    setSaving(true)
+    try {
+      const createdAt = new Date(data + 'T12:00:00-03:00').toISOString()
+      const motivo = ['Consumo', setor ? `Setor: ${setor}` : '', resp ? `Resp: ${resp}` : ''].filter(Boolean).join(' | ')
+      for (const l of validas) {
+        const qtd = parseFloat(l.qtd)
+        await insertEstoqueMovimentacao({
+          loja: lojaReal, produto_id: l.produto.id, produto_nome: l.produto.nome, tipo: 'saida',
+          quantidade: qtd, unidade: (l.produto.gramatura || '').replace('(s)', '') || 'un',
+          motivo, created_by: resp || user?.name || null, setor, created_at: createdAt,
+        } as unknown as Omit<EstoqueMovimentacao, 'id' | 'created_at'>)
+        await updateEstoqueProduto(l.produto.id, { nivel_atual: Math.max(0, l.produto.nivel_atual - qtd) })
+      }
+      toast(`${validas.length} saída(s) registrada(s)! ✅`)
+      setLinhas([]); carregar()
+    } catch (e) { console.error(e); toast('Erro ao registrar. Tente novamente.', 'error') }
+    setSaving(false)
+  }
+
+  return (
+    <div>
+      <div style={{ marginBottom: 14 }}>
+        <div className="sec-tt">📤 Baixa em massa (consumo)</div>
+        <div className="sec-sub">Lance de uma vez tudo que saiu do estoque — por setor e data. Baixa o estoque e alimenta a análise de consumo.</div>
+      </div>
+
+      <div className="g3" style={{ marginBottom: 12 }}>
+        <div className="fg"><label className="fl">Setor</label>
+          <select className="sel" value={setor} onChange={e => setSetor(e.target.value)}>{SETORES.map(s => <option key={s}>{s}</option>)}</select>
+        </div>
+        <div className="fg"><label className="fl">Responsável</label><input className="inp" value={resp} onChange={e => setResp(e.target.value)} placeholder="quem baixou" /></div>
+        <div className="fg"><label className="fl">Data</label><input type="date" className="inp" value={data} onChange={e => setData(e.target.value)} /></div>
+      </div>
+
+      <div className="fg" style={{ position: 'relative', maxWidth: 520 }}>
+        <label className="fl">Adicionar produto</label>
+        <input className="inp" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Digite o nome do produto…" />
+        {sugestoes.length > 0 && (
+          <div style={{ position: 'absolute', zIndex: 30, left: 0, right: 0, top: '100%', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow)', maxHeight: 280, overflowY: 'auto' }}>
+            {sugestoes.map(p => (
+              <div key={p.id} onClick={() => addLinha(p)} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                <span><strong>{p.nome}</strong> <span style={{ color: 'var(--muted)', fontSize: 11 }}>{p.gramatura}</span></span>
+                <span style={{ color: 'var(--muted)', fontSize: 11 }}>estoque: {p.nivel_atual}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {linhas.length > 0 ? (
+        <div className="tw" style={{ marginTop: 12 }}>
+          <table>
+            <thead><tr><th>Produto</th><th>Estoque atual</th><th style={{ width: 130 }}>Quantidade que saiu</th><th></th></tr></thead>
+            <tbody>
+              {linhas.map(l => {
+                const q = parseFloat(l.qtd) || 0
+                const fica = Math.max(0, l.produto.nivel_atual - q)
+                return (
+                  <tr key={l.produto.id}>
+                    <td><strong>{l.produto.nome}</strong><div style={{ fontSize: 10, color: 'var(--muted)' }}>{l.produto.gramatura}</div></td>
+                    <td>{l.produto.nivel_atual}{q > 0 && <span style={{ color: 'var(--muted)', fontSize: 11 }}> → {fica}</span>}</td>
+                    <td><input type="number" min="0" step="0.01" className="inp" value={l.qtd} onChange={e => setQtd(l.produto.id, e.target.value)} placeholder="0" style={{ width: 110, textAlign: 'right' }} onClick={e => (e.target as HTMLInputElement).select()} /></td>
+                    <td><button className="ib rd" onClick={() => rmLinha(l.produto.id)} title="Remover"><Trash2 size={13} /></button></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="empty" style={{ marginTop: 12 }}><Package size={30} /><div>Adicione os produtos que saíram acima.</div></div>
+      )}
+
+      {linhas.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 13, color: 'var(--muted)' }}>{validas.length} de {linhas.length} produto(s) com quantidade · setor <strong>{setor}</strong> · {data.split('-').reverse().join('/')}</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn bo" onClick={() => setLinhas([])} disabled={saving}>Limpar</button>
+            <button className="btn bp" onClick={registrar} disabled={saving || !validas.length}>{saving ? 'Registrando…' : `📤 Registrar ${validas.length} saída(s)`}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+type EstoqueTab = 'lista' | 'cmv' | 'historico' | 'movimentacoes' | 'baixa-massa' | 'contagem' | 'perdas' | 'alertas' | 'analise'
 
 const TABS: { id: EstoqueTab; label: string; icon: React.ReactNode }[] = [
   { id: 'lista', label: 'Lista', icon: <Package size={12} /> },
@@ -1522,6 +1637,7 @@ const TABS: { id: EstoqueTab; label: string; icon: React.ReactNode }[] = [
   { id: 'cmv', label: 'CMV', icon: <TrendingDown size={12} /> },
   { id: 'historico', label: 'Histórico', icon: <History size={12} /> },
   { id: 'movimentacoes', label: 'Movimentações', icon: <ArrowLeftRight size={12} /> },
+  { id: 'baixa-massa', label: 'Baixa em Massa', icon: <TrendingDown size={12} /> },
   { id: 'contagem', label: 'Contagem', icon: <ClipboardList size={12} /> },
   { id: 'perdas', label: 'Perdas', icon: <AlertTriangle size={12} /> },
 ]
@@ -1546,6 +1662,7 @@ export default function EstoquePage() {
       {tab === 'cmv' && <TabCMV loja={loja} />}
       {tab === 'historico' && <TabHistorico loja={loja} />}
       {tab === 'movimentacoes' && <TabMovimentacoes loja={loja} />}
+      {tab === 'baixa-massa' && <TabBaixaMassa loja={loja} />}
       {tab === 'contagem' && <TabContagem loja={loja} />}
       {tab === 'perdas' && <TabPerdas loja={loja} />}
     </div>
