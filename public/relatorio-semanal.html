@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Análise Semanal de Compra — Amore</title>
+<style>
+:root{--vinho:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--bad:#B91C1C;--blue:#1D4ED8;--shadow:0 1px 2px rgba(80,20,25,.05),0 8px 24px -12px rgba(80,20,25,.12)}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6)}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5;font-variant-numeric:tabular-nums}
+.wrap{max-width:1160px;margin:0 auto;padding:24px 16px 60px}
+header.top{border-bottom:2px solid var(--vinho);padding-bottom:14px;margin-bottom:6px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
+h1{font-size:22px;margin:6px 0 4px}.sub{color:var(--muted);font-size:13.5px}
+.btn{border:1px solid var(--vinho);background:var(--vinho);color:#fff;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.btn.bo{background:var(--card);color:var(--vinho)}
+h2{font-size:16.5px;margin:24px 0 10px;color:var(--vinho)}h2 .h2s{font-size:12px;font-weight:500;color:var(--muted)}
+.ia{background:color-mix(in srgb,var(--vinho) 6%,var(--card));border:1px solid var(--border);border-left:4px solid var(--vinho);border-radius:12px;padding:14px 16px;font-size:14px;margin:14px 0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin:14px 0}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:12px 14px;box-shadow:var(--shadow)}
+.kpi.bad{border-left:4px solid var(--bad)}.kpi.warn{border-left:4px solid var(--warn)}.kpi.ok{border-left:4px solid var(--ok)}
+.kpi .kn{font-size:21px;font-weight:800}.kpi .kl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-top:2px}.kpi .ks{font-size:12px;font-weight:600;color:var(--muted)}
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:13px;box-shadow:var(--shadow);background:var(--card)}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:820px}
+thead th{text-align:left;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:9px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody td{padding:8px 10px;border-bottom:1px solid var(--border)}tbody tr:last-child td{border-bottom:none}
+.num{text-align:right;white-space:nowrap}.prod{font-weight:600}.mut{color:var(--muted)}.mc{display:block;font-size:10.5px;color:var(--muted);font-weight:400}
+.spark{font-size:11px;color:var(--muted);white-space:nowrap;letter-spacing:.5px}
+.pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap}
+.p-crit{background:#FEE2E2;color:#B91C1C}.p-alta{background:#FFEDD5;color:#C2410C}.p-media{background:#FEF3C7;color:#B45309}.p-baixa{background:#DCFCE7;color:#15803D}
+@media(prefers-color-scheme:dark){.p-crit{background:#3a1414;color:#f87171}.p-alta{background:#3a2410;color:#fb923c}.p-media{background:#33270a;color:#fbbf24}.p-baixa{background:#0f2e1b;color:#4ade80}}
+.foot{margin-top:26px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
+.msg{text-align:center;padding:60px 20px;color:var(--muted)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+@media(max-width:820px){
+  .tw{overflow:visible;border:none;box-shadow:none;background:transparent}table{min-width:0;font-size:13px}
+  thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  tbody tr{display:block;background:var(--card);border:1px solid var(--border);border-radius:11px;box-shadow:var(--shadow);padding:4px 12px;margin-bottom:10px}
+  tbody td{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px dashed var(--border);text-align:right;white-space:normal}
+  tbody tr td:last-child{border-bottom:none}
+  tbody td::before{content:attr(data-label);color:var(--muted);font-weight:700;font-size:10px;text-transform:uppercase;text-align:left}
+  tbody td:not([data-label])::before{content:""}
+  td.prod{display:block;text-align:left;font-size:14.5px;font-weight:800;border-bottom:2px solid var(--vinho);padding:7px 0 6px}td.prod::before{display:none}
+}
+@media print{.btn,.actions{display:none}body{background:#fff}.tw,.kpi{box-shadow:none}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Analisando compras e consumo semana a semana…</div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY};
+const q=new URLSearchParams(location.search);
+const canon=l=>({'Amore Costa Dourada':'Amore CD','Flow Paiva':'Amore Paiva','Flow Costa Dourada':'Flow CD'}[l]||l);
+const LOJA=canon((q.get('loja')||'Amore Paiva').trim());
+const NWK=Math.max(4,Math.min(12,parseInt(q.get('semanas')||'8')||8));
+const g=async p=>{try{return await (await fetch(SB+'/rest/v1/'+p,{headers:H})).json()}catch(e){return []}};
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const nf=v=>Number.isInteger(v)?String(v):(Math.round(v*100)/100).toLocaleString('pt-BR');
+const hoje=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+const NORM=s=>(s||'').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+const TOKS=s=>NORM(s).split(' ').filter(w=>w.length>2);
+const wkStart=d=>{const t=new Date(d);const u=new Date(Date.UTC(t.getUTCFullYear(),t.getUTCMonth(),t.getUTCDate()));const day=(u.getUTCDay()+6)%7;u.setUTCDate(u.getUTCDate()-day);return u.toISOString().slice(0,10)};
+const ddmm=iso=>{const p=iso.split('-');return p[2]+'/'+p[1]};
+
+// janelas semanais (segunda a segunda), da mais antiga p/ a atual
+const thisMon=wkStart(new Date());
+const WEEKS=[]; for(let i=NWK-1;i>=0;i--){const d=new Date(thisMon+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-i*7);WEEKS.push(d.toISOString().slice(0,10));}
+const wi=iso=>{const k=wkStart(iso);const idx=WEEKS.indexOf(k);return idx;};
+
+let SUG=[]; // itens sugeridos p/ gerar requisição
+
+async function run(){
+  const iniISO=WEEKS[0]+'T00:00:00-03:00';
+  const [prods, movs, cfg, ci]=await Promise.all([
+    g(`estoque_produtos?loja=eq.${encodeURIComponent(LOJA)}&ativo=eq.true&select=id,nome,gramatura,nivel_atual,nivel_minimo,nivel_ideal,preco_unitario&limit=8000`),
+    g(`estoque_movimentacoes?loja=eq.${encodeURIComponent(LOJA)}&tipo=in.(saida,perda)&created_at=gte.${encodeURIComponent(iniISO)}&select=produto_id,produto_nome,quantidade,created_at&limit=20000`),
+    g(`app_config?select=chave,valor&or=(chave.like.pedido_*,chave.like.nf_praso:*)&limit=3000`),
+    g(`caixa_itens?select=descricao,valor,quantidade,preco_unit,created_at&limit=20000`),
+  ]);
+
+  // mapa de preço multi-fonte (cadastro > NF > pedido > caixa) — último preço
+  const price={}; const addP=(nm,pr,em)=>{nm=NORM(nm);if(!nm||!(pr>0))return;if(!price[nm]||(em||'')>(price[nm].em||''))price[nm]={preco:pr,em:em||''}};
+  const pedidos=[];
+  (cfg||[]).forEach(row=>{const v=row.valor;if(!v)return; if(String(row.chave).startsWith('pedido_')){pedidos.push(v); (v.itens||[]).forEach(it=>addP(it.produto,Number(it.preco)||0,v.em||v.data||''));} else if(Array.isArray(v.itens)){const em=v.em||v.data||'';v.itens.forEach(it=>addP(it.prod||it.produto||it.desc,Number(it.unit)||Number(it.preco)||0,em));}});
+  (ci||[]).forEach(it=>{const pr=Number(it.preco_unit)>0?Number(it.preco_unit):(Number(it.valor)>0&&Number(it.quantidade)>0?Number(it.valor)/Number(it.quantidade):0);addP(it.descricao,pr,it.created_at||'')});
+  const PIDX=Object.entries(price);
+  const precoRef=(nome,pu)=>{if(pu>0)return pu;const n=NORM(nome);if(price[n])return price[n].preco;const t=TOKS(nome);if(t.length){for(const[k,v] of PIDX){if(t.every(w=>k.includes(w)))return v.preco}}return 0};
+
+  // índice do estoque (p/ anexar estoque atual/mínimo ao produto comprado/consumido)
+  const estIdx={}; (prods||[]).forEach(p=>{const k=NORM(p.nome);if(k&&!estIdx[k])estIdx[k]=p;});
+  const estEntries=Object.entries(estIdx);
+  const estDe=nome=>{const n=NORM(nome);if(estIdx[n])return estIdx[n];const t=TOKS(nome);if(t.length){for(const[k,v] of estEntries){if(t.every(w=>k.includes(w)))return v}}return null};
+
+  // BASE = o que foi COMPRADO (pedidos da loja) + o que SAIU (consumo), agrupado por semana.
+  const uni={};
+  const ensure=nm=>{const k=NORM(nm);if(!k)return null;if(!uni[k])uni[k]={nome:nm,comp:Array(NWK).fill(0),cons:Array(NWK).fill(0)};return uni[k]};
+  (pedidos||[]).filter(p=>canon(p.loja)===LOJA).forEach(p=>{const i=wi(p.data||(p.em||'').slice(0,10));if(i<0)return;(p.itens||[]).forEach(it=>{const u=ensure(it.produto);if(u)u.comp[i]+=Number(it.qtd)||0;});});
+  (movs||[]).forEach(m=>{const i=wi(m.created_at);if(i<0)return;const u=ensure(m.produto_nome);if(u)u.cons[i]+=Number(m.quantidade)||0;});
+
+  const linhas=Object.values(uni).map(u=>{
+    const est=estDe(u.nome)||{};
+    const emEstoque=!!est.id;
+    const atual=Number(est.nivel_atual)||0, min=Number(est.nivel_minimo)||0, ideal=Number(est.nivel_ideal)||0;
+    const un=est.gramatura||'Unidade(s)';
+    const cons=u.cons, comp=u.comp;
+    const consTot=cons.reduce((a,b)=>a+b,0), compTot=comp.reduce((a,b)=>a+b,0);
+    const semCons=cons.filter(x=>x>0).length, semComp=comp.filter(x=>x>0).length;
+    const mediaCons=semCons?consTot/semCons:0, mediaComp=semComp?compTot/semComp:0;
+    const temHist=consTot>0||compTot>0;
+    // necessidade semanal: consumo real quando existe; senão, a média comprada
+    const necessSem= mediaCons>0? mediaCons : mediaComp;
+    const seg=min;
+    const preco=precoRef(u.nome,Number(est.preco_unitario)||0);
+    let sugerido= necessSem>0 ? Math.max(0,Math.ceil(necessSem+seg-atual)) : (emEstoque&&atual<min?Math.ceil(min-atual):0);
+    let prio;
+    if(emEstoque && atual<=0) prio='crit';
+    else if(emEstoque && atual<min) prio='alta';
+    else if(sugerido>0) prio='media';
+    else prio='baixa';
+    return {nome:u.nome,un,emEstoque,atual,min,ideal,cons,comp,consTot,compTot,mediaCons,mediaComp,necessSem,sugerido,prio,preco,valorEst:sugerido*preco};
+  }).filter(l=>l.compTot>0||l.consTot>0);
+
+  const ord={crit:0,alta:1,media:2,baixa:3};
+  linhas.sort((a,b)=>ord[a.prio]-ord[b.prio] || b.necessSem-a.necessSem);
+  const nCrit=linhas.filter(l=>l.prio==='crit').length,nAlta=linhas.filter(l=>l.prio==='alta').length;
+  const valorTotal=linhas.reduce((s,l)=>s+l.valorEst,0);
+  const totSugeridos=linhas.filter(l=>l.sugerido>0).length;
+  SUG=linhas.filter(l=>l.sugerido>0).map(l=>({produto_nome:l.nome,quantidade:l.sugerido,unidade:l.un||'Unidade(s)',preco_referencia:l.preco||null}));
+
+  const spark=arr=>arr.map(v=>v>0?nf(v):'·').join(' ');
+  const pillTxt={crit:'🔴 Crítica',alta:'🟠 Alta',media:'🟡 Média',baixa:'🟢 Baixa'};
+  const semRotulo=WEEKS.map(w=>ddmm(w)).join(' · ');
+
+  const resumo = linhas.length
+    ? `Análise das <b>últimas ${NWK} semanas</b> da <b>${esc(LOJA)}</b>: ${linhas.length} produto(s) com histórico de compra/consumo. `+
+      `${nCrit?`<b style="color:var(--bad)">${nCrit} crítico(s)</b>, `:''}${nAlta?`<b style="color:var(--warn)">${nAlta} alta(s)</b>. `:''}`+
+      `Sugestão de reposição para a próxima semana: <b>${totSugeridos} item(ns)</b>${valorTotal>0?` · <b>${brl(valorTotal)}</b>`:''}. `+
+      `A necessidade semanal usa o <b>consumo real</b> quando existe; senão, a <b>média comprada</b> por semana.`
+    : `Ainda não há histórico de compra/consumo suficiente na <b>${esc(LOJA)}</b> nas últimas ${NWK} semanas. O módulo fica mais completo conforme os pedidos e as baixas de estoque forem registrados.`;
+
+  const row=l=>`<tr>`+
+    `<td class="prod">${esc(l.nome)}<span class="mc">${esc(l.un||'')}</span></td>`+
+    `<td class="num" data-label="Estoque">${l.emEstoque?nf(l.atual):'<span class="mut">—</span>'}</td>`+
+    `<td class="num" data-label="Compra/sem">${l.mediaComp>0?nf(l.mediaComp):'—'}</td>`+
+    `<td class="num" data-label="Consumo/sem">${l.mediaCons>0?nf(l.mediaCons):'—'}</td>`+
+    `<td class="num" data-label="Necessidade/sem">${l.necessSem>0?nf(l.necessSem):'—'}</td>`+
+    `<td class="num" data-label="Sugerido próx. sem"><b>${nf(l.sugerido)}</b></td>`+
+    `<td class="num" data-label="Valor est.">${l.valorEst>0?brl(l.valorEst):'—'}</td>`+
+    `<td data-label="Prioridade"><span class="pill p-${l.prio}">${pillTxt[l.prio]}</span></td>`+
+    `<td data-label="Compras por semana"><span class="spark">🛒 ${spark(l.comp)}</span><span class="spark" style="display:block">📤 ${spark(l.cons)}</span></td></tr>`;
+
+  document.getElementById('app').innerHTML=
+   `<header class="top"><div><div class="eyebrow">Painel Amore · Análise Semanal de Compra</div><h1>Compra & Necessidade — semana a semana</h1><div class="sub">${esc(LOJA)} · ${hoje} · últimas ${NWK} semanas (${esc(WEEKS[0].split('-').reverse().slice(0,2).join('/'))} → ${esc(WEEKS[NWK-1].split('-').reverse().slice(0,2).join('/'))})</div></div><button class="btn bo" onclick="window.print()">🖨 Imprimir / PDF</button></header>`
+   +`<div class="ia">📈 <b>Diagnóstico:</b> ${resumo}</div>`
+   +`<div class="kpis">`
+   +`<div class="kpi bad"><div class="kn">${nCrit}</div><div class="kl">🔴 Críticos</div></div>`
+   +`<div class="kpi warn"><div class="kn">${nAlta}</div><div class="kl">🟠 Alta</div></div>`
+   +`<div class="kpi"><div class="kn">${linhas.length}</div><div class="kl">Com histórico</div></div>`
+   +`<div class="kpi ok"><div class="kn">${totSugeridos}</div><div class="kl">A repor (próx. sem.)</div><div class="ks">${brl(valorTotal)}</div></div>`
+   +`<div class="kpi"><div class="kn">${NWK}</div><div class="kl">Semanas analisadas</div></div>`
+   +`</div>`
+   +(SUG.length?`<div class="actions"><button class="btn" id="btnReq">🧾 Gerar requisição sugerida (${SUG.length} itens)</button><span id="reqmsg" class="mut" style="align-self:center;font-size:12.5px"></span></div>`:'')
+   +`<h2>Compra × consumo por semana <span class="h2s">— sugestão para a próxima semana</span></h2>`
+   +(linhas.length?`<div class="tw"><table><thead><tr><th>Produto</th><th class="num">Estoque</th><th class="num">Compra/sem</th><th class="num">Consumo/sem</th><th class="num">Necessidade/sem</th><th class="num">Sugerido</th><th class="num">Valor est.</th><th>Prioridade</th><th>Semanas (🛒 compra · 📤 consumo)</th></tr></thead><tbody>${linhas.map(row).join('')}</tbody></table></div>`:`<div class="ia">Sem dados suficientes ainda. 📭</div>`)
+   +`<div class="foot"><b>Metodologia:</b> janela de ${NWK} semanas (seg→seg: ${esc(semRotulo)}). <b>Compra/sem</b> = média por semana ativa dos pedidos de compra da loja; <b>Consumo/sem</b> = média por semana ativa das saídas/perdas do estoque. <b>Necessidade/sem</b> = consumo real (quando há) ou a média comprada. <b>Sugerido</b> = necessidade da semana + estoque de segurança (mínimo) − estoque atual. 🔴 zerado · 🟠 abaixo do mínimo · 🟡 repor · 🟢 ok. Só aparecem produtos com histórico de compra/consumo no período. Painel Amore · ${new Date().toLocaleString('pt-BR')}</div>`;
+
+  const bt=document.getElementById('btnReq');
+  if(bt) bt.onclick=()=>gerarRequisicao(bt);
+}
+
+async function gerarRequisicao(bt){
+  if(!SUG.length) return;
+  bt.disabled=true; const old=bt.textContent; bt.textContent='Gerando…';
+  const msg=document.getElementById('reqmsg');
+  try{
+    const total=SUG.reduce((s,i)=>s+(i.quantidade*(i.preco_referencia||0)),0);
+    const req=await (await fetch(SB+'/rest/v1/requisicoes',{method:'POST',headers:{...H,'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify({loja:LOJA,titulo:'Requisição semanal sugerida — '+LOJA+' — '+new Date().toLocaleDateString('pt-BR'),status:'rascunho',prioridade:'media',responsavel_nome:'Análise Semanal',created_by:'Análise Semanal',total_estimado:total,total_final:0,observacoes:'Gerada pela Análise Semanal de Compra (histórico de '+NWK+' semanas).'})})).json();
+    const r=Array.isArray(req)?req[0]:req;
+    if(!r||!r.id) throw new Error('falha ao criar requisição');
+    const rows=SUG.map(i=>({requisicao_id:r.id,produto_nome:i.produto_nome,quantidade:i.quantidade,unidade:i.unidade,preco_referencia:i.preco_referencia,status:'pendente',bloqueado:false}));
+    await fetch(SB+'/rest/v1/requisicao_itens',{method:'POST',headers:{...H,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(rows)});
+    const link=location.origin+'/requisicao.html?id='+r.id;
+    bt.textContent='✅ Requisição criada';
+    msg.innerHTML=`Requisição <b>REQ-${String(r.numero||0).padStart(4,'0')}</b> criada (rascunho) com ${SUG.length} itens — <a href="${link}" target="_blank" style="color:var(--vinho);font-weight:700">abrir</a>. Revise e envie à cotação no painel.`;
+  }catch(e){ bt.disabled=false; bt.textContent=old; msg.textContent='Erro ao gerar: '+(e&&e.message||e); }
+}
+run().catch(function(e){document.getElementById('app').innerHTML='<div class="msg">Erro ao gerar: '+esc(e&&e.message||e)+'</div>';});
+</script>
+</body>
+</html>
