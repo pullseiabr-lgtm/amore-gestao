@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import { useDebounce } from '../../hooks/useDebounce'
 import { Search, Package, TrendingDown, History, ArrowLeftRight, ClipboardList, Download, Plus, ChevronRight, CheckCircle, XCircle, Calculator, Loader, Trash2, AlertTriangle, Mail, MessageCircle, Bell, BarChart2, RefreshCw, TrendingUp, User } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
@@ -1515,6 +1515,17 @@ function TabAnalise({ loja }: { loja: string }) {
 
 // ── TabBaixaMassa — lançamento de várias saídas (consumo) de uma vez ──────────
 const SETORES = ['Cozinha', 'Salão', 'Bar', 'Sushi', 'Produção', 'Confeitaria', 'Limpeza', 'Outros']
+const SaidaRow = memo(function SaidaRow({ p, val, onCh }: { p: EstoqueProduto; val: string; onCh: (id: string, v: string) => void }) {
+  const q = parseFloat(val) || 0
+  const fica = Math.max(0, p.nivel_atual - q)
+  return (
+    <tr style={q > 0 ? { background: 'var(--bordo-bg)' } : undefined}>
+      <td><strong>{p.nome}</strong><div style={{ fontSize: 10, color: 'var(--muted)' }}>{p.categoria} · {p.gramatura}</div></td>
+      <td className="num">{p.nivel_atual}{q > 0 && <span style={{ color: 'var(--muted)', fontSize: 11 }}> → {fica}</span>}</td>
+      <td><input type="number" min="0" step="0.01" className="inp" value={val} onChange={e => onCh(p.id, e.target.value)} placeholder="0" style={{ width: 100, textAlign: 'right' }} onClick={e => (e.target as HTMLInputElement).select()} /></td>
+    </tr>
+  )
+})
 function TabBaixaMassa({ loja }: { loja: string }) {
   const { lojas } = useLoja()
   const { user } = useAuth()
@@ -1522,41 +1533,45 @@ function TabBaixaMassa({ loja }: { loja: string }) {
   const [produtos, setProdutos] = useState<EstoqueProduto[]>([])
   const [busca, setBusca] = useState('')
   const buscaDeb = useDebounce(busca, 200)
-  const [linhas, setLinhas] = useState<{ produto: EstoqueProduto; qtd: string }[]>([])
+  const [categoria, setCategoria] = useState('')
+  const [soSel, setSoSel] = useState(false)
+  const [qtds, setQtds] = useState<Record<string, string>>({})
   const [setor, setSetor] = useState('Cozinha')
   const [resp, setResp] = useState(user?.name || '')
   const [data, setData] = useState(() => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10))
+  const [hora, setHora] = useState(() => new Date(Date.now() - 3 * 3600e3).toISOString().slice(11, 16))
   const [saving, setSaving] = useState(false)
 
   const lojaReal = loja === 'Todas as Lojas' ? (lojas[0] || loja) : loja
   const carregar = useCallback(() => { fetchEstoqueProdutos(lojaReal).then(setProdutos).catch(() => {}) }, [lojaReal])
   useEffect(() => { carregar() }, [carregar])
 
-  const sugestoes = buscaDeb.trim().length >= 2
-    ? produtos.filter(p => p.nome.toLowerCase().includes(buscaDeb.toLowerCase()) && !linhas.some(l => l.produto.id === p.id)).slice(0, 8)
-    : []
-  const addLinha = (p: EstoqueProduto) => { setLinhas(ls => [...ls, { produto: p, qtd: '' }]); setBusca('') }
-  const setQtd = (id: string, v: string) => setLinhas(ls => ls.map(l => l.produto.id === id ? { ...l, qtd: v } : l))
-  const rmLinha = (id: string) => setLinhas(ls => ls.filter(l => l.produto.id !== id))
-  const validas = linhas.filter(l => parseFloat(l.qtd) > 0)
+  const setQtd = useCallback((id: string, v: string) => setQtds(m => ({ ...m, [id]: v })), [])
+  const cats = useMemo(() => Array.from(new Set(produtos.map(p => p.categoria).filter(Boolean))).sort((a, b) => a.localeCompare(b)), [produtos])
+  const selecionados = useMemo(() => produtos.filter(p => parseFloat(qtds[p.id] || '') > 0), [produtos, qtds])
+  const filtrados = useMemo(() => produtos
+    .filter(p => !categoria || p.categoria === categoria)
+    .filter(p => p.nome.toLowerCase().includes(buscaDeb.toLowerCase()))
+    .filter(p => !soSel || parseFloat(qtds[p.id] || '') > 0)
+    .sort((a, b) => a.nome.localeCompare(b.nome)), [produtos, categoria, buscaDeb, soSel, qtds])
 
   const registrar = async () => {
-    if (!validas.length) { toast('Adicione ao menos um produto com quantidade.', 'error'); return }
+    if (!selecionados.length) { toast('Marque a quantidade nos produtos que saíram.', 'error'); return }
     setSaving(true)
     try {
-      const createdAt = new Date(data + 'T12:00:00-03:00').toISOString()
+      const createdAt = new Date(`${data}T${hora || '12:00'}:00-03:00`).toISOString()
       const motivo = ['Consumo', setor ? `Setor: ${setor}` : '', resp ? `Resp: ${resp}` : ''].filter(Boolean).join(' | ')
-      for (const l of validas) {
-        const qtd = parseFloat(l.qtd)
+      for (const p of selecionados) {
+        const qtd = parseFloat(qtds[p.id])
         await insertEstoqueMovimentacao({
-          loja: lojaReal, produto_id: l.produto.id, produto_nome: l.produto.nome, tipo: 'saida',
-          quantidade: qtd, unidade: (l.produto.gramatura || '').replace('(s)', '') || 'un',
+          loja: lojaReal, produto_id: p.id, produto_nome: p.nome, tipo: 'saida',
+          quantidade: qtd, unidade: (p.gramatura || '').replace('(s)', '') || 'un',
           motivo, created_by: resp || user?.name || null, setor, created_at: createdAt,
         } as unknown as Omit<EstoqueMovimentacao, 'id' | 'created_at'>)
-        await updateEstoqueProduto(l.produto.id, { nivel_atual: Math.max(0, l.produto.nivel_atual - qtd) })
+        await updateEstoqueProduto(p.id, { nivel_atual: Math.max(0, p.nivel_atual - qtd) })
       }
-      toast(`${validas.length} saída(s) registrada(s)! ✅`)
-      setLinhas([]); carregar()
+      toast(`${selecionados.length} saída(s) registrada(s)! ✅`)
+      setQtds({}); setSoSel(false); carregar()
     } catch (e) { console.error(e); toast('Erro ao registrar. Tente novamente.', 'error') }
     setSaving(false)
   }
@@ -1565,65 +1580,43 @@ function TabBaixaMassa({ loja }: { loja: string }) {
     <div>
       <div style={{ marginBottom: 14 }}>
         <div className="sec-tt">📤 Baixa em massa (consumo)</div>
-        <div className="sec-sub">Lance de uma vez tudo que saiu do estoque — por setor e data. Baixa o estoque e alimenta a análise de consumo.</div>
+        <div className="sec-sub">Marque a quantidade nos produtos que saíram — informe setor, quem deu a saída, data e hora. Baixa o estoque e alimenta a análise de consumo.</div>
       </div>
 
-      <div className="g3" style={{ marginBottom: 12 }}>
-        <div className="fg"><label className="fl">Setor</label>
-          <select className="sel" value={setor} onChange={e => setSetor(e.target.value)}>{SETORES.map(s => <option key={s}>{s}</option>)}</select>
-        </div>
-        <div className="fg"><label className="fl">Responsável</label><input className="inp" value={resp} onChange={e => setResp(e.target.value)} placeholder="quem baixou" /></div>
-        <div className="fg"><label className="fl">Data</label><input type="date" className="inp" value={data} onChange={e => setData(e.target.value)} /></div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div className="fg" style={{ minWidth: 150 }}><label className="fl">Setor</label>
+          <select className="sel" value={setor} onChange={e => setSetor(e.target.value)}>{SETORES.map(s => <option key={s}>{s}</option>)}</select></div>
+        <div className="fg" style={{ minWidth: 170, flex: 1 }}><label className="fl">Quem deu a saída</label><input className="inp" value={resp} onChange={e => setResp(e.target.value)} placeholder="responsável" /></div>
+        <div className="fg" style={{ width: 150 }}><label className="fl">Data</label><input type="date" className="inp" value={data} onChange={e => setData(e.target.value)} /></div>
+        <div className="fg" style={{ width: 120 }}><label className="fl">Hora</label><input type="time" className="inp" value={hora} onChange={e => setHora(e.target.value)} /></div>
       </div>
 
-      <div className="fg" style={{ position: 'relative', maxWidth: 520 }}>
-        <label className="fl">Adicionar produto</label>
-        <input className="inp" value={busca} onChange={e => setBusca(e.target.value)} placeholder="Digite o nome do produto…" />
-        {sugestoes.length > 0 && (
-          <div style={{ position: 'absolute', zIndex: 30, left: 0, right: 0, top: '100%', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow)', maxHeight: 280, overflowY: 'auto' }}>
-            {sugestoes.map(p => (
-              <div key={p.id} onClick={() => addLinha(p)} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                <span><strong>{p.nome}</strong> <span style={{ color: 'var(--muted)', fontSize: 11 }}>{p.gramatura}</span></span>
-                <span style={{ color: 'var(--muted)', fontSize: 11 }}>estoque: {p.nivel_atual}</span>
-              </div>
-            ))}
-          </div>
-        )}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+        <div className="sw-wrap" style={{ flex: 1, minWidth: 180, position: 'relative' }}>
+          <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
+          <input className="srch" placeholder="Buscar produto..." value={busca} onChange={e => setBusca(e.target.value)} />
+        </div>
+        <select className="flt" value={categoria} onChange={e => setCategoria(e.target.value)}>
+          <option value="">Todas as categorias</option>{cats.map(c => <option key={c}>{c}</option>)}
+        </select>
+        <button className={`btn bsm ${soSel ? 'bp' : 'bo'}`} onClick={() => setSoSel(s => !s)}>{soSel ? '✓ Só selecionados' : `Só selecionados (${selecionados.length})`}</button>
       </div>
 
-      {linhas.length > 0 ? (
-        <div className="tw" style={{ marginTop: 12 }}>
-          <table>
-            <thead><tr><th>Produto</th><th>Estoque atual</th><th style={{ width: 130 }}>Quantidade que saiu</th><th></th></tr></thead>
-            <tbody>
-              {linhas.map(l => {
-                const q = parseFloat(l.qtd) || 0
-                const fica = Math.max(0, l.produto.nivel_atual - q)
-                return (
-                  <tr key={l.produto.id}>
-                    <td><strong>{l.produto.nome}</strong><div style={{ fontSize: 10, color: 'var(--muted)' }}>{l.produto.gramatura}</div></td>
-                    <td>{l.produto.nivel_atual}{q > 0 && <span style={{ color: 'var(--muted)', fontSize: 11 }}> → {fica}</span>}</td>
-                    <td><input type="number" min="0" step="0.01" className="inp" value={l.qtd} onChange={e => setQtd(l.produto.id, e.target.value)} placeholder="0" style={{ width: 110, textAlign: 'right' }} onClick={e => (e.target as HTMLInputElement).select()} /></td>
-                    <td><button className="ib rd" onClick={() => rmLinha(l.produto.id)} title="Remover"><Trash2 size={13} /></button></td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="empty" style={{ marginTop: 12 }}><Package size={30} /><div>Adicione os produtos que saíram acima.</div></div>
-      )}
+      <div className="tw">
+        <table>
+          <thead><tr><th>Produto</th><th className="num">Estoque</th><th style={{ width: 120 }}>Qtd. que saiu</th></tr></thead>
+          <tbody>{filtrados.map(p => <SaidaRow key={p.id} p={p} val={qtds[p.id] || ''} onCh={setQtd} />)}</tbody>
+        </table>
+        {filtrados.length === 0 && <div className="empty"><Package size={30} /><div>{soSel ? 'Nenhum produto selecionado ainda.' : 'Nenhum produto encontrado.'}</div></div>}
+      </div>
 
-      {linhas.length > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 13, color: 'var(--muted)' }}>{validas.length} de {linhas.length} produto(s) com quantidade · setor <strong>{setor}</strong> · {data.split('-').reverse().join('/')}</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn bo" onClick={() => setLinhas([])} disabled={saving}>Limpar</button>
-            <button className="btn bp" onClick={registrar} disabled={saving || !validas.length}>{saving ? 'Registrando…' : `📤 Registrar ${validas.length} saída(s)`}</button>
-          </div>
+      <div style={{ position: 'sticky', bottom: 0, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', boxShadow: 'var(--shadow)' }}>
+        <div style={{ fontSize: 13, color: 'var(--muted)' }}><strong style={{ color: 'var(--text)' }}>{selecionados.length}</strong> produto(s) selecionado(s) · setor <strong>{setor}</strong> · {data.split('-').reverse().join('/')} {hora}</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn bo" onClick={() => { setQtds({}); setSoSel(false) }} disabled={saving || !selecionados.length}>Limpar</button>
+          <button className="btn bp" onClick={registrar} disabled={saving || !selecionados.length}>{saving ? 'Registrando…' : `📤 Registrar ${selecionados.length} saída(s)`}</button>
         </div>
-      )}
+      </div>
     </div>
   )
 }
