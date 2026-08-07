@@ -126,6 +126,36 @@ async function enviarRequisicaoSemanal(host, cfg, dest) {
   return out
 }
 
+// ── Alerta de avaliações negativas (dobrado aqui; sai só para Esdras e só quando há negativa) ──
+const FB_ALERTA_FONE = '5581992573535' // Esdras Santana (preferência: nunca Wagner)
+const _dig = s => (s || '').replace(/\D/g, '')
+const _normFone = s => { const d = _dig(s); if (d.length >= 12 && d.startsWith('55')) return d; if (d.length === 10 || d.length === 11) return '55' + d; return d.length >= 12 ? d : '' }
+const _fmtFone = full => { const n = full.slice(2); return n.length >= 10 ? `(${n.slice(0, 2)}) ${n.slice(2, 7)}-${n.slice(7)}` : full }
+const _EXP = { regular: '😐', ruim: '🙁', pessima: '😡' }
+const _notaFb = f => { const n = [f.nota_atendimento, f.nota_comida, f.nota_agilidade].filter(x => x != null); return n.length ? n.reduce((a, b) => a + b, 0) / n.length : ({ excelente: 5, boa: 4, regular: 3, ruim: 2, pessima: 1 }[f.experiencia] || 0) }
+
+async function enviarAlertaAvaliacoes(cfg, host, dia) {
+  const ini = dia + 'T00:00:00-03:00' // negativas desde o início de ontem (fuso Recife) — cobre ontem + hoje
+  const fbs = await sb(`feedbacks?created_at=gte.${encodeURIComponent(ini)}&select=id,loja,experiencia,voltaria,nota_atendimento,nota_comida,nota_agilidade,motivo,observacoes,created_at&order=created_at.desc&limit=500`)
+  const neg = (fbs || []).filter(f => ['regular', 'ruim', 'pessima'].includes(f.experiencia) || f.voltaria === false || _notaFb(f) <= 3)
+  if (!neg.length) return { enviados: 0, negativos: 0 }
+  const rp = await sb('rasp_participacoes?select=nome,telefone,feedback_id&feedback_id=not.is.null&limit=5000')
+  const cli = {}; (rp || []).forEach(r => { const t = _normFone(r.telefone); if (r.feedback_id && t) cli[r.feedback_id] = { nome: r.nome || '', tel: t } })
+  const ident = neg.filter(f => cli[f.id]).length
+  let body = ''
+  neg.slice(0, 12).forEach(f => {
+    const c = cli[f.id]
+    body += `\n${_EXP[f.experiencia] || '⚠️'} *${(f.experiencia || 'sem nota').toUpperCase()}* — ${f.loja} · ${new Date(f.created_at).toLocaleDateString('pt-BR')}\n`
+    body += `   notas ${f.nota_atendimento ?? '–'}/${f.nota_comida ?? '–'}/${f.nota_agilidade ?? '–'}⭐${f.voltaria === false ? ' · *não voltaria*' : ''}${f.motivo ? ' · ' + f.motivo : ''}\n`
+    if (f.observacoes && f.observacoes.trim()) body += `   💬 "${f.observacoes.trim().slice(0, 140)}"\n`
+    body += c ? `   👤 ${c.nome || 'Cliente'} — ${_fmtFone(c.tel)}\n` : `   👤 sem contato\n`
+  })
+  const extra = neg.length > 12 ? `\n… e mais ${neg.length - 12} negativa(s).` : ''
+  const texto = `🚨 *ALERTA — Avaliações negativas*\nAmore Food · ${dDMY(dia)}\n━━━━━━━━━━━━\n🔴 *${neg.length} negativa(s)* · 👤 ${ident} com cliente identificado (dá pra reverter)\n━━━━━━━━━━━━${body}${extra}\n━━━━━━━━━━━━\n👉 Aja no Painel Amore → *⭐ Avaliações & NPS* → aba *🔄 Recuperação* (contato do cliente + botão pra reverter).`
+  const r = await enviarEvolution(FB_ALERTA_FONE, texto, cfg)
+  return { enviados: r.ok ? 1 : 0, negativos: neg.length, identificados: ident, para: FB_ALERTA_FONE }
+}
+
 export default async function handler(req, res) {
   const preview = req.query?.preview === '1' || req.query?.preview === 'true'
   // segurança do ENVIO (preview é liberado p/ conferência)
@@ -172,7 +202,11 @@ export default async function handler(req, res) {
       try { requisicao = await enviarRequisicaoSemanal(host, cfg, dest) }
       catch (e) { requisicao = { error: String((e && e.message) || e) } }
     }
-    return res.status(200).json({ dia, enviados: resultados.filter(r => r.ok).length, total: dest.length, resumo, resultados, requisicao })
+    // Alerta de avaliações negativas (só p/ Esdras, e só se houver negativa) — todo dia
+    let alertaFb = null
+    try { alertaFb = await enviarAlertaAvaliacoes(cfg, host, dia) }
+    catch (e) { alertaFb = { error: String((e && e.message) || e) } }
+    return res.status(200).json({ dia, enviados: resultados.filter(r => r.ok).length, total: dest.length, resumo, resultados, requisicao, alertaFb })
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Erro no relatório diário' })
   }
