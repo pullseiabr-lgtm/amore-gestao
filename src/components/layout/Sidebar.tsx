@@ -65,6 +65,7 @@ const COMPRAS_SUBMENU: NavItem[] = [
   { id: 'relatorio-diario',       label: '📅 Relatório Diário', icon: <ClipboardList size={12} />, perm: 'requisicoes' },
   { id: 'requisicao-inteligente', label: '🧠 Requisição Inteligente', icon: <ClipboardList size={12} />, perm: 'requisicoes' },
   { id: 'analise-semanal', label: '📈 Análise Semanal de Compra', icon: <ClipboardList size={12} />, perm: 'requisicoes' },
+  { id: 'entregas', label: '🚚 Agendamento de Entregas', icon: <ClipboardList size={12} />, perm: 'requisicoes' },
   { id: 'req-automaticas',        label: 'Req. Automáticas',    icon: <Zap size={12} /> },
   { id: 'estoque',                label: 'Estoque',             icon: <Package size={12} /> },
   { id: 'fornecedores',           label: 'Fornecedores',        icon: <Building2 size={12} /> },
@@ -108,7 +109,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
   const isProdutosGroup = (p: string) => p === 'produtos' || p === 'produtos-categorias'
 
   // Abre o dropdown automaticamente se a página ativa for do grupo Compras
-  const isComprasGroup = (p: string) => p === 'pipeline-suprimentos' || p === 'dashboard-suprimentos' || p === 'lista-padrao' || p === 'compras' || p === 'requisicoes' || p === 'cotacao' || p === 'pedidos' || p === 'relatorio-diario' || p === 'requisicao-inteligente' || p === 'analise-semanal' || p === 'req-automaticas' || p === 'estoque' || p === 'fornecedores' || p === 'compras-agente'
+  const isComprasGroup = (p: string) => p === 'pipeline-suprimentos' || p === 'dashboard-suprimentos' || p === 'lista-padrao' || p === 'compras' || p === 'requisicoes' || p === 'cotacao' || p === 'pedidos' || p === 'relatorio-diario' || p === 'requisicao-inteligente' || p === 'analise-semanal' || p === 'entregas' || p === 'req-automaticas' || p === 'estoque' || p === 'fornecedores' || p === 'compras-agente'
   const isRelatoriosGroup = (p: string) => p === 'relatorio-cvl' || p === 'ruptura' || p === 'market'
 
   const [produtosOpen, setProdutosOpen] = useState(isProdutosGroup(activePage))
