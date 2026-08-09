@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Truck, Search, Plus, X, RefreshCw, List, MessageCircle, PackageCheck, ClipboardCheck, Clock } from 'lucide-react'
+import { Truck, Search, Plus, X, RefreshCw, List, MessageCircle, PackageCheck, ClipboardCheck, Clock, CalendarDays, CalendarRange, LayoutGrid } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { useLoja } from '../../contexts/LojaContext'
@@ -46,6 +46,10 @@ const CATS: Record<string, { l: string; e: string; c: string }> = {
   outros: { l: 'Outros', e: '📋', c: '#6B7280' },
 }
 const JANELAS = ['Manhã', 'Tarde', 'Noite', '08:00–10:00', '10:00–12:00', '12:00–14:00', '14:00–16:00', '16:00–18:00']
+const DOW = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
+const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+const addDays = (iso: string, n: number) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
+const weekStart = (iso: string) => { const d = new Date(iso + 'T12:00:00Z'); const dow = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dow); return d.toISOString().slice(0, 10) }
 
 type Entrega = any
 
@@ -57,7 +61,8 @@ export default function EntregasPage() {
   const [pedidos, setPedidos] = useState<any[]>([])
   const [fornecedores, setFornecedores] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [vista, setVista] = useState<'hoje' | 'lista'>('hoje')
+  const [vista, setVista] = useState<'hoje' | 'lista' | 'semana' | 'mes' | 'kanban'>('hoje')
+  const [refData, setRefData] = useState(hojeISO())
   const [fLoja, setFLoja] = useState(LOJAS.includes(canon(lojaCtx)) ? canon(lojaCtx) : '')
   const [fStatus, setFStatus] = useState('')
   const [busca, setBusca] = useState('')
@@ -133,6 +138,69 @@ export default function EntregasPage() {
     else toast('Sem pedido vinculado — abra o recebimento manualmente.', 'error')
   }
 
+  // ── Fase 2: calendário (semana/mês) + kanban + arrastar p/ reagendar ──
+  const reagendar = async (id: string, dia: string) => {
+    const e = entregas.find((x: Entrega) => x.id === id); if (!e || e.data_prevista === dia) return
+    await sb.from('entregas_agendadas').update({ data_prevista: dia, updated_at: new Date().toISOString(), historico: [...(e.historico || []), histEntry('reagendamento', e.data_prevista, dia)] }).eq('id', id)
+    toast(`Reagendada para ${ddmm(dia)} 📅`); load()
+  }
+  const dropDia = (ev: any, dia: string) => { ev.preventDefault(); const id = ev.dataTransfer.getData('text/plain'); if (id) reagendar(id, dia) }
+  const dropCol = (ev: any, novo: string) => { ev.preventDefault(); const id = ev.dataTransfer.getData('text/plain'); const e = entregas.find((x: Entrega) => x.id === id); if (e && e.status !== novo) mudarStatus(e, novo) }
+  const mini = (e: Entrega) => {
+    const st = efetivo(e); const S = STATUS[st] || STATUS.a_confirmar; const cat = (e.categorias && e.categorias[0]) || e.categoria; const C = cat ? CATS[cat] : null
+    return <div key={e.id} draggable onDragStart={ev => ev.dataTransfer.setData('text/plain', e.id)} onClick={() => setMDet(e)}
+      style={{ background: 'var(--card)', border: '1px solid var(--border)', borderLeft: `3px solid ${C?.c || S.c}`, borderRadius: 8, padding: '5px 8px', fontSize: 11.5, cursor: 'grab', marginBottom: 5 }}>
+      <div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{C ? C.e + ' ' : ''}{e.fornecedor || '—'}</div>
+      <div style={{ color: 'var(--muted)', display: 'flex', justifyContent: 'space-between', gap: 6 }}><span>{e.janela || '—'}</span><span style={{ color: S.c, fontWeight: 600 }}>{S.l}</span></div>
+    </div>
+  }
+  const navBar = (label: string, onPrev: () => void, onNext: () => void) => <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+    <button className="btn bo" onClick={onPrev} style={{ padding: '4px 11px' }}>‹</button>
+    <strong style={{ fontSize: 14, minWidth: 170, textAlign: 'center' }}>{label}</strong>
+    <button className="btn bo" onClick={onNext} style={{ padding: '4px 11px' }}>›</button>
+    <button className="btn bo" onClick={() => setRefData(hojeISO())} style={{ padding: '4px 10px', fontSize: 12 }}>Hoje</button>
+  </div>
+  const renderSemana = () => {
+    const ini = weekStart(refData); const dias = Array.from({ length: 7 }, (_, i) => addDays(ini, i))
+    return <div>
+      {navBar(`Semana de ${ddmm(ini)}`, () => setRefData(addDays(refData, -7)), () => setRefData(addDays(refData, 7)))}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(130px,1fr))', gap: 8, overflowX: 'auto' }}>
+        {dias.map((d, i) => { const doDia = filtradas.filter((e: Entrega) => e.data_prevista === d); const isHoje = d === hoje
+          return <div key={d} onDragOver={ev => ev.preventDefault()} onDrop={ev => dropDia(ev, d)} style={{ background: isHoje ? 'color-mix(in srgb,var(--bordo) 7%,var(--card))' : 'var(--bg)', border: `1px solid ${isHoje ? 'var(--bordo)' : 'var(--border)'}`, borderRadius: 10, padding: 8, minHeight: 130 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: isHoje ? 'var(--bordo)' : 'var(--muted)', marginBottom: 6 }}>{DOW[i]} {ddmm(d)}{doDia.length ? ` · ${doDia.length}` : ''}</div>
+            {doDia.map(mini)}
+          </div> })}
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8 }}>Arraste um card para outro dia para reagendar (o histórico fica registrado).</div>
+    </div>
+  }
+  const renderMes = () => {
+    const [y, m] = refData.split('-').map(Number); const primeiro = `${y}-${String(m).padStart(2, '0')}-01`
+    const ini = weekStart(primeiro); const celulas = Array.from({ length: 42 }, (_, k) => addDays(ini, k))
+    return <div>
+      {navBar(`${MESES[m - 1]} ${y}`, () => setRefData(m === 1 ? `${y - 1}-12-01` : `${y}-${String(m - 1).padStart(2, '0')}-01`), () => setRefData(m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`))}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4, fontSize: 11 }}>
+        {DOW.map(d => <div key={d} style={{ textAlign: 'center', color: 'var(--muted)', fontWeight: 700, padding: 4 }}>{d}</div>)}
+        {celulas.map(d => { const doDia = filtradas.filter((e: Entrega) => e.data_prevista === d); const noMes = Number(d.slice(5, 7)) === m; const isHoje = d === hoje
+          return <div key={d} onDragOver={ev => ev.preventDefault()} onDrop={ev => dropDia(ev, d)} style={{ minHeight: 76, background: isHoje ? 'color-mix(in srgb,var(--bordo) 8%,var(--card))' : 'var(--card)', border: `1px solid ${isHoje ? 'var(--bordo)' : 'var(--border)'}`, borderRadius: 8, padding: 5, opacity: noMes ? .45 : 1 }}>
+            <div style={{ fontWeight: 700, color: 'var(--muted)' }}>{Number(d.slice(8, 10))}</div>
+            {doDia.slice(0, 3).map((e: Entrega) => { const cat = (e.categorias && e.categorias[0]) || e.categoria; const C = cat ? CATS[cat] : null; return <div key={e.id} draggable onDragStart={ev => ev.dataTransfer.setData('text/plain', e.id)} onClick={() => setMDet(e)} title={e.fornecedor} style={{ cursor: 'grab', fontSize: 10, background: 'var(--bg)', borderLeft: `2px solid ${C?.c || STATUS[efetivo(e)]?.c}`, borderRadius: 4, padding: '1px 4px', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{C ? C.e : '•'} {e.fornecedor}</div> })}
+            {doDia.length > 3 && <div style={{ fontSize: 9.5, color: 'var(--muted)', marginTop: 2 }}>+{doDia.length - 3}</div>}
+          </div> })}
+      </div>
+    </div>
+  }
+  const renderKanban = () => {
+    const cols = STATUS_ORDER
+    return <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 8 }}>
+      {cols.map(col => { const cards = filtradas.filter((e: Entrega) => efetivo(e) === col); const S = STATUS[col]
+        return <div key={col} onDragOver={ev => ev.preventDefault()} onDrop={ev => dropCol(ev, col)} style={{ minWidth: 205, flex: '0 0 205px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 8 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: S.c, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}><span>{S.l}</span><span style={{ background: S.bg, color: S.c, borderRadius: 10, padding: '0 7px' }}>{cards.length}</span></div>
+          {cards.map(mini)}
+        </div> })}
+    </div>
+  }
+
   return (
     <div>
       <div style={{ background: 'linear-gradient(135deg, #6B1212 0%, #8a2a2a 100%)', borderRadius: 12, padding: '16px 20px', marginBottom: 14, color: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -157,9 +225,10 @@ export default function EntregasPage() {
 
       {/* Filtros + vista */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
-        <div style={{ display: 'flex', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 3 }}>
-          <button className="btn" onClick={() => setVista('hoje')} style={{ padding: '6px 12px', fontSize: 12.5, background: vista === 'hoje' ? 'var(--bordo)' : 'transparent', color: vista === 'hoje' ? '#fff' : 'var(--text)', border: 'none' }}><Clock size={13} /> Hoje</button>
-          <button className="btn" onClick={() => setVista('lista')} style={{ padding: '6px 12px', fontSize: 12.5, background: vista === 'lista' ? 'var(--bordo)' : 'transparent', color: vista === 'lista' ? '#fff' : 'var(--text)', border: 'none' }}><List size={13} /> Lista</button>
+        <div style={{ display: 'flex', flexWrap: 'wrap', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 3 }}>
+          {([['hoje', 'Hoje', <Clock size={13} />], ['semana', 'Semana', <CalendarDays size={13} />], ['mes', 'Mês', <CalendarRange size={13} />], ['lista', 'Lista', <List size={13} />], ['kanban', 'Kanban', <LayoutGrid size={13} />]] as const).map(([v, l, ic]) => (
+            <button key={v} className="btn" onClick={() => setVista(v)} style={{ padding: '6px 11px', fontSize: 12.5, background: vista === v ? 'var(--bordo)' : 'transparent', color: vista === v ? '#fff' : 'var(--text)', border: 'none' }}>{ic} {l}</button>
+          ))}
         </div>
         <div className="sw-wrap" style={{ flex: 1, minWidth: 180, position: 'relative' }}>
           <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
@@ -170,6 +239,9 @@ export default function EntregasPage() {
       </div>
 
       {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>Carregando…</div> :
+        vista === 'semana' ? renderSemana() :
+        vista === 'mes' ? renderMes() :
+        vista === 'kanban' ? renderKanban() :
         filtradas.length === 0 ? <div style={{ padding: 50, textAlign: 'center', color: 'var(--muted)', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12 }}><Truck size={34} /><div style={{ marginTop: 8 }}>{vista === 'hoje' ? 'Nenhuma entrega prevista para hoje.' : 'Nenhuma entrega encontrada.'}</div><div style={{ fontSize: 12.5, marginTop: 4 }}>Use “Agendar entrega” para programar a partir de um pedido de compra.</div></div> :
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
             {filtradas.map(e => {
