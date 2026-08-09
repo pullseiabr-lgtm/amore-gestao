@@ -30,7 +30,8 @@ const STATUS: Record<string, { l: string; c: string; bg: string }> = {
   recusada: { l: 'Recusada', c: '#991B1B', bg: '#FEE2E2' },
   cancelada: { l: 'Cancelada', c: '#6B7280', bg: '#F3F4F6' },
 }
-const STATUS_ORDER = ['a_confirmar', 'confirmada', 'em_separacao', 'em_rota', 'aguardando', 'em_conferencia', 'recebida', 'recebida_parcial', 'divergencia', 'atrasada', 'reagendada', 'recusada', 'cancelada']
+// Não somos a logística do fornecedor — monitoramos o RECEBIMENTO. Sem etapas internas (separação/rota/aguardando).
+const STATUS_ORDER = ['a_confirmar', 'confirmada', 'atrasada', 'em_conferencia', 'recebida', 'recebida_parcial', 'divergencia', 'reagendada', 'recusada', 'cancelada']
 const FINAIS = ['recebida', 'recebida_parcial', 'cancelada', 'recusada']
 const CATS: Record<string, { l: string; e: string; c: string }> = {
   proteinas: { l: 'Proteínas', e: '🥩', c: '#B91C1C' },
@@ -112,7 +113,7 @@ export default function EntregasPage() {
   const kpi = {
     hoje: doDia.length,
     confirmadas: doDia.filter(e => e.status === 'confirmada').length,
-    aguardando: doDia.filter(e => ['aguardando', 'em_rota', 'em_separacao'].includes(e.status)).length,
+    aconfirmar: doDia.filter(e => e.status === 'a_confirmar').length,
     conferencia: doDia.filter(e => e.status === 'em_conferencia').length,
     concluidas: doDia.filter(e => ['recebida', 'recebida_parcial'].includes(e.status)).length,
     atrasadas: entregas.filter(e => (!fLoja || e.loja === fLoja) && efetivo(e) === 'atrasada').length,
@@ -152,6 +153,29 @@ export default function EntregasPage() {
       style={{ background: 'var(--card)', border: '1px solid var(--border)', borderLeft: `3px solid ${C?.c || S.c}`, borderRadius: 8, padding: '5px 8px', fontSize: 11.5, cursor: 'grab', marginBottom: 5 }}>
       <div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{C ? C.e + ' ' : ''}{e.fornecedor || '—'}</div>
       <div style={{ color: 'var(--muted)', display: 'flex', justifyContent: 'space-between', gap: 6 }}><span>{e.janela || '—'}</span><span style={{ color: S.c, fontWeight: 600 }}>{S.l}</span></div>
+    </div>
+  }
+  // Card completo do Kanban — monitoramento do recebimento (fornecedor/vendedor, data+horário, itens, categorias, WhatsApp direto)
+  const kanbanCard = (e: Entrega) => {
+    const st = efetivo(e); const S = STATUS[st] || STATUS.a_confirmar
+    const cats = (e.categorias && e.categorias.length ? e.categorias : (e.categoria ? [e.categoria] : []))
+    const cor = (cats[0] && CATS[cats[0]]?.c) || S.c
+    const wa = waConfirm(e)
+    return <div key={e.id} draggable onDragStart={ev => ev.dataTransfer.setData('text/plain', e.id)}
+      style={{ background: 'var(--card)', border: '1px solid var(--border)', borderLeft: `3px solid ${cor}`, borderRadius: 9, padding: '8px 9px', cursor: 'grab', marginBottom: 7, boxShadow: 'var(--shadow)' }}>
+      <div onClick={() => setMDet(e)} style={{ cursor: 'pointer' }}>
+        <div style={{ fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.fornecedor || 'Fornecedor'}</div>
+        {e.vendedor && <div style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>🧑‍💼 {e.vendedor}</div>}
+        <div style={{ fontSize: 11.5, marginTop: 4, fontWeight: 600 }}>📅 {ddmm(e.data_prevista)}{e.janela ? ` · ${e.janela}` : ''}</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 8px', fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+          <span>🏪 {e.loja}</span>
+          {e.qtd_itens > 0 && <span>📦 {e.qtd_itens} itens</span>}
+        </div>
+        {cats.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 5 }}>
+          {cats.map((c: string) => { const C = CATS[c]; return C ? <span key={c} style={{ fontSize: 10, background: C.c + '22', color: C.c, borderRadius: 6, padding: '1px 6px', fontWeight: 600 }}>{C.e} {C.l}</span> : null })}
+        </div>}
+      </div>
+      {wa && <a href={wa} target="_blank" rel="noreferrer" onClick={ev => ev.stopPropagation()} className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#25D366', color: '#fff', padding: '4px 9px', fontSize: 11, textDecoration: 'none', marginTop: 7, borderRadius: 6 }}><MessageCircle size={12} /> WhatsApp</a>}
     </div>
   }
   const navBar = (label: string, onPrev: () => void, onNext: () => void) => <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
@@ -194,9 +218,9 @@ export default function EntregasPage() {
     const cols = STATUS_ORDER
     return <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 8 }}>
       {cols.map(col => { const cards = filtradas.filter((e: Entrega) => efetivo(e) === col); const S = STATUS[col]
-        return <div key={col} onDragOver={ev => ev.preventDefault()} onDrop={ev => dropCol(ev, col)} style={{ minWidth: 205, flex: '0 0 205px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 8 }}>
+        return <div key={col} onDragOver={ev => ev.preventDefault()} onDrop={ev => dropCol(ev, col)} style={{ minWidth: 224, flex: '0 0 224px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 8 }}>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: S.c, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}><span>{S.l}</span><span style={{ background: S.bg, color: S.c, borderRadius: 10, padding: '0 7px' }}>{cards.length}</span></div>
-          {cards.map(mini)}
+          {cards.map(kanbanCard)}
         </div> })}
     </div>
   }
@@ -215,7 +239,7 @@ export default function EntregasPage() {
 
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: 14 }}>
-        {[['Hoje', kpi.hoje, 'var(--bordo)'], ['Confirmadas', kpi.confirmadas, '#1D4ED8'], ['Aguardando', kpi.aguardando, '#B45309'], ['Em conferência', kpi.conferencia, '#7C3AED'], ['Concluídas', kpi.concluidas, '#15803D'], ['Atrasadas', kpi.atrasadas, '#B91C1C'], ['Divergências', kpi.divergencias, '#B91C1C']].map(([l, n, c]: any) => (
+        {[['Hoje', kpi.hoje, 'var(--bordo)'], ['A confirmar', kpi.aconfirmar, '#B45309'], ['Confirmadas', kpi.confirmadas, '#1D4ED8'], ['Em conferência', kpi.conferencia, '#7C3AED'], ['Concluídas', kpi.concluidas, '#15803D'], ['Atrasadas', kpi.atrasadas, '#B91C1C'], ['Divergências', kpi.divergencias, '#B91C1C']].map(([l, n, c]: any) => (
           <div key={l} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 12px', borderLeft: `4px solid ${c}` }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: c }}>{n}</div>
             <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.03em' }}>{l}</div>
