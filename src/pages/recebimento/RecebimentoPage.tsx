@@ -204,6 +204,16 @@ export default function RecebimentoPage() {
     loadRecs()
   }
 
+  const excluir = async (rec: any) => {
+    if (!confirm(`Excluir este recebimento?\n\n${rec.fornecedor || 'Fornecedor'} · NF ${rec.numero_nota || 's/n'} · ${rec.loja} · ${fmt(rec.valor_total)}\n\nISTO VAI ESTORNAR do estoque os produtos desta nota e remover a despesa/financeiro gerados. Use quando a nota estiver errada ou não for desta loja. Ação irreversível.`)) return
+    setBusy('excluir')
+    const { data, error } = await sb.rpc('recebimento_excluir', { p_rec: rec.id, p_usuario: user?.name || 'Sistema' })
+    setBusy('')
+    if (error || !data?.ok) { toast('Erro ao excluir: ' + (error?.message || data?.error || 'tente novamente'), 'error'); return }
+    toast(`Recebimento excluído · ${data.estornos} entrada(s) estornada(s) do estoque${data.produtos_removidos ? ` · ${data.produtos_removidos} produto(s) removido(s)` : ''} 🗑️`)
+    loadRecs()
+  }
+
   return (
     <div style={{ padding: '1rem 0' }}>
       {/* passo 1 */}
@@ -369,6 +379,7 @@ export default function RecebimentoPage() {
                 <span style={{ fontWeight: 600 }}>{fmt(r.valor_total)}</span>
                 {r.anexo_url && <a href={r.anexo_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#6B1212' }}>nota</a>}
                 {r.status === 'pendente_aprovacao' && podeAprovar && <button onClick={() => aprovar(r)} style={{ fontSize: 12, fontWeight: 700, padding: '.3rem .7rem', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>Aprovar entrada</button>}
+                {podeAprovar && <button onClick={() => excluir(r)} disabled={busy === 'excluir'} title="Excluir nota errada / de outra loja (estorna o estoque)" style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 12, fontWeight: 600, padding: '.3rem .6rem', borderRadius: 7, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer' }}><Trash2 size={12} /> Excluir</button>}
                 <span style={{ color: '#9ca3af', fontSize: 12 }}>{new Date(r.created_at).toLocaleDateString('pt-BR')}</span>
               </div>) })}
         </div>
