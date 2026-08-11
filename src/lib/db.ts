@@ -678,6 +678,18 @@ export async function insertEstoqueMovimentacao(m: Omit<EstoqueMovimentacao, 'id
   return estoquePost('estoque_movimentacoes', m)
 }
 
+// Documentos fiscais dos recebimentos (para "Ver documento fiscal" nas movimentações)
+export async function fetchRecebimentoDocs(ids: string[]): Promise<Record<string, { anexo_url: string | null; numero_nota: string | null; fornecedor: string | null; data_recebimento: string | null }>> {
+  const uniq = [...new Set(ids.filter(Boolean))]
+  if (!uniq.length) return {}
+  try {
+    const rows: any[] = await estoqueFetch('recebimentos', `id=in.(${uniq.join(',')})&select=id,anexo_url,numero_nota,fornecedor,data_recebimento`)
+    const map: Record<string, any> = {}
+    for (const r of rows) map[r.id] = { anexo_url: r.anexo_url, numero_nota: r.numero_nota, fornecedor: r.fornecedor, data_recebimento: r.data_recebimento }
+    return map
+  } catch { return {} }
+}
+
 // Entrada COMPLETA no estoque por nome: registra movimentação + incrementa nivel_atual
 // + atualiza custo médio ponderado + validade/lote. Retorna se o produto existia no catálogo.
 export async function darEntradaEstoquePorNome(p: {

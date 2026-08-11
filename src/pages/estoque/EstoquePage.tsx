@@ -11,6 +11,7 @@ import {
   fetchEstoqueContagemItens, upsertEstoqueContagemItens,
   fetchEstoquePerdas, insertEstoquePerda, deleteEstoquePerda,
   deleteEstoqueProduto, logEstoqueProduto, fetchEstoqueProdutoLogs, fetchCategoriasCustom, saveCategoriasCustom,
+  fetchRecebimentoDocs,
 } from '../../lib/db'
 import type { EstoqueProduto, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, NivelStatus, EstoquePerda, PerdaTipo, EstoqueProdutoLog } from '../../types/database'
 
@@ -766,6 +767,7 @@ function TabMovimentacoes({ loja }: { loja: string }) {
   const [dias, setDias] = useState<string[]>([])
   const [diaSel, setDiaSel] = useState<string | null>(null)
   const [movs, setMovs] = useState<EstoqueMovimentacao[]>([])
+  const [docs, setDocs] = useState<Record<string, { anexo_url: string | null; numero_nota: string | null; fornecedor: string | null; data_recebimento: string | null }>>({})
   const [loading, setLoading] = useState(true)
   const [loadingMovs, setLoadingMovs] = useState(false)
   const [showModal, setShowModal] = useState(false)
@@ -788,7 +790,12 @@ function TabMovimentacoes({ loja }: { loja: string }) {
   const selecionarDia = async (dia: string) => {
     setDiaSel(dia)
     setLoadingMovs(true)
-    try { setMovs(await fetchEstoqueMovimentacoes(loja, dia)) } catch {}
+    try {
+      const ms = await fetchEstoqueMovimentacoes(loja, dia)
+      setMovs(ms)
+      const ids = ms.map(m => m.recebimento_id).filter(Boolean) as string[]
+      setDocs(ids.length ? await fetchRecebimentoDocs(ids) : {})
+    } catch {}
     setLoadingMovs(false)
   }
 
@@ -881,6 +888,9 @@ function TabMovimentacoes({ loja }: { loja: string }) {
                     <strong>{m.quantidade} {m.unidade}</strong> de <strong>{m.produto_nome}</strong> na filial{' '}
                     <span style={{ color: 'var(--blue)', fontWeight: 500 }}>{m.loja}</span>.
                     {m.motivo && <span style={{ color: 'var(--muted)', fontSize: 10 }}> ({m.motivo})</span>}
+                    {m.recebimento_id && (() => { const d = docs[m.recebimento_id!]; return d?.anexo_url
+                      ? <a href={d.anexo_url} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 6, fontSize: 11, fontWeight: 600, color: 'var(--bordo)', textDecoration: 'none', background: 'var(--bordo-bg)', padding: '1px 7px', borderRadius: 20 }} title={`Nota ${d.numero_nota || ''} · ${d.fornecedor || ''}`}>📎 Ver documento fiscal{d.numero_nota ? ` (NF ${d.numero_nota})` : ''}</a>
+                      : <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--muted)' }}>📎 recebimento{d?.numero_nota ? ` NF ${d.numero_nota}` : ''}</span> })()}
                   </div>
                 </div>
               ))}

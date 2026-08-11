@@ -652,6 +652,8 @@ export interface EstoqueMovimentacao {
   motivo: string | null
   created_by: string | null
   created_at: string
+  recebimento_id?: string | null
+  nota_fiscal?: string | null
 }
 
 export interface EstoqueContagem {

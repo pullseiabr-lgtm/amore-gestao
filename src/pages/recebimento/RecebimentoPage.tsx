@@ -107,7 +107,7 @@ export default function RecebimentoPage() {
       const resp = await fetch('/api/ocr-nota', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_url: url, mime: file.type }) })
       const d = await resp.json()
       if (!resp.ok) { toast(d.error || 'Erro na leitura por IA.', 'error'); setBusy(''); return }
-      const its = (d.itens || []).map((x: any) => ({ ...x, conteudo: x.conteudo || 1 }))
+      const its = (d.itens || []).map((x: any) => ({ ...x, conteudo: x.conteudo || 1, recebido: x.quantidade ?? '' }))
       setCab({ fornecedor: '', cnpj: '', numero_nota: '', serie: '', data_emissao: '', valor_total: '', forma_pagamento: '', ...(d.cabecalho || {}) })
       setItens(its)
       const prods = await fetchProdutos(loja); setProdEstoque(prods)
@@ -122,7 +122,21 @@ export default function RecebimentoPage() {
   }
 
   const upItem = (i: number, k: string, v: any) => setItens(a => a.map((x, idx) => idx === i ? { ...x, [k]: v } : x))
+  // Conferência: qtd RECEBIDA (o que efetivamente entrou) → alimenta a entrada no estoque
+  const upRecebido = (i: number, v: any) => {
+    setItens(a => a.map((x, idx) => idx === i ? { ...x, recebido: v } : x))
+    const cont = Number(itens[i]?.conteudo) || 1
+    const q = (v === '' || v == null) ? '' : Number(v) * cont
+    setEstoqueRows(a => a.map((r, idx) => idx === i ? { ...r, quantidade: q } : r))
+  }
   const delItem = (i: number) => { setItens(a => a.filter((_, idx) => idx !== i)); setEstoqueRows(a => a.filter((_, idx) => idx !== i)) }
+  // faturado × recebido
+  const difItem = (it: any) => {
+    const f = Number(it.quantidade), r = Number(it.recebido)
+    if (it.recebido === '' || it.recebido == null || isNaN(r)) return { has: false }
+    const d = Math.round((r - f) * 1000) / 1000
+    return { has: true, ok: Math.abs(d) < 0.001, delta: d }
+  }
   const upEst = (i: number, patch: any) => setEstoqueRows(a => a.map((x, idx) => idx === i ? { ...x, ...patch } : x))
   const toggleDesvio = (i: number) => setDesvioOpen(s => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); if (!n.has(i)) return n; setDesvios(d => d[i] ? d : { ...d, [i]: { tipo: '', descricao: '' } }); return n })
   const upDesvio = (i: number, patch: any) => setDesvios(d => ({ ...d, [i]: { ...d[i], ...patch } }))
@@ -146,9 +160,11 @@ export default function RecebimentoPage() {
   const nEntradas = darEntrada ? estoqueRows.filter((r, i) => r.on && Number(r.quantidade) > 0 && !itemRetido(i)).length : 0
   const nRetidos = darEntrada ? estoqueRows.filter((r, i) => r.on && Number(r.quantidade) > 0 && itemRetido(i)).length : 0
   const nDesvios = Object.values(desvios).filter((d: any) => d?.tipo).length
+  const nDiverg = itens.filter(it => { const d = difItem(it); return d.has && !d.ok }).length
 
   const confirmar = async () => {
     if (!itens.length) { toast('Nenhum item para confirmar.', 'error'); return }
+    if (!anexo?.url) { toast('Anexe o documento fiscal (NF/recibo) — é obrigatório para dar entrada.', 'error'); return }
     if (!conferente.trim()) { toast('Informe o nome do conferente.', 'error'); return }
     if (!assinatura.trim()) { toast('Assine digitando seu nome para confirmar.', 'error'); return }
     setBusy('confirm')
@@ -208,7 +224,12 @@ export default function RecebimentoPage() {
 
       {/* passo 2 — conferência */}
       {cab && <div style={card}>
-        <b style={{ fontSize: 14 }}>🔍 Conferência — cabeçalho da nota</b>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+          <b style={{ fontSize: 14 }}>🔍 Conferência — cabeçalho da nota</b>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: anexo?.url ? '#ECFDF5' : '#FEF2F2', color: anexo?.url ? '#166534' : '#B91C1C', border: `1px solid ${anexo?.url ? '#A7F3D0' : '#FECACA'}`, borderRadius: 20, padding: '.3rem .8rem', fontWeight: 600 }}>
+            📎 {anexo?.url ? <>Documento fiscal anexado — <a href={anexo.url} target="_blank" rel="noreferrer" style={{ color: '#166534', textDecoration: 'underline' }}>{(anexo.nome || 'ver nota').slice(0, 28)}</a></> : 'Documento fiscal obrigatório'}
+          </div>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px,1fr))', gap: 8, marginTop: 10 }}>
           {[['fornecedor', 'Fornecedor'], ['cnpj', 'CNPJ'], ['numero_nota', 'Nº da nota'], ['serie', 'Série'], ['data_emissao', 'Data emissão'], ['valor_total', 'Valor total'], ['forma_pagamento', 'Forma pgto']].map(([k, l]) => (
             <div key={k}><label style={{ fontSize: 11, color: '#9ca3af' }}>{l}</label><input style={inp} value={cab[k] ?? ''} onChange={e => setCab({ ...cab, [k]: e.target.value })} /></div>
@@ -216,13 +237,16 @@ export default function RecebimentoPage() {
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '16px 0 8px' }}>
-          <b style={{ fontSize: 14 }}>Itens da nota ({itens.length})</b>
-          {divergencia && <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: '#B45309', background: '#FEF3C7', padding: '.3rem .7rem', borderRadius: 20, fontWeight: 600 }}><AlertTriangle size={14} />Soma dos itens ({fmt(somaItens)}) ≠ total da nota ({fmt(totalNota)})</span>}
+          <b style={{ fontSize: 14 }}>Itens da nota ({itens.length}) <span style={{ fontWeight: 400, fontSize: 11.5, color: '#9ca3af' }}>· confira Faturado × Recebido</span></b>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {nDiverg > 0 && <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: '#B91C1C', background: '#FEE2E2', padding: '.3rem .7rem', borderRadius: 20, fontWeight: 600 }}><AlertTriangle size={14} />{nDiverg} item(ns) com quantidade divergente</span>}
+            {divergencia && <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: '#B45309', background: '#FEF3C7', padding: '.3rem .7rem', borderRadius: 20, fontWeight: 600 }}><AlertTriangle size={14} />Soma dos itens ({fmt(somaItens)}) ≠ total da nota ({fmt(totalNota)})</span>}
+          </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 860 }}>
             <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 11, textTransform: 'uppercase' }}>
-              <th style={{ padding: 6 }}>Produto</th><th>Qtd</th><th>Unid.</th><th>Cont.</th><th>Marca</th><th>Valor</th><th>Preço unit.</th><th>Conf.</th><th>Desvio</th><th></th>
+              <th style={{ padding: 6 }}>Produto</th><th>Faturado</th><th>Recebido</th><th>Dif.</th><th>Unid.</th><th>Cont.</th><th>Marca</th><th>Valor</th><th>Preço unit.</th><th>Conf.</th><th>Desvio</th><th></th>
             </tr></thead>
             <tbody>
               {itens.map((it, i) => { const pu = precoUnit(it); const cf = it.confianca; const temD = desvios[i]?.tipo; const retido = itemRetido(i); return (
@@ -230,6 +254,8 @@ export default function RecebimentoPage() {
                 <tr key={i} style={{ borderTop: '1px solid #f3f4f6', background: retido ? '#FEF2F2' : undefined }}>
                   <td style={{ padding: 4, minWidth: 170 }}><input style={inp} value={it.produto || ''} onChange={e => upItem(i, 'produto', e.target.value)} /></td>
                   <td style={{ width: 60 }}><input style={inp} type="number" step="0.01" value={it.quantidade ?? ''} onChange={e => upItem(i, 'quantidade', e.target.value)} /></td>
+                  <td style={{ width: 62 }}><input style={{ ...inp, ...(difItem(it).has && !difItem(it).ok ? { borderColor: '#F59E0B', background: '#FFFBEB' } : {}) }} type="number" step="0.01" value={it.recebido ?? ''} onChange={e => upRecebido(i, e.target.value)} title="Quantidade efetivamente recebida" /></td>
+                  <td style={{ width: 60, textAlign: 'center', fontWeight: 700 }}>{(() => { const d = difItem(it); if (!d.has) return <span style={{ color: '#9ca3af' }}>—</span>; if (d.ok) return <span style={{ color: '#1D9E75' }}>✓</span>; return <span style={{ color: d.delta! < 0 ? '#DC2626' : '#D97706', fontSize: 11 }}>⚠ {d.delta! > 0 ? '+' : ''}{d.delta}</span> })()}</td>
                   <td style={{ width: 66 }}><select style={inp} value={it.unidade || ''} onChange={e => upItem(i, 'unidade', e.target.value)}>{UNIDADES.map(u => <option key={u} value={u}>{u || '—'}</option>)}</select></td>
                   <td style={{ width: 56 }}><input style={inp} type="number" value={it.conteudo ?? 1} onChange={e => upItem(i, 'conteudo', e.target.value)} disabled={!['cx', 'pct'].includes((it.unidade || '').toLowerCase())} /></td>
                   <td style={{ width: 90 }}><input style={inp} value={it.marca || ''} onChange={e => upItem(i, 'marca', e.target.value)} /></td>
@@ -240,7 +266,7 @@ export default function RecebimentoPage() {
                   <td><button onClick={() => delItem(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444' }}><Trash2 size={13} /></button></td>
                 </tr>
                 {desvioOpen.has(i) && <tr key={i + '-d'} style={{ background: '#FFFBEB' }}>
-                  <td colSpan={10} style={{ padding: '8px 6px' }}>
+                  <td colSpan={12} style={{ padding: '8px 6px' }}>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                       <div style={{ minWidth: 220 }}><label style={{ fontSize: 11, color: '#9ca3af' }}>Tipo de ocorrência</label>
                         <select style={inp} value={desvios[i]?.tipo || ''} onChange={e => upDesvio(i, { tipo: e.target.value })}>
@@ -325,7 +351,7 @@ export default function RecebimentoPage() {
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: '#9ca3af' }}>⚠️ Revise os itens. {nDesvios > 0 ? `${nDesvios} desvio(s) registrado(s). ` : ''}{nRetidos > 0 ? `${nRetidos} item(ns) irão para aprovação. ` : ''}Total vai 1x pra despesas; alimenta ABC{darEntrada ? ' e estoque' : ''}.</span>
+          <span style={{ fontSize: 12, color: '#9ca3af' }}>⚠️ Revise os itens. {nDiverg > 0 ? `${nDiverg} com qtd divergente. ` : ''}{nDesvios > 0 ? `${nDesvios} desvio(s) registrado(s). ` : ''}{nRetidos > 0 ? `${nRetidos} item(ns) irão para aprovação. ` : ''}Total vai 1x pra despesas; alimenta ABC{darEntrada ? ' e estoque' : ''}. Documento fiscal fica vinculado à entrada.</span>
           <button onClick={confirmar} disabled={!!busy || !conferente.trim() || !assinatura.trim()} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.7rem 1.6rem', borderRadius: 10, border: 'none', background: (!conferente.trim() || !assinatura.trim()) ? '#9ca3af' : '#1D9E75', color: '#fff', cursor: (!conferente.trim() || !assinatura.trim()) ? 'not-allowed' : 'pointer', fontWeight: 600 }}><Check size={16} />{busy === 'confirm' ? 'Confirmando…' : nRetidos > 0 ? 'Registrar e enviar p/ aprovação' : 'Aprovar recebimento'}</button>
         </div>
       </div>}
