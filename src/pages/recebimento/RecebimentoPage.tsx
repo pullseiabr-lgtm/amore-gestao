@@ -63,6 +63,7 @@ export default function RecebimentoPage() {
   const { toast } = useToast()
   const { user } = useAuth()
   const podeAprovar = ['super_admin', 'manager', 'admin', 'gestor', 'diretor'].includes((user?.role || '').toLowerCase())
+  const podeExcluir = (user?.role || '').toLowerCase() === 'super_admin'
   const [loja, setLoja] = useState('Amore Paiva')
   const [file, setFile] = useState<File | null>(null)
   const [anexo, setAnexo] = useState<{ url: string; nome: string } | null>(null)
@@ -205,6 +206,7 @@ export default function RecebimentoPage() {
   }
 
   const excluir = async (rec: any) => {
+    if (!podeExcluir) { toast('Apenas o Super Admin pode excluir um recebimento.', 'error'); return }
     if (!confirm(`Excluir este recebimento?\n\n${rec.fornecedor || 'Fornecedor'} · NF ${rec.numero_nota || 's/n'} · ${rec.loja} · ${fmt(rec.valor_total)}\n\nISTO VAI ESTORNAR do estoque os produtos desta nota e remover a despesa/financeiro gerados. Use quando a nota estiver errada ou não for desta loja. Ação irreversível.`)) return
     setBusy('excluir')
     const { data, error } = await sb.rpc('recebimento_excluir', { p_rec: rec.id, p_usuario: user?.name || 'Sistema' })
@@ -379,7 +381,7 @@ export default function RecebimentoPage() {
                 <span style={{ fontWeight: 600 }}>{fmt(r.valor_total)}</span>
                 {r.anexo_url && <a href={r.anexo_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#6B1212' }}>nota</a>}
                 {r.status === 'pendente_aprovacao' && podeAprovar && <button onClick={() => aprovar(r)} style={{ fontSize: 12, fontWeight: 700, padding: '.3rem .7rem', borderRadius: 7, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer' }}>Aprovar entrada</button>}
-                {podeAprovar && <button onClick={() => excluir(r)} disabled={busy === 'excluir'} title="Excluir nota errada / de outra loja (estorna o estoque)" style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 12, fontWeight: 600, padding: '.3rem .6rem', borderRadius: 7, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer' }}><Trash2 size={12} /> Excluir</button>}
+                {podeExcluir && <button onClick={() => excluir(r)} disabled={busy === 'excluir'} title="Excluir nota errada / de outra loja (estorna o estoque) — Super Admin" style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 12, fontWeight: 600, padding: '.3rem .6rem', borderRadius: 7, border: '1px solid #FCA5A5', background: '#FEF2F2', color: '#DC2626', cursor: 'pointer' }}><Trash2 size={12} /> Excluir</button>}
                 <span style={{ color: '#9ca3af', fontSize: 12 }}>{new Date(r.created_at).toLocaleDateString('pt-BR')}</span>
               </div>) })}
         </div>
