@@ -31,6 +31,7 @@ import RelatorioDiarioPage from './pages/relatorio-diario/RelatorioDiarioPage'
 import RequisicaoInteligentePage from './pages/requisicao-inteligente/RequisicaoInteligentePage'
 import AnaliseSemanalPage from './pages/analise-semanal/AnaliseSemanalPage'
 import EntregasPage from './pages/entregas/EntregasPage'
+import PainelGestaoPage from './pages/gestao/PainelGestaoPage'
 import RequisoesAutomaticasPage from './pages/requisicoes/RequisoesAutomaticasPage'
 import FluxoSuprimentosPage from './pages/suprimentos/FluxoSuprimentosPage'
 import DashboardSuprimentosPage from './pages/suprimentos/DashboardSuprimentosPage'
@@ -78,6 +79,7 @@ export type PageId =
   | 'requisicao-inteligente'
   | 'analise-semanal'
   | 'entregas'
+  | 'painel-gestao'
   | 'req-automaticas'
   | 'pipeline-suprimentos'
   | 'dashboard-suprimentos'
@@ -137,6 +139,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'requisicao-inteligente': 'Requisição Inteligente',
   'analise-semanal': 'Análise Semanal de Compra',
   'entregas': 'Agendamento de Entregas',
+  'painel-gestao': 'Painel de Gestão',
   'req-automaticas': 'Requisições Automáticas',
   'pipeline-suprimentos': 'Pipeline de Suprimentos',
   'dashboard-suprimentos': 'Dashboard de Suprimentos',
@@ -198,6 +201,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'requisicao-inteligente': return <RequisicaoInteligentePage />
     case 'analise-semanal': return <AnaliseSemanalPage />
     case 'entregas': return <EntregasPage />
+    case 'painel-gestao': return <PainelGestaoPage />
     case 'req-automaticas': return <RequisoesAutomaticasPage />
     case 'pipeline-suprimentos': return <FluxoSuprimentosPage />
     case 'dashboard-suprimentos': return <DashboardSuprimentosPage />
