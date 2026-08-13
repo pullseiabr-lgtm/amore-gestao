@@ -21,6 +21,7 @@ const MENU_TOP: NavItem[] = [
   { id: 'custos', label: '💰 Custo por Produto', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>💰</span> },
   { id: 'compras-consumo', label: '⚖️ Compras × Consumo', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>⚖️</span> },
   { id: 'gestao-perdas', label: '⚠️ Gestão de Perdas', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>⚠️</span> },
+  { id: 'central-alertas', label: '🚨 Central de Alertas', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🚨</span> },
   { id: 'liz-central', label: '🎯 Liz — Central Operacional', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🎯</span> },
   { id: 'agente-cmv',  label: 'Precificação & CMV', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>💰</span> },
   { id: 'tarefas',     label: 'Central de Tarefas', icon: <ClipboardList size={13} /> },

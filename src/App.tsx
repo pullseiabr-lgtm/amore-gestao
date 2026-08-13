@@ -35,6 +35,7 @@ import PainelGestaoPage from './pages/gestao/PainelGestaoPage'
 import CustosPage from './pages/custos/CustosPage'
 import ComprasConsumoPage from './pages/compras-consumo/ComprasConsumoPage'
 import GestaoPerdasPage from './pages/perdas/GestaoPerdasPage'
+import CentralAlertasPage from './pages/alertas-gestao/CentralAlertasPage'
 import RequisoesAutomaticasPage from './pages/requisicoes/RequisoesAutomaticasPage'
 import FluxoSuprimentosPage from './pages/suprimentos/FluxoSuprimentosPage'
 import DashboardSuprimentosPage from './pages/suprimentos/DashboardSuprimentosPage'
@@ -86,6 +87,7 @@ export type PageId =
   | 'custos'
   | 'compras-consumo'
   | 'gestao-perdas'
+  | 'central-alertas'
   | 'req-automaticas'
   | 'pipeline-suprimentos'
   | 'dashboard-suprimentos'
@@ -149,6 +151,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'custos': 'Custo por Produto',
   'compras-consumo': 'Compras × Consumo',
   'gestao-perdas': 'Gestão de Perdas',
+  'central-alertas': 'Central de Alertas',
   'req-automaticas': 'Requisições Automáticas',
   'pipeline-suprimentos': 'Pipeline de Suprimentos',
   'dashboard-suprimentos': 'Dashboard de Suprimentos',
@@ -214,6 +217,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'custos': return <CustosPage />
     case 'compras-consumo': return <ComprasConsumoPage />
     case 'gestao-perdas': return <GestaoPerdasPage />
+    case 'central-alertas': return <CentralAlertasPage />
     case 'req-automaticas': return <RequisoesAutomaticasPage />
     case 'pipeline-suprimentos': return <FluxoSuprimentosPage />
     case 'dashboard-suprimentos': return <DashboardSuprimentosPage />
