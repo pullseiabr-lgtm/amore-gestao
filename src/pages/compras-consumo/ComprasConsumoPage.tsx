@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { RefreshCw, ShoppingCart, Utensils, Boxes } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { fetchTodosCaixaItens, fetchEstoqueProdutos, fetchEstoqueMovimentacoesRange } from '../../lib/db'
+import GestaoNav from '../gestao/GestaoNav'
 
 const brl = (v: number) => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const iso = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
@@ -78,6 +79,7 @@ export default function ComprasConsumoPage() {
 
   return (
     <div>
+      <GestaoNav active="compras-consumo" />
       <div style={{ background: 'linear-gradient(135deg,#6B1212,#8a2a2a)', borderRadius: 12, padding: '16px 20px', marginBottom: 14, color: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 180 }}><h2 style={{ margin: 0, fontSize: 19, fontWeight: 800 }}>⚖️ Compras × Consumo</h2><div style={{ fontSize: 12.5, opacity: .85 }}>Estamos comprando de acordo com o que consumimos? · {loja}</div></div>
         <div style={{ display: 'flex', background: 'rgba(255,255,255,.15)', borderRadius: 8, padding: 3 }}>

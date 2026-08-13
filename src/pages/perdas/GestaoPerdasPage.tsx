@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../hooks/useToast'
 import { fetchEstoquePerdas, insertEstoquePerda, fetchEstoqueProdutos, fetchTodosCaixaItens } from '../../lib/db'
 import type { EstoquePerda, EstoqueProduto, PerdaTipo } from '../../types/database'
+import GestaoNav from '../gestao/GestaoNav'
 
 const brl = (v: number) => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const num = (v: number) => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })
@@ -76,6 +77,7 @@ export default function GestaoPerdasPage() {
 
   return (
     <div>
+      <GestaoNav active="gestao-perdas" />
       <div style={{ background: 'linear-gradient(135deg,#6B1212,#8a2a2a)', borderRadius: 12, padding: '16px 20px', marginBottom: 14, color: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <TrendingDown size={22} />
         <div style={{ flex: 1, minWidth: 180 }}><h2 style={{ margin: 0, fontSize: 19, fontWeight: 800 }}>⚠️ Gestão de Perdas</h2><div style={{ fontSize: 12.5, opacity: .85 }}>Desperdício · Avaria · Vencimento — controle e índice de perda · {loja}</div></div>

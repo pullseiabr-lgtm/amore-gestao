@@ -17,11 +17,6 @@ export interface NavItem {
 const MENU_TOP: NavItem[] = [
   { id: 'dashboard',   label: 'Dashboard',         icon: <LayoutDashboard size={13} /> },
   { id: 'agente-liz',  label: 'Liz — Agente IA',   icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🤖</span> },
-  { id: 'painel-gestao', label: '📊 Painel de Gestão', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>📊</span> },
-  { id: 'custos', label: '💰 Custo por Produto', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>💰</span> },
-  { id: 'compras-consumo', label: '⚖️ Compras × Consumo', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>⚖️</span> },
-  { id: 'gestao-perdas', label: '⚠️ Gestão de Perdas', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>⚠️</span> },
-  { id: 'central-alertas', label: '🚨 Central de Alertas', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🚨</span> },
   { id: 'liz-central', label: '🎯 Liz — Central Operacional', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🎯</span> },
   { id: 'agente-cmv',  label: 'Precificação & CMV', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>💰</span> },
   { id: 'tarefas',     label: 'Central de Tarefas', icon: <ClipboardList size={13} /> },
@@ -46,6 +41,15 @@ const MENU_TOP: NavItem[] = [
   { id: 'marketing',   label: 'Marketing 360°',     icon: <Megaphone size={13} /> },
   { id: 'mkt-contatos', label: 'Contatos & Consent.', icon: <Megaphone size={13} /> },
   { id: 'vendas',      label: 'Vendas',              icon: <TrendingUp size={13} /> },
+]
+
+// Sub-itens do grupo Gestão (Painel de Gestão + telas de análise)
+const GESTAO_SUBMENU: NavItem[] = [
+  { id: 'painel-gestao',   label: '📊 Painel de Gestão',   icon: <span style={{ fontSize: 13, lineHeight: 1 }}>📊</span> },
+  { id: 'custos',          label: '💰 Custo por Produto',  icon: <span style={{ fontSize: 13, lineHeight: 1 }}>💰</span> },
+  { id: 'compras-consumo', label: '⚖️ Compras × Consumo',  icon: <span style={{ fontSize: 13, lineHeight: 1 }}>⚖️</span> },
+  { id: 'gestao-perdas',   label: '⚠️ Gestão de Perdas',   icon: <span style={{ fontSize: 13, lineHeight: 1 }}>⚠️</span> },
+  { id: 'central-alertas', label: '🚨 Central de Alertas', icon: <span style={{ fontSize: 13, lineHeight: 1 }}>🚨</span> },
 ]
 
 // Sub-itens do grupo Produtos
@@ -110,6 +114,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
   const isSuperAdmin = user?.role === 'super_admin'
 
+  const isGestaoGroup = (p: string) => ['painel-gestao', 'custos', 'compras-consumo', 'gestao-perdas', 'central-alertas'].includes(p)
   // Abre o dropdown automaticamente se a página ativa for do grupo Produtos
   const isProdutosGroup = (p: string) => p === 'produtos' || p === 'produtos-categorias'
 
@@ -117,11 +122,13 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
   const isComprasGroup = (p: string) => p === 'pipeline-suprimentos' || p === 'dashboard-suprimentos' || p === 'lista-padrao' || p === 'compras' || p === 'requisicoes' || p === 'cotacao' || p === 'pedidos' || p === 'relatorio-diario' || p === 'requisicao-inteligente' || p === 'analise-semanal' || p === 'entregas' || p === 'req-automaticas' || p === 'estoque' || p === 'fornecedores' || p === 'compras-agente'
   const isRelatoriosGroup = (p: string) => p === 'relatorio-cvl' || p === 'ruptura' || p === 'market'
 
+  const [gestaoOpen, setGestaoOpen] = useState(isGestaoGroup(activePage))
   const [produtosOpen, setProdutosOpen] = useState(isProdutosGroup(activePage))
   const [comprasOpen, setComprasOpen] = useState(isComprasGroup(activePage))
   const [relatoriosOpen, setRelatoriosOpen] = useState(isRelatoriosGroup(activePage))
 
   useEffect(() => {
+    if (isGestaoGroup(activePage))      setGestaoOpen(true)
     if (isProdutosGroup(activePage))    setProdutosOpen(true)
     if (isComprasGroup(activePage))     setComprasOpen(true)
     if (isRelatoriosGroup(activePage))  setRelatoriosOpen(true)
@@ -167,6 +174,36 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
               {m.badge && <span className="nav-badge">{m.badge}</span>}
             </div>
           ))}
+
+          {/* ── Grupo Gestão (dropdown) ── */}
+          <div>
+            <div
+              className={`nav-item${isGestaoGroup(activePage) ? ' active' : ''}`}
+              onClick={() => setGestaoOpen(o => !o)}
+              style={{ cursor: 'pointer', userSelect: 'none' }}
+            >
+              <BarChart2 size={13} />
+              📊 Gestão
+              <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', opacity: 0.7 }}>
+                {gestaoOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              </span>
+            </div>
+            {gestaoOpen && (
+              <div style={{ overflow: 'hidden' }}>
+                {GESTAO_SUBMENU.map(m => (
+                  <div
+                    key={m.id}
+                    className={`nav-item${activePage === m.id ? ' active' : ''}`}
+                    onClick={() => onNav(m.id, m.label)}
+                    style={{ paddingLeft: 28, fontSize: 12, borderLeft: '2px solid var(--bordo-l)', marginLeft: 16, borderRadius: '0 6px 6px 0' }}
+                  >
+                    {m.icon}
+                    {m.label}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* ── Grupo Produtos (dropdown) ── */}
           {can('produtos', 'view') && (

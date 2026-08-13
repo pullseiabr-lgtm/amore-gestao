@@ -3,6 +3,7 @@ import { RefreshCw, AlertOctagon, AlertTriangle, CheckCircle2, ChevronDown } fro
 import { supabase } from '../../lib/supabase'
 import { useLoja } from '../../contexts/LojaContext'
 import { fetchEstoqueProdutos, fetchEstoquePerdas, fetchTodosCaixaItens, fetchRequisicoes } from '../../lib/db'
+import GestaoNav from '../gestao/GestaoNav'
 
 const sb = supabase as any
 const brl = (v: number) => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -101,6 +102,7 @@ export default function CentralAlertasPage() {
 
   return (
     <div>
+      <GestaoNav active="central-alertas" />
       <div style={{ background: 'linear-gradient(135deg,#6B1212,#8a2a2a)', borderRadius: 12, padding: '16px 20px', marginBottom: 14, color: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 22 }}>🚨</span>
         <div style={{ flex: 1, minWidth: 180 }}><h2 style={{ margin: 0, fontSize: 19, fontWeight: 800 }}>Central de Alertas</h2><div style={{ fontSize: 12.5, opacity: .85 }}>O que precisa de ação agora · {loja}</div></div>

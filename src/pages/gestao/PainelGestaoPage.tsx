@@ -6,6 +6,7 @@ import {
   fetchEstoquePerdas, fetchRequisicoes, fetchFornecedores,
 } from '../../lib/db'
 import type { EstoqueProduto, CaixaItem, EstoqueMovimentacao, EstoquePerda, Requisicao } from '../../types/database'
+import GestaoNav from './GestaoNav'
 
 const brl = (v: number) => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const num = (v: number) => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })
@@ -135,6 +136,7 @@ export default function PainelGestaoPage() {
 
   return (
     <div>
+      <div className="no-print"><GestaoNav active="painel-gestao" /></div>
       <div className="no-print" style={{ background: 'linear-gradient(135deg,#6B1212,#8a2a2a)', borderRadius: 12, padding: '16px 20px', marginBottom: 14, color: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 180 }}><h2 style={{ margin: 0, fontSize: 19, fontWeight: 800 }}>📊 Painel de Gestão</h2><div style={{ fontSize: 12.5, opacity: .85 }}>Compras · Estoque · Consumo · Custos · Perdas — {loja} · {ini === fim ? ini.split('-').reverse().join('/') : `${ini.split('-').reverse().join('/')} a ${fim.split('-').reverse().join('/')}`}</div></div>
         <button className="btn" onClick={() => window.print()} style={{ background: '#fff', color: 'var(--bordo)', padding: '8px 13px' }}><Printer size={15} /> Relatório</button>
