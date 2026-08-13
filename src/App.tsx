@@ -33,6 +33,7 @@ import AnaliseSemanalPage from './pages/analise-semanal/AnaliseSemanalPage'
 import EntregasPage from './pages/entregas/EntregasPage'
 import PainelGestaoPage from './pages/gestao/PainelGestaoPage'
 import CustosPage from './pages/custos/CustosPage'
+import ComprasConsumoPage from './pages/compras-consumo/ComprasConsumoPage'
 import RequisoesAutomaticasPage from './pages/requisicoes/RequisoesAutomaticasPage'
 import FluxoSuprimentosPage from './pages/suprimentos/FluxoSuprimentosPage'
 import DashboardSuprimentosPage from './pages/suprimentos/DashboardSuprimentosPage'
@@ -82,6 +83,7 @@ export type PageId =
   | 'entregas'
   | 'painel-gestao'
   | 'custos'
+  | 'compras-consumo'
   | 'req-automaticas'
   | 'pipeline-suprimentos'
   | 'dashboard-suprimentos'
@@ -143,6 +145,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'entregas': 'Agendamento de Entregas',
   'painel-gestao': 'Painel de Gestão',
   'custos': 'Custo por Produto',
+  'compras-consumo': 'Compras × Consumo',
   'req-automaticas': 'Requisições Automáticas',
   'pipeline-suprimentos': 'Pipeline de Suprimentos',
   'dashboard-suprimentos': 'Dashboard de Suprimentos',
@@ -206,6 +209,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'entregas': return <EntregasPage />
     case 'painel-gestao': return <PainelGestaoPage />
     case 'custos': return <CustosPage />
+    case 'compras-consumo': return <ComprasConsumoPage />
     case 'req-automaticas': return <RequisoesAutomaticasPage />
     case 'pipeline-suprimentos': return <FluxoSuprimentosPage />
     case 'dashboard-suprimentos': return <DashboardSuprimentosPage />

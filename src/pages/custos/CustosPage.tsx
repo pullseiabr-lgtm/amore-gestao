@@ -17,7 +17,7 @@ const keyOf = (s?: string | null) => [...new Set(tok(s))].sort().join(' ')
 const parseDoc = (d?: string | null) => { const m = (d || '').match(/unit\s+([\d.]+)/); return m ? parseFloat(m[1]) : null }
 
 type Fonte = { data: string | null; unit: number; tipo: 'compra' | 'cotacao'; forn: string | null }
-type Prod = { key: string; nome: string; atual: number; menor: number; maior: number; medio: number; ultimo: number; nComp: number; nCot: number; fontes: Fonte[]; consumo: number; custo: number; gasto: number }
+type Prod = { key: string; nome: string; atual: number; menor: number; maior: number; medio: number; ultimo: number; nComp: number; nCot: number; fontes: Fonte[]; consumo: number; custo: number; gasto: number; medioCompra: number; ultimoCompra: number; menorForn: string | null; menorTipo: 'compra' | 'cotacao' | null }
 
 export default function CustosPage() {
   const { loja } = useLoja()
@@ -62,7 +62,7 @@ export default function CustosPage() {
 
   const produtosCusto = useMemo<Prod[]>(() => {
     const m: Record<string, Prod> = {}
-    const get = (nome: string) => { const k = keyOf(nome); if (!k) return null; if (!m[k]) m[k] = { key: k, nome, atual: 0, menor: 0, maior: 0, medio: 0, ultimo: 0, nComp: 0, nCot: 0, fontes: [], consumo: 0, custo: 0, gasto: 0 }; return m[k] }
+    const get = (nome: string) => { const k = keyOf(nome); if (!k) return null; if (!m[k]) m[k] = { key: k, nome, atual: 0, menor: 0, maior: 0, medio: 0, ultimo: 0, nComp: 0, nCot: 0, fontes: [], consumo: 0, custo: 0, gasto: 0, medioCompra: 0, ultimoCompra: 0, menorForn: null, menorTipo: null }; return m[k] }
     caixaItens.forEach((i: any) => { const p = get(i.descricao); if (!p) return; const u = Number(i.preco_unit) > 0 ? Number(i.preco_unit) : (parseDoc(i.documento) || (Number(i.quantidade) > 0 ? Number(i.valor) / Number(i.quantidade) : 0)); if (u > 0) { p.fontes.push({ data: i.data, unit: Math.round(u * 100) / 100, tipo: 'compra', forn: i.fornecedor }); p.nComp++ } p.gasto += Number(i.valor) || 0 })
     cot.forEach(c => { const p = get(c.nome); if (!p) return; p.fontes.push({ data: c.data, unit: Math.round(c.preco * 100) / 100, tipo: 'cotacao', forn: c.forn }); p.nCot++ })
     // preço atual (referência do estoque) + consumo
@@ -70,15 +70,23 @@ export default function CustosPage() {
     produtos.forEach((p: any) => { const k = keyOf(p.nome); if (k) { if (!precoAtual[k] || (Number(p.preco_unitario) > 0 && Number(p.preco_unitario) < precoAtual[k])) precoAtual[k] = Number(p.preco_unitario) || precoAtual[k] || 0; nomeCat[k] = p.nome } })
     saidas.forEach((s: any) => { const p = get(s.produto_nome); if (p) p.consumo += Number(s.quantidade) || 0 })
     return Object.values(m).map(p => {
-      const us = p.fontes.map(f => f.unit).filter(u => u > 0)
+      const validas = p.fontes.filter(f => f.unit > 0)
+      const us = validas.map(f => f.unit)
       p.menor = us.length ? Math.min(...us) : 0
       p.maior = us.length ? Math.max(...us) : 0
       p.medio = us.length ? us.reduce((a, b) => a + b, 0) / us.length : 0
       const ord = [...p.fontes].filter(f => f.data).sort((a, b) => (a.data! < b.data! ? 1 : -1))
       p.ultimo = ord[0]?.unit || 0
+      // fornecedor do MENOR preço (onde comprar mais barato)
+      const minF = [...validas].sort((a, b) => a.unit - b.unit)[0]
+      if (minF) { p.menorForn = minF.forn; p.menorTipo = minF.tipo }
+      // custo REAL das compras já feitas
+      const comps = validas.filter(f => f.tipo === 'compra')
+      p.medioCompra = comps.length ? comps.reduce((a, b) => a + b.unit, 0) / comps.length : 0
+      p.ultimoCompra = [...comps].filter(f => f.data).sort((a, b) => (a.data! < b.data! ? 1 : -1))[0]?.unit || 0
       p.atual = precoAtual[p.key] || p.menor || p.ultimo || 0
       if (nomeCat[p.key]) p.nome = nomeCat[p.key]
-      p.custo = p.consumo * (p.atual || p.medio)
+      p.custo = p.consumo * (p.medioCompra || p.atual || p.medio)
       return p
     }).filter(p => p.fontes.length > 0 || p.consumo > 0)
   }, [caixaItens, cot, produtos, saidas])
@@ -127,18 +135,17 @@ export default function CustosPage() {
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 720 }}>
             <thead><tr style={{ background: 'var(--bordo-bg)' }}>
-              <th style={{ ...th, textAlign: 'left' }}>Produto</th><th style={th}>Preço atual</th><th style={th}>Menor</th><th style={th}>Médio</th><th style={th}>Maior</th><th style={th}>Últ. compra</th><th style={th}>Consumo</th><th style={th}>Custo</th>
+              <th style={{ ...th, textAlign: 'left' }}>Produto</th><th style={th}>Custo compra (méd.)</th><th style={th}>Últ. compra</th><th style={{ ...th, textAlign: 'left' }}>🏆 Menor preço · fornecedor</th><th style={th}>Consumo</th><th style={th}>Custo</th>
             </tr></thead>
             <tbody>{filtrados.slice(0, 200).map(p => {
-              const subiu = p.ultimo > 0 && p.medio > 0 && p.ultimo > p.medio * 1.03
-              const caiu = p.ultimo > 0 && p.medio > 0 && p.ultimo < p.medio * 0.97
+              const base = p.medioCompra || p.medio
+              const subiu = p.ultimoCompra > 0 && base > 0 && p.ultimoCompra > base * 1.03
+              const caiu = p.ultimoCompra > 0 && base > 0 && p.ultimoCompra < base * 0.97
               return <tr key={p.key} onClick={() => setSel(p)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
                 <td style={{ padding: '6px 8px', fontWeight: 600 }}>{p.nome}<span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400 }}> · {p.nComp} compras{p.nCot ? ` · ${p.nCot} cotações` : ''}</span></td>
-                <td style={{ ...td, fontWeight: 700, color: 'var(--bordo)' }}>{p.atual ? brl(p.atual) : '—'}</td>
-                <td style={{ ...td, color: '#15803D' }}>{p.menor ? brl(p.menor) : '—'}</td>
-                <td style={td}>{p.medio ? brl(p.medio) : '—'}</td>
-                <td style={{ ...td, color: '#B91C1C' }}>{p.maior ? brl(p.maior) : '—'}</td>
-                <td style={{ ...td }}>{p.ultimo ? <span style={{ color: subiu ? '#B91C1C' : caiu ? '#15803D' : 'inherit', fontWeight: subiu || caiu ? 700 : 400 }}>{brl(p.ultimo)} {subiu ? <TrendingUp size={11} /> : caiu ? <TrendingDown size={11} /> : ''}</span> : '—'}</td>
+                <td style={{ ...td, fontWeight: 700 }}>{p.medioCompra ? brl(p.medioCompra) : '—'}</td>
+                <td style={{ ...td }}>{p.ultimoCompra ? <span style={{ color: subiu ? '#B91C1C' : caiu ? '#15803D' : 'inherit', fontWeight: subiu || caiu ? 700 : 400 }}>{brl(p.ultimoCompra)} {subiu ? <TrendingUp size={11} /> : caiu ? <TrendingDown size={11} /> : ''}</span> : '—'}</td>
+                <td style={{ ...td, textAlign: 'left' }}>{p.menor ? <><b style={{ color: '#15803D' }}>{brl(p.menor)}</b>{p.menorForn && <span style={{ fontSize: 11, color: 'var(--muted)' }}> · {p.menorForn}{p.menorTipo === 'cotacao' ? ' 📩' : ''}</span>}</> : '—'}</td>
                 <td style={{ ...td, color: 'var(--muted)' }}>{p.consumo ? num(p.consumo) : '—'}</td>
                 <td style={{ ...td, fontWeight: 700, color: '#EA580C' }}>{p.custo ? brl(p.custo) : '—'}</td>
               </tr>
@@ -152,9 +159,13 @@ export default function CustosPage() {
       {sel && <div style={{ position: 'fixed', inset: 0, background: '#0008', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setSel(null)}>
         <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 620, maxHeight: '92vh', overflowY: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}><strong style={{ fontSize: 16 }}>💰 {sel.nome}</strong><button onClick={() => setSel(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={18} /></button></div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 12 }}>
-            {[['Atual', sel.atual, 'var(--bordo)'], ['Menor', sel.menor, '#15803D'], ['Médio', sel.medio, '#6B7280'], ['Maior', sel.maior, '#B91C1C']].map(([l, v, c]: any) => <div key={l} className="card" style={{ padding: 10, textAlign: 'center' }}><div style={{ fontSize: 15, fontWeight: 800, color: c }}>{v ? brl(v) : '—'}</div><div style={{ fontSize: 10, color: 'var(--muted)' }}>{l}</div></div>)}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 10 }}>
+            {[['Custo compra', sel.medioCompra, 'var(--bordo)'], ['Últ. compra', sel.ultimoCompra, '#6B7280'], ['Menor preço', sel.menor, '#15803D'], ['Maior', sel.maior, '#B91C1C']].map(([l, v, c]: any) => <div key={l} className="card" style={{ padding: 10, textAlign: 'center' }}><div style={{ fontSize: 15, fontWeight: 800, color: c }}>{v ? brl(v) : '—'}</div><div style={{ fontSize: 10, color: 'var(--muted)' }}>{l}</div></div>)}
           </div>
+          {sel.menor > 0 && sel.menorForn && <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, padding: '10px 12px', marginBottom: 12, fontSize: 13 }}>
+            🏆 <b>Comprar mais barato:</b> {brl(sel.menor)} com <b>{sel.menorForn}</b> {sel.menorTipo === 'cotacao' ? '(cotação)' : '(última compra deste fornecedor)'}
+            {sel.medioCompra > 0 && sel.menor < sel.medioCompra && <span style={{ color: '#15803D', fontWeight: 600 }}> · economia de {brl(sel.medioCompra - sel.menor)}/un vs. custo médio</span>}
+          </div>}
           {(() => { const hist = [...sel.fontes].filter(f => f.data).sort((a, b) => (a.data! < b.data! ? -1 : 1)); const mx = Math.max(1, ...hist.map(h => h.unit))
             return <>
               <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Evolução do preço ({hist.length} registros)</div>
