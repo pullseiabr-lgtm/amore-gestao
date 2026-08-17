@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { BarChart3, Users, SlidersHorizontal, RefreshCw, FileText, X, Plus, Trash2, Send, TrendingUp, TrendingDown } from 'lucide-react'
+import { BarChart3, Users, SlidersHorizontal, RefreshCw, FileText, X, Plus, Trash2, Send, TrendingUp, TrendingDown, CalendarRange, Link2, Fuel } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../hooks/useToast'
+import { fetchProfiles } from '../../lib/db'
+import { enviarWhatsApp, whatsappDoPerfilPorNome } from '../../lib/notify'
 
 const sb = supabase as any
 const fmt = (n: any) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -18,7 +20,7 @@ const STAT: Record<string, { l: string; c: string; e: string }> = {
 
 export default function RelatoriosPrecosPage() {
   const { toast } = useToast()
-  const [tab, setTab] = useState<'relatorios' | 'destinatarios' | 'regras'>('relatorios')
+  const [tab, setTab] = useState<'compras30' | 'relatorios' | 'destinatarios' | 'regras'>('compras30')
   const [caixas, setCaixas] = useState<any[]>([])
   const [dests, setDests] = useState<any[]>([])
   const [regras, setRegras] = useState<any>(null)
@@ -53,13 +55,15 @@ export default function RelatoriosPrecosPage() {
   return (
     <div style={{ padding: '1rem 0' }}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16, background: '#f9fafb', padding: 6, borderRadius: 12, width: 'fit-content' }}>
-        {tabBtn('relatorios', <BarChart3 size={16} />, 'Relatórios de Preços')}
+        {tabBtn('compras30', <CalendarRange size={16} />, 'Compras 30 dias')}
+        {tabBtn('relatorios', <BarChart3 size={16} />, 'Por caixa')}
         {tabBtn('destinatarios', <Users size={16} />, 'Destinatários')}
         {tabBtn('regras', <SlidersHorizontal size={16} />, 'Regras & Limites')}
         <button onClick={load} style={{ padding: '.6rem', border: 'none', borderRadius: 10, cursor: 'pointer', background: 'transparent', color: '#6b7280' }}><RefreshCw size={15} /></button>
       </div>
 
       {loading ? <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Carregando…</div> : <>
+        {tab === 'compras30' && <Compras30Tab toast={toast} />}
         {tab === 'relatorios' && <div style={card}>
           <b style={{ fontSize: 14 }}>Caixas — gere o relatório comparativo de preços</b>
           <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '4px 0 12px' }}>Compara cada produto com as últimas 3 compras da loja e classifica ABC. Clique para gerar/ver.</p>
@@ -301,6 +305,134 @@ function DestinatariosTab({ dests, reload, toast }: any) {
           </div>)}
       </div>
     </div>
+  </div>
+}
+
+const PONT: Record<string, [string, string, string, string]> = {
+  otimo: ['🟢', 'Ótimo preço', '#15803D', '#DCFCE7'], bom: ['🟢', 'Comprou bem', '#15803D', '#DCFCE7'],
+  regular: ['🔵', 'Regular', '#0369A1', '#E0F2FE'], ruim: ['🔴', 'Comprou caro', '#B91C1C', '#FEE2E2'],
+  sem_preco: ['⚪', 'Sem preço', '#6b7280', '#f1f5f9'],
+}
+function Compras30Tab({ toast }: any) {
+  const [loja, setLoja] = useState('Todas')
+  const [dias, setDias] = useState(30)
+  const [d, setD] = useState<any | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [enviando, setEnviando] = useState(false)
+  const un = (v: any, u: any) => v == null ? '—' : fmt(v) + (u ? '/' + u : '')
+  const pct = (v: any) => v == null ? '—' : (v > 0 ? '+' : '') + Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%'
+  const linkRel = `${location.origin}/relatorio-compras.html?loja=${encodeURIComponent(loja)}&dias=${dias}`
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { const { data, error } = await sb.rpc('rel_compras_30d', { p_loja: loja, p_dias: dias }); if (error) throw error; setD(data) }
+    catch { toast('Erro ao gerar relatório de compras.', 'error') }
+    setLoading(false)
+  }, [loja, dias, toast])
+  useEffect(() => { load() }, [load])
+
+  const copiarLink = async () => { try { await navigator.clipboard.writeText(linkRel); toast('Link copiado! 🔗') } catch { toast('Copie: ' + linkRel) } }
+  const enviarGestao = async () => {
+    setEnviando(true)
+    try {
+      const profiles = await fetchProfiles()
+      const fone = whatsappDoPerfilPorNome(profiles, 'Wagner Santana')
+      if (!fone) { toast('WhatsApp do Wagner não cadastrado (Usuários → perfil).', 'error'); setEnviando(false); return }
+      const R = d?.resumo || {}
+      const msg = `📊 *Relatório de Compras — ${loja} (${dias} dias)*\n\n`
+        + `🛒 Mercadoria: ${fmt(R.custo_mercadoria)}\n`
+        + `⛽🛣️ Logístico: ${fmt(R.custo_logistico)} (comb ${fmt(R.combustivel)} + pedágio ${fmt(R.pedagio)})\n`
+        + `✅ Comprou bem: ${R.comprou_bem || 0}  ·  🔴 Comprou caro: ${R.comprou_mal || 0}\n`
+        + `💰 Economia: ${fmt(R.economia)}  ·  📈 Impacto das altas: ${fmt(R.impacto_altas)}\n\n`
+        + `Relatório completo (item a item, comparativo de preço):\n${linkRel}`
+      const ok = await enviarWhatsApp(fone, msg, undefined, { tipo: 'relatorio', modulo: 'relatorios-precos', titulo: `Relatório de Compras ${dias}d — ${loja}`, destinatario_nome: 'Wagner Santana' })
+      toast(ok ? 'Enviado ao Wagner no WhatsApp! 📲' : 'Falha no envio.', ok ? 'success' : 'error')
+    } catch { toast('Erro ao enviar.', 'error') }
+    setEnviando(false)
+  }
+
+  const R = d?.resumo || {}
+  const itens: any[] = (d?.itens || []).slice().sort((a: any, b: any) => (b.custo_total || 0) - (a.custo_total || 0))
+  const comComp = itens.filter(i => i.var_anterior != null)
+  const topRed = comComp.filter(i => i.var_anterior < 0).sort((a, b) => a.var_anterior - b.var_anterior).slice(0, 5)
+  const topAlta = comComp.filter(i => i.var_anterior > 0).sort((a, b) => b.var_anterior - a.var_anterior).slice(0, 5)
+  const sel: React.CSSProperties = { padding: '.5rem .7rem', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontWeight: 600 }
+  const kpi = (l: string, v: any, sub = '', c = '#6B1212') => <div style={{ background: '#f9fafb', borderRadius: 12, padding: '.7rem .9rem', flex: 1, minWidth: 130 }}><div style={{ fontSize: 19, fontWeight: 800, color: c }}>{v}</div><div style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{l}</div>{sub && <div style={{ fontSize: 10.5, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.03em' }}>{sub}</div>}</div>
+
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ ...card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+      <b style={{ fontSize: 14, marginRight: 6 }}>📅 Compras por item</b>
+      <select style={sel} value={loja} onChange={e => setLoja(e.target.value)}>{['Todas', 'Amore Paiva', 'Amore CD', 'Flow CD'].map(l => <option key={l}>{l}</option>)}</select>
+      <select style={sel} value={dias} onChange={e => setDias(Number(e.target.value))}>{[30, 60, 90].map(n => <option key={n} value={n}>{n} dias</option>)}</select>
+      <div style={{ flex: 1 }} />
+      <button onClick={copiarLink} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.5rem .9rem', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', cursor: 'pointer', fontWeight: 600, fontSize: 12.5 }}><Link2 size={14} />Copiar link</button>
+      <a href={linkRel} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.5rem .9rem', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', cursor: 'pointer', fontWeight: 600, fontSize: 12.5, textDecoration: 'none' }}><FileText size={14} />Abrir</a>
+      <button onClick={enviarGestao} disabled={enviando || !d} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.5rem .9rem', borderRadius: 8, border: 'none', background: '#1D9E75', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 12.5, opacity: enviando ? .6 : 1 }}><Send size={14} />{enviando ? 'Enviando…' : 'Enviar à gestão'}</button>
+    </div>
+
+    {loading ? <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Consolidando…</div> : !d ? null : <>
+      <div style={{ ...card }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {kpi('Custo total', fmt(R.custo_total_geral), 'mercadoria + logística')}
+          {kpi('Mercadoria', fmt(R.custo_mercadoria), `${R.n_produtos || 0} produtos`)}
+          {kpi('Logístico', fmt(R.custo_logistico), `⛽ ${fmt(R.combustivel)} · 🛣️ ${fmt(R.pedagio)}`, '#7C3AED')}
+          {kpi('Comprou bem', R.comprou_bem || 0, 'menor/abaixo média', '#1D9E75')}
+          {kpi('Comprou caro', R.comprou_mal || 0, 'acima média+limite', '#DC2626')}
+          {kpi('Economia', fmt(R.economia), 'reduções', '#1D9E75')}
+          {kpi('Impacto altas', fmt(R.impacto_altas), 'custo extra', '#DC2626')}
+        </div>
+      </div>
+
+      {(topRed.length > 0 || topAlta.length > 0) && <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        {topRed.length > 0 && <div style={{ ...card, flex: 1, minWidth: 240, background: '#ECFDF5' }}>
+          <b style={{ fontSize: 12.5, color: '#1D7A54', display: 'flex', alignItems: 'center', gap: 4 }}><TrendingDown size={14} />Onde compramos melhor</b>
+          {topRed.map((i, k) => <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginTop: 5 }}><span>{i.produto}</span><b style={{ color: '#1D9E75' }}>{pct(i.var_anterior)}</b></div>)}
+        </div>}
+        {topAlta.length > 0 && <div style={{ ...card, flex: 1, minWidth: 240, background: '#FEF2F2' }}>
+          <b style={{ fontSize: 12.5, color: '#B91C1C', display: 'flex', alignItems: 'center', gap: 4 }}><TrendingUp size={14} />Onde compramos pior</b>
+          {topAlta.map((i, k) => <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginTop: 5 }}><span>{i.produto}</span><b style={{ color: '#DC2626' }}>{pct(i.var_anterior)}</b></div>)}
+        </div>}
+      </div>}
+
+      <div style={{ ...card }}>
+        <b style={{ fontSize: 14 }}>Itens comprados <span style={{ fontSize: 12, fontWeight: 400, color: '#9ca3af' }}>· {itens.length} produtos · comparativo por preço unitário</span></b>
+        <div style={{ overflowX: 'auto', marginTop: 10 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 720 }}>
+            <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 10.5, textTransform: 'uppercase' }}>
+              <th style={{ padding: 7 }}>Produto</th><th>ABC</th><th>Compras</th><th>Qtd</th><th>Custo total</th><th>Últ. preço</th><th>Menor</th><th>Δ ant.</th><th>Avaliação</th>
+            </tr></thead>
+            <tbody>
+              {itens.map((i, idx) => { const P = PONT[i.pontuacao] || PONT.sem_preco; return (
+                <tr key={idx} style={{ borderTop: '1px solid #f3f4f6' }}>
+                  <td style={{ padding: 7, fontWeight: 600 }}>{i.produto}<span style={{ display: 'block', fontSize: 10.5, color: '#9ca3af', fontWeight: 400 }}>{i.categoria || ''}{i.fornecedores ? ' · ' + i.fornecedores : ''}</span></td>
+                  <td><span style={{ fontWeight: 700, color: i.classe === 'A' ? '#DC2626' : i.classe === 'B' ? '#D97706' : '#9ca3af' }}>{i.classe}</span></td>
+                  <td>{i.n_compras}</td>
+                  <td style={{ color: '#6b7280' }}>{i.qtd_total ? Number(i.qtd_total).toLocaleString('pt-BR') : '—'}{i.un_base ? ' ' + i.un_base : ''}</td>
+                  <td style={{ fontWeight: 600 }}>{fmt(i.custo_total)}</td>
+                  <td>{un(i.preco_ultimo, i.un_base)}</td>
+                  <td style={{ color: '#6b7280' }}>{un(i.preco_menor, i.un_base)}</td>
+                  <td style={{ fontWeight: 700, color: i.var_anterior == null ? '#9ca3af' : i.var_anterior > 0 ? '#DC2626' : '#1D9E75' }}>{pct(i.var_anterior)}</td>
+                  <td><span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: P[3], color: P[2] }}>{P[0]} {P[1]}</span></td>
+                </tr>) })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style={{ ...card }}>
+        <b style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}><Fuel size={15} />Custo logístico <span style={{ fontSize: 12, fontWeight: 400, color: '#9ca3af' }}>· combustível e pedágio · {(d.logistica || []).length} lançamentos</span></b>
+        <div style={{ overflowX: 'auto', marginTop: 10 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 520 }}>
+            <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 10.5, textTransform: 'uppercase' }}><th style={{ padding: 7 }}>Data</th><th>Loja</th><th>Tipo</th><th>Fornecedor</th><th>Valor</th></tr></thead>
+            <tbody>{(d.logistica || []).map((l: any, k: number) => <tr key={k} style={{ borderTop: '1px solid #f3f4f6' }}>
+              <td style={{ padding: 7 }}>{l.data ? new Date(l.data).toLocaleDateString('pt-BR') : '—'}</td><td style={{ color: '#6b7280' }}>{l.loja}</td>
+              <td><span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: l.tipo === 'Combustível' ? '#FEF3C7' : '#E0F2FE', color: l.tipo === 'Combustível' ? '#B45309' : '#0369A1' }}>{l.tipo}</span></td>
+              <td>{l.fornecedor || l.descricao || '—'}</td><td style={{ fontWeight: 600 }}>{fmt(l.valor)}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+      </div>
+    </>}
   </div>
 }
 
