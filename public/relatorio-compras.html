@@ -31,6 +31,8 @@ tbody td{padding:8px 11px;border-bottom:1px solid var(--border);vertical-align:t
 .b-ok{background:#DCFCE7;color:#15803D}.b-no{background:#FEE2E2;color:#B91C1C}.b-warn{background:#FEF3C7;color:#B45309}.b-info{background:#E0F2FE;color:#0369A1}.b-mut{background:#f1eef0;color:#6f656a}
 @media(prefers-color-scheme:dark){.b-ok{background:#0f2e1b;color:#4ade80}.b-no{background:#3a1414;color:#f87171}.b-warn{background:#33270a;color:#fbbf24}.b-info{background:#0b2a3a;color:#7dd3fc}.b-mut{background:#2a2224;color:#a79ca0}}
 .up{color:var(--bad);font-weight:700}.down{color:var(--ok);font-weight:700}
+.abcbar{display:flex;height:26px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--card)}
+.abcseg{height:100%;min-width:2px;transition:width .3s}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:720px){.two{grid-template-columns:1fr}table{min-width:640px}}
 .msg{padding:50px 0;text-align:center;color:var(--muted)}
 details.hist summary{cursor:pointer;color:var(--vinho);font-size:11px;font-weight:600}
@@ -65,6 +67,13 @@ function render(d){
   const comComp=itens.filter(i=>i.var_anterior!=null);
   const topRed=comComp.filter(i=>i.var_anterior<0).sort((a,b)=>a.var_anterior-b.var_anterior).slice(0,5);
   const topAlta=comComp.filter(i=>i.var_anterior>0).sort((a,b)=>b.var_anterior-a.var_anterior).slice(0,5);
+  // Curva ABC (por custo de mercadoria)
+  const abc={A:{n:0,c:0,cor:'#B91C1C',bg:'#FEE2E2'},B:{n:0,c:0,cor:'#B45309',bg:'#FEF3C7'},C:{n:0,c:0,cor:'#6b7280',bg:'#f1eef0'}};
+  itens.forEach(i=>{const k=abc[i.classe]?i.classe:'C';abc[k].n++;abc[k].c+=Number(i.custo_total||0);});
+  const totABC=(abc.A.c+abc.B.c+abc.C.c)||1;
+  const pctABC=v=>(v/totABC*100);
+  const abcSeg=k=>`<div class="abcseg" style="width:${pctABC(abc[k].c).toFixed(2)}%;background:${abc[k].cor}" title="Classe ${k}: ${brl(abc[k].c)}"></div>`;
+  const abcCard=(k,desc)=>`<div class="kpi" style="border-left:4px solid ${abc[k].cor}"><div class="kn" style="color:${abc[k].cor}">${k}</div><div class="ks">${abc[k].n} produto(s) · ${pctABC(abc[k].c).toLocaleString('pt-BR',{maximumFractionDigits:0})}% do custo</div><div class="kl">${brl(abc[k].c)} · ${desc}</div></div>`;
   const lojaOpts=['Todas','Amore Paiva','Amore CD','Flow CD'].map(l=>`<option ${l===LOJA?'selected':''}>${l}</option>`).join('');
   const diasOpts=[30,60,90].map(n=>`<option value="${n}" ${n===DIAS?'selected':''}>${n} dias</option>`).join('');
   const linkCompra=(c)=>`${dDMY(c.data)} · ${c.fornecedor?esc(c.fornecedor):'—'} · ${un(c.preco_unit,'')||brl(c.valor)} ${c.qtd?'('+c.qtd+')':''}`;
@@ -106,6 +115,15 @@ function render(d){
     <div class="kpi ok"><div class="kn">${brl(R.economia)}</div><div class="ks">Economia (reduções)</div><div class="kl">compra a compra</div></div>
     <div class="kpi bad"><div class="kn">${brl(R.impacto_altas)}</div><div class="ks">Impacto das altas</div><div class="kl">custo extra por aumento</div></div>
   </div>
+
+  <h2>Curva ABC <span class="h2s">concentração do custo — onde focar a negociação</span></h2>
+  <div class="abcbar">${abcSeg('A')}${abcSeg('B')}${abcSeg('C')}</div>
+  <div class="kpis" style="margin-top:10px">
+    ${abcCard('A','alto impacto — priorizar')}
+    ${abcCard('B','impacto médio — acompanhar')}
+    ${abcCard('C','baixo impacto — rotina')}
+  </div>
+  <p class="sub" style="margin:2px 0 4px">Classe A = produtos que concentram ~80% do gasto (poucos itens, maior peso). Negociar bem os A é onde mais se economiza.</p>
 
   ${(topRed.length||topAlta.length)?`<div class="two">
     ${topRed.length?`<div><h2>🟢 Onde compramos melhor <span class="h2s">maiores reduções</span></h2><div class="tw"><table><tbody>${topRed.map(i=>`<tr><td class="prod">${esc(i.produto)}</td><td class="num down">${pct(i.var_anterior)}</td><td class="num mut">${un(i.preco_ultimo,i.un_base)}</td></tr>`).join('')}</tbody></table></div></div>`:''}

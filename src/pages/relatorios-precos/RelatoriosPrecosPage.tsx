@@ -356,6 +356,10 @@ function Compras30Tab({ toast }: any) {
   const comComp = itens.filter(i => i.var_anterior != null)
   const topRed = comComp.filter(i => i.var_anterior < 0).sort((a, b) => a.var_anterior - b.var_anterior).slice(0, 5)
   const topAlta = comComp.filter(i => i.var_anterior > 0).sort((a, b) => b.var_anterior - a.var_anterior).slice(0, 5)
+  const abc: Record<string, { n: number; c: number; cor: string }> = { A: { n: 0, c: 0, cor: '#DC2626' }, B: { n: 0, c: 0, cor: '#D97706' }, C: { n: 0, c: 0, cor: '#9ca3af' } }
+  itens.forEach(i => { const k = abc[i.classe] ? i.classe : 'C'; abc[k].n++; abc[k].c += Number(i.custo_total || 0) })
+  const totABC = (abc.A.c + abc.B.c + abc.C.c) || 1
+  const pctABC = (v: number) => (v / totABC * 100)
   const sel: React.CSSProperties = { padding: '.5rem .7rem', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontWeight: 600 }
   const kpi = (l: string, v: any, sub = '', c = '#6B1212') => <div style={{ background: '#f9fafb', borderRadius: 12, padding: '.7rem .9rem', flex: 1, minWidth: 130 }}><div style={{ fontSize: 19, fontWeight: 800, color: c }}>{v}</div><div style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{l}</div>{sub && <div style={{ fontSize: 10.5, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.03em' }}>{sub}</div>}</div>
 
@@ -381,6 +385,24 @@ function Compras30Tab({ toast }: any) {
           {kpi('Economia', fmt(R.economia), 'reduções', '#1D9E75')}
           {kpi('Impacto altas', fmt(R.impacto_altas), 'custo extra', '#DC2626')}
         </div>
+      </div>
+
+      <div style={{ ...card }}>
+        <b style={{ fontSize: 14 }}>📈 Curva ABC <span style={{ fontSize: 12, fontWeight: 400, color: '#9ca3af' }}>· concentração do custo — onde focar a negociação</span></b>
+        <div style={{ display: 'flex', height: 24, borderRadius: 8, overflow: 'hidden', border: '1px solid #e5e7eb', margin: '10px 0' }}>
+          {(['A', 'B', 'C'] as const).map(k => <div key={k} title={`Classe ${k}: ${fmt(abc[k].c)}`} style={{ width: pctABC(abc[k].c) + '%', background: abc[k].cor, minWidth: abc[k].c > 0 ? 3 : 0 }} />)}
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {(['A', 'B', 'C'] as const).map(k => {
+            const desc = k === 'A' ? 'alto impacto — priorizar' : k === 'B' ? 'impacto médio — acompanhar' : 'baixo impacto — rotina'
+            return <div key={k} style={{ flex: 1, minWidth: 150, background: '#f9fafb', borderLeft: `4px solid ${abc[k].cor}`, borderRadius: 10, padding: '.6rem .8rem' }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: abc[k].cor }}>{k} <span style={{ fontSize: 13, color: '#374151' }}>· {pctABC(abc[k].c).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}% do custo</span></div>
+              <div style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>{abc[k].n} produto(s) · {fmt(abc[k].c)}</div>
+              <div style={{ fontSize: 10.5, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.03em' }}>{desc}</div>
+            </div>
+          })}
+        </div>
+        <p style={{ fontSize: 11.5, color: '#9ca3af', margin: '8px 0 0' }}>Classe A concentra ~80% do gasto (poucos itens, maior peso) — negociar bem os A é onde mais se economiza.</p>
       </div>
 
       {(topRed.length > 0 || topAlta.length > 0) && <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
