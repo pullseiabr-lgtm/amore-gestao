@@ -335,18 +335,23 @@ function Compras30Tab({ toast }: any) {
   const enviarGestao = async () => {
     setEnviando(true)
     try {
-      const profiles = await fetchProfiles()
-      const fone = whatsappDoPerfilPorNome(profiles, 'Wagner Santana')
-      if (!fone) { toast('WhatsApp do Wagner não cadastrado (Usuários → perfil).', 'error'); setEnviando(false); return }
+      let fone = ''; let nome = 'gestão'
+      const cfg = await sb.from('app_config').select('valor').eq('chave', 'rel_compras_destino').maybeSingle()
+      if (cfg.data?.valor?.whatsapp) { fone = String(cfg.data.valor.whatsapp).replace(/\D/g, ''); nome = cfg.data.valor.nome || 'gestão' }
+      else { const profiles = await fetchProfiles(); fone = whatsappDoPerfilPorNome(profiles, 'Wagner Santana'); nome = 'Wagner Santana' }
+      if (!fone) { toast('Nenhum destinatário do relatório cadastrado.', 'error'); setEnviando(false); return }
       const R = d?.resumo || {}
+      const a: any = { A: { n: 0, c: 0 }, B: { n: 0, c: 0 }, C: { n: 0, c: 0 } }
+      ;(d?.itens || []).forEach((i: any) => { const k = a[i.classe] ? i.classe : 'C'; a[k].n++; a[k].c += Number(i.custo_total || 0) })
+      const tA = (a.A.c + a.B.c + a.C.c) || 1; const pc = (v: number) => (v / tA * 100).toFixed(0)
       const msg = `📊 *Relatório de Compras — ${loja} (${dias} dias)*\n\n`
         + `🛒 Mercadoria: ${fmt(R.custo_mercadoria)}\n`
         + `⛽🛣️ Logístico: ${fmt(R.custo_logistico)} (comb ${fmt(R.combustivel)} + pedágio ${fmt(R.pedagio)})\n`
-        + `✅ Comprou bem: ${R.comprou_bem || 0}  ·  🔴 Comprou caro: ${R.comprou_mal || 0}\n`
-        + `💰 Economia: ${fmt(R.economia)}  ·  📈 Impacto das altas: ${fmt(R.impacto_altas)}\n\n`
-        + `Relatório completo (item a item, comparativo de preço):\n${linkRel}`
-      const ok = await enviarWhatsApp(fone, msg, undefined, { tipo: 'relatorio', modulo: 'relatorios-precos', titulo: `Relatório de Compras ${dias}d — ${loja}`, destinatario_nome: 'Wagner Santana' })
-      toast(ok ? 'Enviado ao Wagner no WhatsApp! 📲' : 'Falha no envio.', ok ? 'success' : 'error')
+        + `✅ Comprou bem: ${R.comprou_bem || 0}  ·  🔴 Comprou caro: ${R.comprou_mal || 0}\n\n`
+        + `📈 *Curva ABC:*\nA: ${a.A.n} prod · ${pc(a.A.c)}%\nB: ${a.B.n} prod · ${pc(a.B.c)}%\nC: ${a.C.n} prod · ${pc(a.C.c)}%\n\n`
+        + `Relatório completo (item a item, comparativo de preço + ABC por produto):\n${linkRel}`
+      const ok = await enviarWhatsApp(fone, msg, undefined, { tipo: 'relatorio', modulo: 'relatorios-precos', titulo: `Relatório de Compras ${dias}d — ${loja}`, destinatario_nome: nome })
+      toast(ok ? `Enviado a ${nome} no WhatsApp! 📲` : 'Falha no envio.', ok ? 'success' : 'error')
     } catch { toast('Erro ao enviar.', 'error') }
     setEnviando(false)
   }
