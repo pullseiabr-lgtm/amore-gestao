@@ -17,15 +17,15 @@ h1{font-size:22px;margin:6px 0 4px}.sub{color:var(--muted);font-size:13.5px}
 select,.btn{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:10px;padding:9px 13px;font-size:13px;font-weight:600;cursor:pointer}
 .btn{border-color:var(--vinho);background:var(--vinho);color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 h2{font-size:16.5px;margin:26px 0 10px;color:var(--vinho)}h2 .h2s{font-size:12px;font-weight:500;color:var(--muted)}
-.ia{background:color-mix(in srgb,var(--vinho) 6%,var(--card));border:1px solid var(--border);border-left:4px solid var(--vinho);border-radius:12px;padding:14px 16px;font-size:14px;margin:14px 0}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin:14px 0}
 .kpi{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:12px 14px;box-shadow:var(--shadow)}
 .kpi.ok{border-left:4px solid var(--ok)}.kpi.warn{border-left:4px solid var(--warn)}.kpi.bad{border-left:4px solid var(--bad)}.kpi.log{border-left:4px solid #7C3AED}
 .kpi .kn{font-size:21px;font-weight:800}.kpi .ks{font-size:12px;font-weight:600;color:var(--muted)}.kpi .kl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-top:2px}
 .tw{overflow-x:auto;border:1px solid var(--border);border-radius:13px;box-shadow:var(--shadow);background:var(--card)}
-table{width:100%;border-collapse:collapse;font-size:13px;min-width:720px}
-thead th{text-align:left;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:9px 11px;border-bottom:1px solid var(--border);white-space:nowrap;position:sticky;top:0;background:var(--card)}
-tbody td{padding:8px 11px;border-bottom:1px solid var(--border);vertical-align:top}tbody tr:last-child td{border-bottom:none}
+.scrollbox{max-height:420px;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:760px}
+thead th{text-align:left;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:9px 11px;border-bottom:1px solid var(--border);white-space:nowrap;position:sticky;top:0;background:var(--card);z-index:1}
+tbody td{padding:8px 11px;border-bottom:1px solid var(--border);vertical-align:top}
 .num{text-align:right;white-space:nowrap}.prod{font-weight:600}.mut{color:var(--muted)}.mc{display:block;font-size:10.5px;color:var(--muted);font-weight:400}
 .badge{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap}
 .b-ok{background:#DCFCE7;color:#15803D}.b-no{background:#FEE2E2;color:#B91C1C}.b-warn{background:#FEF3C7;color:#B45309}.b-info{background:#E0F2FE;color:#0369A1}.b-mut{background:#f1eef0;color:#6f656a}
@@ -33,11 +33,23 @@ tbody td{padding:8px 11px;border-bottom:1px solid var(--border);vertical-align:t
 .up{color:var(--bad);font-weight:700}.down{color:var(--ok);font-weight:700}
 .abcbar{display:flex;height:26px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--card)}
 .abcseg{height:100%;min-width:2px;transition:width .3s}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:720px){.two{grid-template-columns:1fr}table{min-width:640px}}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:760px){.two{grid-template-columns:1fr}table{min-width:560px}}
 .msg{padding:50px 0;text-align:center;color:var(--muted)}
-details.hist summary{cursor:pointer;color:var(--vinho);font-size:11px;font-weight:600}
-details.hist ul{margin:4px 0 0;padding-left:14px;font-size:11.5px;color:var(--muted)}
-@media print{.controls,.btn{display:none}body{background:#fff}.tw,.kpi{box-shadow:none}}
+.search{width:100%;max-width:360px;padding:10px 13px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font-size:14px;margin:0 0 10px}
+tr.itemrow{cursor:pointer}tr.itemrow:hover{background:color-mix(in srgb,var(--vinho) 4%,var(--card))}
+.exp{display:inline-block;color:var(--vinho);font-weight:700;font-size:11px;width:12px}
+td.detwrap{padding:0 11px 12px;background:color-mix(in srgb,var(--vinho) 3%,var(--card))}
+table.subt{min-width:0;width:100%;font-size:12px;margin:4px 0 0}
+table.subt thead th{position:static;background:transparent;padding:6px 8px}
+table.subt td{padding:5px 8px}
+table.subt tfoot td{font-weight:700;border-top:2px solid var(--border);color:var(--text)}
+details.abcd{margin:8px 0;border:1px solid var(--border);border-radius:12px;background:var(--card);box-shadow:var(--shadow);overflow:hidden}
+details.abcd>summary{cursor:pointer;padding:11px 14px;font-weight:700;font-size:13.5px;list-style:none;display:flex;justify-content:space-between;gap:10px;align-items:center}
+details.abcd>summary::-webkit-details-marker{display:none}
+.abclist{list-style:none;margin:0;padding:0 8px 8px;max-height:300px;overflow:auto}
+.abclist li{display:flex;justify-content:space-between;gap:12px;padding:6px 8px;border-bottom:1px solid var(--border);font-size:12.5px}
+.abclist li:last-child{border-bottom:none}.abclist li b{font-weight:600}
+@media print{.controls,.btn,.search{display:none}body{background:#fff}.tw,.kpi,details.abcd{box-shadow:none}.scrollbox{max-height:none}details.abcd[open]{}}
 </style>
 </head>
 <body>
@@ -52,47 +64,82 @@ let LOJA=canon((q.get('loja')||'Todas').trim())||'Todas';
 let DIAS=parseInt(q.get('dias')||'30',10)||30;
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const nf=v=>Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:3});
 const dDMY=s=>{if(!s)return '—';const p=String(s).slice(0,10).split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s};
 const pct=v=>v==null?'—':(v>0?'+':'')+Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';
-const PONT={otimo:['🟢','Ótimo preço','b-ok'],bom:['🟢','Comprou bem','b-ok'],regular:['🔵','Regular','b-info'],ruim:['🔴','Comprou caro','b-no'],sem_preco:['⚪','Sem preço/histórico','b-mut']};
+const PONT={otimo:['🟢','Ótimo preço','b-ok'],bom:['🟢','Comprou bem','b-ok'],regular:['🔵','Regular','b-info'],ruim:['🔴','Comprou caro','b-no'],sem_preco:['⚪','Sem preço/hist.','b-mut']};
 const un=(v,u)=>v==null?'—':brl(v)+(u?'/'+u:'');
+const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
 
 async function rpc(){
   const r=await fetch(SB+'/rest/v1/rpc/rel_compras_30d',{method:'POST',headers:H,body:JSON.stringify({p_loja:LOJA,p_dias:DIAS})});
   if(!r.ok) throw new Error(await r.text());
   return r.json();
 }
+
+// mini-tabela: cada compra do produto (data, qtd, preço unit, total, Δ% vs compra anterior)
+function detalheCompras(i){
+  const cs=(i.compras||[]);
+  if(!cs.length) return '<div class="mut" style="padding:8px">Sem detalhamento de compras.</div>';
+  let prev=null;
+  const rows=cs.map(c=>{
+    const pu=(c.preco_unit==null?null:Number(c.preco_unit));
+    let d='<span class="mut">—</span>';
+    if(pu!=null&&prev!=null&&prev!==0){const v=(pu-prev)/prev*100;d=`<span class="${v>0?'up':v<0?'down':'mut'}">${pct(v)}</span>`;}
+    if(pu!=null)prev=pu;
+    return `<tr><td>${dDMY(c.data)}</td><td class="mut">${esc(c.fornecedor||'—')}</td><td class="num">${c.qtd?nf(c.qtd):'—'}${i.un_base&&c.qtd?' '+i.un_base:''}</td><td class="num">${pu!=null?un(pu,i.un_base):'<span class=mut>s/ un.</span>'}</td><td class="num">${brl(c.valor)}</td><td class="num">${d}</td></tr>`;
+  }).join('');
+  return `<table class="subt"><thead><tr><th>Data da compra</th><th>Fornecedor</th><th class="num">Qtd</th><th class="num">Preço un.</th><th class="num">Total</th><th class="num">Δ vs compra ant.</th></tr></thead>
+   <tbody>${rows}</tbody>
+   <tfoot><tr><td colspan="2">${cs.length} compra(s) no período</td><td class="num">${i.qtd_total?nf(i.qtd_total):'—'}${i.un_base?' '+i.un_base:''}</td><td class="num mut">méd ${un(i.preco_medio,i.un_base)}</td><td class="num">${brl(i.custo_total)}</td><td></td></tr></tfoot></table>`;
+}
+
 function render(d){
   const R=d.resumo||{}, itens=(d.itens||[]).slice().sort((a,b)=>(b.custo_total||0)-(a.custo_total||0));
   const comComp=itens.filter(i=>i.var_anterior!=null);
-  const topRed=comComp.filter(i=>i.var_anterior<0).sort((a,b)=>a.var_anterior-b.var_anterior).slice(0,5);
-  const topAlta=comComp.filter(i=>i.var_anterior>0).sort((a,b)=>b.var_anterior-a.var_anterior).slice(0,5);
-  // Curva ABC (por custo de mercadoria)
-  const abc={A:{n:0,c:0,cor:'#B91C1C',bg:'#FEE2E2'},B:{n:0,c:0,cor:'#B45309',bg:'#FEF3C7'},C:{n:0,c:0,cor:'#6b7280',bg:'#f1eef0'}};
+  const allRed=comComp.filter(i=>i.var_anterior<0).sort((a,b)=>a.var_anterior-b.var_anterior);
+  const allAlta=comComp.filter(i=>i.var_anterior>0).sort((a,b)=>b.var_anterior-a.var_anterior);
+  // impacto das altas: custo extra estimado = (últ - anterior) × qtd da última compra
+  const impacto=allAlta.map(i=>{
+    const cs=i.compras||[]; const qUlt=cs.length?Number(cs[cs.length-1].qtd||0):0;
+    const extra=(i.preco_ultimo!=null&&i.preco_anterior!=null&&qUlt>0)?(Number(i.preco_ultimo)-Number(i.preco_anterior))*qUlt:0;
+    return {i,extra};
+  }).filter(x=>x.extra>0).sort((a,b)=>b.extra-a.extra);
+  const totExtra=impacto.reduce((s,x)=>s+x.extra,0);
+
+  // Curva ABC
+  const abc={A:{n:0,c:0,cor:'#B91C1C'},B:{n:0,c:0,cor:'#B45309'},C:{n:0,c:0,cor:'#6b7280'}};
   itens.forEach(i=>{const k=abc[i.classe]?i.classe:'C';abc[k].n++;abc[k].c+=Number(i.custo_total||0);});
   const totABC=(abc.A.c+abc.B.c+abc.C.c)||1;
   const pctABC=v=>(v/totABC*100);
   const abcSeg=k=>`<div class="abcseg" style="width:${pctABC(abc[k].c).toFixed(2)}%;background:${abc[k].cor}" title="Classe ${k}: ${brl(abc[k].c)}"></div>`;
-  const abcCard=(k,desc)=>`<div class="kpi" style="border-left:4px solid ${abc[k].cor}"><div class="kn" style="color:${abc[k].cor}">${k}</div><div class="ks">${abc[k].n} produto(s) · ${pctABC(abc[k].c).toLocaleString('pt-BR',{maximumFractionDigits:0})}% do custo</div><div class="kl">${brl(abc[k].c)} · ${desc}</div></div>`;
+  const abcProdList=k=>itens.filter(i=>(i.classe||'C')===k).sort((a,b)=>b.custo_total-a.custo_total)
+    .map(i=>`<li><b>${esc(i.produto)}</b><span class="num">${brl(i.custo_total)} · ${pctABC(i.custo_total).toFixed(1)}%</span></li>`).join('');
+  const abcBox=(k,desc,open)=>`<details class="abcd" ${open?'open':''}><summary><span style="color:${abc[k].cor}">Classe ${k} · ${abc[k].n} produtos · ${pctABC(abc[k].c).toFixed(0)}% do custo (${brl(abc[k].c)})</span><span class="mut" style="font-size:11px;font-weight:500">${desc}</span></summary><ul class="abclist">${abcProdList(k)||'<li class="mut">—</li>'}</ul></details>`;
+
   const lojaOpts=['Todas','Amore Paiva','Amore CD','Flow CD'].map(l=>`<option ${l===LOJA?'selected':''}>${l}</option>`).join('');
   const diasOpts=[30,60,90].map(n=>`<option value="${n}" ${n===DIAS?'selected':''}>${n} dias</option>`).join('');
-  const linkCompra=(c)=>`${dDMY(c.data)} · ${c.fornecedor?esc(c.fornecedor):'—'} · ${un(c.preco_unit,'')||brl(c.valor)} ${c.qtd?'('+c.qtd+')':''}`;
 
-  const rows=itens.map(i=>{
+  // lista simples de variação (reduções ou altas), mesmo formato
+  const varRow=i=>`<tr><td class="prod">${esc(i.produto)}<span class="mc">${dDMY(i.ultima)}${i.un_base?' · '+i.un_base:''}</span></td><td class="num mut">${un(i.preco_anterior,i.un_base)} → ${un(i.preco_ultimo,i.un_base)}</td><td class="num ${i.var_anterior<0?'down':'up'}">${pct(i.var_anterior)}</td></tr>`;
+
+  const rows=itens.map((i,idx)=>{
     const P=PONT[i.pontuacao]||PONT.sem_preco;
     const varCell=i.var_anterior==null?'<span class="mut">—</span>':`<span class="${i.var_anterior>0?'up':'down'}">${pct(i.var_anterior)}</span>`;
-    const hist=(i.compras||[]).length>1?`<details class="hist"><summary>${i.compras.length} compras</summary><ul>${i.compras.map(c=>`<li>${linkCompra(c)}</li>`).join('')}</ul></details>`:'';
-    return `<tr>
-      <td class="prod">${esc(i.produto)}<span class="mc">${esc(i.categoria||'')}${i.fornecedores?' · '+esc(i.fornecedores):''}</span>${hist}</td>
+    const summary=`<tr class="itemrow" data-idx="${idx}" data-name="${esc(norm(i.produto))}" onclick="toggleDet(${idx})">
+      <td class="prod"><span class="exp" id="e${idx}">▸</span>${esc(i.produto)}<span class="mc">${esc(i.categoria||'')}${i.fornecedores?' · '+esc(i.fornecedores):''}</span></td>
       <td><span class="badge ${i.classe==='A'?'b-no':i.classe==='B'?'b-warn':'b-mut'}">${i.classe}</span></td>
       <td class="num">${i.n_compras}</td>
-      <td class="num">${i.qtd_total?Number(i.qtd_total).toLocaleString('pt-BR'):'—'}${i.un_base?' '+i.un_base:''}</td>
+      <td class="num">${i.qtd_total?nf(i.qtd_total):'—'}${i.un_base?' '+i.un_base:''}</td>
       <td class="num">${brl(i.custo_total)}</td>
       <td class="num">${un(i.preco_ultimo,i.un_base)}</td>
-      <td class="num">${un(i.preco_menor,i.un_base)}</td>
+      <td class="num mut">${un(i.preco_medio,i.un_base)}</td>
+      <td class="num down">${un(i.preco_menor,i.un_base)}</td>
       <td class="num">${varCell}</td>
-      <td><span class="badge ${P[2]}">${P[0]} ${P[1]}</span></td>
-    </tr>`;}).join('');
+      <td><span class="badge ${P[2]}">${P[0]} ${P[1]}</span></td></tr>`;
+    const det=`<tr class="det" id="d${idx}" style="display:none"><td class="detwrap" colspan="10">${detalheCompras(i)}</td></tr>`;
+    return summary+det;
+  }).join('');
 
   const app=document.getElementById('app');
   app.innerHTML=`
@@ -116,36 +163,55 @@ function render(d){
     <div class="kpi bad"><div class="kn">${brl(R.impacto_altas)}</div><div class="ks">Impacto das altas</div><div class="kl">custo extra por aumento</div></div>
   </div>
 
-  <h2>Curva ABC <span class="h2s">concentração do custo — onde focar a negociação</span></h2>
+  <h2>Curva ABC <span class="h2s">produtos que concentram o custo — clique para ver os itens de cada classe</span></h2>
   <div class="abcbar">${abcSeg('A')}${abcSeg('B')}${abcSeg('C')}</div>
-  <div class="kpis" style="margin-top:10px">
-    ${abcCard('A','alto impacto — priorizar')}
-    ${abcCard('B','impacto médio — acompanhar')}
-    ${abcCard('C','baixo impacto — rotina')}
-  </div>
-  <p class="sub" style="margin:2px 0 4px">Classe A = produtos que concentram ~80% do gasto (poucos itens, maior peso). Negociar bem os A é onde mais se economiza.</p>
+  ${abcBox('A','alto impacto — priorizar negociação',true)}
+  ${abcBox('B','impacto médio — acompanhar',false)}
+  ${abcBox('C','baixo impacto — rotina',false)}
 
-  ${(topRed.length||topAlta.length)?`<div class="two">
-    ${topRed.length?`<div><h2>🟢 Onde compramos melhor <span class="h2s">maiores reduções</span></h2><div class="tw"><table><tbody>${topRed.map(i=>`<tr><td class="prod">${esc(i.produto)}</td><td class="num down">${pct(i.var_anterior)}</td><td class="num mut">${un(i.preco_ultimo,i.un_base)}</td></tr>`).join('')}</tbody></table></div></div>`:''}
-    ${topAlta.length?`<div><h2>🔴 Onde compramos pior <span class="h2s">maiores altas</span></h2><div class="tw"><table><tbody>${topAlta.map(i=>`<tr><td class="prod">${esc(i.produto)}</td><td class="num up">${pct(i.var_anterior)}</td><td class="num mut">${un(i.preco_ultimo,i.un_base)}</td></tr>`).join('')}</tbody></table></div></div>`:''}
-  </div>`:''}
+  <h2>Reduções de preço <span class="h2s">todas as quedas compra a compra · ${allRed.length} produtos</span></h2>
+  <div class="tw scrollbox"><table><thead><tr><th>Produto</th><th class="num">Preço anterior → último</th><th class="num">Variação</th></tr></thead>
+    <tbody>${allRed.map(varRow).join('')||'<tr><td colspan="3" class="msg">Sem reduções no período.</td></tr>'}</tbody></table></div>
 
-  <h2>Itens comprados <span class="h2s">${itens.length} produtos · comparativo compra a compra por preço unitário</span></h2>
+  <h2>Altas de preço <span class="h2s">todos os aumentos compra a compra · ${allAlta.length} produtos</span></h2>
+  <div class="tw scrollbox"><table><thead><tr><th>Produto</th><th class="num">Preço anterior → último</th><th class="num">Variação</th></tr></thead>
+    <tbody>${allAlta.map(varRow).join('')||'<tr><td colspan="3" class="msg">Sem altas no período.</td></tr>'}</tbody></table></div>
+
+  <h2>Impacto das altas <span class="h2s">custo extra estimado (Δ preço × qtd da última compra) · total ${brl(totExtra)}</span></h2>
+  <div class="tw scrollbox"><table><thead><tr><th>Produto</th><th>Data</th><th class="num">Preço ant. → últ.</th><th class="num">Alta</th><th class="num">Custo extra</th></tr></thead>
+    <tbody>${impacto.map(x=>`<tr><td class="prod">${esc(x.i.produto)}</td><td class="mut">${dDMY(x.i.ultima)}</td><td class="num mut">${un(x.i.preco_anterior,x.i.un_base)} → ${un(x.i.preco_ultimo,x.i.un_base)}</td><td class="num up">${pct(x.i.var_anterior)}</td><td class="num up">${brl(x.extra)}</td></tr>`).join('')||'<tr><td colspan="5" class="msg">Sem impacto de altas no período.</td></tr>'}</tbody></table></div>
+
+  <h2>Compras por produto <span class="h2s">clique num produto para ver cada compra (data, qtd, preço e total) e a variação compra a compra</span></h2>
+  <input class="search" id="busca" placeholder="🔎 Buscar produto (ex.: tomate) — mostra quantas vezes comprou e cada preço" />
   <div class="tw"><table>
-    <thead><tr><th>Produto</th><th>ABC</th><th class="num">Compras</th><th class="num">Qtd</th><th class="num">Custo total</th><th class="num">Últ. preço un.</th><th class="num">Menor</th><th class="num">Δ vs anterior</th><th>Avaliação</th></tr></thead>
-    <tbody>${rows||'<tr><td colspan="9" class="msg">Nenhuma compra no período.</td></tr>'}</tbody>
+    <thead><tr><th>Produto</th><th>ABC</th><th class="num">Compras</th><th class="num">Qtd total</th><th class="num">Custo total</th><th class="num">Últ. preço</th><th class="num">Médio</th><th class="num">Menor</th><th class="num">Δ vs ant.</th><th>Avaliação</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="10" class="msg">Nenhuma compra no período.</td></tr>'}</tbody>
   </table></div>
 
   <h2>Custo logístico <span class="h2s">combustível e pedágio — ${(d.logistica||[]).length} lançamentos</span></h2>
-  <div class="tw"><table>
+  <div class="tw scrollbox"><table>
     <thead><tr><th>Data</th><th>Loja</th><th>Tipo</th><th>Fornecedor</th><th class="num">Valor</th></tr></thead>
     <tbody>${(d.logistica||[]).map(l=>`<tr><td>${dDMY(l.data)}</td><td class="mut">${esc(l.loja)}</td><td><span class="badge ${l.tipo==='Combustível'?'b-warn':'b-info'}">${l.tipo}</span></td><td>${esc(l.fornecedor||l.descricao||'—')}</td><td class="num">${brl(l.valor)}</td></tr>`).join('')||'<tr><td colspan="5" class="msg">Sem lançamentos logísticos.</td></tr>'}</tbody>
   </table></div>
-  <p class="sub" style="margin-top:22px">Gerado automaticamente pelo painel Amore · o comparativo compara o preço unitário de cada produto entre compras. Produtos com uma só compra ou sem preço unitário aparecem como referência de custo.</p>`;
+  <p class="sub" style="margin-top:22px">Gerado automaticamente pelo painel Amore · o comparativo usa o preço unitário de cada produto entre compras. Produtos com uma só compra ou sem preço unitário aparecem como referência de custo.</p>`;
 
   document.getElementById('selLoja').onchange=e=>{LOJA=e.target.value;go();};
   document.getElementById('selDias').onchange=e=>{DIAS=parseInt(e.target.value,10);go();};
+  const b=document.getElementById('busca');
+  if(b) b.oninput=e=>{
+    const t=norm(e.target.value.trim());
+    document.querySelectorAll('tr.itemrow').forEach(r=>{
+      const show=!t||r.dataset.name.includes(t);
+      r.style.display=show?'':'none';
+      const det=document.getElementById('d'+r.dataset.idx);
+      if(det&&!show)det.style.display='none';
+    });
+  };
 }
+window.toggleDet=idx=>{
+  const d=document.getElementById('d'+idx), e=document.getElementById('e'+idx);
+  if(!d)return; const open=d.style.display==='none'; d.style.display=open?'':'none'; if(e)e.textContent=open?'▾':'▸';
+};
 async function go(){
   const u=new URL(location);u.searchParams.set('loja',LOJA);u.searchParams.set('dias',DIAS);history.replaceState(null,'',u);
   try{ render(await rpc()); }catch(e){ document.getElementById('app').innerHTML='<div class="msg">Erro ao carregar o relatório.<br><small>'+esc(String(e).slice(0,200))+'</small></div>'; }
