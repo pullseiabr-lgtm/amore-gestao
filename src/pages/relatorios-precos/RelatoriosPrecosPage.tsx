@@ -420,7 +420,10 @@ function Compras30Tab({ toast }: any) {
     <div style={{ ...card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
       <b style={{ fontSize: 14, marginRight: 6 }}>📅 Compras por item</b>
       <select style={sel} value={loja} onChange={e => setLoja(e.target.value)}>{['Todas', 'Amore Paiva', 'Amore CD', 'Flow CD'].map(l => <option key={l}>{l}</option>)}</select>
-      <select style={sel} value={dias} onChange={e => setDias(Number(e.target.value))}>{[30, 60, 90].map(n => <option key={n} value={n}>{n} dias</option>)}</select>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#6b7280' }}>Período:
+        <input type="number" min={1} max={90} value={dias} onChange={e => setDias(Math.max(1, Math.min(90, Number(e.target.value) || 30)))} style={{ ...sel, width: 62, textAlign: 'center' }} title="Escolha de 1 a 90 dias" /> dias
+      </span>
+      <span style={{ display: 'inline-flex', gap: 5, flexWrap: 'wrap' }}>{[1, 5, 7, 15, 30, 60, 90].map(n => <button key={n} onClick={() => setDias(n)} style={{ border: '1px solid #e5e7eb', background: n === dias ? '#8B1212' : '#fff', color: n === dias ? '#fff' : '#6b7280', borderRadius: 20, padding: '5px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{n === 1 ? 'hoje' : n + 'd'}</button>)}</span>
       <div style={{ flex: 1 }} />
       <button onClick={copiarLink} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.5rem .9rem', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', cursor: 'pointer', fontWeight: 600, fontSize: 12.5 }}><Link2 size={14} />Copiar link</button>
       <a href={linkRel} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.5rem .9rem', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', cursor: 'pointer', fontWeight: 600, fontSize: 12.5, textDecoration: 'none' }}><FileText size={14} />Abrir</a>

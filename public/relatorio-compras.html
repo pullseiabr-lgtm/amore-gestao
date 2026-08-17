@@ -14,6 +14,11 @@ header.top{border-bottom:2px solid var(--vinho);padding-bottom:14px;margin-botto
 .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
 h1{font-size:22px;margin:6px 0 4px}.sub{color:var(--muted);font-size:13.5px}
 .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.daysel{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted)}
+.daysel input{width:64px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:10px;padding:9px 10px;font-size:13px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums}
+.chips{display:inline-flex;gap:5px;flex-wrap:wrap}
+.chip{border:1px solid var(--border);background:var(--card);color:var(--muted);border-radius:20px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer}
+.chip.on{background:var(--vinho);color:#fff;border-color:var(--vinho)}
 select,.btn{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:10px;padding:9px 13px;font-size:13px;font-weight:600;cursor:pointer}
 .btn{border-color:var(--vinho);background:var(--vinho);color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 h2{font-size:16.5px;margin:26px 0 10px;color:var(--vinho)}h2 .h2s{font-size:12px;font-weight:500;color:var(--muted)}
@@ -150,7 +155,7 @@ function render(d){
   const abcBox=(k,desc,open)=>`<details class="abcd" ${open?'open':''}><summary><span style="color:${abc[k].cor}">Classe ${k} · ${abc[k].n} produtos · ${pctABC(abc[k].c).toFixed(0)}% do custo (${brl(abc[k].c)})</span><span class="mut" style="font-size:11px;font-weight:500">${desc}</span></summary><ul class="abclist">${abcProdList(k)||'<li class="mut">—</li>'}</ul></details>`;
 
   const lojaOpts=['Todas','Amore Paiva','Amore CD','Flow CD'].map(l=>`<option ${l===LOJA?'selected':''}>${l}</option>`).join('');
-  const diasOpts=[30,60,90].map(n=>`<option value="${n}" ${n===DIAS?'selected':''}>${n} dias</option>`).join('');
+  const diasChips=[1,5,7,15,30,60,90].map(n=>`<button class="chip${n===DIAS?' on':''}" data-d="${n}">${n===1?'hoje':n+'d'}</button>`).join('');
 
   // lista simples de variação (reduções ou altas), mesmo formato
   const varRow=i=>`<tr><td class="prod">${esc(i.produto)}<span class="mc">${dDMY(i.ultima)}${i.un_base?' · '+i.un_base:''}</span></td><td class="num mut">${un(i.preco_anterior,i.un_base)} → ${un(i.preco_ultimo,i.un_base)}</td><td class="num ${i.var_anterior<0?'down':'up'}">${pct(i.var_anterior)}</td></tr>`;
@@ -180,7 +185,8 @@ function render(d){
       <div class="sub">${esc(LOJA)} · últimos ${DIAS} dias (${dDMY(R.de||d.periodo.de)} a ${dDMY(d.periodo.ate)}) · ${R.n_produtos||0} produtos</div></div>
     <div class="controls">
       <select id="selLoja">${lojaOpts}</select>
-      <select id="selDias">${diasOpts}</select>
+      <span class="daysel">Período: <input id="selDias" type="number" min="1" max="90" value="${DIAS}" title="Escolha de 1 a 90 dias" /> dias</span>
+      <span class="chips">${diasChips}</span>
       <a class="btn" href="#" onclick="window.print();return false">🖨️ PDF</a>
     </div>
   </header>
@@ -233,7 +239,9 @@ function render(d){
   <p class="sub" style="margin-top:22px">Gerado automaticamente pelo painel Amore · o comparativo usa o preço unitário de cada produto entre compras. Produtos com uma só compra ou sem preço unitário aparecem como referência de custo.</p>`;
 
   document.getElementById('selLoja').onchange=e=>{LOJA=e.target.value;go();};
-  document.getElementById('selDias').onchange=e=>{DIAS=parseInt(e.target.value,10);go();};
+  const setDias=v=>{v=Math.max(1,Math.min(90,parseInt(v,10)||30));DIAS=v;go();};
+  document.getElementById('selDias').onchange=e=>setDias(e.target.value);
+  document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>setDias(b.dataset.d));
   const b=document.getElementById('busca');
   if(b) b.oninput=e=>{
     const t=norm(e.target.value.trim());
