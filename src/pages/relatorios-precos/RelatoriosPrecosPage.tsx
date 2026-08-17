@@ -326,6 +326,13 @@ function Compras30Tab({ toast }: any) {
   const [aberto, setAberto] = useState<string | null>(null)
   const norm = (s: any) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   const unitOf = (c: any) => c.preco_unit != null ? Number(c.preco_unit) : (Number(c.qtd) > 0 ? c.valor / Number(c.qtd) : null)
+  const porFornecedor = (cs: any[]) => {
+    const map: any = {}
+    ;(cs || []).forEach(c => { const f = c.fornecedor || '—'; (map[f] = map[f] || { forn: f, qtd: 0, val: 0, n: 0 }); map[f].qtd += Number(c.qtd) || 0; map[f].val += Number(c.valor) || 0; map[f].n++ })
+    const arr: any[] = Object.values(map).map((x: any) => ({ ...x, unit: x.qtd > 0 ? x.val / x.qtd : null }))
+    arr.sort((a: any, b: any) => (a.unit == null ? 1e12 : a.unit) - (b.unit == null ? 1e12 : b.unit))
+    return arr
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -363,6 +370,7 @@ function Compras30Tab({ toast }: any) {
   const R = d?.resumo || {}
   const itens: any[] = (d?.itens || []).slice().sort((a: any, b: any) => (b.custo_total || 0) - (a.custo_total || 0))
   const itensF = busca.trim() ? itens.filter(i => norm(i.produto).includes(norm(busca))) : itens
+  const ref = itens.filter(i => i.preco_menor != null).map(i => ({ i, best: porFornecedor(i.compras || []).find((f: any) => f.unit != null) })).sort((a, b) => (b.i.custo_total || 0) - (a.i.custo_total || 0))
   const comComp = itens.filter(i => i.var_anterior != null)
   const topRed = comComp.filter(i => i.var_anterior < 0).sort((a, b) => a.var_anterior - b.var_anterior).slice(0, 5)
   const topAlta = comComp.filter(i => i.var_anterior > 0).sort((a, b) => b.var_anterior - a.var_anterior).slice(0, 5)
@@ -380,6 +388,8 @@ function Compras30Tab({ toast }: any) {
     let minU: number | null = null, maxU: number | null = null, minC: any = null, maxC: any = null
     cs.forEach(c => { const u = unitOf(c); if (u == null) return; if (minU == null || u < minU) { minU = u; minC = c } if (maxU == null || u > maxU) { maxU = u; maxC = c } })
     const spread = (minU != null && maxU != null && minU > 0) ? ((maxU - minU) / minU * 100) : null
+    const fa = porFornecedor(cs)
+    const th: React.CSSProperties = { padding: 5 }
     let prev: number | null = null
     return <div style={{ background: '#faf7f6', padding: '9px 11px', borderRadius: 8 }}>
       {minU != null && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 9 }}>
@@ -387,6 +397,14 @@ function Compras30Tab({ toast }: any) {
         <span style={{ ...tagS, background: '#FEE2E2', color: '#B91C1C' }}>🔴 Mais caro: {un(maxU, i.un_base)} · {maxC.fornecedor || '—'} · {dtBR(maxC.data)}</span>
         {spread != null && <span style={{ ...tagS, background: '#f1eef0', color: '#6f656a' }}>Diferença +{spread.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% do mais barato ao mais caro</span>}
       </div>}
+      {fa.length >= 2 && <>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#8B1212', textTransform: 'uppercase', letterSpacing: '.03em', margin: '2px 0 4px' }}>🏷️ Comparativo por fornecedor</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 10 }}>
+          <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 10 }}><th style={th}>Fornecedor (lugar)</th><th>Compras</th><th>Qtd</th><th>Custo</th><th>Preço médio un.</th><th></th></tr></thead>
+          <tbody>{fa.map((f: any, k: number) => <tr key={k} style={{ borderTop: '1px solid #eee' }}><td style={th}>{f.forn}</td><td>{f.n}</td><td>{Number(f.qtd).toLocaleString('pt-BR')}{i.un_base ? ' ' + i.un_base : ''}</td><td>{fmt(f.val)}</td><td style={{ fontWeight: 600 }}>{f.unit != null ? un(f.unit, i.un_base) : '—'}</td><td>{k === 0 && f.unit != null ? <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: '#DCFCE7', color: '#15803D' }}>🟢 melhor</span> : (k === fa.length - 1 && f.unit != null ? <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: '#FEE2E2', color: '#B91C1C' }}>🔴 mais caro</span> : '')}</td></tr>)}</tbody>
+        </table>
+      </>}
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#8B1212', textTransform: 'uppercase', letterSpacing: '.03em', margin: '2px 0 4px' }}>📋 Todas as compras do produto</div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 10 }}><th style={{ padding: 5 }}>Data</th><th>Fornecedor (lugar)</th><th>Qtd</th><th>Preço un.</th><th>Total</th><th>Δ ant.</th></tr></thead>
         <tbody>
@@ -450,6 +468,17 @@ function Compras30Tab({ toast }: any) {
           {topAlta.map((i, k) => <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginTop: 5 }}><span>{i.produto}</span><b style={{ color: '#DC2626' }}>{pct(i.var_anterior)}</b></div>)}
         </div>}
       </div>}
+
+      <div style={{ ...card }}>
+        <b style={{ fontSize: 14 }}>💰 Preço de referência por produto <span style={{ fontSize: 12, fontWeight: 400, color: '#9ca3af' }}>· menor preço + melhor fornecedor + custo médio — alvo para a próxima compra · {ref.length} produtos</span></b>
+        <div style={{ overflowX: 'auto', maxHeight: 360, overflowY: 'auto', marginTop: 10 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 620 }}>
+            <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 10.5, textTransform: 'uppercase' }}><th style={{ padding: 7 }}>Produto</th><th>Menor preço</th><th>Melhor fornecedor</th><th>Custo médio</th><th>Qtd total</th><th>Custo total</th></tr></thead>
+            <tbody>{ref.map(({ i, best }, k) => <tr key={k} style={{ borderTop: '1px solid #f3f4f6' }}><td style={{ padding: 7, fontWeight: 600 }}>{i.produto}</td><td style={{ color: '#1D9E75', fontWeight: 600 }}>{un(i.preco_menor, i.un_base)}</td><td style={{ color: '#6b7280' }}>{best ? best.forn : '—'}</td><td>{un(i.preco_medio, i.un_base)}</td><td style={{ color: '#6b7280' }}>{i.qtd_total ? Number(i.qtd_total).toLocaleString('pt-BR') : '—'}{i.un_base ? ' ' + i.un_base : ''}</td><td style={{ fontWeight: 600 }}>{fmt(i.custo_total)}</td></tr>)}
+              {ref.length === 0 && <tr><td colSpan={6} style={{ padding: 16, textAlign: 'center', color: '#9ca3af' }}>Sem produtos itemizados no período.</td></tr>}</tbody>
+          </table>
+        </div>
+      </div>
 
       <div style={{ ...card }}>
         <b style={{ fontSize: 14 }}>Compras por produto <span style={{ fontSize: 12, fontWeight: 400, color: '#9ca3af' }}>· clique num produto para ver cada compra, quanto comprou e onde foi mais barato/mais caro</span></b>

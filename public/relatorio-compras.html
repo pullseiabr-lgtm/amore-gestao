@@ -43,6 +43,7 @@ table.subt{min-width:0;width:100%;font-size:12px;margin:4px 0 0}
 table.subt thead th{position:static;background:transparent;padding:6px 8px}
 table.subt td{padding:5px 8px}
 table.subt tfoot td{font-weight:700;border-top:2px solid var(--border);color:var(--text)}
+.fornt{font-size:11.5px;font-weight:700;color:var(--vinho);margin:10px 0 3px;text-transform:uppercase;letter-spacing:.03em}
 .anal{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 2px}
 .anal .tag{font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:20px;border:1px solid var(--border)}
 .anal .tag.ok{background:#DCFCE7;color:#15803D}.anal .tag.bad{background:#FEE2E2;color:#B91C1C}.anal .tag.neu{background:#f1eef0;color:#6f656a}
@@ -83,6 +84,14 @@ async function rpc(){
 
 // preço unitário: usa o do banco ou divide valor pela quantidade
 const unitOf=c=>c.preco_unit!=null?Number(c.preco_unit):(Number(c.qtd)>0?c.valor/Number(c.qtd):null);
+// agrupa compras por fornecedor (preço médio por fornecedor), ordenado do mais barato ao mais caro
+function porFornecedor(cs){
+  const map={};
+  (cs||[]).forEach(c=>{const f=c.fornecedor||'—';const u=unitOf(c);(map[f]=map[f]||{forn:f,qtd:0,val:0,n:0,datas:[]});map[f].qtd+=Number(c.qtd)||0;map[f].val+=Number(c.valor)||0;map[f].n++;if(c.data)map[f].datas.push(c.data);});
+  const arr=Object.values(map).map(x=>({...x,unit:x.qtd>0?x.val/x.qtd:null}));
+  arr.sort((a,b)=>(a.unit==null?1e12:a.unit)-(b.unit==null?1e12:b.unit));
+  return arr;
+}
 
 // mini-tabela analítica por produto: cada compra + onde foi mais barato/mais caro + %
 function detalheCompras(i){
@@ -96,6 +105,11 @@ function detalheCompras(i){
      <span class="tag bad">🔴 Mais caro: ${un(maxU,i.un_base)} · ${esc(maxC.fornecedor||'—')} · ${dDMY(maxC.data)}</span>
      ${spread?`<span class="tag neu">Diferença +${spread.toLocaleString('pt-BR',{maximumFractionDigits:1})}% do mais barato ao mais caro</span>`:''}
    </div>`:'';
+  // comparativo por fornecedor (quando 2+ fornecedores)
+  const fa=porFornecedor(cs);
+  const fornBlock=fa.length>=2?`<div class="fornt">🏷️ Comparativo por fornecedor</div>
+   <table class="subt"><thead><tr><th>Fornecedor (lugar)</th><th class="num">Compras</th><th class="num">Qtd</th><th class="num">Custo</th><th class="num">Preço médio un.</th><th></th></tr></thead>
+   <tbody>${fa.map((f,k)=>`<tr><td>${esc(f.forn)}</td><td class="num">${f.n}</td><td class="num">${nf(f.qtd)}${i.un_base?' '+i.un_base:''}</td><td class="num">${brl(f.val)}</td><td class="num">${f.unit!=null?un(f.unit,i.un_base):'—'}</td><td>${k===0&&f.unit!=null?'<span class="badge b-ok">🟢 melhor</span>':(k===fa.length-1&&f.unit!=null?'<span class="badge b-no">🔴 mais caro</span>':'')}</td></tr>`).join('')}</tbody></table>`:'';
   let prev=null;
   const rows=cs.map(c=>{
     const pu=unitOf(c);
@@ -105,7 +119,7 @@ function detalheCompras(i){
     const mk=(pu!=null&&pu===minU)?'🟢 ':(pu!=null&&pu===maxU&&maxU!==minU)?'🔴 ':'';
     return `<tr><td>${mk}${dDMY(c.data)}</td><td class="mut">${esc(c.fornecedor||'—')}</td><td class="num">${c.qtd?nf(c.qtd):'—'}${i.un_base&&c.qtd?' '+i.un_base:''}</td><td class="num">${pu!=null?un(pu,i.un_base):'<span class=mut>s/ un.</span>'}</td><td class="num">${brl(c.valor)}</td><td class="num">${d}</td></tr>`;
   }).join('');
-  return `${analise}<table class="subt"><thead><tr><th>Data da compra</th><th>Fornecedor (lugar)</th><th class="num">Qtd</th><th class="num">Preço un.</th><th class="num">Total</th><th class="num">Δ vs compra ant.</th></tr></thead>
+  return `${analise}${fornBlock}<div class="fornt">📋 Todas as compras do produto</div><table class="subt"><thead><tr><th>Data da compra</th><th>Fornecedor (lugar)</th><th class="num">Qtd</th><th class="num">Preço un.</th><th class="num">Total</th><th class="num">Δ vs compra ant.</th></tr></thead>
    <tbody>${rows}</tbody>
    <tfoot><tr><td colspan="2">${cs.length} compra(s) no período · qtd total comprada</td><td class="num">${i.qtd_total?nf(i.qtd_total):'—'}${i.un_base?' '+i.un_base:''}</td><td class="num mut">méd ${un(i.preco_medio,i.un_base)}</td><td class="num">${brl(i.custo_total)}</td><td></td></tr></tfoot></table>`;
 }
@@ -122,6 +136,8 @@ function render(d){
     return {i,extra};
   }).filter(x=>x.extra>0).sort((a,b)=>b.extra-a.extra);
   const totExtra=impacto.reduce((s,x)=>s+x.extra,0);
+  // painel de preço de referência (menor preço + melhor fornecedor por produto)
+  const ref=itens.filter(i=>i.preco_menor!=null).map(i=>{const fa=porFornecedor(i.compras||[]);return {i,best:fa.find(f=>f.unit!=null)};}).sort((a,b)=>(b.i.custo_total||0)-(a.i.custo_total||0));
 
   // Curva ABC
   const abc={A:{n:0,c:0,cor:'#B91C1C'},B:{n:0,c:0,cor:'#B45309'},C:{n:0,c:0,cor:'#6b7280'}};
@@ -196,6 +212,10 @@ function render(d){
   <h2>Impacto das altas <span class="h2s">custo extra estimado (Δ preço × qtd da última compra) · total ${brl(totExtra)}</span></h2>
   <div class="tw scrollbox"><table><thead><tr><th>Produto</th><th>Data</th><th class="num">Preço ant. → últ.</th><th class="num">Alta</th><th class="num">Custo extra</th></tr></thead>
     <tbody>${impacto.map(x=>`<tr><td class="prod">${esc(x.i.produto)}</td><td class="mut">${dDMY(x.i.ultima)}</td><td class="num mut">${un(x.i.preco_anterior,x.i.un_base)} → ${un(x.i.preco_ultimo,x.i.un_base)}</td><td class="num up">${pct(x.i.var_anterior)}</td><td class="num up">${brl(x.extra)}</td></tr>`).join('')||'<tr><td colspan="5" class="msg">Sem impacto de altas no período.</td></tr>'}</tbody></table></div>
+
+  <h2>💰 Preço de referência por produto <span class="h2s">menor preço já pago + melhor fornecedor + custo médio — alvo para a próxima compra · ${ref.length} produtos</span></h2>
+  <div class="tw scrollbox"><table><thead><tr><th>Produto</th><th class="num">Menor preço</th><th>Melhor fornecedor</th><th class="num">Custo médio</th><th class="num">Qtd total</th><th class="num">Custo total</th></tr></thead>
+    <tbody>${ref.map(({i,best})=>`<tr><td class="prod">${esc(i.produto)}</td><td class="num down">${un(i.preco_menor,i.un_base)}</td><td class="mut">${best?esc(best.forn):'—'}</td><td class="num">${un(i.preco_medio,i.un_base)}</td><td class="num">${i.qtd_total?nf(i.qtd_total):'—'}${i.un_base?' '+i.un_base:''}</td><td class="num">${brl(i.custo_total)}</td></tr>`).join('')||'<tr><td colspan="6" class="msg">Sem produtos itemizados.</td></tr>'}</tbody></table></div>
 
   <h2>Compras por produto <span class="h2s">clique num produto para ver cada compra (data, lugar, qtd, preço, total), onde comprou mais barato/mais caro e a % · ${itens.filter(i=>i.preco_ultimo!=null).length} itemizados</span></h2>
   <p class="sub" style="margin:0 0 8px">Busque um produto (ex.: <b>tomate</b>) e clique para ver: quantas vezes comprou, quantidade total, e cada compra com data, fornecedor, quantidade e preço unitário. Consumo por período ainda não é registrado no sistema (entra quando as saídas de estoque forem lançadas).</p>
