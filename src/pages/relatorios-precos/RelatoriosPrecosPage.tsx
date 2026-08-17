@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { BarChart3, Users, SlidersHorizontal, RefreshCw, FileText, X, Plus, Trash2, Send, TrendingUp, TrendingDown, CalendarRange, Link2, Fuel } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../hooks/useToast'
@@ -322,6 +322,10 @@ function Compras30Tab({ toast }: any) {
   const un = (v: any, u: any) => v == null ? '—' : fmt(v) + (u ? '/' + u : '')
   const pct = (v: any) => v == null ? '—' : (v > 0 ? '+' : '') + Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%'
   const linkRel = `${location.origin}/relatorio-compras.html?loja=${encodeURIComponent(loja)}&dias=${dias}`
+  const [busca, setBusca] = useState('')
+  const [aberto, setAberto] = useState<string | null>(null)
+  const norm = (s: any) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  const unitOf = (c: any) => c.preco_unit != null ? Number(c.preco_unit) : (Number(c.qtd) > 0 ? c.valor / Number(c.qtd) : null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -358,6 +362,7 @@ function Compras30Tab({ toast }: any) {
 
   const R = d?.resumo || {}
   const itens: any[] = (d?.itens || []).slice().sort((a: any, b: any) => (b.custo_total || 0) - (a.custo_total || 0))
+  const itensF = busca.trim() ? itens.filter(i => norm(i.produto).includes(norm(busca))) : itens
   const comComp = itens.filter(i => i.var_anterior != null)
   const topRed = comComp.filter(i => i.var_anterior < 0).sort((a, b) => a.var_anterior - b.var_anterior).slice(0, 5)
   const topAlta = comComp.filter(i => i.var_anterior > 0).sort((a, b) => b.var_anterior - a.var_anterior).slice(0, 5)
@@ -367,6 +372,31 @@ function Compras30Tab({ toast }: any) {
   const pctABC = (v: number) => (v / totABC * 100)
   const sel: React.CSSProperties = { padding: '.5rem .7rem', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontWeight: 600 }
   const kpi = (l: string, v: any, sub = '', c = '#6B1212') => <div style={{ background: '#f9fafb', borderRadius: 12, padding: '.7rem .9rem', flex: 1, minWidth: 130 }}><div style={{ fontSize: 19, fontWeight: 800, color: c }}>{v}</div><div style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{l}</div>{sub && <div style={{ fontSize: 10.5, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.03em' }}>{sub}</div>}</div>
+  const dtBR = (v: any) => v ? new Date(v).toLocaleDateString('pt-BR') : '—'
+  const tagS: React.CSSProperties = { fontSize: 11.5, fontWeight: 600, padding: '4px 10px', borderRadius: 20 }
+  // Detalhe por produto: cada compra + onde mais barato/mais caro + %
+  const detalhe = (i: any) => {
+    const cs: any[] = i.compras || []
+    let minU: number | null = null, maxU: number | null = null, minC: any = null, maxC: any = null
+    cs.forEach(c => { const u = unitOf(c); if (u == null) return; if (minU == null || u < minU) { minU = u; minC = c } if (maxU == null || u > maxU) { maxU = u; maxC = c } })
+    const spread = (minU != null && maxU != null && minU > 0) ? ((maxU - minU) / minU * 100) : null
+    let prev: number | null = null
+    return <div style={{ background: '#faf7f6', padding: '9px 11px', borderRadius: 8 }}>
+      {minU != null && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 9 }}>
+        <span style={{ ...tagS, background: '#DCFCE7', color: '#15803D' }}>🟢 Mais barato: {un(minU, i.un_base)} · {minC.fornecedor || '—'} · {dtBR(minC.data)}</span>
+        <span style={{ ...tagS, background: '#FEE2E2', color: '#B91C1C' }}>🔴 Mais caro: {un(maxU, i.un_base)} · {maxC.fornecedor || '—'} · {dtBR(maxC.data)}</span>
+        {spread != null && <span style={{ ...tagS, background: '#f1eef0', color: '#6f656a' }}>Diferença +{spread.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% do mais barato ao mais caro</span>}
+      </div>}
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 10 }}><th style={{ padding: 5 }}>Data</th><th>Fornecedor (lugar)</th><th>Qtd</th><th>Preço un.</th><th>Total</th><th>Δ ant.</th></tr></thead>
+        <tbody>
+          {cs.map((c, k) => { const pu = unitOf(c); let dd: any = <span style={{ color: '#9ca3af' }}>—</span>; if (pu != null && prev != null && prev !== 0) { const v = (pu - prev) / prev * 100; dd = <span style={{ color: v > 0 ? '#DC2626' : v < 0 ? '#1D9E75' : '#9ca3af', fontWeight: 700 }}>{pct(v)}</span> } if (pu != null) prev = pu; const mk = (pu != null && pu === minU) ? '🟢 ' : (pu != null && pu === maxU && maxU !== minU) ? '🔴 ' : ''; return (
+            <tr key={k} style={{ borderTop: '1px solid #eee' }}><td style={{ padding: 5 }}>{mk}{dtBR(c.data)}</td><td style={{ color: '#6b7280' }}>{c.fornecedor || '—'}</td><td>{c.qtd ? Number(c.qtd).toLocaleString('pt-BR') : '—'}{i.un_base && c.qtd ? ' ' + i.un_base : ''}</td><td>{pu != null ? un(pu, i.un_base) : 's/ un.'}</td><td>{fmt(c.valor)}</td><td>{dd}</td></tr>) })}
+          <tr style={{ borderTop: '2px solid #ddd', fontWeight: 700 }}><td style={{ padding: 5 }} colSpan={2}>{cs.length} compra(s) · qtd total comprada</td><td>{i.qtd_total ? Number(i.qtd_total).toLocaleString('pt-BR') : '—'}{i.un_base ? ' ' + i.un_base : ''}</td><td style={{ color: '#6b7280' }}>méd {un(i.preco_medio, i.un_base)}</td><td>{fmt(i.custo_total)}</td><td></td></tr>
+        </tbody>
+      </table>
+    </div>
+  }
 
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
     <div style={{ ...card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -422,25 +452,30 @@ function Compras30Tab({ toast }: any) {
       </div>}
 
       <div style={{ ...card }}>
-        <b style={{ fontSize: 14 }}>Itens comprados <span style={{ fontSize: 12, fontWeight: 400, color: '#9ca3af' }}>· {itens.length} produtos · comparativo por preço unitário</span></b>
-        <div style={{ overflowX: 'auto', marginTop: 10 }}>
+        <b style={{ fontSize: 14 }}>Compras por produto <span style={{ fontSize: 12, fontWeight: 400, color: '#9ca3af' }}>· clique num produto para ver cada compra, quanto comprou e onde foi mais barato/mais caro</span></b>
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="🔎 Buscar produto (ex.: tomate)" style={{ width: '100%', maxWidth: 340, padding: '9px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, margin: '10px 0', display: 'block' }} />
+        <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 720 }}>
             <thead><tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 10.5, textTransform: 'uppercase' }}>
-              <th style={{ padding: 7 }}>Produto</th><th>ABC</th><th>Compras</th><th>Qtd</th><th>Custo total</th><th>Últ. preço</th><th>Menor</th><th>Δ ant.</th><th>Avaliação</th>
+              <th style={{ padding: 7 }}>Produto</th><th>ABC</th><th>Compras</th><th>Qtd total</th><th>Custo total</th><th>Últ. preço</th><th>Menor</th><th>Δ ant.</th><th>Avaliação</th>
             </tr></thead>
             <tbody>
-              {itens.map((i, idx) => { const P = PONT[i.pontuacao] || PONT.sem_preco; return (
-                <tr key={idx} style={{ borderTop: '1px solid #f3f4f6' }}>
-                  <td style={{ padding: 7, fontWeight: 600 }}>{i.produto}<span style={{ display: 'block', fontSize: 10.5, color: '#9ca3af', fontWeight: 400 }}>{i.categoria || ''}{i.fornecedores ? ' · ' + i.fornecedores : ''}</span></td>
+              {itensF.map((i, idx) => { const P = PONT[i.pontuacao] || PONT.sem_preco; const open = aberto === i.produto; return (
+                <Fragment key={idx}>
+                <tr style={{ borderTop: '1px solid #f3f4f6', cursor: 'pointer' }} onClick={() => setAberto(open ? null : i.produto)}>
+                  <td style={{ padding: 7, fontWeight: 600 }}><span style={{ color: '#8B1212', marginRight: 5 }}>{open ? '▾' : '▸'}</span>{i.produto}<span style={{ display: 'block', fontSize: 10.5, color: '#9ca3af', fontWeight: 400, marginLeft: 17 }}>{i.categoria || ''}{i.fornecedores ? ' · ' + i.fornecedores : ''}</span></td>
                   <td><span style={{ fontWeight: 700, color: i.classe === 'A' ? '#DC2626' : i.classe === 'B' ? '#D97706' : '#9ca3af' }}>{i.classe}</span></td>
                   <td>{i.n_compras}</td>
                   <td style={{ color: '#6b7280' }}>{i.qtd_total ? Number(i.qtd_total).toLocaleString('pt-BR') : '—'}{i.un_base ? ' ' + i.un_base : ''}</td>
                   <td style={{ fontWeight: 600 }}>{fmt(i.custo_total)}</td>
                   <td>{un(i.preco_ultimo, i.un_base)}</td>
-                  <td style={{ color: '#6b7280' }}>{un(i.preco_menor, i.un_base)}</td>
+                  <td style={{ color: '#1D9E75' }}>{un(i.preco_menor, i.un_base)}</td>
                   <td style={{ fontWeight: 700, color: i.var_anterior == null ? '#9ca3af' : i.var_anterior > 0 ? '#DC2626' : '#1D9E75' }}>{pct(i.var_anterior)}</td>
                   <td><span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: P[3], color: P[2] }}>{P[0]} {P[1]}</span></td>
-                </tr>) })}
+                </tr>
+                {open && <tr><td colSpan={9} style={{ padding: '0 7px 10px' }}>{detalhe(i)}</td></tr>}
+                </Fragment>) })}
+              {itensF.length === 0 && <tr><td colSpan={9} style={{ padding: 20, textAlign: 'center', color: '#9ca3af' }}>Nenhum produto encontrado para “{busca}”.</td></tr>}
             </tbody>
           </table>
         </div>
