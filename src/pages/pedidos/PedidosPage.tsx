@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { ClipboardList, RefreshCw, ExternalLink, Loader2, Package, Plus, Trash2, X, Send } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useLoja } from '../../contexts/LojaContext'
@@ -53,6 +53,29 @@ export default function PedidosPage() {
   const [foneForn, setFoneForn] = useState('')
   const [foneReceb, setFoneReceb] = useState('')
   const [enviandoP, setEnviandoP] = useState(false)
+  // custo médio de referência (estoque_produtos.preco_unitario) para análise do pedido
+  const [custoMap, setCustoMap] = useState<Record<string, number>>({})
+  const [analiseAberta, setAnaliseAberta] = useState<string | null>(null)
+  const normP = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim()
+  useEffect(() => { (async () => {
+    const { data } = await sb.from('estoque_produtos').select('loja,nome,preco_unitario')
+    const m: Record<string, number> = {}
+    ;(data || []).forEach((p: any) => { const v = Number(p.preco_unitario) || 0; if (v <= 0) return; m[p.loja + '|' + normP(p.nome)] = v; m['*|' + normP(p.nome)] = v })
+    setCustoMap(m)
+  })() }, [])
+  const custoMedioDe = (loja: string, nome: string) => { const n = normP(nome); const v = custoMap[loja + '|' + n] ?? custoMap['*|' + n]; return v != null ? Number(v) : null }
+  const analisePedido = (p: Pedido) => {
+    let refTotal = 0, pedComRef = 0, comRef = 0
+    const linhas = (p.itens || []).map(it => {
+      const cm = custoMedioDe(p.loja, it.produto)
+      const sub = it.subtotal != null ? it.subtotal : (Number(it.qtd) || 0) * (Number(it.preco) || 0)
+      if (cm != null) { refTotal += cm * (Number(it.qtd) || 0); pedComRef += sub; comRef++ }
+      const diff = (cm != null && cm > 0) ? ((Number(it.preco) - cm) / cm * 100) : null
+      return { it, cm, sub, diff }
+    })
+    const diffTotal = refTotal > 0 ? ((pedComRef - refTotal) / refTotal * 100) : null
+    return { linhas, refTotal, pedComRef, comRef, extra: pedComRef - refTotal, diffTotal, custoMedioItem: comRef > 0 ? refTotal / (p.itens || []).filter(it => custoMedioDe(p.loja, it.produto) != null).reduce((s, it) => s + (Number(it.qtd) || 0), 0) : null }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -194,8 +217,9 @@ export default function PedidosPage() {
             Nenhum pedido nesta loja ainda. <button className="btn" onClick={abrirNovo} style={{ padding: '7px 14px', marginLeft: 8 }}><Plus size={14} /> Novo pedido</button>
           </div>
         : <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {filtrados.map(p => (
-              <div key={p.chave} style={{ ...card, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            {filtrados.map(p => { const an = analisePedido(p); const aberto = analiseAberta === p.chave; return (
+              <Fragment key={p.chave}>
+              <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
                 <div style={{ width: 40, height: 40, borderRadius: 10, background: '#F3F4F6', color: '#8B1212', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Package size={19} /></div>
                 <div style={{ flex: 1, minWidth: 180 }}>
                   <div style={{ fontWeight: 700, fontSize: 14.5 }}>{p.fornecedor || 'Fornecedor'}</div>
@@ -208,7 +232,9 @@ export default function PedidosPage() {
                   : <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: '#E0F2FE', color: '#0369A1', whiteSpace: 'nowrap' }}>Aguardando recebimento</span>}
                 <div style={{ textAlign: 'right', minWidth: 90 }}>
                   <div style={{ fontSize: 16, fontWeight: 800, color: '#8B1212' }}>{fmtR$(p.total || 0)}</div>
+                  {an.diffTotal != null && <div style={{ fontSize: 10.5, fontWeight: 700, color: an.diffTotal > 2 ? '#DC2626' : an.diffTotal < -2 ? '#15803D' : '#6b7280' }} title="Total dos itens com custo médio vs custo médio de referência">{an.diffTotal > 0 ? '▲ +' : an.diffTotal < 0 ? '▼ ' : ''}{an.diffTotal.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% vs médio</div>}
                 </div>
+                <button onClick={() => setAnaliseAberta(aberto ? null : p.chave)} className="btn" style={{ padding: '8px 12px', display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }} title="Análise de custo médio do pedido">📊 Custo</button>
                 <a href={link(p)} target="_blank" rel="noreferrer" className="btn" style={{ padding: '8px 14px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }}>
                   <ExternalLink size={15} /> Abrir
                 </a>
@@ -216,7 +242,31 @@ export default function PedidosPage() {
                   <Send size={15} /> Enviar
                 </button>
               </div>
-            ))}
+              {aberto && <div style={{ ...card, marginTop: -6, background: 'var(--bg)' }}>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>📊 Análise de custo do pedido <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: 11.5 }}>· preço do pedido × custo médio de referência</span></div>
+                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 10, fontSize: 12 }}>
+                  <span><b>Custo médio ref.:</b> {fmtR$(an.refTotal)}</span>
+                  <span><b>Pedido (itens c/ ref.):</b> {fmtR$(an.pedComRef)}</span>
+                  <span style={{ color: an.extra > 0.01 ? '#DC2626' : an.extra < -0.01 ? '#15803D' : '#6b7280', fontWeight: 700 }}>{an.extra > 0.01 ? `Custo extra +${fmtR$(an.extra)}` : an.extra < -0.01 ? `Economia ${fmtR$(-an.extra)}` : 'No custo médio'}{an.diffTotal != null ? ` (${an.diffTotal > 0 ? '+' : ''}${an.diffTotal.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%)` : ''}</span>
+                  <span style={{ color: 'var(--muted)' }}>{an.comRef} de {(p.itens || []).length} itens com custo médio</span>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 560 }}>
+                    <thead><tr style={{ textAlign: 'left', color: 'var(--muted)', fontSize: 10.5, textTransform: 'uppercase' }}><th style={{ padding: 6 }}>Produto</th><th>Qtd</th><th>Preço pedido</th><th>Custo médio</th><th>Δ</th><th>Subtotal</th></tr></thead>
+                    <tbody>{an.linhas.map((r, k) => <tr key={k} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: 6, fontWeight: 600 }}>{r.it.produto}</td>
+                      <td>{r.it.qtd} {r.it.un || ''}</td>
+                      <td>{fmtR$(r.it.preco)}</td>
+                      <td style={{ color: 'var(--muted)' }}>{r.cm != null ? fmtR$(r.cm) : '—'}</td>
+                      <td style={{ fontWeight: 700, color: r.diff == null ? 'var(--muted)' : r.diff > 2 ? '#DC2626' : r.diff < -2 ? '#15803D' : '#6b7280' }}>{r.diff == null ? '—' : (r.diff > 0 ? '+' : '') + r.diff.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%'}</td>
+                      <td style={{ fontWeight: 600 }}>{fmtR$(r.sub)}</td>
+                    </tr>)}</tbody>
+                  </table>
+                </div>
+                <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 6 }}>Custo médio = média ponderada das compras (estoque). Δ compara o preço do pedido com o custo médio (🔴 acima / 🟢 abaixo). Itens sem custo médio ainda não têm histórico de compra itemizado.</div>
+              </div>}
+              </Fragment>
+            )})}
           </div>}
 
       {/* Modal: novo pedido manual */}
