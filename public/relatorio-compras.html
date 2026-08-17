@@ -43,6 +43,10 @@ table.subt{min-width:0;width:100%;font-size:12px;margin:4px 0 0}
 table.subt thead th{position:static;background:transparent;padding:6px 8px}
 table.subt td{padding:5px 8px}
 table.subt tfoot td{font-weight:700;border-top:2px solid var(--border);color:var(--text)}
+.anal{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 2px}
+.anal .tag{font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:20px;border:1px solid var(--border)}
+.anal .tag.ok{background:#DCFCE7;color:#15803D}.anal .tag.bad{background:#FEE2E2;color:#B91C1C}.anal .tag.neu{background:#f1eef0;color:#6f656a}
+@media(prefers-color-scheme:dark){.anal .tag.ok{background:#0f2e1b;color:#4ade80}.anal .tag.bad{background:#3a1414;color:#f87171}.anal .tag.neu{background:#2a2224;color:#a79ca0}}
 details.abcd{margin:8px 0;border:1px solid var(--border);border-radius:12px;background:var(--card);box-shadow:var(--shadow);overflow:hidden}
 details.abcd>summary{cursor:pointer;padding:11px 14px;font-weight:700;font-size:13.5px;list-style:none;display:flex;justify-content:space-between;gap:10px;align-items:center}
 details.abcd>summary::-webkit-details-marker{display:none}
@@ -77,21 +81,33 @@ async function rpc(){
   return r.json();
 }
 
-// mini-tabela: cada compra do produto (data, qtd, preço unit, total, Δ% vs compra anterior)
+// preço unitário: usa o do banco ou divide valor pela quantidade
+const unitOf=c=>c.preco_unit!=null?Number(c.preco_unit):(Number(c.qtd)>0?c.valor/Number(c.qtd):null);
+
+// mini-tabela analítica por produto: cada compra + onde foi mais barato/mais caro + %
 function detalheCompras(i){
   const cs=(i.compras||[]);
   if(!cs.length) return '<div class="mut" style="padding:8px">Sem detalhamento de compras.</div>';
+  let minU=null,maxU=null,minC=null,maxC=null;
+  cs.forEach(c=>{const u=unitOf(c);if(u==null)return;if(minU==null||u<minU){minU=u;minC=c;}if(maxU==null||u>maxU){maxU=u;maxC=c;}});
+  const spread=(minU!=null&&maxU!=null&&minU>0)?((maxU-minU)/minU*100):null;
+  const analise=(minU!=null)?`<div class="anal">
+     <span class="tag ok">🟢 Mais barato: ${un(minU,i.un_base)} · ${esc(minC.fornecedor||'—')} · ${dDMY(minC.data)}</span>
+     <span class="tag bad">🔴 Mais caro: ${un(maxU,i.un_base)} · ${esc(maxC.fornecedor||'—')} · ${dDMY(maxC.data)}</span>
+     ${spread?`<span class="tag neu">Diferença +${spread.toLocaleString('pt-BR',{maximumFractionDigits:1})}% do mais barato ao mais caro</span>`:''}
+   </div>`:'';
   let prev=null;
   const rows=cs.map(c=>{
-    const pu=(c.preco_unit==null?null:Number(c.preco_unit));
+    const pu=unitOf(c);
     let d='<span class="mut">—</span>';
     if(pu!=null&&prev!=null&&prev!==0){const v=(pu-prev)/prev*100;d=`<span class="${v>0?'up':v<0?'down':'mut'}">${pct(v)}</span>`;}
     if(pu!=null)prev=pu;
-    return `<tr><td>${dDMY(c.data)}</td><td class="mut">${esc(c.fornecedor||'—')}</td><td class="num">${c.qtd?nf(c.qtd):'—'}${i.un_base&&c.qtd?' '+i.un_base:''}</td><td class="num">${pu!=null?un(pu,i.un_base):'<span class=mut>s/ un.</span>'}</td><td class="num">${brl(c.valor)}</td><td class="num">${d}</td></tr>`;
+    const mk=(pu!=null&&pu===minU)?'🟢 ':(pu!=null&&pu===maxU&&maxU!==minU)?'🔴 ':'';
+    return `<tr><td>${mk}${dDMY(c.data)}</td><td class="mut">${esc(c.fornecedor||'—')}</td><td class="num">${c.qtd?nf(c.qtd):'—'}${i.un_base&&c.qtd?' '+i.un_base:''}</td><td class="num">${pu!=null?un(pu,i.un_base):'<span class=mut>s/ un.</span>'}</td><td class="num">${brl(c.valor)}</td><td class="num">${d}</td></tr>`;
   }).join('');
-  return `<table class="subt"><thead><tr><th>Data da compra</th><th>Fornecedor</th><th class="num">Qtd</th><th class="num">Preço un.</th><th class="num">Total</th><th class="num">Δ vs compra ant.</th></tr></thead>
+  return `${analise}<table class="subt"><thead><tr><th>Data da compra</th><th>Fornecedor (lugar)</th><th class="num">Qtd</th><th class="num">Preço un.</th><th class="num">Total</th><th class="num">Δ vs compra ant.</th></tr></thead>
    <tbody>${rows}</tbody>
-   <tfoot><tr><td colspan="2">${cs.length} compra(s) no período</td><td class="num">${i.qtd_total?nf(i.qtd_total):'—'}${i.un_base?' '+i.un_base:''}</td><td class="num mut">méd ${un(i.preco_medio,i.un_base)}</td><td class="num">${brl(i.custo_total)}</td><td></td></tr></tfoot></table>`;
+   <tfoot><tr><td colspan="2">${cs.length} compra(s) no período · qtd total comprada</td><td class="num">${i.qtd_total?nf(i.qtd_total):'—'}${i.un_base?' '+i.un_base:''}</td><td class="num mut">méd ${un(i.preco_medio,i.un_base)}</td><td class="num">${brl(i.custo_total)}</td><td></td></tr></tfoot></table>`;
 }
 
 function render(d){
@@ -181,7 +197,8 @@ function render(d){
   <div class="tw scrollbox"><table><thead><tr><th>Produto</th><th>Data</th><th class="num">Preço ant. → últ.</th><th class="num">Alta</th><th class="num">Custo extra</th></tr></thead>
     <tbody>${impacto.map(x=>`<tr><td class="prod">${esc(x.i.produto)}</td><td class="mut">${dDMY(x.i.ultima)}</td><td class="num mut">${un(x.i.preco_anterior,x.i.un_base)} → ${un(x.i.preco_ultimo,x.i.un_base)}</td><td class="num up">${pct(x.i.var_anterior)}</td><td class="num up">${brl(x.extra)}</td></tr>`).join('')||'<tr><td colspan="5" class="msg">Sem impacto de altas no período.</td></tr>'}</tbody></table></div>
 
-  <h2>Compras por produto <span class="h2s">clique num produto para ver cada compra (data, qtd, preço e total) e a variação compra a compra</span></h2>
+  <h2>Compras por produto <span class="h2s">clique num produto para ver cada compra (data, lugar, qtd, preço, total), onde comprou mais barato/mais caro e a % · ${itens.filter(i=>i.preco_ultimo!=null).length} itemizados</span></h2>
+  <p class="sub" style="margin:0 0 8px">Busque um produto (ex.: <b>tomate</b>) e clique para ver: quantas vezes comprou, quantidade total, e cada compra com data, fornecedor, quantidade e preço unitário. Consumo por período ainda não é registrado no sistema (entra quando as saídas de estoque forem lançadas).</p>
   <input class="search" id="busca" placeholder="🔎 Buscar produto (ex.: tomate) — mostra quantas vezes comprou e cada preço" />
   <div class="tw"><table>
     <thead><tr><th>Produto</th><th>ABC</th><th class="num">Compras</th><th class="num">Qtd total</th><th class="num">Custo total</th><th class="num">Últ. preço</th><th class="num">Médio</th><th class="num">Menor</th><th class="num">Δ vs ant.</th><th>Avaliação</th></tr></thead>
