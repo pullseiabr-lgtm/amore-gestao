@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Tarefas — Amore</title>
+<style>
+:root{--vinho:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--bad:#B91C1C;--gold:#A9791F;--shadow:0 1px 2px rgba(80,20,25,.05),0 8px 24px -12px rgba(80,20,25,.12)}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c;--gold:#D8AE5A;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6)}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5;font-variant-numeric:tabular-nums}
+.wrap{max-width:860px;margin:0 auto;padding:22px 16px 60px}
+header.top{border-bottom:2px solid var(--vinho);padding-bottom:16px;margin-bottom:14px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.brand img{height:28px;width:auto}.brand b{font-size:20px;font-weight:800;color:var(--vinho)}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
+h1{font-size:clamp(20px,4.5vw,27px);margin:6px 0 4px;line-height:1.14}
+.sub{color:var(--muted);font-size:14px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:16px 0 6px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:11px 13px;box-shadow:var(--shadow)}
+.kpi .kn{font-size:20px;font-weight:800}.kpi .kl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+.kpi.bad{border-left:4px solid var(--bad)}.kpi.ok{border-left:4px solid var(--ok)}.kpi.warn{border-left:4px solid var(--warn)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:15px 17px;box-shadow:var(--shadow);margin-top:12px;border-left:4px solid var(--border)}
+.card.crit{border-left-color:var(--bad)}.card.alta{border-left-color:var(--warn)}.card.done{opacity:.62}
+.crow{display:flex;align-items:flex-start;gap:10px;justify-content:space-between;flex-wrap:wrap}
+.tnum{color:var(--vinho);font-weight:800;font-size:13px}
+.ctit{font-weight:700;font-size:15.5px;margin:2px 0 4px;flex:1 1 60%;min-width:200px}
+.pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap}
+.p-mkt{background:#FDE8E8;color:#B91C1C}.p-del{background:#DCFCE7;color:#15803D}.p-outro{background:#eef;color:#3730A3}
+.s-pendente{background:#FEF3C7;color:#92400E}.s-andamento{background:#DBEAFE;color:#1D4ED8}.s-concluido{background:#DCFCE7;color:#15803D}.s-cancelado{background:#F3F4F6;color:#6B7280}.s-aguardando{background:#FEF3C7;color:#B45309}
+@media(prefers-color-scheme:dark){.p-mkt{background:#3a1414;color:#f87171}.p-del{background:#0f2e1b;color:#4ade80}.p-outro{background:#1e1e3a;color:#a5b4fc}.s-pendente{background:#33270a;color:#fbbf24}.s-andamento{background:#10233f;color:#93c5fd}.s-concluido{background:#0f2e1b;color:#4ade80}.s-cancelado{background:#2a2a2a;color:#9ca3af}.s-aguardando{background:#33270a;color:#fbbf24}}
+.desc{font-size:13.5px;color:var(--text);margin:8px 0 0}
+.ent{font-size:12.5px;color:var(--muted);margin:7px 0 0;border-top:1px dashed var(--border);padding-top:7px}
+.ent b{color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:10.5px}
+.meta{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+.meta .prazo{font-weight:700;color:var(--text)}
+.grp{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--vinho);font-weight:700;margin:24px 0 2px}
+.foot{margin-top:30px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
+.msg{text-align:center;padding:60px 20px;color:var(--muted)}
+@media print{body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Carregando tarefas…</div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY};
+const q=new URLSearchParams(location.search);
+const canon=l=>({'Amore Costa Dourada':'Amore CD','Flow Paiva':'Amore Paiva'}[l]||l);
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const g=async p=>{try{return await (await fetch(SB+'/rest/v1/'+p,{headers:H})).json()}catch(e){return []}};
+const SL={pendente:['Pendente','s-pendente'],em_andamento:['Em andamento','s-andamento'],aguardando_retorno:['Aguardando retorno','s-aguardando'],aguardando_fornecedor:['Aguardando fornecedor','s-aguardando'],concluido:['Concluído','s-concluido'],cancelado:['Cancelado','s-cancelado']};
+const setPill=s=>{const k=(s||'').toLowerCase();if(k==='marketing'||k==='mídia off'||k==='midia off')return'p-mkt';if(k==='delivery')return'p-del';return'p-outro';};
+const fD=d=>{if(!d)return'—';const p=String(d).slice(0,10).split('-');return p.length===3?`${p[2]}/${p[1]}`:d;};
+(async()=>{
+  const app=document.getElementById('app');
+  const id=(q.get('id')||'').trim();
+  const loja=canon((q.get('loja')||'').trim());
+  const resp=(q.get('resp')||'').trim();
+  let filtro='order=numero.asc&limit=500';
+  if(id) filtro=`id=eq.${encodeURIComponent(id)}`;
+  else{ const parts=[]; if(loja)parts.push(`loja=eq.${encodeURIComponent(loja)}`); if(resp)parts.push(`responsavel_nome=ilike.*${encodeURIComponent(resp)}*`); filtro=(parts.join('&')||'limit=200')+'&order=prazo.asc,numero.asc&limit=500'; }
+  const rows=await g(`tarefas?select=numero,titulo,descricao,setor,status,prioridade,responsavel_nome,prazo,entregaveis,loja&${filtro}`);
+  if(!rows||!rows.length){app.innerHTML='<div class="msg">Nenhuma tarefa encontrada.</div>';return;}
+  const ativos=rows.filter(t=>t.status!=='concluido'&&t.status!=='cancelado');
+  const concl=rows.filter(t=>t.status==='concluido').length;
+  const hoje=new Date().toISOString().slice(0,10);
+  const atrasadas=ativos.filter(t=>t.prazo&&t.prazo<hoje).length;
+  const quem=resp||(rows[0]&&rows[0].responsavel_nome)||'';
+  const lojaLbl=loja||(rows[0]&&rows[0].loja)||'';
+  document.title='Tarefas — '+(quem||lojaLbl||'Amore');
+  const card=t=>{
+    const st=SL[t.status]||[t.status,'s-pendente'];
+    const cls=t.status==='concluido'?'done':(t.status!=='cancelado'&&t.prazo&&t.prazo<hoje?'crit':(t.prioridade==='alta'||t.prioridade==='urgente'?'alta':''));
+    return `<div class="card ${cls}">
+      <div class="crow"><div><span class="tnum">Nº${esc(t.numero)}</span> <span class="pill ${setPill(t.setor)}">${esc(t.setor||'—')}</span></div><span class="pill ${st[1]}">${esc(st[0])}</span></div>
+      <div class="ctit">${esc(t.titulo)}</div>
+      ${t.descricao?`<div class="desc">${esc(t.descricao)}</div>`:''}
+      ${t.entregaveis?`<div class="ent"><b>Entregável</b> — ${esc(t.entregaveis)}</div>`:''}
+      <div class="meta"><span class="prazo">📅 ${fD(t.prazo)}</span><span>👤 ${esc(t.responsavel_nome||'—')}</span><span>Prioridade: ${esc(t.prioridade||'—')}</span></div>
+    </div>`;
+  };
+  app.innerHTML=`<header class="top"><div class="brand"><img src="/logo-amore-red.png" alt="Amore" onerror="this.replaceWith(Object.assign(document.createElement('b'),{textContent:'amore'}))"></div>
+    <div class="eyebrow">Amore · Central de Tarefas</div>
+    <h1>${quem?esc(quem):'Tarefas'}${lojaLbl?` <span class="sub">· ${esc(lojaLbl)}</span>`:''}</h1>
+    <div class="kpis">
+      <div class="kpi"><div class="kn">${rows.length}</div><div class="kl">Total</div></div>
+      <div class="kpi warn"><div class="kn">${ativos.length}</div><div class="kl">Em aberto</div></div>
+      <div class="kpi ok"><div class="kn">${concl}</div><div class="kl">Concluídas</div></div>
+      ${atrasadas?`<div class="kpi bad"><div class="kn">${atrasadas}</div><div class="kl">Atrasadas</div></div>`:''}
+    </div></header>
+    ${rows.map(card).join('')}
+    <div class="foot">Central de Tarefas — Painel Amore${lojaLbl?' · '+esc(lojaLbl):''}. Atualize o status direto no painel.</div>`;
+})();
+</script>
+</body>
+</html>
