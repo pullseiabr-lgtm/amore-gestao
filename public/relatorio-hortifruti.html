@@ -57,6 +57,7 @@ const q=new URLSearchParams(location.search);
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const nq=v=>(Math.round((Number(v)||0)*100)/100).toLocaleString('pt-BR');
+const fmtQ=qtys=>{const e=Object.entries(qtys||{}).filter(([,v])=>v);return e.length?e.map(([u,v])=>nq(v)+' '+esc(u)).join(' + '):'—';};
 const fD=d=>{const p=String(d||'').slice(0,10).split('-');return p.length===3?`${p[2]}/${p[1]}`:esc(d);};
 const shortF=f=>{f=String(f||'').trim();return f.length>26?esc(f.slice(0,24))+'…':esc(f||'—');};
 (async()=>{
@@ -70,14 +71,14 @@ const shortF=f=>{f=String(f||'').trim();return f.length>26?esc(f.slice(0,24))+'�
     <div class="kpi grand"><div class="kn">${brl(d.grandTotal)}</div><div class="kl">Total hortifruti (jul+ago)</div></div>
     ${(d.lojas||[]).map(l=>`<div class="kpi"><div class="kn">${brl(l.totalValor)}</div><div class="kl">${esc(l.loja)}</div><div class="ks">${l.totalItens} itens · Jul ${brl(l.jul)} · Ago ${brl(l.ago)}</div></div>`).join('')}
   </div>`;
-  const aviso=d.naoItemizado&&d.naoItemizado.n?`<div class="aviso">⚠️ Além do detalhado acima, há <b>${d.naoItemizado.n} lançamentos de "Hortifruti" genéricos</b> (compras em bloco, sem quebra item a item) somando <b>${brl(d.naoItemizado.valor)}</b> — não entram no item a item por não terem os produtos discriminados na nota.</div>`:'';
+  const aviso=`${d.ressalva?`<div class="aviso">⚠️ <b>Ressalva:</b> ${esc(d.ressalva)}</div>`:''}${d.fonte?`<div class="aviso" style="border-left-color:var(--gold)">ℹ️ <b>Base:</b> ${esc(d.fonte)}</div>`:''}`;
   const secoes=lojas.map(l=>`<section class="loja">
     <div class="ljhead"><h2>${esc(l.loja)}</h2><span class="ljtot">${brl(l.totalValor)}</span></div>
     <div class="ljmeta">${l.totalItens} itens · Julho ${brl(l.jul)} · Agosto ${brl(l.ago)}</div>
     ${l.itens.map(it=>`<details class="item"><summary>
         <span class="inome">${esc(it.nome)}<span class="exp">▸ ${it.nCompras} compra(s)</span></span>
         <span class="ibad">${it.nCompras}×</span>
-        <span class="iqtd">${it.totQtd!=null?nq(it.totQtd)+' '+esc((it.unis||[]).join('/')):'—'}</span>
+        <span class="iqtd">${fmtQ(it.qtys)}</span>
         <span class="ival">${brl(it.totVal)}</span>
       </summary>
       <div class="compras"><table><thead><tr><th>Data</th><th>Fornecedor</th><th style="text-align:right">Qtd</th><th style="text-align:right">Valor</th></tr></thead><tbody>
