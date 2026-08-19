@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Compras de Hortifruti — Amore</title>
+<style>
+:root{--vinho:#8B1212;--bg:#faf7f6;--card:#fff;--soft:#f3ece9;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--warnbg:#FEF3C7;--gold:#A9791F;--shadow:0 1px 2px rgba(80,20,25,.05),0 8px 24px -12px rgba(80,20,25,.12)}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--soft:#241c1e;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c;--warnbg:#33270a;--gold:#D8AE5A;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6)}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5;font-variant-numeric:tabular-nums}
+.wrap{max-width:940px;margin:0 auto;padding:22px 16px 60px}
+header.top{border-bottom:2px solid var(--vinho);padding-bottom:16px;margin-bottom:14px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:12px}.brand img{height:28px;width:auto}.brand b{font-size:20px;font-weight:800;color:var(--vinho)}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
+h1{font-size:clamp(21px,4.5vw,28px);margin:6px 0 4px;line-height:1.14}.sub{color:var(--muted);font-size:14px}
+.headrow{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.btn{border:1px solid var(--vinho);background:var(--vinho);color:#fff;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0 4px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow)}
+.kpi .kn{font-size:19px;font-weight:800}.kpi .kl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+.kpi.grand{border-left:4px solid var(--vinho)}.kpi .ks{font-size:11.5px;color:var(--muted);margin-top:3px}
+.aviso{background:var(--warnbg);border:1px solid var(--border);border-left:4px solid var(--warn);border-radius:11px;padding:11px 14px;font-size:13px;margin:14px 0 0;color:var(--text)}
+section.loja{margin-top:30px}
+.ljhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;border-bottom:2px solid var(--soft);padding-bottom:6px}
+.ljhead h2{font-size:19px;margin:0;color:var(--vinho)}
+.ljtot{font-size:19px;font-weight:800}
+.ljmeta{font-size:12.5px;color:var(--muted);margin:4px 0 4px}
+details.item{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);margin-top:9px;overflow:hidden}
+details.item>summary{list-style:none;cursor:pointer;padding:11px 14px;display:grid;grid-template-columns:1fr auto auto auto;gap:10px;align-items:center}
+details.item>summary::-webkit-details-marker{display:none}
+.inome{font-weight:700;font-size:14.5px}.inome .exp{color:var(--muted);font-weight:400;font-size:12px;margin-left:6px}
+.ibad{font-size:11px;color:var(--muted);white-space:nowrap}
+.iqtd{font-size:12.5px;color:var(--muted);white-space:nowrap;text-align:right;min-width:70px}
+.ival{font-weight:800;font-size:14.5px;white-space:nowrap;text-align:right;min-width:84px}
+.compras{border-top:1px dashed var(--border);background:var(--soft)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+.compras th{text-align:left;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:7px 14px}
+.compras td{padding:6px 14px;border-top:1px solid var(--border)}
+.compras td.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.compras .forn{color:var(--muted)}
+.foot{margin-top:34px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
+.msg{text-align:center;padding:60px 20px;color:var(--muted)}
+.tools{display:flex;gap:8px;margin-top:14px}
+.tbtn{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer}
+@media(max-width:560px){details.item>summary{grid-template-columns:1fr auto;row-gap:3px}.iqtd{grid-column:1;text-align:left;min-width:0}.ibad{display:none}}
+@media print{.btn,.tools{display:none}body{background:#fff}details.item{break-inside:avoid}details.item[open]>summary{}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Carregando relatório…</div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY};
+const q=new URLSearchParams(location.search);
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const nq=v=>(Math.round((Number(v)||0)*100)/100).toLocaleString('pt-BR');
+const fD=d=>{const p=String(d||'').slice(0,10).split('-');return p.length===3?`${p[2]}/${p[1]}`:esc(d);};
+const shortF=f=>{f=String(f||'').trim();return f.length>26?esc(f.slice(0,24))+'…':esc(f||'—');};
+(async()=>{
+  const app=document.getElementById('app');
+  const row=(await (await fetch(SB+'/rest/v1/app_config?select=valor&chave=eq.relatorio_hortifruti_jul_ago',{headers:H})).json())[0];
+  if(!row||!row.valor){app.innerHTML='<div class="msg">Relatório não encontrado.</div>';return;}
+  const d=row.valor;
+  const filtroLoja=(q.get('loja')||'').trim();
+  let lojas=d.lojas||[]; if(filtroLoja) lojas=lojas.filter(l=>l.loja===filtroLoja);
+  const kpis=`<div class="kpis">
+    <div class="kpi grand"><div class="kn">${brl(d.grandTotal)}</div><div class="kl">Total hortifruti (jul+ago)</div></div>
+    ${(d.lojas||[]).map(l=>`<div class="kpi"><div class="kn">${brl(l.totalValor)}</div><div class="kl">${esc(l.loja)}</div><div class="ks">${l.totalItens} itens · Jul ${brl(l.jul)} · Ago ${brl(l.ago)}</div></div>`).join('')}
+  </div>`;
+  const aviso=d.naoItemizado&&d.naoItemizado.n?`<div class="aviso">⚠️ Além do detalhado acima, há <b>${d.naoItemizado.n} lançamentos de "Hortifruti" genéricos</b> (compras em bloco, sem quebra item a item) somando <b>${brl(d.naoItemizado.valor)}</b> — não entram no item a item por não terem os produtos discriminados na nota.</div>`:'';
+  const secoes=lojas.map(l=>`<section class="loja">
+    <div class="ljhead"><h2>${esc(l.loja)}</h2><span class="ljtot">${brl(l.totalValor)}</span></div>
+    <div class="ljmeta">${l.totalItens} itens · Julho ${brl(l.jul)} · Agosto ${brl(l.ago)}</div>
+    ${l.itens.map(it=>`<details class="item"><summary>
+        <span class="inome">${esc(it.nome)}<span class="exp">▸ ${it.nCompras} compra(s)</span></span>
+        <span class="ibad">${it.nCompras}×</span>
+        <span class="iqtd">${it.totQtd!=null?nq(it.totQtd)+' '+esc((it.unis||[]).join('/')):'—'}</span>
+        <span class="ival">${brl(it.totVal)}</span>
+      </summary>
+      <div class="compras"><table><thead><tr><th>Data</th><th>Fornecedor</th><th style="text-align:right">Qtd</th><th style="text-align:right">Valor</th></tr></thead><tbody>
+      ${it.compras.map(c=>`<tr><td class="n">${fD(c.data)}</td><td class="forn">${shortF(c.forn)}</td><td class="n">${c.qtd!=null?nq(c.qtd)+' '+esc(c.un):'—'}</td><td class="n">${brl(c.valor)}</td></tr>`).join('')}
+      </tbody></table></div></details>`).join('')}
+  </section>`).join('');
+  app.innerHTML=`<header class="top"><div class="brand"><img src="/logo-amore-red.png" alt="Amore" onerror="this.replaceWith(Object.assign(document.createElement('b'),{textContent:'amore'}))"></div>
+    <div class="headrow"><div><div class="eyebrow">Amore · Relatório de Compras</div><h1>${esc(d.titulo)}</h1><div class="sub">${esc(d.subtitulo)} · ${esc(d.periodo)}</div></div><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></div>
+    ${kpis}${aviso}
+    <div class="tools"><button class="tbtn" onclick="document.querySelectorAll('details.item').forEach(x=>x.open=true)">Expandir tudo</button><button class="tbtn" onclick="document.querySelectorAll('details.item').forEach(x=>x.open=false)">Recolher tudo</button></div>
+    ${secoes}
+    <div class="foot">Relatório gerado pelo Painel Amore · fonte: caixas (compras e recebimentos) · ${esc(d.periodo)}.</div>`;
+})();
+</script>
+</body>
+</html>
