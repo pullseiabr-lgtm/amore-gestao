@@ -50,6 +50,7 @@ const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
 const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
 const H={apikey:KEY,Authorization:'Bearer '+KEY};
 const q=new URLSearchParams(location.search); const P=(q.get('p')||'').trim();
+const LOGO_FLOW='<svg viewBox="0 0 300 60" xmlns="http://www.w3.org/2000/svg" style="height:30px;width:auto" role="img" aria-label="Flow"><text x="0" y="48" font-family="system-ui,Segoe UI,sans-serif" font-weight="800" font-size="52" letter-spacing="-2" fill="#2E7D34">FLO</text><path d="M120 12 C144 12 136 48 160 48 C184 48 176 12 200 12 C224 12 216 48 240 48 C264 48 268 14 280 14" fill="none" stroke="#2E7D34" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const qf=v=>Number.isInteger(Number(v))?String(v):Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:3});
@@ -96,10 +97,12 @@ async function run(){
   const row=(await (await fetch(SB+'/rest/v1/app_config?select=valor&chave=eq.'+encodeURIComponent(chave),{headers:H})).json())[0];
   if(!row){ document.getElementById('app').innerHTML='<div class="msg">Pedido não encontrado.</div>'; return; }
   const d=row.valor;
+  const flow=/flow/i.test(d.loja||''); const MARCA=flow?'Flow':'Amore';
+  if(flow){ document.documentElement.style.setProperty('--vinho','#2E7D34'); document.title='Pedido de Compra — Flow'; }
   const rows=(d.itens||[]).map((i,n)=>'<tr><td class="num">'+(n+1)+'</td><td class="prod">'+esc(i.produto)+'</td><td class="num">'+qf(i.qtd)+' <span class="un">'+esc(i.un||'')+'</span></td><td class="num">'+brl(i.preco)+'</td><td class="num">'+brl(i.subtotal!=null?i.subtotal:(i.preco*i.qtd))+'</td></tr>').join('');
   const total=d.total!=null?d.total:(d.itens||[]).reduce((s,i)=>s+(i.subtotal!=null?i.subtotal:i.preco*i.qtd),0);
   document.getElementById('app').innerHTML=
-   '<header class="top"><div><div class="eyebrow">Amore · Pedido de Compra</div><h1>'+esc(d.fornecedor||'Fornecedor')+'</h1><div class="sub">'+esc(d.loja||'')+' · '+fD(d.data)+(d.pagamento?' · '+esc(d.pagamento):'')+'</div></div><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></header>'
+   '<header class="top"><div>'+(flow?'<div style="margin-bottom:6px">'+LOGO_FLOW+'</div>':'')+'<div class="eyebrow">'+MARCA+' · Pedido de Compra</div><h1>'+esc(d.fornecedor||'Fornecedor')+'</h1><div class="sub">'+esc(d.loja||'')+' · '+fD(d.data)+(d.pagamento?' · '+esc(d.pagamento):'')+'</div></div><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></header>'
    +'<div class="meta">'
      +(d.cliente?'<div><div class="l">Cliente</div><div class="v">'+esc(d.cliente)+'</div></div>':'')
      +'<div><div class="l">Itens</div><div class="v">'+(d.itens||[]).length+'</div></div>'
