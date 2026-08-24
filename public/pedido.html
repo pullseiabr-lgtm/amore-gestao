@@ -106,6 +106,8 @@ async function run(){
    +'<div class="meta">'
      +(d.cliente?'<div><div class="l">Cliente</div><div class="v">'+esc(d.cliente)+'</div></div>':'')
      +'<div><div class="l">Itens</div><div class="v">'+(d.itens||[]).length+'</div></div>'
+     +((d.janela_entrega||d.data)?'<div><div class="l">Entrega</div><div class="v">'+fD(d.janela_entrega||d.data)+'</div></div>':'')
+     +(d.horario_recebimento?'<div><div class="l">Horário de recebimento</div><div class="v">'+esc(d.horario_recebimento)+'</div></div>':'')
      +(d.recebimento_responsavel?'<div><div class="l">Recebimento</div><div class="v">'+esc(d.recebimento_responsavel)+'</div></div>':'')
      +'<div><div class="l">Total</div><div class="v" style="color:var(--vinho)">'+brl(total)+'</div></div>'
    +'</div>'
