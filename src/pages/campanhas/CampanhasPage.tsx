@@ -12,7 +12,9 @@ const TIPOS = [
   { key: 'evento', label: 'Convite p/ evento' }, { key: 'novidade', label: 'Novo prato' },
   { key: 'pesquisa', label: 'Pesquisa' }, { key: 'recuperacao', label: 'Recuperar insatisfeito' },
 ]
-const LOJAS = [{ key: '', label: 'Todas as lojas' }, { key: 'Amore Paiva', label: 'Amore Paiva' }, { key: 'Amore CD', label: 'Amore Costa Dourada' }]
+const LOJAS = [{ key: '', label: 'Todas as lojas' }, { key: 'Amore Paiva', label: 'Amore Paiva' }, { key: 'Amore CD', label: 'Amore Costa Dourada' }, { key: 'Flow CD', label: 'Flow Costa Dourada' }]
+// Sufixo de link para abrir as páginas públicas na marca do cliente (Flow = verde + logo Flow)
+const lojaQS = (store: string) => /flow/i.test(store || '') ? '&loja=flow-cd' : ''
 const SEGS = [
   { key: 'todos', label: 'Todos os clientes' },
   { key: 'aniv_hoje', label: '🎂 Aniversariantes de hoje' }, { key: 'aniv_semana', label: '🎂 Aniversariantes da semana' }, { key: 'aniv_mes', label: '🎂 Aniversariantes do mês' },
@@ -95,7 +97,7 @@ export default function CampanhasPage() {
     if (!confirm(`Gerar e enviar para ${aud.length} cliente(s)? O envio ocorre pelo worker do WhatsApp.`)) return
     // limpa envios anteriores pendentes desta campanha
     await sb.from('campaign_deliveries').delete().eq('campaign_id', saved.id).eq('status', 'pending')
-    const sairLink = (c: any) => c.prefs_token ? `\n\n_🔕 Sair: https://painel.amorefood.com.br/privacidade.html?t=${c.prefs_token}_` : ''
+    const sairLink = (c: any) => c.prefs_token ? `\n\n_🔕 Sair: https://painel.amorefood.com.br/privacidade.html?t=${c.prefs_token}${lojaQS(c.origin_store)}_` : ''
     const rows = aud.map(c => ({ campaign_id: saved.id, customer_id: c.id, phone: c.phone, name: c.name, channel: 'whatsapp', status: 'pending', message: render(saved.message, c, saved.link) + sairLink(c) }))
     for (let i = 0; i < rows.length; i += 500) { await sb.from('campaign_deliveries').insert(rows.slice(i, i + 500)) }
     await sb.from('campaigns').update({ status: 'enviando', selected_count: aud.length, updated_at: new Date().toISOString() }).eq('id', saved.id)

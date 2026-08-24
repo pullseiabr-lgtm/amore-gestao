@@ -16,6 +16,10 @@ const sel = (t, q = '') => fetch(`${SB_URL}/rest/v1/${t}?${q}`, { headers: H }).
 const patch = (t, q, row) => fetch(`${SB_URL}/rest/v1/${t}?${q}`, { method: 'PATCH', headers: { ...H, Prefer: 'return=minimal' }, body: JSON.stringify(row) })
 const soDig = s => (s || '').replace(/\D/g, '')
 const brDate = d => d ? d.split('-').reverse().join('/') : ''
+// Marca por unidade do cliente (Flow CD abre as páginas com logo/cor da Flow)
+const ehFlow = u => /flow/i.test(u || '')
+const marcaDe = u => ehFlow(u) ? 'Flow' : 'Amore'
+const lojaQS = u => ehFlow(u) ? '&loja=flow-cd' : ''
 
 async function enviar(number, text) {
   try {
@@ -39,18 +43,20 @@ async function rodar() {
     if (fone.length < 10) { await patch('rasp_participacoes', `id=eq.${p.id}`, { notificado_em: new Date().toISOString() }); continue }
     if (fone.length <= 11) fone = '55' + fone
     const nome = (p.nome || '').split(' ')[0]
-    const link = `https://painel.amorefood.com.br/raspar.html?t=${p.token}`
+    const marca = marcaDe(p.unidade)
+    const qs = lojaQS(p.unidade)
+    const link = `https://painel.amorefood.com.br/raspar.html?t=${p.token}${qs}`
     const msg = p.origem === 'aniversario'
       ? `🎉 Feliz aniversário, ${nome}! 🎂\n\n` +
-        `A Amore preparou um presente especial pra comemorar com você!\n` +
+        `A ${marca} preparou um presente especial pra comemorar com você!\n` +
         `Raspe e descubra:\n${link}\n\n` +
         `Aproveite muito o seu dia! 💚`
-      : `Obrigado por avaliar a Amore, ${nome}! 💚\n\n` +
+      : `Obrigado por avaliar a ${marca}, ${nome}! 💚\n\n` +
         `Você tem uma *raspadinha* esperando! 🎁\n` +
         `Raspe e descubra seu presente:\n${link}\n\n` +
         `Boa sorte! 🍀`
     const sairTok = p.customers?.prefs_token
-    const sair = sairTok ? `\n\n_🔕 Não quer mais receber? ${'https://painel.amorefood.com.br/privacidade.html?t=' + sairTok}_` : ''
+    const sair = sairTok ? `\n\n_🔕 Não quer mais receber? ${'https://painel.amorefood.com.br/privacidade.html?t=' + sairTok + qs}_` : ''
     const ok = await enviar(fone, msg + sair)
     await patch('rasp_participacoes', `id=eq.${p.id}`, { notificado_em: new Date().toISOString() })
     if (ok) n++
