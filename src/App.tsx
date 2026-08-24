@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from './contexts/AuthContext'
 import { carregarZapiCfgRemoto } from './lib/notify'
 import { useTheme } from './contexts/ThemeContext'
-import { LojaProvider } from './contexts/LojaContext'
+import { LojaProvider, useLoja } from './contexts/LojaContext'
 import LoginPage from './pages/auth/LoginPage'
 import Sidebar from './components/layout/Sidebar'
 import Topbar from './components/layout/Topbar'
@@ -197,6 +197,41 @@ const PAGE_TITLES: Record<PageId, string> = {
   etiquetas: 'Etiquetas & Leitura',
 }
 
+// Aplica a paleta Flow (verde) no painel quando a loja ativa é "Flow CD".
+// Restaura o tema padrão (do TenantSettings) para as demais lojas.
+function _lighten(hex: string, amount: number): string {
+  try {
+    const num = parseInt(hex.replace('#', ''), 16)
+    const r = Math.min(255, (num >> 16) + amount)
+    const g = Math.min(255, ((num >> 8) & 0xff) + amount)
+    const b = Math.min(255, (num & 0xff) + amount)
+    return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')
+  } catch { return hex }
+}
+function LojaBrand() {
+  const { loja } = useLoja()
+  const { theme } = useTheme()
+  useEffect(() => {
+    const root = document.documentElement.style
+    if (/flow/i.test(loja || '')) {
+      root.setProperty('--bordo', '#3FA34D')
+      root.setProperty('--bordo-l', '#58B94F')
+      root.setProperty('--bordo-d', '#2E7D34')
+      root.setProperty('--sidebar', '#123D18')
+      root.setProperty('--sidebar-a', _lighten('#123D18', 10))
+      root.setProperty('--sidebar-b', _lighten('#123D18', 8))
+    } else {
+      root.setProperty('--bordo', theme.primary_color)
+      root.setProperty('--bordo-l', theme.primary_light)
+      root.setProperty('--bordo-d', theme.primary_dark)
+      root.setProperty('--sidebar', theme.sidebar_color)
+      root.setProperty('--sidebar-a', _lighten(theme.sidebar_color, 10))
+      root.setProperty('--sidebar-b', _lighten(theme.sidebar_color, 8))
+    }
+  }, [loja, theme])
+  return null
+}
+
 function PageContent({ page }: { page: PageId }) {
   switch (page) {
     case 'dashboard': return <DashboardPage />
@@ -300,6 +335,7 @@ export default function App() {
 
   return (
     <LojaProvider stores={theme.stores || []}>
+      <LojaBrand />
       <div className="app-wrap">
         <Sidebar
           activePage={page}

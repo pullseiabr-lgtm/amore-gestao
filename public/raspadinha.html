@@ -60,7 +60,7 @@ h1{font-size:1.6rem;font-weight:800;text-align:center;line-height:1.2;margin-bot
 </head>
 <body>
 <div class="app">
-  <div class="brand"><img src="/logo-amore-white.png" alt="Amore" onerror="this.replaceWith(Object.assign(document.createElement('div'),{innerHTML:'<b style=font-size:1.8rem;font-weight:800>amore</b>'}))"><small id="unidadeLbl">Raspadinha</small></div>
+  <div class="brand"><img id="brandLogo" src="/logo-amore-white.png" alt="Amore" onerror="this.replaceWith(Object.assign(document.createElement('div'),{innerHTML:'<b style=font-size:1.8rem;font-weight:800>amore</b>'}))"><small id="unidadeLbl">Raspadinha</small></div>
   <div class="stage">
 
     <!-- CADASTRO -->
@@ -70,7 +70,7 @@ h1{font-size:1.6rem;font-weight:800;text-align:center;line-height:1.2;margin-bot
       <div class="field"><label>Seu nome</label><input id="nome" placeholder="Como podemos te chamar?" autocomplete="name"></div>
       <div class="field"><label>Seu WhatsApp</label><input id="fone" type="tel" inputmode="numeric" placeholder="(81) 9...." autocomplete="tel"></div>
       <div class="field"><label>Aniversário (opcional)</label><input id="nasc" type="date"></div>
-      <label class="consent"><input type="checkbox" id="consent"><span>Aceito participar e receber contato da Amore, e concordo com o <a href="#" onclick="alert(regulamento||'Regras da campanha.');return false">regulamento</a> e a Política de Privacidade (LGPD).</span></label>
+      <label class="consent"><input type="checkbox" id="consent"><span id="txtConsent">Aceito participar e receber contato da Amore, e concordo com o <a href="#" onclick="alert(regulamento||'Regras da campanha.');return false">regulamento</a> e a Política de Privacidade (LGPD).</span></label>
       <button class="btn btn-ouro" id="btnLiberar" onclick="liberar()">LIBERAR MINHA RASPADINHA</button>
       <div class="err" id="err1"></div>
     </section>
@@ -108,7 +108,7 @@ h1{font-size:1.6rem;font-weight:800;text-align:center;line-height:1.2;margin-bot
     </section>
 
   </div>
-  <div class="foot">Amore Food · Raspadinha Digital</div>
+  <div class="foot" id="footTag">Amore Food · Raspadinha Digital</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -117,12 +117,34 @@ const SB_URL='https://xdwnsqkzgopymufsuccr.supabase.co';
 const SB_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
 let sb=null; try{ sb=supabase.createClient(SB_URL,SB_ANON) }catch(e){}
 const p=new URLSearchParams(location.search);
-const LOJA_MAP={paiva:'Amore Paiva',cd:'Amore CD','costa-dourada':'Amore CD'};
+const LOJA_MAP={paiva:'Amore Paiva',cd:'Amore CD','costa-dourada':'Amore CD',flow:'Flow CD','flow-cd':'Flow CD','flow-costa-dourada':'Flow CD'};
 const SLUG=p.get('c')||p.get('campanha')||'batata-gratis';
 const UNIDADE=LOJA_MAP[(p.get('loja')||'').toLowerCase()]||p.get('loja')||'Amore Paiva';
 const ORIGEM=p.get('origem')||p.get('mesa')||null;
 const GARCOM=p.get('g')||p.get('garcom')||null;
 let regulamento='', minPct=60, resultado=null, WA='558130322619';
+
+/* ===================== MARCA (Amore / Flow) ===================== */
+const LOGO_FLOW=`<svg id="brandLogo" viewBox="0 0 300 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Flow" style="height:46px;width:auto;filter:drop-shadow(0 2px 8px rgba(0,0,0,.3))"><text x="0" y="50" font-family="Poppins, sans-serif" font-weight="800" font-size="58" letter-spacing="-2" fill="currentColor">FLO</text><path d="M148 14 C165 14 159 44 176 44 C193 44 187 14 204 14 C221 14 215 44 232 44 C249 44 243 14 260 14 C277 14 281 30 288 30" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const BRANDS={
+  amore:{ curto:'Amore', title:'Raspadinha Amore', themeColor:'#8B1212', footer:'Amore Food · Raspadinha Digital' },
+  flow:{ curto:'Flow', title:'Raspadinha Flow', themeColor:'#6DC06A', footer:'Flow · Raspadinha Digital', logoSVG:LOGO_FLOW, logoColor:'#fff',
+    css:{ '--vinho':'#2E7D34','--vermelho':'#2E7D34' },
+    bodyBg:'#6DC06A' },
+};
+BRANDS.amore.consent=`Aceito participar e receber contato da Amore, e concordo com o <a href="#" onclick="alert(regulamento||'Regras da campanha.');return false">regulamento</a> e a Política de Privacidade (LGPD).`;
+BRANDS.flow.consent=`Aceito participar e receber contato da Flow, e concordo com o <a href="#" onclick="alert(regulamento||'Regras da campanha.');return false">regulamento</a> e a Política de Privacidade (LGPD).`;
+const BRAND = /flow/i.test(UNIDADE) ? BRANDS.flow : BRANDS.amore;
+(function applyBrand(){
+  document.title=BRAND.title;
+  const mt=document.querySelector('meta[name="theme-color"]'); if(mt) mt.setAttribute('content',BRAND.themeColor);
+  if(BRAND.css){ const r=document.documentElement.style; for(const k in BRAND.css) r.setProperty(k,BRAND.css[k]); }
+  if(BRAND.bodyBg) document.body.style.background=BRAND.bodyBg;
+  if(BRAND.logoSVG){ const box=document.querySelector('.brand'); const img=document.getElementById('brandLogo'); if(img) img.outerHTML=BRAND.logoSVG; if(box&&BRAND.logoColor) box.style.color=BRAND.logoColor; }
+  const ft=document.getElementById('footTag'); if(ft) ft.textContent=BRAND.footer;
+  const cs=document.getElementById('txtConsent'); if(cs&&BRAND.consent) cs.innerHTML=BRAND.consent;
+})();
+
 document.getElementById('unidadeLbl').textContent = UNIDADE;
 
 // carrega config da campanha
@@ -218,12 +240,12 @@ function mostrarResultado(jaTinha){
     document.getElementById('cupomVal').textContent= d.validade? 'Válido até '+d.validade.split('-').reverse().join('/') : '';
     document.getElementById('btnCopiar').style.display='flex';
     const b=document.getElementById('btnWhats'); b.style.display='flex';
-    const msg=`Olá! Ganhei *${d.premio}* na Raspadinha Amore 🎉%0ACódigo: *${d.cupom}*${d.validade?'%0AVálido até '+d.validade.split('-').reverse().join('/'):''}%0AUnidade: ${UNIDADE}`;
+    const msg=`Olá! Ganhei *${d.premio}* na Raspadinha ${BRAND.curto} 🎉%0ACódigo: *${d.cupom}*${d.validade?'%0AVálido até '+d.validade.split('-').reverse().join('/'):''}%0AUnidade: ${UNIDADE}`;
     b.onclick=()=>window.open('https://wa.me/?text='+msg,'_blank');
     document.getElementById('resObs').textContent='Apresente o código ao atendente da '+UNIDADE+' para resgatar. 🍟';
     confetes();
   } else {
-    document.getElementById('resObs').textContent= ganhou? '' : 'Fique de olho nas próximas campanhas da Amore! 💛';
+    document.getElementById('resObs').textContent= ganhou? '' : ('Fique de olho nas próximas campanhas da '+BRAND.curto+'! 💛');
   }
   show('s3');
 }

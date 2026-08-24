@@ -111,7 +111,7 @@ h1 .em{font-size:2rem}
 </head>
 <body>
 <div class="app">
-  <div class="brand"><img src="/logo-amore-red.png" alt="Amore" class="logo-img"><small id="lojaNome">Sua opinião vale muito</small></div>
+  <div class="brand"><img id="brandLogo" src="/logo-amore-red.png" alt="Amore" class="logo-img"><small id="lojaNome">Sua opinião vale muito</small></div>
   <div class="dots"><i class="on" id="d1"></i><i id="d2"></i><i id="d3"></i></div>
   <div class="stage">
 
@@ -139,7 +139,7 @@ h1 .em{font-size:2rem}
 
     <!-- 3: VOLTARIA -->
     <section class="screen" id="s3">
-      <h1>Você voltaria<br>à Amore?</h1>
+      <h1 id="qVoltaria">Você voltaria<br>à Amore?</h1>
       <div class="simnao">
         <button class="btn-sim" onclick="setVoltaria(true)">✅<br>Sim</button>
         <button class="btn-nao" onclick="setVoltaria(false)">❌<br>Não</button>
@@ -162,7 +162,7 @@ h1 .em{font-size:2rem}
     <section class="screen" id="sGoogle">
       <div class="big-emoji">❤️</div>
       <h1>Que bom que<br>você gostou!</h1>
-      <p class="sub">Sua opinião ajuda a Amore a crescer. Poderia deixar sua avaliação no Google? Leva 10 segundos.</p>
+      <p class="sub" id="gSub">Sua opinião ajuda a Amore a crescer. Poderia deixar sua avaliação no Google? Leva 10 segundos.</p>
       <button class="btn btn-google" onclick="irGoogle()"><span style="font-size:1.2rem">⭐</span> Avaliar no Google</button>
       <button class="btn btn-ghost" onclick="goCadastro()">Agora não</button>
       <div class="gtag">É rapidinho e nos ajuda demais 🙏</div>
@@ -184,7 +184,7 @@ h1 .em{font-size:2rem}
 
     <!-- CADASTRO + CONSENTIMENTOS -->
     <section class="screen" id="sCadastro">
-      <h1>Sua raspadinha<br>Amore! 🎁</h1>
+      <h1 id="hRasp">Sua raspadinha<br>Amore! 🎁</h1>
       <p class="sub">Preencha para receber sua raspadinha agora mesmo.</p>
       <div class="field"><label>Seu nome</label><input id="cNome" placeholder="Como podemos te chamar?" autocomplete="name"></div>
       <div class="field"><label>Seu WhatsApp (DDD + número)</label><input id="cFone" type="tel" inputmode="numeric" placeholder="(81) 9 9999-9999" autocomplete="tel"></div>
@@ -194,8 +194,8 @@ h1 .em{font-size:2rem}
       </div>
       <div class="field"><label>E-mail (opcional)</label><input id="cEmail" type="email" placeholder="seu@email.com" autocomplete="email"></div>
       <label class="consent"><input type="checkbox" id="cObrig"><span><b>Autorizo</b> o uso do meu nome e WhatsApp para receber esta raspadinha e informações do prêmio.</span></label>
-      <label class="consent"><input type="checkbox" id="cMkt"><span>Quero receber promoções, novidades e campanhas da Amore pelo WhatsApp.</span></label>
-      <label class="consent"><input type="checkbox" id="cAniv"><span>Quero uma surpresa da Amore no mês do meu aniversário. 🎂</span></label>
+      <label class="consent"><input type="checkbox" id="cMkt"><span id="txtMkt">Quero receber promoções, novidades e campanhas da Amore pelo WhatsApp.</span></label>
+      <label class="consent"><input type="checkbox" id="cAniv"><span id="txtAniv">Quero uma surpresa da Amore no mês do meu aniversário. 🎂</span></label>
       <button class="btn btn-ouro" id="btnLiberar" onclick="liberarRaspadinha()">🎁 LIBERAR MINHA RASPADINHA</button>
       <div class="err" id="cErr"></div>
       <div class="priv">Seus dados são usados apenas para o benefício e as comunicações que você autorizar. Cancele quando quiser respondendo <b>SAIR</b>. (LGPD)</div>
@@ -244,7 +244,7 @@ h1 .em{font-size:2rem}
     </section>
 
   </div>
-  <div class="footer-tag">Amore Food · feito com ❤️</div>
+  <div class="footer-tag" id="footerTag">Amore Food · feito com ❤️</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -254,13 +254,56 @@ const SB_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJl
 let sb=null; try{ sb=supabase.createClient(SB_URL,SB_ANON) }catch(e){}
 
 const p=new URLSearchParams(location.search);
-const LOJA_MAP={paiva:'Amore Paiva',cd:'Amore CD','costa-dourada':'Amore CD'};
+const LOJA_MAP={paiva:'Amore Paiva',cd:'Amore CD','costa-dourada':'Amore CD',flow:'Flow CD','flow-cd':'Flow CD','flow-costa-dourada':'Flow CD'};
 const fb={ loja: LOJA_MAP[(p.get('loja')||'').toLowerCase()] || p.get('loja') || 'Amore Food',
   garcom: p.get('g')||null, mesa: p.get('m')||null,
   pedido: p.get('pedido')||p.get('ped')||p.get('comanda')||null,
   experiencia:null, nota_atendimento:null, nota_comida:null, nota_agilidade:null,
   voltaria:null, motivo:null, observacoes:null, foi_google:false, pontos:20 };
-let googleUrl='https://www.google.com/search?q=Amore+Food+avaliar';
+
+/* ===================== MARCA (Amore / Flow) ===================== */
+const LOGO_FLOW=`<svg id="brandLogo" class="logo-img" viewBox="0 0 300 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Flow"><text x="0" y="50" font-family="Poppins, sans-serif" font-weight="800" font-size="58" letter-spacing="-2" fill="currentColor">FLO</text><path d="M148 14 C165 14 159 44 176 44 C193 44 187 14 204 14 C221 14 215 44 232 44 C249 44 243 14 260 14 C277 14 281 30 288 30" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const BRANDS={
+  amore:{ nome:'Amore Food', curto:'Amore', clube:'Amore VIP', heart:'❤️',
+    title:'Amore Food — Sua opinião', themeColor:'#E23744',
+    googleUrl:'https://www.google.com/search?q=Amore+Food+avaliar', logoColor:null,
+    voltaria:'Você voltaria<br>à Amore?', gSub:'Sua opinião ajuda a Amore a crescer. Poderia deixar sua avaliação no Google? Leva 10 segundos.',
+    hRasp:'Sua raspadinha<br>Amore! 🎁', txtMkt:'Quero receber promoções, novidades e campanhas da Amore pelo WhatsApp.',
+    txtAniv:'Quero uma surpresa da Amore no mês do meu aniversário. 🎂', footer:'Amore Food · feito com ❤️' },
+  flow:{ nome:'Flow', curto:'Flow', clube:'Clube Flow', heart:'💚',
+    title:'Flow — Sua opinião', themeColor:'#6DC06A',
+    googleUrl:'https://www.google.com/search?q=Flow+Costa+Dourada+avaliar', logoColor:'#fff', logoSVG:LOGO_FLOW,
+    css:{ '--vermelho':'#2E7D34','--vermelho-esc':'#1F5A24','--rosa':'#CDEBC8','--creme':'#EAF7E7','--verde':'#2E9E63','--dourado':'#E0A83E' },
+    bodyBg:'#6DC06A',
+    skin:`body{background:#6DC06A}
+h1,.big-emoji,.fim h1{color:#fff}
+.sub,.atendido,.gtag,.priv,.ccount,.brand small,.footer-tag,.raspe-hint{color:rgba(255,255,255,.92)}
+.atendido b{color:#fff}
+.btn-ghost{color:rgba(255,255,255,.92)}
+.dots i{background:rgba(255,255,255,.45)}
+.dots i.on{background:#fff}`,
+    voltaria:'Você voltaria<br>à Flow?', gSub:'Sua opinião ajuda a Flow a crescer. Poderia deixar sua avaliação no Google? Leva 10 segundos.',
+    hRasp:'Sua raspadinha<br>Flow! 🎁', txtMkt:'Quero receber promoções, novidades e campanhas da Flow pelo WhatsApp.',
+    txtAniv:'Quero uma surpresa da Flow no mês do meu aniversário. 🎂', footer:'Flow · feito com 💚' },
+};
+const BRAND = /flow/i.test(fb.loja) ? BRANDS.flow : BRANDS.amore;
+let googleUrl = BRAND.googleUrl;
+
+function applyBrand(){
+  document.title = BRAND.title;
+  const mt=document.querySelector('meta[name="theme-color"]'); if(mt) mt.setAttribute('content', BRAND.themeColor);
+  if(BRAND.css){ const r=document.documentElement.style; for(const k in BRAND.css) r.setProperty(k, BRAND.css[k]); }
+  if(BRAND.bodyBg) document.body.style.background = BRAND.bodyBg;
+  if(BRAND.skin){ const st=document.createElement('style'); st.id='brand-skin'; st.textContent=BRAND.skin; document.head.appendChild(st); }
+  // logo
+  const brandBox=document.querySelector('.brand');
+  if(BRAND.logoSVG){ const img=document.getElementById('brandLogo'); if(img) img.outerHTML=BRAND.logoSVG; if(brandBox&&BRAND.logoColor) brandBox.style.color=BRAND.logoColor; }
+  // textos
+  const set=(id,html)=>{ const el=document.getElementById(id); if(el) el.innerHTML=html; };
+  set('qVoltaria', BRAND.voltaria); set('gSub', BRAND.gSub); set('hRasp', BRAND.hRasp);
+  set('txtMkt', BRAND.txtMkt); set('txtAniv', BRAND.txtAniv); set('footerTag', BRAND.footer);
+}
+applyBrand();
 
 document.getElementById('lojaNome').textContent = fb.loja;
 if(fb.garcom){ document.getElementById('atendidoPor').innerHTML='Atendido por <b>'+fb.garcom+'</b>'; }
@@ -305,15 +348,15 @@ async function salvarUpdate(){ if(!sb||!fbId)return; try{
 function finalizar(comGoogle){
   document.getElementById('fimEmoji').textContent='🎉';
   document.getElementById('fimTitulo').textContent= comGoogle? 'Você é demais!' : 'Obrigado!';
-  document.getElementById('fimTexto').textContent= comGoogle? 'Muito obrigado pela avaliação no Google. Isso ajuda demais a Amore! ❤️' : 'Sua opinião foi registrada com muito carinho.';
-  document.getElementById('fimPontos').textContent='🏆 +'+fb.pontos+' pontos no Amore VIP';
+  document.getElementById('fimTexto').textContent= comGoogle? ('Muito obrigado pela avaliação no Google. Isso ajuda demais a '+BRAND.curto+'! '+BRAND.heart) : 'Sua opinião foi registrada com muito carinho.';
+  document.getElementById('fimPontos').textContent='🏆 +'+fb.pontos+' pontos no '+BRAND.clube;
   dots(3); show('sFim');
 }
 function finalizarBaixo(){
   document.getElementById('fimEmoji').textContent='💚';
   document.getElementById('fimTitulo').textContent='Obrigado pelo retorno!';
   document.getElementById('fimTexto').textContent='Vamos usar seu feedback para melhorar. O gerente já foi avisado e queremos te receber muito melhor na próxima!';
-  document.getElementById('fimPontos').textContent='🏆 +10 pontos no Amore VIP';
+  document.getElementById('fimPontos').textContent='🏆 +10 pontos no '+BRAND.clube;
   show('sFim');
 }
 
@@ -409,12 +452,12 @@ function mostrarResultado(jaTinha){
     document.getElementById('rVal').textContent= d.validade? 'Válido até '+d.validade.split('-').reverse().join('/')+' · use em até 7 dias' : 'Use em até 7 dias';
     document.getElementById('rCopy').style.display='flex';
     const b=document.getElementById('rWhats'); b.style.display='flex';
-    const msg=`Ganhei *${d.premio}* na Amore! 🎉%0ACódigo: *${d.cupom}*${d.validade?'%0AVálido até '+d.validade.split('-').reverse().join('/'):''}%0AUnidade: ${fb.loja}`;
+    const msg=`Ganhei *${d.premio}* na ${BRAND.curto}! 🎉%0ACódigo: *${d.cupom}*${d.validade?'%0AVálido até '+d.validade.split('-').reverse().join('/'):''}%0AUnidade: ${fb.loja}`;
     b.onclick=()=>window.open('https://wa.me/?text='+msg,'_blank');
     document.getElementById('rObs').textContent='Apresente o código no caixa da '+fb.loja+'. 🍟';
     confetes();
   } else {
-    document.getElementById('rObs').textContent='Fique de olho no seu WhatsApp — em breve tem mais novidades da Amore! 💛';
+    document.getElementById('rObs').textContent='Fique de olho no seu WhatsApp — em breve tem mais novidades da '+BRAND.curto+'! '+BRAND.heart;
   }
   show('sResultado');
 }

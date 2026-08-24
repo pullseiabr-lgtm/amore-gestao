@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, ClipboardCheck, ListChecks, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap, Activity, Bot, Calendar, Bell } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useLoja } from '../../contexts/LojaContext'
 
 export interface NavItem {
   id: string
@@ -111,6 +112,8 @@ interface SidebarProps {
 export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick }: SidebarProps) {
   const { user, logout, can } = useAuth()
   const { theme } = useTheme()
+  const { loja } = useLoja()
+  const isFlow = /flow/i.test(loja || '')
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
   const isSuperAdmin = user?.role === 'super_admin'
 
@@ -150,13 +153,15 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
       <aside className={`sidebar${mobileOpen ? ' mobile-open' : ''}`}>
         <div className="sb-logo">
           <div className="sb-icon">
-            {theme.logo_url
-              ? <img src={theme.logo_url} alt="logo" style={{ width: 20, height: 20, objectFit: 'contain' }} />
-              : <Home size={15} color="#fff" />
+            {isFlow
+              ? <svg viewBox="0 0 40 24" width="22" height="14" aria-label="Flow"><path d="M3 12 C8 12 7 5 12 5 C17 5 16 19 21 19 C26 19 25 5 30 5 C34 5 34 15 38 12" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              : theme.logo_url
+                ? <img src={theme.logo_url} alt="logo" style={{ width: 20, height: 20, objectFit: 'contain' }} />
+                : <Home size={15} color="#fff" />
             }
           </div>
-          <div className="sb-company">{theme.company_name}</div>
-          <div className="sb-sub">Sistema Integrado v5.2</div>
+          <div className="sb-company">{isFlow ? 'Flow CD' : theme.company_name}</div>
+          <div className="sb-sub">{isFlow ? 'Clube Flow · Costa Dourada' : 'Sistema Integrado v5.2'}</div>
         </div>
 
         <nav className="sb-nav">

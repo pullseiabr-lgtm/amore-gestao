@@ -47,7 +47,7 @@ h1{font-size:1.55rem;font-weight:800;text-align:center;line-height:1.2;margin-bo
 </head>
 <body>
 <div class="app">
-  <div class="brand"><img src="/logo-amore-white.png" alt="Amore" onerror="this.replaceWith(Object.assign(document.createElement('div'),{innerHTML:'<b style=font-size:1.8rem;font-weight:800>amore</b>'}))"><small>Sua Raspadinha</small></div>
+  <div class="brand"><img id="brandLogo" src="/logo-amore-white.png" alt="Amore" onerror="this.replaceWith(Object.assign(document.createElement('div'),{innerHTML:'<b style=font-size:1.8rem;font-weight:800>amore</b>'}))"><small>Sua Raspadinha</small></div>
 
   <!-- LOADING -->
   <section class="screen active" id="sLoad"><div class="center"><div class="spin"></div></div></section>
@@ -88,7 +88,7 @@ h1{font-size:1.55rem;font-weight:800;text-align:center;line-height:1.2;margin-bo
     <p class="chamada" id="errMsg">Este link de raspadinha não é válido.</p>
   </section>
 
-  <div class="foot">Amore Food · Raspadinha Digital</div>
+  <div class="foot" id="footTag">Amore Food · Raspadinha Digital</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -96,8 +96,28 @@ h1{font-size:1.55rem;font-weight:800;text-align:center;line-height:1.2;margin-bo
 const SB_URL='https://xdwnsqkzgopymufsuccr.supabase.co';
 const SB_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
 let sb=null; try{ sb=supabase.createClient(SB_URL,SB_ANON) }catch(e){}
-const TOKEN=new URLSearchParams(location.search).get('t');
+const _params=new URLSearchParams(location.search);
+const TOKEN=_params.get('t');
 let dados=null;
+
+/* ===================== MARCA (Amore / Flow) ===================== */
+const LOGO_FLOW=`<svg id="brandLogo" viewBox="0 0 300 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Flow" style="height:46px;width:auto;filter:drop-shadow(0 2px 8px rgba(0,0,0,.3))"><text x="0" y="50" font-family="Poppins, sans-serif" font-weight="800" font-size="58" letter-spacing="-2" fill="currentColor">FLO</text><path d="M148 14 C165 14 159 44 176 44 C193 44 187 14 204 14 C221 14 215 44 232 44 C249 44 243 14 260 14 C277 14 281 30 288 30" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const BRANDS={
+  amore:{ curto:'Amore', title:'Sua Raspadinha Amore 🎁', themeColor:'#8B1212', footer:'Amore Food · Raspadinha Digital' },
+  flow:{ curto:'Flow', title:'Sua Raspadinha Flow 🎁', themeColor:'#6DC06A', footer:'Flow · Raspadinha Digital', logoSVG:LOGO_FLOW, logoColor:'#fff', bodyBg:'#6DC06A', vinho:'#2E7D34' },
+};
+let BRAND=BRANDS.amore;
+function applyBrand(u){
+  const b = /flow/i.test(u||'') ? BRANDS.flow : BRANDS.amore;
+  if(b===BRAND && u) return; BRAND=b;
+  document.title=b.title;
+  const mt=document.querySelector('meta[name="theme-color"]'); if(mt) mt.setAttribute('content',b.themeColor);
+  if(b.vinho) document.documentElement.style.setProperty('--vinho', b.vinho);
+  if(b.bodyBg) document.body.style.background=b.bodyBg;
+  if(b.logoSVG){ const box=document.querySelector('.brand'); const img=document.getElementById('brandLogo'); if(img) img.outerHTML=b.logoSVG; if(box&&b.logoColor) box.style.color=b.logoColor; }
+  const ft=document.getElementById('footTag'); if(ft) ft.textContent=b.footer;
+}
+applyBrand(_params.get('loja'));
 
 const EMO={'Batata':'🍟','Refrigerante':'🥤','Suco':'🧃','desconto':'🏷️','Sobremesa':'🍰','Brownie':'🍫','Prato':'🍽️','Chopp':'🍺','Pizza':'🍕'};
 function emojiDe(n){ for(const k in EMO){ if((n||'').toLowerCase().includes(k.toLowerCase()))return EMO[k]; } return '🎁'; }
@@ -110,6 +130,7 @@ function erro(m){ if(m)document.getElementById('errMsg').textContent=m; show('sE
     const {data,error}=await sb.rpc('av_raspar_get',{p_token:TOKEN});
     if(error||!data||data.erro){ return erro('Não encontramos sua raspadinha. Verifique o link.'); }
     dados=data;
+    applyBrand(data.unidade);
     if(!data.ganhou){ // sem prêmio (não deveria vir por link, mas trata)
       dados._semPremio=true;
     }
@@ -161,7 +182,7 @@ function mostrar(){
     document.getElementById('rVal').textContent= d.validade? 'Válido até '+d.validade.split('-').reverse().join('/')+' · use em até 7 dias' : 'Use em até 7 dias';
     document.getElementById('rCopy').style.display='flex';
     const resg = d.status==='resgatado';
-    document.getElementById('rObs').textContent= resg? '✅ Este prêmio já foi resgatado.' : ('Apresente este código no caixa da '+(d.unidade||'Amore')+'. 🍟');
+    document.getElementById('rObs').textContent= resg? '✅ Este prêmio já foi resgatado.' : ('Apresente este código no caixa da '+(d.unidade||BRAND.curto)+'. 🍟');
     if(!resg) confetes();
   }
   show('sRes');
