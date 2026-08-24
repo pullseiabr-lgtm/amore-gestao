@@ -154,7 +154,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
         <div className="sb-logo">
           <div className="sb-icon">
             {isFlow
-              ? <svg viewBox="0 0 46 22" width="26" height="12" aria-label="Flow"><path d="M3 4 C6 4 5 18 8 18 C11 18 10 4 13 4 C16 4 15 18 18 18 C21 18 20 4 23 4 C26 4 25 18 28 18 C31 18 30 4 33 4 C36 4 35 18 38 18 C41 18 42 6 44 6" fill="none" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              ? <svg viewBox="0 0 38 22" width="24" height="13" aria-label="Flow"><path d="M3 4 C6 4 5 18 8 18 C11 18 10 4 13 4 C16 4 15 18 18 18 C21 18 20 4 23 4 C26 4 25 18 28 18 C31 18 32 6 34 6" fill="none" stroke="#fff" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
               : theme.logo_url
                 ? <img src={theme.logo_url} alt="logo" style={{ width: 20, height: 20, objectFit: 'contain' }} />
                 : <Home size={15} color="#fff" />
