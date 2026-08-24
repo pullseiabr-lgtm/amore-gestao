@@ -63,6 +63,20 @@ const lojaLabel=l=>({'Amore CD':'Amore Costa Dourada','Flow CD':'Flow Costa Dour
 const fmtDT=s=>s?new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
 let DADOS=null;
 
+/* ===================== MARCA (Amore / Flow) ===================== */
+let MARCA='Amore';
+const LOGO_FLOW='<svg viewBox="0 0 320 60" xmlns="http://www.w3.org/2000/svg" style="height:34px;width:auto" role="img" aria-label="Flow"><text x="0" y="48" font-family="Segoe UI, system-ui, sans-serif" font-weight="800" font-size="52" letter-spacing="-2" fill="#fff">FLO</text><path d="M128 12 C146 12 140 48 158 48 C176 48 170 12 188 12 C206 12 200 48 218 48 C236 48 230 12 248 12 C266 12 260 48 278 48 C296 48 300 26 308 26" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function hdrLogo(){ return MARCA==='Flow' ? `<div style="margin-bottom:9px">${LOGO_FLOW}</div>` : ''; }
+function applyBrand(loja){
+  if(/flow/i.test(loja||'')){
+    MARCA='Flow';
+    const r=document.documentElement.style;
+    r.setProperty('--vinho','#2E7D34'); r.setProperty('--vinho2','#256A2A');
+    if(!document.getElementById('flow-skin')){ const st=document.createElement('style'); st.id='flow-skin'; st.textContent='.hdr{background:linear-gradient(135deg,#2E7D34,#3FA34D)!important}'; document.head.appendChild(st); }
+    document.title='Cotação — Flow';
+  }
+}
+
 function msg(emoji,titulo,texto){ app.innerHTML=`<div class="card msg"><div class="big">${emoji}</div><h2 style="color:var(--vinho)">${titulo}</h2><p style="color:var(--muted)">${texto||''}</p></div>`; }
 
 const ERR={ token_invalido:['🔒','Link inválido','Verifique se você abriu o link completo enviado pela Amore.'],
@@ -78,6 +92,7 @@ async function carregar(){
     const d=await r.json();
     if(d.erro){ const e=ERR[d.erro]||['🔒','Não foi possível abrir','Solicite um novo link à Amore.']; return msg(e[0],e[1],e[2]); }
     DADOS=d;
+    applyBrand(d.cotacao&&d.cotacao.loja);
     if(d.bloqueado){ return resumo(d); }
     render(d);
   }catch(e){ msg('⚠️','Erro de conexão','Tente novamente em instantes.'); }
@@ -85,13 +100,13 @@ async function carregar(){
 
 function resumo(d){
   const r=d.resposta||{}; const itens=(r.itens||[]);
-  app.innerHTML=`<div class="hdr"><div class="loja">🏪 ${lojaLabel(d.cotacao.loja)}</div><h1>Cotação de Preços Nº ${d.cotacao.numero}</h1><div class="sub">Fornecedor: ${d.cotacao.fornecedor_nome}</div></div>
+  app.innerHTML=`<div class="hdr">${hdrLogo()}<div class="loja">🏪 ${lojaLabel(d.cotacao.loja)}</div><h1>Cotação de Preços Nº ${d.cotacao.numero}</h1><div class="sub">Fornecedor: ${d.cotacao.fornecedor_nome}</div></div>
   <div class="card"><div style="text-align:center;margin-bottom:10px"><span class="chip" style="background:#DCFCE7;color:#15803D">✅ Proposta enviada</span></div>
-  <p style="color:var(--muted);font-size:13px;text-align:center">Sua proposta já foi registrada. Segue o resumo do que você enviou. Para alterar, fale com a Amore.</p>
+  <p style="color:var(--muted);font-size:13px;text-align:center">Sua proposta já foi registrada. Segue o resumo do que você enviou. Para alterar, fale com a ${MARCA}.</p>
   <table class="itab"><thead><tr><th>Produto</th><th>Disponível</th><th>Preço unit.</th><th>Marca</th></tr></thead><tbody>
   ${(d.itens||[]).map(it=>{ const a=itens.find(x=>x.item_id===it.item_id)||{}; return `<tr><td class="prod">${it.produto_nome}<div class="indisp">${it.quantidade} ${it.unidade}</div></td><td data-label="Disponível">${a.disponivel===false?'—':'Sim'}</td><td data-label="Preço unit.">${a.disponivel===false?'—':brl(a.preco_unitario)}</td><td data-label="Marca">${a.marca||'—'}</td></tr>`; }).join('')}
   </tbody></table></div>
-  <div class="foot">Amore · Cotação segura. Este link é exclusivo do seu cadastro.</div>`;
+  <div class="foot">${MARCA} · Cotação segura. Este link é exclusivo do seu cadastro.</div>`;
 }
 
 function render(d){
@@ -99,6 +114,7 @@ function render(d){
   const val=(id,f,def='')=>{ const x=ri.find(x=>x.item_id===id); return x&&x[f]!=null?x[f]:def; };
   app.innerHTML=`
   <div class="hdr">
+    ${hdrLogo()}
     <div class="loja">🏪 ${lojaLabel(c.loja)}</div>
     <h1>Cotação de Preços Nº ${c.numero}</h1>
     <div class="sub">Olá, <b>${c.fornecedor_nome}</b>${c.prazo_resposta?` · Prazo para resposta: <b>${fmtDT(c.prazo_resposta)}</b>`:''}</div></div>
@@ -168,7 +184,7 @@ async function enviar(action){
     const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({t:TOKEN,action,resposta:coletar()})});
     const d=await r.json();
     if(d.erro){ alert(ERR[d.erro]?ERR[d.erro][2]:'Não foi possível salvar.'); btns.forEach(b=>b.disabled=false); alvo.textContent=txt; return; }
-    if(action==='finalizar'){ msg('🎉','Cotação enviada!','Obrigado! Sua proposta foi registrada com sucesso na Amore.'); }
+    if(action==='finalizar'){ msg('🎉','Cotação enviada!',`Obrigado! Sua proposta foi registrada com sucesso na ${MARCA}.`); }
     else { alvo.textContent='Rascunho salvo ✓'; setTimeout(()=>{alvo.textContent=txt; btns.forEach(b=>b.disabled=false);},1500); }
   }catch(e){ alert('Erro de conexão. Tente novamente.'); btns.forEach(b=>b.disabled=false); alvo.textContent=txt; }
 }
