@@ -66,11 +66,13 @@
     <button class="btn btn-fire" onclick="disparar()">📲 Disparar faltantes</button>
   </div>
   <div class="card"><table><thead><tr>
-    <th>Produto solicitado</th><th>Qtd</th><th>Status</th><th>Comprado em</th>
+    <th>Produto solicitado</th><th>Qtd</th><th>Status</th><th>✔</th><th>Comprado em</th>
     <th class="wpp2">Fornecedor p/ comprar</th><th class="wpp2">WhatsApp</th><th class="wpp2">Preço un.</th>
-  </tr></thead><tbody id="tb"><tr><td colspan="7" style="padding:20px;text-align:center;color:#6b7280">Carregando…</td></tr></tbody></table></div>
+  </tr></thead><tbody id="tb"><tr><td colspan="8" style="padding:20px;text-align:center;color:#6b7280">Carregando…</td></tr></tbody></table></div>
   <div class="msg" id="msg"></div><div class="prog" id="prog"></div><div class="foot" id="foot"></div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
 <script>
 const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
 const ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
@@ -97,41 +99,57 @@ async function load(){
   compute();render();
 }
 function matchOne(prod){const st=toks(prod);if(!st.length)return{status:'no'};const main=st.slice().sort((a,b)=>b.length-a.length)[0];let best=null,bs=0,qsum=0,forns=new Set();for(const c of COMPRADOS){if(!c.norm.includes(main))continue;let sc=0;for(const t of st)if(c.norm.includes(t))sc++;if(sc>0){qsum+=Number(c.qtd)||0;forns.add(c.fornecedor);}if(sc>bs){bs=sc;best=c;}}if(!best)return{status:'no'};return{status:bs>=st.length?'ok':'wr',best,qsum,forns:[...forns]};}
-function compute(){ROWS=SOLIC.map(si=>{const m=matchOne(si.produto);const o=OVER[norm(si.produto)]||{};return {...si,m,forn:o.fornecedor||'',wpp:o.whatsapp||'',preco:o.preco||''};});}
+function compute(){ROWS=SOLIC.map(si=>{const m=matchOne(si.produto);const o=OVER[norm(si.produto)]||{};return {...si,m,forn:o.fornecedor||'',wpp:o.whatsapp||'',preco:o.preco||'',manual:(typeof o.comprado==='boolean'?o.comprado:undefined)};});}
+function eff(r){return r.manual===true?'ok':r.manual===false?'no':r.m.status;}
 function setF(f){FILTRO=f;[...document.querySelectorAll('#seg button')].forEach(b=>b.classList.toggle('on',b.dataset.f===f));render();}
 function render(){
-  const nOk=ROWS.filter(r=>r.m.status==='ok').length,nWr=ROWS.filter(r=>r.m.status==='wr').length,nNo=ROWS.filter(r=>r.m.status==='no').length;
+  const nOk=ROWS.filter(r=>eff(r)==='ok').length,nWr=ROWS.filter(r=>eff(r)==='wr').length,nNo=ROWS.filter(r=>eff(r)==='no').length;
   el('kpis').innerHTML=`<div class="kpi"><div class="n">${ROWS.length}</div><div class="l">Solicitados</div></div><div class="kpi ok"><div class="n">${nOk}</div><div class="l">Comprados</div></div><div class="kpi wr"><div class="n">${nWr}</div><div class="l">Verificar</div></div><div class="kpi no"><div class="n">${nNo}</div><div class="l">Faltando</div></div>`;
-  const falt=ROWS.filter(r=>r.m.status==='no');
+  const falt=ROWS.filter(r=>eff(r)==='no');
   el('alert').style.display=falt.length?'block':'none';
   el('alert').innerHTML=`<b>⚠️ Faltando comprar: ${falt.length} item(ns)</b><div class="items">${falt.map(r=>`${esc(r.produto)} <span style="opacity:.7">(${esc(r.qtd)} ${esc(r.un)})</span>`).join(' · ')}</div>`;
-  const list=ROWS.filter(r=>!FILTRO||r.m.status===FILTRO);
+  const list=ROWS.filter(r=>!FILTRO||eff(r)===FILTRO);
   const badge=s=>s==='ok'?'<span class="st ok">✅ Comprado</span>':s==='wr'?'<span class="st wr">⚠️ Verificar</span>':'<span class="st no">❌ Faltando</span>';
   let cur='',html='';
   for(const r of list){const gi=ROWS.indexOf(r);
-    if(r.categoria!==cur){cur=r.categoria;html+=`<tr class="cat"><td colspan="7">${esc(cur)}</td></tr>`;}
+    if(r.categoria!==cur){cur=r.categoria;html+=`<tr class="cat"><td colspan="8">${esc(cur)}</td></tr>`;}
     const comp=r.m.best?`${esc(r.m.forns.join(', '))} <span class="q">(${esc(r.m.best.produto)} · ${esc(r.m.qsum)} un/kg)</span>`:'—';
     html+=`<tr>
-      <td>${esc(r.produto)}</td><td class="q">${esc(r.qtd)} ${esc(r.un)}</td><td>${badge(r.m.status)}</td><td class="src">${comp}</td>
+      <td>${esc(r.produto)}</td><td class="q">${esc(r.qtd)} ${esc(r.un)}</td><td>${badge(eff(r))}${r.manual!=null?' <span class="q">(manual)</span>':''}</td><td style="text-align:center"><input type="checkbox" ${eff(r)==='ok'?'checked':''} onchange="setComprado(${gi},this.checked)" title="Marcar como já comprado"></td><td class="src">${comp}</td>
       <td class="wpp2"><input value="${esc(r.forn)}" onchange="ov(${gi},'fornecedor',this.value)" placeholder="fornecedor"></td>
       <td class="wpp2"><input class="wpp" value="${esc(r.wpp)}" onchange="ov(${gi},'whatsapp',this.value)" placeholder="DDD+nº" inputmode="numeric"></td>
       <td class="wpp2"><input class="pri" value="${esc(r.preco)}" onchange="ov(${gi},'preco',this.value)" placeholder="0,00" inputmode="decimal"></td>
     </tr>`;}
-  el('tb').innerHTML=html||'<tr><td colspan="7" style="padding:20px;text-align:center;color:#6b7280">Nenhum item neste filtro.</td></tr>';
-  const prontos=new Set(ROWS.filter(r=>r.m.status!=='ok'&&(r.wpp||'').replace(/\D/g,'').length>=10&&r.forn.trim()).map(r=>r.forn.trim().toLowerCase()));
+  el('tb').innerHTML=html||'<tr><td colspan="8" style="padding:20px;text-align:center;color:#6b7280">Nenhum item neste filtro.</td></tr>';
+  const prontos=new Set(ROWS.filter(r=>eff(r)!=='ok'&&(r.wpp||'').replace(/\D/g,'').length>=10&&r.forn.trim()).map(r=>r.forn.trim().toLowerCase()));
   el('foot').textContent=`${ROWS.length} solicitados · ${nNo} faltando · ${prontos.size} fornecedor(es) prontos p/ disparo`;
 }
 function ov(i,k,v){ROWS[i][k==='fornecedor'?'forn':k==='whatsapp'?'wpp':'preco']=v;}
-async function salvar(){const map={};for(const r of ROWS){if(r.forn||r.wpp||r.preco)map[norm(r.produto)]={fornecedor:r.forn,whatsapp:r.wpp,preco:r.preco};}
+function setComprado(i,checked){ROWS[i].manual=checked;compute2();render();}
+function compute2(){/* mantém overrides atuais nas ROWS ao re-renderizar */}
+async function salvar(){const map={};for(const r of ROWS){if(r.forn||r.wpp||r.preco||typeof r.manual==='boolean')map[norm(r.produto)]={fornecedor:r.forn,whatsapp:r.wpp,preco:r.preco,comprado:r.manual};}
   try{let ex=await fetch(SB+'/rest/v1/app_config?chave=eq.compras_overrides_flow&select=chave',{headers:H}).then(r=>r.json());
     const body={valor:{map,updated_at:new Date().toISOString()}};let r;
     if(ex&&ex.length)r=await fetch(SB+'/rest/v1/app_config?chave=eq.compras_overrides_flow',{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify(body)});
     else r=await fetch(SB+'/rest/v1/app_config',{method:'POST',headers:{...H,Prefer:'resolution=merge-duplicates'},body:JSON.stringify({chave:'compras_overrides_flow',...body})});
     show(r.ok?'✅ Salvo.':'Falha ao salvar ('+r.status+').',r.ok);}catch(e){show('Falha ao salvar.',false);}
 }
-function gerarPDF(){el('phTitle').textContent='Lista de Compras — '+nomeLoja(LOJA);el('phDate').textContent='Gerado em '+new Date().toLocaleString('pt-BR');window.print();}
+function gerarPDF(){
+  try{
+    const J=window.jspdf&&window.jspdf.jsPDF; if(!J){show('Biblioteca de PDF ainda carregando, tente de novo em 2s.',false);return;}
+    const doc=new J({orientation:'landscape',unit:'pt',format:'a4'});
+    doc.setFontSize(14);doc.setTextColor(46,125,52);doc.text('Lista de Compras — '+nomeLoja(LOJA),40,36);
+    doc.setFontSize(9);doc.setTextColor(120);doc.text('Gerado em '+new Date().toLocaleString('pt-BR'),40,50);
+    const stTxt=s=>s==='ok'?'Comprado':s==='wr'?'Verificar':'Faltando';
+    const list=ROWS.filter(r=>!FILTRO||eff(r)===FILTRO);
+    const body=list.map(r=>[r.categoria||'',r.produto||'',((r.qtd||'')+' '+(r.un||'')).trim(),stTxt(eff(r)),r.m.best?(r.m.forns.join(', ')):'',r.forn||'',String(r.preco||'').trim()?brl(r.preco):'']);
+    doc.autoTable({head:[['Categoria','Produto','Qtd','Status','Comprado em','Fornecedor p/ comprar','Preço']],body,startY:62,styles:{fontSize:8,cellPadding:3,overflow:'linebreak'},headStyles:{fillColor:[46,125,52],textColor:255},columnStyles:{1:{cellWidth:210},4:{cellWidth:150}},didParseCell:d=>{if(d.section==='body'&&d.column.index===3){const t=d.cell.raw;if(t==='Faltando')d.cell.styles.textColor=[220,38,38];else if(t==='Comprado')d.cell.styles.textColor=[21,128,61];else if(t==='Verificar')d.cell.styles.textColor=[180,83,9];}}});
+    doc.save('lista-compras-flow-'+new Date().toISOString().slice(0,10)+'.pdf');
+    show('✅ PDF gerado (verifique os downloads).',true);
+  }catch(e){show('Erro ao gerar PDF: '+e.message,false);}
+}
 async function disparar(){
-  const alvos=ROWS.filter(r=>r.m.status!=='ok'&&r.forn.trim()&&(r.wpp||'').replace(/\D/g,'').length>=10);
+  const alvos=ROWS.filter(r=>eff(r)!=='ok'&&r.forn.trim()&&(r.wpp||'').replace(/\D/g,'').length>=10);
   const g={};for(const r of alvos){const w=r.wpp.replace(/\D/g,'');const key=r.forn.trim()+'|'+w;(g[key]=g[key]||{forn:r.forn.trim(),wpp:w,itens:[]}).itens.push(r);}
   const gs=Object.values(g);
   if(!gs.length){show('Preencha fornecedor + WhatsApp nos itens faltantes que quer comprar.',false);return;}
