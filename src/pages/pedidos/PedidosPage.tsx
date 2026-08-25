@@ -124,7 +124,8 @@ export default function PedidosPage() {
       const itensTxt = (pedSel.itens || []).map(it => `• ${it.qtd} ${it.un || ''} — *${it.produto}*`.replace(/\s{2,}/g, ' ').replace(' — ', ' — ')).join('\n')
       const entrega = fmtD((pedSel as any).janela_entrega || pedSel.data)
       const receb = (pedSel as any).horario_recebimento
-      const msgF = `Olá, ${pedSel.fornecedor}! 👋 Aqui é da *${nomeLoja}*.\n\nSegue nosso *pedido de compra*:\n${itensTxt}${entrega ? `\n📅 Entrega: *${entrega}*` : ''}${receb ? `\n🕗 Recebimento: *${receb}*` : ''}${pedSel.pagamento ? `\n💳 Pagamento: ${pedSel.pagamento}` : ''}\n\nDetalhes e confirmação no link:\n${l}\n\nObrigado! 💚`
+      const obs = (pedSel as any).obs
+      const msgF = `Olá, ${pedSel.fornecedor}! 👋 Aqui é da *${nomeLoja}*.\n\nSegue nosso *pedido de compra*:\n${itensTxt}${entrega ? `\n📅 Entrega: *${entrega}*` : ''}${receb ? `\n🕗 Recebimento: *${receb}*` : ''}${pedSel.pagamento ? `\n💳 Pagamento: ${pedSel.pagamento}` : ''}${obs ? `\n📝 Obs: ${obs}` : ''}\n\nDetalhes e confirmação no link:\n${l}\n\nObrigado! 💚`
       const msgR = `📦 *Pedido a receber — ${nomeLoja}*\nFornecedor: ${pedSel.fornecedor} · ${fmtR$(pedSel.total || 0)}\n\nConfira na chegada (link com a lista organizada):\n${l}\n— Compras`
       let ok = 0, alvos = 0
       if (ff.length >= 10) { alvos++; if (await enviarWhatsApp(ff, msgF)) ok++ }
