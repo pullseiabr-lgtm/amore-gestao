@@ -3,141 +3,149 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Montar Pedido & Disparar — Flow</title>
+<title>Gestão da Lista de Compras — Flow</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{--v:#2E7D34;--v2:#256A2A;--bg:#eef6ec;--card:#fff;--border:#d7e6d3;--muted:#6b7280}
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:#1f2937;padding:14px}
-  .wrap{max-width:1080px;margin:0 auto}
-  .hdr{background:linear-gradient(135deg,var(--v2),#6DC06A);color:#fff;border-radius:16px;padding:16px 20px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .wrap{max-width:1120px;margin:0 auto}
+  .hdr{background:linear-gradient(135deg,var(--v2),#6DC06A);color:#fff;border-radius:16px;padding:16px 20px;margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
   .hdr h1{font-size:19px;font-weight:800}.hdr .sub{font-size:12px;opacity:.92}
-  .bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
-  .btn{border:none;border-radius:10px;padding:10px 15px;font:inherit;font-weight:700;font-size:13px;cursor:pointer}
-  .btn-add{background:#fff;color:var(--v);border:1px solid var(--v)}
-  .btn-save{background:#0369A1;color:#fff}.btn-fire{background:var(--v);color:#fff}
-  .btn-pdf{background:#fff;color:#374151;border:1px solid #cbd5e1}.btn-del{background:#FEE2E2;color:#DC2626}
-  .btn:active{transform:scale(.98)}.btn:disabled{opacity:.5;cursor:default}
-  .print-head{display:none}
-  @media print{
-    body{background:#fff;padding:0}.bar,.hint,.hdr button,.del,.msg,.prog,.foot{display:none!important}
-    .print-head{display:block;margin-bottom:10px}.print-head h2{font-size:16px}.print-head .d{font-size:12px;color:#444}
-    .card{border:none}table{min-width:0;font-size:11px}th{background:#eee!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    input{border:none!important;background:none!important;padding:2px!important}
-    th:last-child,td:last-child{display:none}
-    .hdr{background:#2E7D34!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  }
+  .hdr button{margin-left:auto;background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:10px;padding:9px 13px;cursor:pointer;font:inherit;font-weight:600}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+  .kpi .n{font-size:23px;font-weight:800}.kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase}
+  .kpi.ok .n{color:#15803D}.kpi.wr .n{color:#B45309}.kpi.no .n{color:#DC2626}
+  .alert{background:#FEF2F2;border:1px solid #FCA5A5;border-radius:12px;padding:12px 14px;margin-bottom:12px}
+  .alert b{color:#B91C1C}.alert .items{font-size:12.5px;color:#7f1d1d;margin-top:6px;line-height:1.7}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+  .btn{border:none;border-radius:10px;padding:9px 14px;font:inherit;font-weight:700;font-size:12.5px;cursor:pointer}
+  .btn-save{background:#0369A1;color:#fff}.btn-fire{background:var(--v);color:#fff}.btn-pdf{background:#fff;color:#374151;border:1px solid #cbd5e1}
+  .btn:active{transform:scale(.98)}.btn:disabled{opacity:.5}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#fff}
+  .seg button{border:none;background:#fff;padding:8px 12px;font:inherit;font-size:12px;cursor:pointer;color:#374151}
+  .seg button.on{background:var(--v);color:#fff;font-weight:700}
   .card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:auto}
-  table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:820px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:900px}
   th{text-align:left;color:var(--muted);font-size:10.5px;text-transform:uppercase;padding:8px 6px;border-bottom:1px solid var(--border);white-space:nowrap;background:#f6faf5;position:sticky;top:0}
   td{padding:5px 6px;border-bottom:1px solid #f1f5f0;vertical-align:middle}
-  input{width:100%;border:1px solid transparent;border-radius:7px;padding:6px 7px;font:inherit;font-size:12.5px;background:#f8faf7}
+  tr.cat td{background:#eaf6e8;color:var(--v);font-weight:700;font-size:11px;text-transform:uppercase}
+  input{width:100%;border:1px solid transparent;border-radius:7px;padding:6px 7px;font:inherit;font-size:12px;background:#f4f7f3}
   input:focus{outline:none;border-color:var(--v);background:#fff}
-  .num{width:70px}.pri{width:88px}.wpp{width:130px}
-  .del{background:#FEE2E2;color:#DC2626;border:none;border-radius:7px;width:28px;height:28px;cursor:pointer;font-weight:700}
+  .num{width:64px}.pri{width:82px}.wpp{width:120px}
+  .st{font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:20px;white-space:nowrap}
+  .st.ok{background:#DCFCE7;color:#15803D}.st.wr{background:#FEF3C7;color:#B45309}.st.no{background:#FEE2E2;color:#DC2626}
+  .src{font-size:11px;color:#374151}.q{color:#9ca3af;font-size:10.5px}
   .msg{padding:10px 12px;border-radius:10px;margin-top:10px;font-size:13px;display:none}
   .msg.ok{background:#DCFCE7;color:#15803D;display:block}.msg.err{background:#FEE2E2;color:#DC2626;display:block}
-  .prog{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:12px;font-size:13px;display:none}
+  .prog{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:12px;font-size:12.5px;display:none}
   .prog .ln{padding:3px 0;border-bottom:1px solid #f1f5f0}
-  .foot{color:var(--muted);font-size:11px;margin:14px 0;text-align:center}
-  .hint{font-size:11.5px;color:var(--muted);margin:2px 0 10px}
+  .foot{color:var(--muted);font-size:11px;margin:12px 0;text-align:center}
+  .print-head{display:none}
+  @media print{body{background:#fff;padding:0}.hdr button,.bar,.msg,.prog,.foot,th:last-child,td:last-child,.wpp2{display:none!important}
+    .print-head{display:block;margin-bottom:8px}.card{border:none}table{min-width:0;font-size:10.5px}input{border:none!important;background:none!important}
+    th{background:#eee!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.hdr{background:#2E7D34!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="hdr">
-    <div><h1>🛒 Montar Pedido & Disparar</h1><div class="sub">Ajuste os itens, informe fornecedor + WhatsApp + preço e dispare por fornecedor</div></div>
-  </div>
-  <div class="print-head"><h2 id="phTitle">Lista de Compras</h2><div class="d" id="phDate"></div></div>
-  <div class="hint">💡 O disparo agrupa por <b>fornecedor</b> e envia 1 mensagem de pedido para cada WhatsApp preenchido, com intervalo aleatório (anti-bloqueio). Itens sem WhatsApp não são enviados. Clique <b>Salvar</b> para guardar suas edições.</div>
+  <div class="hdr"><div><h1>🛒 Gestão da Lista de Compras — Flow</h1><div class="sub">Solicitação × Pedidos — o que foi comprado e o que falta</div></div><button onclick="load()">↻ Atualizar</button></div>
+  <div class="print-head"><h2 id="phTitle">Lista de Compras — Flow</h2><div id="phDate" style="font-size:12px;color:#444"></div></div>
+  <div class="kpis" id="kpis"></div>
+  <div class="alert" id="alert" style="display:none"></div>
   <div class="bar">
-    <button class="btn btn-add" onclick="addRow()">+ Adicionar item</button>
-    <button class="btn btn-save" onclick="salvar()">💾 Salvar edições</button>
+    <span class="seg" id="seg">
+      <button data-f="" class="on" onclick="setF('')">Todos</button>
+      <button data-f="no" onclick="setF('no')">❌ Faltando</button>
+      <button data-f="wr" onclick="setF('wr')">⚠️ Verificar</button>
+      <button data-f="ok" onclick="setF('ok')">✅ Comprados</button>
+    </span>
+    <button class="btn btn-save" onclick="salvar()">💾 Salvar</button>
     <button class="btn btn-pdf" onclick="gerarPDF()">📄 Gerar PDF</button>
-    <button class="btn btn-fire" onclick="disparar()">📲 Disparar por fornecedor</button>
-    <button class="btn btn-del" onclick="limpar()">🗑️ Limpar lista</button>
+    <button class="btn btn-fire" onclick="disparar()">📲 Disparar faltantes</button>
   </div>
   <div class="card"><table><thead><tr>
-    <th>Categoria</th><th>Produto</th><th>Qtd</th><th>Un</th><th>Fornecedor</th><th>WhatsApp</th><th>Preço un.</th><th></th>
-  </tr></thead><tbody id="tb"><tr><td colspan="8" style="padding:20px;text-align:center;color:#6b7280">Carregando…</td></tr></tbody></table></div>
-  <div class="msg" id="msg"></div>
-  <div class="prog" id="prog"></div>
-  <div class="foot" id="foot"></div>
+    <th>Produto solicitado</th><th>Qtd</th><th>Status</th><th>Comprado em</th>
+    <th class="wpp2">Fornecedor p/ comprar</th><th class="wpp2">WhatsApp</th><th class="wpp2">Preço un.</th>
+  </tr></thead><tbody id="tb"><tr><td colspan="7" style="padding:20px;text-align:center;color:#6b7280">Carregando…</td></tr></tbody></table></div>
+  <div class="msg" id="msg"></div><div class="prog" id="prog"></div><div class="foot" id="foot"></div>
 </div>
 <script>
 const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
 const ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
 const H={apikey:ANON,Authorization:'Bearer '+ANON,'Content-Type':'application/json'};
-const CHAVE='compras_lista_flow';
 const el=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-let LISTA=[], LOJA='Flow CD', TITULO='';
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+const norm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+const STOP=new Set(['de','do','da','com','sem','em','kg','g','l','ml','un','und','unidade','unidades','pct','pacote','caixa','cx','bandeja','fardo','rolo','balde','tipo','para','no','na','e']);
+const toks=s=>norm(s).split(' ').filter(w=>w.length>=3&&!STOP.has(w)&&!/^\d+$/.test(w));
+const brl=n=>'R$ '+(Number(String(n).replace(',','.'))||0).toFixed(2).replace('.',',');
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+const nomeLoja=l=>({'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'})[l]||l;
 function show(m,ok){const e=el('msg');e.textContent=m;e.className='msg '+(ok?'ok':'err');}
+let SOLIC=[],LOJA='Flow CD',OVER={},COMPRADOS=[],FILTRO='',ROWS=[];
 
 async function load(){
-  try{const row=(await (await fetch(SB+'/rest/v1/app_config?chave=eq.'+CHAVE+'&select=valor',{headers:H})).json())[0];
-    const v=row?row.valor:{}; LISTA=(v.itens||[]).map(x=>({...x})); LOJA=v.loja||'Flow CD'; TITULO=v.titulo||'';}catch(e){LISTA=[];}
-  render();
+  let sol={},ped=[],ov={};
+  try{sol=((await (await fetch(SB+'/rest/v1/app_config?chave=eq.compras_solicitacao_flow&select=valor',{headers:H})).json())[0]||{}).valor||{};}catch(e){}
+  try{ped=await (await fetch(SB+'/rest/v1/app_config?select=chave,valor&chave=like.pedido_*&limit=2000',{headers:H})).json();}catch(e){}
+  try{ov=((await (await fetch(SB+'/rest/v1/app_config?chave=eq.compras_overrides_flow&select=valor',{headers:H})).json())[0]||{}).valor||{};}catch(e){}
+  SOLIC=sol.itens||[];LOJA=sol.loja||'Flow CD';OVER=ov.map||{};
+  const flow=(ped||[]).filter(r=>r.valor&&/flow/i.test(r.valor.loja||''));
+  COMPRADOS=[];for(const r of flow)for(const it of (r.valor.itens||[])){if(/^desconto$|^frete|^adicional/i.test(it.produto||''))continue;COMPRADOS.push({fornecedor:r.valor.fornecedor,produto:it.produto,qtd:it.qtd,un:it.un,norm:norm(it.produto)});}
+  compute();render();
 }
+function matchOne(prod){const st=toks(prod);if(!st.length)return{status:'no'};const main=st.slice().sort((a,b)=>b.length-a.length)[0];let best=null,bs=0,qsum=0,forns=new Set();for(const c of COMPRADOS){if(!c.norm.includes(main))continue;let sc=0;for(const t of st)if(c.norm.includes(t))sc++;if(sc>0){qsum+=Number(c.qtd)||0;forns.add(c.fornecedor);}if(sc>bs){bs=sc;best=c;}}if(!best)return{status:'no'};return{status:bs>=st.length?'ok':'wr',best,qsum,forns:[...forns]};}
+function compute(){ROWS=SOLIC.map(si=>{const m=matchOne(si.produto);const o=OVER[norm(si.produto)]||{};return {...si,m,forn:o.fornecedor||'',wpp:o.whatsapp||'',preco:o.preco||''};});}
+function setF(f){FILTRO=f;[...document.querySelectorAll('#seg button')].forEach(b=>b.classList.toggle('on',b.dataset.f===f));render();}
 function render(){
-  el('tb').innerHTML=LISTA.map((it,i)=>`<tr>
-    <td><input value="${esc(it.categoria)}" onchange="upd(${i},'categoria',this.value)"></td>
-    <td><input value="${esc(it.produto)}" onchange="upd(${i},'produto',this.value)"></td>
-    <td><input class="num" value="${esc(it.qtd)}" onchange="upd(${i},'qtd',this.value)"></td>
-    <td><input class="num" value="${esc(it.un)}" onchange="upd(${i},'un',this.value)"></td>
-    <td><input value="${esc(it.fornecedor)}" onchange="upd(${i},'fornecedor',this.value)" placeholder="fornecedor"></td>
-    <td><input class="wpp" value="${esc(it.whatsapp)}" onchange="upd(${i},'whatsapp',this.value)" placeholder="DDD+nº" inputmode="numeric"></td>
-    <td><input class="pri" value="${esc(it.preco)}" onchange="upd(${i},'preco',this.value)" placeholder="0,00" inputmode="decimal"></td>
-    <td><button class="del" onclick="delRow(${i})" title="remover">✕</button></td>
-  </tr>`).join('') || '<tr><td colspan="8" style="padding:20px;text-align:center;color:#6b7280">Lista vazia. Clique “+ Adicionar item”.</td></tr>';
-  const forns=new Set(LISTA.filter(x=>(x.whatsapp||'').replace(/\D/g,'').length>=10).map(x=>x.fornecedor.trim().toLowerCase()).filter(Boolean));
-  el('foot').textContent=`${LISTA.length} item(ns) · ${forns.size} fornecedor(es) prontos para disparo`;
+  const nOk=ROWS.filter(r=>r.m.status==='ok').length,nWr=ROWS.filter(r=>r.m.status==='wr').length,nNo=ROWS.filter(r=>r.m.status==='no').length;
+  el('kpis').innerHTML=`<div class="kpi"><div class="n">${ROWS.length}</div><div class="l">Solicitados</div></div><div class="kpi ok"><div class="n">${nOk}</div><div class="l">Comprados</div></div><div class="kpi wr"><div class="n">${nWr}</div><div class="l">Verificar</div></div><div class="kpi no"><div class="n">${nNo}</div><div class="l">Faltando</div></div>`;
+  const falt=ROWS.filter(r=>r.m.status==='no');
+  el('alert').style.display=falt.length?'block':'none';
+  el('alert').innerHTML=`<b>⚠️ Faltando comprar: ${falt.length} item(ns)</b><div class="items">${falt.map(r=>`${esc(r.produto)} <span style="opacity:.7">(${esc(r.qtd)} ${esc(r.un)})</span>`).join(' · ')}</div>`;
+  const list=ROWS.filter(r=>!FILTRO||r.m.status===FILTRO);
+  const badge=s=>s==='ok'?'<span class="st ok">✅ Comprado</span>':s==='wr'?'<span class="st wr">⚠️ Verificar</span>':'<span class="st no">❌ Faltando</span>';
+  let cur='',html='';
+  for(const r of list){const gi=ROWS.indexOf(r);
+    if(r.categoria!==cur){cur=r.categoria;html+=`<tr class="cat"><td colspan="7">${esc(cur)}</td></tr>`;}
+    const comp=r.m.best?`${esc(r.m.forns.join(', '))} <span class="q">(${esc(r.m.best.produto)} · ${esc(r.m.qsum)} un/kg)</span>`:'—';
+    html+=`<tr>
+      <td>${esc(r.produto)}</td><td class="q">${esc(r.qtd)} ${esc(r.un)}</td><td>${badge(r.m.status)}</td><td class="src">${comp}</td>
+      <td class="wpp2"><input value="${esc(r.forn)}" onchange="ov(${gi},'fornecedor',this.value)" placeholder="fornecedor"></td>
+      <td class="wpp2"><input class="wpp" value="${esc(r.wpp)}" onchange="ov(${gi},'whatsapp',this.value)" placeholder="DDD+nº" inputmode="numeric"></td>
+      <td class="wpp2"><input class="pri" value="${esc(r.preco)}" onchange="ov(${gi},'preco',this.value)" placeholder="0,00" inputmode="decimal"></td>
+    </tr>`;}
+  el('tb').innerHTML=html||'<tr><td colspan="7" style="padding:20px;text-align:center;color:#6b7280">Nenhum item neste filtro.</td></tr>';
+  const prontos=new Set(ROWS.filter(r=>r.m.status!=='ok'&&(r.wpp||'').replace(/\D/g,'').length>=10&&r.forn.trim()).map(r=>r.forn.trim().toLowerCase()));
+  el('foot').textContent=`${ROWS.length} solicitados · ${nNo} faltando · ${prontos.size} fornecedor(es) prontos p/ disparo`;
 }
-function upd(i,k,v){LISTA[i][k]=v; if(k==='whatsapp'||k==='fornecedor')render();}
-function addRow(){LISTA.push({categoria:'',produto:'',qtd:'',un:'',fornecedor:'',whatsapp:'',preco:''});render();}
-function delRow(i){LISTA.splice(i,1);render();}
-async function limpar(){
-  if(!confirm('Excluir TODOS os itens da lista? Isso apaga a lista salva.'))return;
-  LISTA=[];render();await salvar();show('🗑️ Lista excluída.',true);
+function ov(i,k,v){ROWS[i][k==='fornecedor'?'forn':k==='whatsapp'?'wpp':'preco']=v;}
+async function salvar(){const map={};for(const r of ROWS){if(r.forn||r.wpp||r.preco)map[norm(r.produto)]={fornecedor:r.forn,whatsapp:r.wpp,preco:r.preco};}
+  try{let ex=await fetch(SB+'/rest/v1/app_config?chave=eq.compras_overrides_flow&select=chave',{headers:H}).then(r=>r.json());
+    const body={valor:{map,updated_at:new Date().toISOString()}};let r;
+    if(ex&&ex.length)r=await fetch(SB+'/rest/v1/app_config?chave=eq.compras_overrides_flow',{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify(body)});
+    else r=await fetch(SB+'/rest/v1/app_config',{method:'POST',headers:{...H,Prefer:'resolution=merge-duplicates'},body:JSON.stringify({chave:'compras_overrides_flow',...body})});
+    show(r.ok?'✅ Salvo.':'Falha ao salvar ('+r.status+').',r.ok);}catch(e){show('Falha ao salvar.',false);}
 }
-function gerarPDF(){
-  el('phTitle').textContent=(TITULO||'Lista de Compras')+' — '+nomeLoja(LOJA);
-  el('phDate').textContent='Gerado em '+new Date().toLocaleString('pt-BR');
-  window.print();
-}
-
-async function salvar(){
-  try{const r=await fetch(SB+'/rest/v1/app_config?chave=eq.'+CHAVE,{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({valor:{loja:LOJA,titulo:TITULO,updated_at:new Date().toISOString(),itens:LISTA}})});
-    show(r.ok?'✅ Edições salvas.':'Não foi possível salvar ('+r.status+').',r.ok);}catch(e){show('Falha ao salvar.',false);}
-}
-const brl=n=>'R$ '+(Number(String(n).replace(',','.'))||0).toFixed(2).replace('.',',');
-function nomeLoja(l){return ({'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'})[l]||l;}
-function grupos(){
-  const g={};
-  for(const it of LISTA){const w=(it.whatsapp||'').replace(/\D/g,'');const f=(it.fornecedor||'').trim();if(!f||w.length<10)continue;const key=f+'|'+w;(g[key]=g[key]||{fornecedor:f,whatsapp:w,itens:[]}).itens.push(it);}
-  return Object.values(g);
-}
+function gerarPDF(){el('phTitle').textContent='Lista de Compras — '+nomeLoja(LOJA);el('phDate').textContent='Gerado em '+new Date().toLocaleString('pt-BR');window.print();}
 async function disparar(){
-  const gs=grupos();
-  if(!gs.length){show('Preencha ao menos 1 item com fornecedor e WhatsApp válido (DDD+nº).',false);return;}
-  if(!confirm(`Disparar ${gs.length} pedido(s) — um por fornecedor — pela ${nomeLoja(LOJA)}?`))return;
-  await salvar();
-  const P=el('prog');P.style.display='block';P.innerHTML='<b>Disparando…</b>';
-  let ok=0,fail=0,prev=-1;
-  for(let i=0;i<gs.length;i++){
-    const g=gs[i];let fone=g.whatsapp; if(fone.length<=11)fone='55'+fone;
-    const linhas=g.itens.map(it=>`• ${it.qtd||''} ${it.un||''} — *${it.produto}*`+(String(it.preco).trim()?` — ${brl(it.preco)}`:'')).join('\n');
-    const msg=`Olá, ${g.fornecedor}! 👋 Aqui é da *${nomeLoja(LOJA)}*.\n\nSegue nosso *pedido de compra*:\n${linhas}\n\nObrigado! 💚`;
+  const alvos=ROWS.filter(r=>r.m.status!=='ok'&&r.forn.trim()&&(r.wpp||'').replace(/\D/g,'').length>=10);
+  const g={};for(const r of alvos){const w=r.wpp.replace(/\D/g,'');const key=r.forn.trim()+'|'+w;(g[key]=g[key]||{forn:r.forn.trim(),wpp:w,itens:[]}).itens.push(r);}
+  const gs=Object.values(g);
+  if(!gs.length){show('Preencha fornecedor + WhatsApp nos itens faltantes que quer comprar.',false);return;}
+  if(!confirm(`Disparar ${gs.length} pedido(s) dos itens faltantes pela ${nomeLoja(LOJA)}?`))return;
+  await salvar();const P=el('prog');P.style.display='block';P.innerHTML='<b>Disparando…</b>';let ok=0,fail=0,prev=-1;
+  for(let i=0;i<gs.length;i++){const x=gs[i];let fone=x.wpp;if(fone.length<=11)fone='55'+fone;
+    const linhas=x.itens.map(it=>`• ${it.qtd||''} ${it.un||''} — *${it.produto}*`+(String(it.preco).trim()?` — ${brl(it.preco)}`:'')).join('\n');
+    const msg=`Olá, ${x.forn}! 👋 Aqui é da *${nomeLoja(LOJA)}*.\n\nSegue nosso *pedido de compra*:\n${linhas}\n\nObrigado! 💚`;
     try{const r=await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:fone,message:msg})});
-      if(r.ok){ok++;P.innerHTML+=`<div class="ln">✅ ${esc(g.fornecedor)} (${g.itens.length} itens)</div>`;}
-      else{fail++;P.innerHTML+=`<div class="ln">❌ ${esc(g.fornecedor)} — HTTP ${r.status}</div>`;}
-    }catch(e){fail++;P.innerHTML+=`<div class="ln">❌ ${esc(g.fornecedor)} — erro de rede</div>`;}
+      if(r.ok){ok++;P.innerHTML+=`<div class="ln">✅ ${esc(x.forn)} (${x.itens.length} itens)</div>`;}else{fail++;P.innerHTML+=`<div class="ln">❌ ${esc(x.forn)} — HTTP ${r.status}</div>`;}}
+    catch(e){fail++;P.innerHTML+=`<div class="ln">❌ ${esc(x.forn)} — rede</div>`;}
     if(i<gs.length-1){let d;do{d=rnd(4,9);}while(d===prev);prev=d;P.innerHTML+=`<div class="ln" style="color:#6b7280">aguardando ${d}s…</div>`;await sleep(d*1000);}
   }
-  P.innerHTML+=`<div class="ln"><b>Fim — ${ok} enviado(s), ${fail} falha(s).</b></div>`;
-  show(`Disparo concluído: ${ok} enviado(s), ${fail} falha(s).`,fail===0);
+  P.innerHTML+=`<div class="ln"><b>Fim — ${ok} enviado(s), ${fail} falha(s).</b></div>`;show(`Disparo: ${ok} enviado(s), ${fail} falha(s).`,fail===0);
 }
 load();
 </script>
