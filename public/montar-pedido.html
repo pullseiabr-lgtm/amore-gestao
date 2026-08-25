@@ -180,6 +180,7 @@ async function disparar(){
   }
   P.innerHTML+=`<div class="ln"><b>Fim — ${ok} enviado(s), ${fail} falha(s).</b></div>`;show(`Disparo: ${ok} enviado(s), ${fail} falha(s).`,fail===0);
 }
+(function(){const p=(new URLSearchParams(location.search).get('loja')||'').toLowerCase();const map={'flow':'Flow CD','flow-cd':'Flow CD','flow_cd':'Flow CD','amore-cd':'Amore CD','amore_cd':'Amore CD','amore-paiva':'Amore Paiva','amore_paiva':'Amore Paiva'};const v=map[p];if(v){LOJA=v;const s=el('loja');if(s)s.value=v;}})();
 load();
 </script>
 </body>
