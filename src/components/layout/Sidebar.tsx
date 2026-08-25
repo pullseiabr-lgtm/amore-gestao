@@ -293,6 +293,13 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
                   >
                     <ClipboardCheck size={12} /> 📦 Gestão de Compras
                   </a>
+                  <a
+                    href="/montar-pedido.html" target="_blank" rel="noreferrer"
+                    className="nav-item"
+                    style={{ paddingLeft: 28, fontSize: 12, borderLeft: '2px solid var(--bordo-l)', marginLeft: 16, borderRadius: '0 6px 6px 0', textDecoration: 'none', color: 'inherit' }}
+                  >
+                    <ClipboardList size={12} /> 🛒 Montar Pedido & Disparar
+                  </a>
                 </div>
               )}
             </div>
