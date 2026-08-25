@@ -119,8 +119,13 @@ export default function PedidosPage() {
     setEnviandoP(true)
     try {
       const l = link(pedSel)
-      const msgF = `🧾 *Pedido de Compra — ${pedSel.loja}*\nFornecedor: ${pedSel.fornecedor}${pedSel.pagamento ? ` · ${pedSel.pagamento}` : ''}\n\nSegue nosso pedido (${(pedSel.itens || []).length} itens · ${fmtR$(pedSel.total || 0)}). Abra o link:\n${l}\n📍 Entrega ${pedSel.loja}${pedSel.recebimento_responsavel ? ` · Recebimento: ${pedSel.recebimento_responsavel}` : ''}\n— Compras Amore`
-      const msgR = `📦 *Pedido a receber — ${pedSel.loja}*\nFornecedor: ${pedSel.fornecedor} · ${fmtR$(pedSel.total || 0)}\n\nConfira na chegada (link com a lista organizada):\n${l}\n— Compras Amore`
+      // Mensagem PADRÃO do pedido ao fornecedor (mesma para todas as lojas — só muda o nome da loja).
+      const nomeLoja = ({ 'Amore CD': 'Amore Costa Dourada', 'Amore Paiva': 'Amore Paiva', 'Flow CD': 'Flow Costa Dourada' } as Record<string, string>)[pedSel.loja] || pedSel.loja
+      const itensTxt = (pedSel.itens || []).map(it => `• ${it.qtd} ${it.un || ''} — *${it.produto}*`.replace(/\s{2,}/g, ' ').replace(' — ', ' — ')).join('\n')
+      const entrega = fmtD((pedSel as any).janela_entrega || pedSel.data)
+      const receb = (pedSel as any).horario_recebimento
+      const msgF = `Olá, ${pedSel.fornecedor}! 👋 Aqui é da *${nomeLoja}*.\n\nSegue nosso *pedido de compra*:\n${itensTxt}${entrega ? `\n📅 Entrega: *${entrega}*` : ''}${receb ? `\n🕗 Recebimento: *${receb}*` : ''}${pedSel.pagamento ? `\n💳 Pagamento: ${pedSel.pagamento}` : ''}\n\nDetalhes e confirmação no link:\n${l}\n\nObrigado! 💚`
+      const msgR = `📦 *Pedido a receber — ${nomeLoja}*\nFornecedor: ${pedSel.fornecedor} · ${fmtR$(pedSel.total || 0)}\n\nConfira na chegada (link com a lista organizada):\n${l}\n— Compras`
       let ok = 0, alvos = 0
       if (ff.length >= 10) { alvos++; if (await enviarWhatsApp(ff, msgF)) ok++ }
       if (fr.length >= 10) { alvos++; if (await enviarWhatsApp(fr, msgR)) ok++ }
