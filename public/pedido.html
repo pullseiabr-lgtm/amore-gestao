@@ -113,6 +113,7 @@ async function run(){
    +'</div>'
    +'<div class="tw"><table><thead><tr><th class="num">#</th><th>Produto</th><th class="num">Qtd</th><th class="num">Valor unit.</th><th class="num">Subtotal</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td colspan="4" class="num tl">VALOR TOTAL</td><td class="num tl">'+brl(total)+'</td></tr></tfoot></table></div>'
    +((d.cancelados&&d.cancelados.length)?'<div class="canc">⚠️ Item(ns) CANCELADO(S) — não incluído(s): '+d.cancelados.map(esc).join(', ')+'</div>':'')
+   +(d.obs?'<div style="margin-top:14px;padding:11px 14px;border-radius:12px;background:color-mix(in srgb,var(--vinho) 8%,var(--card));border:1px solid var(--border);font-size:13px"><b style="color:var(--vinho)">📌 Observação:</b> '+esc(d.obs)+'</div>':'')
    +recebimentoHTML(d)
    +'<div class="foot">Pedido gerado pelo Painel Amore. Confira quantidades, validade e estado no recebimento. Qualquer divergência, sinalizar ao comprador.</div>';
   window.__ped={chave:chave,d:d};
