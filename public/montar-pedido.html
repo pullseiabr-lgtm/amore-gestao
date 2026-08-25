@@ -16,7 +16,17 @@
   .btn{border:none;border-radius:10px;padding:10px 15px;font:inherit;font-weight:700;font-size:13px;cursor:pointer}
   .btn-add{background:#fff;color:var(--v);border:1px solid var(--v)}
   .btn-save{background:#0369A1;color:#fff}.btn-fire{background:var(--v);color:#fff}
+  .btn-pdf{background:#fff;color:#374151;border:1px solid #cbd5e1}.btn-del{background:#FEE2E2;color:#DC2626}
   .btn:active{transform:scale(.98)}.btn:disabled{opacity:.5;cursor:default}
+  .print-head{display:none}
+  @media print{
+    body{background:#fff;padding:0}.bar,.hint,.hdr button,.del,.msg,.prog,.foot{display:none!important}
+    .print-head{display:block;margin-bottom:10px}.print-head h2{font-size:16px}.print-head .d{font-size:12px;color:#444}
+    .card{border:none}table{min-width:0;font-size:11px}th{background:#eee!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    input{border:none!important;background:none!important;padding:2px!important}
+    th:last-child,td:last-child{display:none}
+    .hdr{background:#2E7D34!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
   .card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:auto}
   table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:820px}
   th{text-align:left;color:var(--muted);font-size:10.5px;text-transform:uppercase;padding:8px 6px;border-bottom:1px solid var(--border);white-space:nowrap;background:#f6faf5;position:sticky;top:0}
@@ -38,11 +48,14 @@
   <div class="hdr">
     <div><h1>🛒 Montar Pedido & Disparar</h1><div class="sub">Ajuste os itens, informe fornecedor + WhatsApp + preço e dispare por fornecedor</div></div>
   </div>
+  <div class="print-head"><h2 id="phTitle">Lista de Compras</h2><div class="d" id="phDate"></div></div>
   <div class="hint">💡 O disparo agrupa por <b>fornecedor</b> e envia 1 mensagem de pedido para cada WhatsApp preenchido, com intervalo aleatório (anti-bloqueio). Itens sem WhatsApp não são enviados. Clique <b>Salvar</b> para guardar suas edições.</div>
   <div class="bar">
     <button class="btn btn-add" onclick="addRow()">+ Adicionar item</button>
     <button class="btn btn-save" onclick="salvar()">💾 Salvar edições</button>
+    <button class="btn btn-pdf" onclick="gerarPDF()">📄 Gerar PDF</button>
     <button class="btn btn-fire" onclick="disparar()">📲 Disparar por fornecedor</button>
+    <button class="btn btn-del" onclick="limpar()">🗑️ Limpar lista</button>
   </div>
   <div class="card"><table><thead><tr>
     <th>Categoria</th><th>Produto</th><th>Qtd</th><th>Un</th><th>Fornecedor</th><th>WhatsApp</th><th>Preço un.</th><th></th>
@@ -85,6 +98,15 @@ function render(){
 function upd(i,k,v){LISTA[i][k]=v; if(k==='whatsapp'||k==='fornecedor')render();}
 function addRow(){LISTA.push({categoria:'',produto:'',qtd:'',un:'',fornecedor:'',whatsapp:'',preco:''});render();}
 function delRow(i){LISTA.splice(i,1);render();}
+async function limpar(){
+  if(!confirm('Excluir TODOS os itens da lista? Isso apaga a lista salva.'))return;
+  LISTA=[];render();await salvar();show('🗑️ Lista excluída.',true);
+}
+function gerarPDF(){
+  el('phTitle').textContent=(TITULO||'Lista de Compras')+' — '+nomeLoja(LOJA);
+  el('phDate').textContent='Gerado em '+new Date().toLocaleString('pt-BR');
+  window.print();
+}
 
 async function salvar(){
   try{const r=await fetch(SB+'/rest/v1/app_config?chave=eq.'+CHAVE,{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({valor:{loja:LOJA,titulo:TITULO,updated_at:new Date().toISOString(),itens:LISTA}})});
