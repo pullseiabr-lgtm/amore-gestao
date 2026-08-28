@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
-import { Repeat, RefreshCw, Loader2, PackageCheck, AlertTriangle, CheckCircle2, Hash, Send, X, ClipboardList, CalendarDays, History, Lock, Copy } from 'lucide-react'
+import { Repeat, RefreshCw, Loader2, PackageCheck, AlertTriangle, CheckCircle2, Hash, Send, X, ClipboardList, CalendarDays, History, Lock, Copy, ExternalLink } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useLoja } from '../../contexts/LojaContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../hooks/useToast'
 import { enviarWhatsApp } from '../../lib/notify'
+import { siteOrigin } from '../../lib/site'
 
 const sb = supabase as any
 const fmtR$ = (v: number) => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -486,15 +487,19 @@ function TabRelatorio({ pedidos, dia, setDia, loja, LOJAS, toast }: any) {
     return t
   }, [pedidos, dia, lojaRel])
 
+  const link = useMemo(() => `${siteOrigin()}/relatorio-ciclo.html?d=${dia}${lojaRel !== 'Todas' ? '&loja=' + encodeURIComponent(lojaRel) : ''}`, [dia, lojaRel])
+  const msgLink = useMemo(() => `📦 *Relatório Diário de Recebimento — Ciclo de Compras*\n${fmtD(dia)} · ${lojaRel === 'Todas' ? 'Todas as lojas' : lojaRel}\n\nEntregas do dia e pendências em aberto no link (layout do painel):\n${link}\n— Compras Amore 💚`, [dia, lojaRel, link])
+
   const enviar = async () => {
     const f = fone.replace(/\D/g, '')
     if (f.length < 10) { toast('Informe um WhatsApp com DDD.', 'error'); return }
     setEnviando(true)
-    try { const ok = await enviarWhatsApp(f, texto); toast(ok ? 'Relatório enviado. ✅' : 'Não foi possível enviar.', ok ? 'success' : 'error') }
+    try { const ok = await enviarWhatsApp(f, msgLink); toast(ok ? 'Link do relatório enviado. ✅' : 'Não foi possível enviar.', ok ? 'success' : 'error') }
     catch { toast('Não foi possível enviar.', 'error') }
     finally { setEnviando(false) }
   }
-  const copiar = async () => { try { await navigator.clipboard.writeText(texto); toast('Relatório copiado. 📋') } catch { toast('Não foi possível copiar.', 'error') } }
+  const copiarLink = async () => { try { await navigator.clipboard.writeText(link); toast('Link copiado. 📋') } catch { toast('Não foi possível copiar.', 'error') } }
+  const copiarTexto = async () => { try { await navigator.clipboard.writeText(texto); toast('Texto copiado. 📋') } catch { toast('Não foi possível copiar.', 'error') } }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -503,11 +508,15 @@ function TabRelatorio({ pedidos, dia, setDia, loja, LOJAS, toast }: any) {
         <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>Loja<select value={lojaRel} onChange={e => setLojaRel(e.target.value)} style={inp}><option value="Todas">Todas as lojas</option>{LOJAS.map((l: string) => <option key={l} value={l}>{l}</option>)}</select></label>
         <div style={{ flex: 1 }} />
         <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>WhatsApp destino<input value={fone} onChange={e => setFone(e.target.value)} placeholder="Ex.: 81 99999-9999" style={{ ...inp, minWidth: 170 }} /></label>
-        <button onClick={copiar} className="btn" style={{ padding: '9px 14px', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Copy size={14} /> Copiar</button>
-        <button onClick={enviar} disabled={enviando} className="btn" style={{ padding: '9px 16px', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: enviando ? .6 : 1 }}><Send size={14} /> {enviando ? 'Enviando…' : 'Enviar'}</button>
+        <a href={link} target="_blank" rel="noreferrer" className="btn" style={{ padding: '9px 14px', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}><ExternalLink size={14} /> Abrir</a>
+        <button onClick={copiarLink} className="btn" style={{ padding: '9px 14px', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Copy size={14} /> Copiar link</button>
+        <button onClick={enviar} disabled={enviando} className="btn" style={{ padding: '9px 16px', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: enviando ? .6 : 1 }}><Send size={14} /> {enviando ? 'Enviando…' : 'Enviar link'}</button>
       </div>
       <div style={card}>
-        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 8 }}>Prévia — o mesmo texto que será disparado. O agendamento fixo das 17h30 entra na próxima fase (cron do VPS).</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>Prévia do relatório · o WhatsApp envia o <b>link da página</b> (layout do painel). Agendamento fixo 17h30 entra na próxima fase (cron do VPS).</div>
+          <button onClick={copiarTexto} className="btn" style={{ padding: '5px 10px', fontSize: 11.5, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Copy size={12} /> Copiar texto</button>
+        </div>
         <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, margin: 0, lineHeight: 1.5 }}>{texto}</pre>
       </div>
     </div>
