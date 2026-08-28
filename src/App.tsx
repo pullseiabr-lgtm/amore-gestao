@@ -304,10 +304,22 @@ function PageContent({ page }: { page: PageId }) {
   }
 }
 
+// Lê a página inicial da URL (?page=<id> ou #<id>) para permitir LINK DIRETO a um módulo.
+// Ex.: painel.amorefood.com.br/?page=ciclo-compras abre direto no Ciclo de Compras.
+function pageFromUrl(): PageId {
+  try {
+    const p = (new URLSearchParams(window.location.search).get('page') || window.location.hash.replace(/^#\/?/, '')).trim()
+    return p && Object.prototype.hasOwnProperty.call(PAGE_TITLES, p) ? (p as PageId) : 'dashboard'
+  } catch { return 'dashboard' }
+}
+function setUrlPage(p: PageId) {
+  try { const u = new URL(window.location.href); u.searchParams.set('page', p); u.hash = ''; window.history.replaceState({}, '', u.toString()) } catch { /* ignore */ }
+}
+
 export default function App() {
   const { user } = useAuth()
   const { theme } = useTheme()
-  const [page, setPage] = useState<PageId>('dashboard')
+  const [page, setPage] = useState<PageId>(pageFromUrl)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
@@ -324,14 +336,18 @@ export default function App() {
   useEffect(() => {
     const handler = (e: Event) => {
       const id = (e as CustomEvent).detail as PageId
-      if (id) { setPage(id); setSidebarOpen(false) }
+      if (id) { setPage(id); setUrlPage(id); setSidebarOpen(false) }
     }
     document.addEventListener('amore-nav', handler)
     return () => document.removeEventListener('amore-nav', handler)
   }, [])
 
+  // Mantém a URL em sincronia com a página atual (link direto/compartilhável e refresh preserva a tela)
+  useEffect(() => { if (user) setUrlPage(page) }, [user, page])
+
   const navigate = (p: PageId) => {
     setPage(p)
+    setUrlPage(p)
     setSidebarOpen(false)
   }
 
