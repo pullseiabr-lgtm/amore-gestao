@@ -17,9 +17,28 @@ const normP = (s: string) => String(s || '').toLowerCase().normalize('NFD').repl
 const LOJAS_FALLBACK = ['Amore CD', 'Amore Paiva', 'Flow CD']
 const num6 = (n: number) => String(n).padStart(6, '0')
 
+// ── Tipos de ocorrência/desvio (mesma taxonomia do Recebimento Inteligente) ──
+const OCORRENCIAS: { v: string; l: string }[] = [
+  { v: 'produto_diferente', l: 'Produto diferente do pedido' },
+  { v: 'quantidade_divergente', l: 'Quantidade divergente' },
+  { v: 'valor_divergente', l: 'Valor diferente do pedido' },
+  { v: 'produto_faltando', l: 'Produto faltando (não entregue)' },
+  { v: 'produto_faturado_nao_entregue', l: 'Faturado, mas não entregue' },
+  { v: 'produto_excedente', l: 'Produto excedente' },
+  { v: 'embalagem_danificada', l: 'Embalagem danificada' },
+  { v: 'produto_avariado', l: 'Produto avariado' },
+  { v: 'validade_curta', l: 'Validade curta' },
+  { v: 'produto_vencido', l: 'Produto vencido' },
+  { v: 'qualidade_fora_padrao', l: 'Qualidade fora do padrão' },
+  { v: 'peso_divergente', l: 'Peso divergente' },
+  { v: 'outro', l: 'Outro' },
+]
+const ocorrLabel = (v: string) => OCORRENCIAS.find(o => o.v === v)?.l || v
+
 // ── Tipos do ciclo (persistidos no blob do pedido em app_config) ──
 interface PedidoItem { produto: string; qtd: number; un?: string; preco: number; subtotal?: number }
-interface Entrega { id: string; em: string; data: string; hora?: string; responsavel?: string; nf?: string; obs?: string; itens: { produto: string; qtd: number }[] }
+interface EntregaItem { produto: string; qtd: number; desvio?: { tipo: string; descricao?: string } }
+interface Entrega { id: string; em: string; data: string; hora?: string; responsavel?: string; nf?: string; obs?: string; itens: EntregaItem[] }
 interface Fechamento { fechado: boolean; em?: string; por?: string; motivo?: string; tipo?: string }
 interface HistEv { em: string; quem: string; acao: string; detalhe?: string; de?: string; para?: string; motivo?: string }
 interface Pedido {
@@ -46,6 +65,19 @@ const SIT_META: Record<string, { l: string; dot: string; c: string; b: string }>
   ok: { l: '🟢 Concluído', dot: '🟢', c: '#15803D', b: '#DCFCE7' },
   parcial: { l: '🟡 Parcial', dot: '🟡', c: '#B45309', b: '#FEF3C7' },
   nao: { l: '🔴 Não entregue', dot: '🔴', c: '#B91C1C', b: '#FEE2E2' },
+}
+// valor efetivamente entregue (soma qtd entregue × preço do item do pedido)
+function valorEntregue(p: Pedido): number {
+  return (p.itens || []).reduce((s, it) => s + itemSituacao(p, it).ent * (Number(it.preco) || 0), 0)
+}
+function valorPendente(p: Pedido): number {
+  return (p.itens || []).reduce((s, it) => s + itemSituacao(p, it).pend * (Number(it.preco) || 0), 0)
+}
+// desvios registrados nas entregas do pedido
+function desviosDe(p: Pedido): { produto: string; tipo: string; descricao?: string; data?: string }[] {
+  const out: { produto: string; tipo: string; descricao?: string; data?: string }[] = []
+  ;(p.entregas || []).forEach(e => (e.itens || []).forEach(i => { if (i.desvio?.tipo) out.push({ produto: i.produto, tipo: i.desvio.tipo, descricao: i.desvio.descricao, data: e.data }) }))
+  return out
 }
 
 // ── Status do ciclo (pedido inteiro) ──
@@ -83,6 +115,9 @@ export default function CicloComprasPage() {
   const [aberto, setAberto] = useState<string | null>(null)
   const [semana, setSemana] = useState(() => semanaISO(hoje()).ini)
   const [diaRel, setDiaRel] = useState(hoje())
+  const [recModal, setRecModal] = useState<Pedido | null>(null)
+  const [confModal, setConfModal] = useState<Pedido | null>(null)
+  const [fechModal, setFechModal] = useState<Pedido | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -148,11 +183,15 @@ export default function CicloComprasPage() {
       </div>
 
       {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><Loader2 className="spin" size={26} /></div> : <>
-        {tab === 'ciclo' && <TabCiclo pedidos={filtrados} aberto={aberto} setAberto={setAberto} emitirNumero={emitirNumero} salvarPedido={salvarPedido} confirmarFornecedor={confirmarFornecedor} user={user} />}
+        {tab === 'ciclo' && <TabCiclo pedidos={filtrados} aberto={aberto} setAberto={setAberto} emitirNumero={emitirNumero} openRec={setRecModal} openConf={setConfModal} openFech={setFechModal} />}
         {tab === 'macro' && <TabMacro pedidos={filtrados} semana={semana} setSemana={setSemana} />}
-        {tab === 'pend' && <TabPendencias pedidos={filtrados} />}
-        {tab === 'rel' && <TabRelatorio pedidos={filtrados} dia={diaRel} setDia={setDiaRel} loja={loja} LOJAS={LOJAS} toast={toast} />}
+        {tab === 'pend' && <TabPendencias pedidos={filtrados} openRec={setRecModal} />}
+        {tab === 'rel' && <TabRelatorio pedidos={filtrados} dia={diaRel} setDia={setDiaRel} loja={loja} LOJAS={LOJAS} toast={toast} salvarPedido={salvarPedido} />}
       </>}
+
+      {confModal && <ConfirmarModal p={confModal} onClose={() => setConfModal(null)} onSave={confirmarFornecedor} />}
+      {recModal && <RegistrarEntregaModal p={recModal} onClose={() => setRecModal(null)} salvarPedido={salvarPedido} user={user} />}
+      {fechModal && <FecharModal p={fechModal} onClose={() => setFechModal(null)} salvarPedido={salvarPedido} user={user} />}
     </div>
   )
 }
@@ -161,11 +200,7 @@ const card: React.CSSProperties = { background: 'var(--card)', border: '1px soli
 const inp: React.CSSProperties = { padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box' }
 
 // ═══════════════ ABA: PEDIDOS & CICLO ═══════════════
-function TabCiclo({ pedidos, aberto, setAberto, emitirNumero, salvarPedido, confirmarFornecedor, user }: any) {
-  const [confModal, setConfModal] = useState<Pedido | null>(null)
-  const [recModal, setRecModal] = useState<Pedido | null>(null)
-  const [fechModal, setFechModal] = useState<Pedido | null>(null)
-
+function TabCiclo({ pedidos, aberto, setAberto, emitirNumero, openRec, openConf, openFech }: any) {
   if (!pedidos.length) return <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 13, border: '1px dashed var(--border)', borderRadius: 10 }}>Nenhum pedido nesta loja. Gere pedidos em <strong>🧾 Pedidos de Compra</strong> — eles entram automaticamente no ciclo aqui.</div>
 
   return (
@@ -195,9 +230,10 @@ function TabCiclo({ pedidos, aberto, setAberto, emitirNumero, salvarPedido, conf
                   </div>
                 </div>
                 <span style={{ fontSize: 11.5, fontWeight: 700, padding: '4px 11px', borderRadius: 20, background: st.b, color: st.c, whiteSpace: 'nowrap' }}>{st.l}</span>
-                <div style={{ textAlign: 'right', minWidth: 90 }}>
+                <div style={{ textAlign: 'right', minWidth: 110 }}>
                   <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--bordo)' }}>{fmtR$(p.total || 0)}</div>
-                  <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>🟢{entLinhas} · 🟡{parcLinhas} · 🔴{naoLinhas}</div>
+                  <div style={{ fontSize: 10.5, color: '#15803D', fontWeight: 700 }}>entregue {fmtR$(valorEntregue(p))}</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>🟢{entLinhas} · 🟡{parcLinhas} · 🔴{naoLinhas}{desviosDe(p).length ? ` · ⚠${desviosDe(p).length}` : ''}</div>
                 </div>
               </div>
               {/* barra de progresso da entrega */}
@@ -207,29 +243,38 @@ function TabCiclo({ pedidos, aberto, setAberto, emitirNumero, salvarPedido, conf
               </div>}
               <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
                 <button onClick={() => setAberto(isAberto ? null : p.chave)} className="btn" style={{ padding: '7px 12px', fontSize: 12.5, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }}>{isAberto ? 'Ocultar' : '🔎 Conferência'}</button>
-                {!p.fechamento?.fechado && <button onClick={() => setRecModal(p)} className="btn" style={{ padding: '7px 12px', fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 5 }}><PackageCheck size={14} /> Registrar entrega</button>}
-                {!p.fechamento?.fechado && p.confirmacao?.confirmado !== 'sim' && <button onClick={() => setConfModal(p)} className="btn" style={{ padding: '7px 12px', fontSize: 12.5, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }}>✅ Confirmar fornecedor</button>}
-                {!p.fechamento?.fechado && <button onClick={() => setFechModal(p)} className="btn" style={{ padding: '7px 12px', fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 5, background: pendTotal <= 0.0001 ? '#15803D' : 'var(--bg)', color: pendTotal <= 0.0001 ? '#fff' : 'var(--text)', border: '1px solid var(--border)' }}><Lock size={13} /> {pendTotal <= 0.0001 ? 'Fechar pedido' : 'Tratar pendência'}</button>}
+                {!p.fechamento?.fechado && <button onClick={() => openRec(p)} className="btn" style={{ padding: '7px 12px', fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 5 }}><PackageCheck size={14} /> Registrar entrega</button>}
+                {!p.fechamento?.fechado && p.confirmacao?.confirmado !== 'sim' && <button onClick={() => openConf(p)} className="btn" style={{ padding: '7px 12px', fontSize: 12.5, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }}>✅ Confirmar fornecedor</button>}
+                {!p.fechamento?.fechado && <button onClick={() => openFech(p)} className="btn" style={{ padding: '7px 12px', fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 5, background: pendTotal <= 0.0001 ? '#15803D' : 'var(--bg)', color: pendTotal <= 0.0001 ? '#fff' : 'var(--text)', border: '1px solid var(--border)' }}><Lock size={13} /> {pendTotal <= 0.0001 ? 'Fechar pedido' : 'Tratar pendência'}</button>}
                 {p.fechamento?.fechado && <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>🔒 {p.fechamento.tipo === 'concluido' ? 'Concluído' : 'Encerrado'} por {p.fechamento.por} em {p.fechamento.em ? new Date(p.fechamento.em).toLocaleDateString('pt-BR') : ''}{p.fechamento.motivo ? ` · ${p.fechamento.motivo}` : ''}</span>}
               </div>
 
               {isAberto && <div style={{ marginTop: 12, borderTop: '1px dashed var(--border)', paddingTop: 12 }}>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 560 }}>
-                    <thead><tr style={{ textAlign: 'left', color: 'var(--muted)', fontSize: 10.5, textTransform: 'uppercase' }}><th style={{ padding: 6 }}>Produto</th><th>Pedido</th><th>Entregue</th><th>Pendente</th><th>Situação</th></tr></thead>
+                    <thead><tr style={{ textAlign: 'left', color: 'var(--muted)', fontSize: 10.5, textTransform: 'uppercase' }}><th style={{ padding: 6 }}>Produto</th><th>Pedido</th><th>Entregue</th><th>Pendente</th><th>Valor entregue</th><th>Situação</th></tr></thead>
                     <tbody>{itens.map((it, k) => { const s = itemSituacao(p, it); const m = SIT_META[s.sit]; return (
                       <tr key={k} style={{ borderTop: '1px solid var(--border)' }}>
                         <td style={{ padding: 6, fontWeight: 600 }}>{it.produto}</td>
                         <td>{s.ped} {it.un || ''}</td>
                         <td>{s.ent} {it.un || ''}</td>
                         <td style={{ fontWeight: 700, color: s.pend > 0 ? '#B91C1C' : 'var(--muted)' }}>{s.pend} {it.un || ''}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>{s.ent > 0 ? fmtR$(s.ent * (Number(it.preco) || 0)) : '—'}</td>
                         <td><span style={{ fontSize: 11, fontWeight: 700, color: m.c, background: m.b, padding: '2px 8px', borderRadius: 12 }}>{m.l}</span></td>
                       </tr>) })}</tbody>
                   </table>
                 </div>
+                <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap', fontSize: 12 }}>
+                  <span style={{ color: '#15803D', fontWeight: 700 }}>✓ Entregue: {fmtR$(valorEntregue(p))}</span>
+                  <span style={{ color: pendTotal > 0.0001 ? '#B91C1C' : 'var(--muted)', fontWeight: 700 }}>Falta: {fmtR$(valorPendente(p))}</span>
+                </div>
+                {desviosDe(p).length > 0 && <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: '#B91C1C', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 5 }}><AlertTriangle size={12} /> Desvios / ocorrências</div>
+                  {desviosDe(p).map((d, k) => <div key={k} style={{ fontSize: 12, color: 'var(--muted)', padding: '2px 0' }}>{fmtD(d.data)} · <strong>{d.produto}</strong> — {ocorrLabel(d.tipo)}{d.descricao ? `: ${d.descricao}` : ''}</div>)}
+                </div>}
                 {(p.entregas || []).length > 0 && <div style={{ marginTop: 10 }}>
                   <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 4 }}>📥 Entregas registradas</div>
-                  {(p.entregas || []).map(e => <div key={e.id} style={{ fontSize: 12, color: 'var(--muted)', padding: '3px 0' }}>{fmtD(e.data)}{e.hora ? ` ${e.hora}` : ''} · {(e.itens || []).length} item(ns){e.responsavel ? ` · ${e.responsavel}` : ''}{e.nf ? ` · NF ${e.nf}` : ''}{e.obs ? ` · ${e.obs}` : ''}</div>)}
+                  {(p.entregas || []).map(e => { const nd = (e.itens || []).filter(i => i.desvio?.tipo).length; return <div key={e.id} style={{ fontSize: 12, color: 'var(--muted)', padding: '3px 0' }}>{fmtD(e.data)}{e.hora ? ` ${e.hora}` : ''} · {(e.itens || []).filter(i => (Number(i.qtd) || 0) > 0).length} item(ns){e.responsavel ? ` · ${e.responsavel}` : ''}{e.nf ? ` · NF ${e.nf}` : ''}{nd ? ` · ⚠ ${nd} desvio(s)` : ''}{e.obs ? ` · ${e.obs}` : ''}</div> })}
                 </div>}
                 {(p.historico || []).length > 0 && <div style={{ marginTop: 10 }}>
                   <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 5 }}><History size={12} /> Histórico</div>
@@ -240,10 +285,6 @@ function TabCiclo({ pedidos, aberto, setAberto, emitirNumero, salvarPedido, conf
           </Fragment>
         )
       })}
-
-      {confModal && <ConfirmarModal p={confModal} onClose={() => setConfModal(null)} onSave={confirmarFornecedor} />}
-      {recModal && <RegistrarEntregaModal p={recModal} onClose={() => setRecModal(null)} salvarPedido={salvarPedido} user={user} />}
-      {fechModal && <FecharModal p={fechModal} onClose={() => setFechModal(null)} salvarPedido={salvarPedido} user={user} />}
     </div>
   )
 }
@@ -282,16 +323,27 @@ function RegistrarEntregaModal({ p, onClose, salvarPedido, user }: { p: Pedido; 
   const [nf, setNf] = useState('')
   const [obs, setObs] = useState('')
   const [busy, setBusy] = useState(false)
+  const [desv, setDesv] = useState<Record<number, { tipo: string; descricao: string }>>({})
+  const [desvOpen, setDesvOpen] = useState<Set<number>>(new Set())
+  const toggleDesv = (i: number) => setDesvOpen(s => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n })
+  const setDesvio = (i: number, patch: Partial<{ tipo: string; descricao: string }>) => setDesv(d => ({ ...d, [i]: { tipo: d[i]?.tipo ?? '', descricao: d[i]?.descricao ?? '', ...patch } }))
+  const valorTotal = itens.reduce((s, it, i) => s + (Number(qts[i]) || 0) * (Number(it.preco) || 0), 0)
+  const nDesvios = Object.values(desv).filter(d => d?.tipo).length
 
   const salvar = async () => {
-    const linhas = itens.map((it, i) => ({ produto: it.produto, qtd: Number(qts[i]) || 0 })).filter(l => l.qtd > 0)
-    if (!linhas.length) { alert('Informe ao menos 1 quantidade recebida.'); return }
+    const linhas: EntregaItem[] = itens.map((it, i) => {
+      const qtd = Number(qts[i]) || 0
+      const d = desv[i]?.tipo ? { tipo: desv[i].tipo, descricao: desv[i].descricao?.trim() || undefined } : undefined
+      return { produto: it.produto, qtd, desvio: d }
+    }).filter(l => l.qtd > 0 || l.desvio) // inclui item não entregue se tiver desvio (ex.: faturado e não entregue)
+    if (!linhas.length) { alert('Informe ao menos 1 quantidade recebida ou registre um desvio.'); return }
     if (!resp.trim()) { alert('Informe o responsável pelo recebimento.'); return }
     setBusy(true)
     const entrega: Entrega = { id: 'e' + Date.now().toString(36), em: new Date().toISOString(), data, hora, responsavel: resp.trim(), nf: nf.trim() || undefined, obs: obs.trim() || undefined, itens: linhas }
-    const totalItens = linhas.reduce((s, l) => s + l.qtd, 0)
+    const totalItens = linhas.filter(l => l.qtd > 0).length
+    const detDesv = nDesvios ? `, ${nDesvios} desvio(s)` : ''
     await salvarPedido(p.chave, { entregas: [...(p.entregas || []), entrega] },
-      { em: new Date().toISOString(), quem: user?.name || 'Painel', acao: 'Entrega registrada', detalhe: `${linhas.length} item(ns), ${totalItens} un`, motivo: nf.trim() ? `NF ${nf.trim()}` : undefined })
+      { em: new Date().toISOString(), quem: user?.name || 'Painel', acao: 'Entrega registrada', detalhe: `${totalItens} item(ns), ${fmtR$(valorTotal)}${detDesv}`, motivo: nf.trim() ? `NF ${nf.trim()}` : undefined })
     setBusy(false); onClose()
   }
 
@@ -305,21 +357,38 @@ function RegistrarEntregaModal({ p, onClose, salvarPedido, user }: { p: Pedido; 
         <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>Nº da nota fiscal<input value={nf} onChange={e => setNf(e.target.value)} placeholder="Opcional" style={inp} /></label>
       </div>
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 520 }}>
-          <thead><tr style={{ textAlign: 'left', color: 'var(--muted)', fontSize: 10.5, textTransform: 'uppercase' }}><th style={{ padding: 6 }}>Produto</th><th>Pedido</th><th>Já entregue</th><th>Recebido agora</th><th>Ficará pendente</th></tr></thead>
-          <tbody>{itens.map((it, i) => { const s = itemSituacao(p, it); const receb = Number(qts[i]) || 0; const restante = Math.max(0, Math.round((s.pend - receb) * 1000) / 1000); return (
-            <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 640 }}>
+          <thead><tr style={{ textAlign: 'left', color: 'var(--muted)', fontSize: 10.5, textTransform: 'uppercase' }}><th style={{ padding: 6 }}>Produto</th><th>Pedido</th><th>Já entr.</th><th>Recebido agora</th><th>Ficará pend.</th><th>Valor</th><th>Desvio</th></tr></thead>
+          <tbody>{itens.map((it, i) => { const s = itemSituacao(p, it); const receb = Number(qts[i]) || 0; const restante = Math.max(0, Math.round((s.pend - receb) * 1000) / 1000); const vLin = receb * (Number(it.preco) || 0); const temD = !!desv[i]?.tipo; return (
+            <Fragment key={i}>
+            <tr style={{ borderTop: '1px solid var(--border)', background: temD ? 'rgba(220,38,38,0.05)' : undefined }}>
               <td style={{ padding: 6, fontWeight: 600 }}>{it.produto}</td>
               <td>{s.ped} {it.un || ''}</td>
               <td style={{ color: 'var(--muted)' }}>{s.ent}</td>
-              <td style={{ width: 110 }}><input type="number" min={0} step="0.001" value={qts[i]} onChange={e => setQts(q => ({ ...q, [i]: e.target.value }))} style={{ ...inp, width: 100 }} /></td>
+              <td style={{ width: 96 }}><input type="number" min={0} step="0.001" value={qts[i]} onChange={e => setQts(q => ({ ...q, [i]: e.target.value }))} style={{ ...inp, width: 88 }} /></td>
               <td style={{ fontWeight: 700, color: restante > 0 ? '#B91C1C' : '#15803D' }}>{restante} {it.un || ''}</td>
-            </tr>) })}</tbody>
+              <td style={{ whiteSpace: 'nowrap' }}>{vLin > 0 ? fmtR$(vLin) : '—'}</td>
+              <td><button onClick={() => toggleDesv(i)} title="Registrar desvio/ocorrência" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, padding: '4px 7px', borderRadius: 7, border: '1px solid ' + (temD ? '#DC2626' : 'var(--border)'), background: temD ? '#FEE2E2' : 'var(--bg)', color: temD ? '#DC2626' : 'var(--muted)', cursor: 'pointer', fontWeight: 600 }}><AlertTriangle size={12} />{temD ? 'Desvio' : 'Ok'}</button></td>
+            </tr>
+            {desvOpen.has(i) && <tr style={{ background: 'rgba(245,158,11,0.06)' }}><td colSpan={7} style={{ padding: '8px 6px' }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div style={{ minWidth: 220 }}><label style={{ fontSize: 11, color: 'var(--muted)' }}>Tipo de ocorrência</label>
+                  <select style={{ ...inp, width: '100%' }} value={desv[i]?.tipo || ''} onChange={e => setDesvio(i, { tipo: e.target.value })}><option value="">— sem desvio —</option>{OCORRENCIAS.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}</select></div>
+                <div style={{ flex: 1, minWidth: 220 }}><label style={{ fontSize: 11, color: 'var(--muted)' }}>Descrição</label>
+                  <input style={{ ...inp, width: '100%' }} value={desv[i]?.descricao || ''} onChange={e => setDesvio(i, { descricao: e.target.value })} placeholder="Detalhe o ocorrido" /></div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>💡 Item faturado e não entregue? Deixe a qtd 0 e marque o desvio.</div>
+              </div>
+            </td></tr>}
+            </Fragment>) })}</tbody>
         </table>
       </div>
-      <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', margin: '12px 0 4px' }}>Observações (avarias, divergências…)</label>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, flexWrap: 'wrap', gap: 8 }}>
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>{nDesvios > 0 ? `⚠ ${nDesvios} desvio(s) registrado(s) · ` : ''}itens só entram no relatório do dia da entrega.</span>
+        <div style={{ fontSize: 15, fontWeight: 800 }}>Valor desta entrega: <span style={{ color: 'var(--bordo)' }}>{fmtR$(valorTotal)}</span></div>
+      </div>
+      <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', margin: '12px 0 4px' }}>Observações gerais da entrega</label>
       <textarea value={obs} onChange={e => setObs(e.target.value)} style={{ ...inp, width: '100%', minHeight: 54, resize: 'vertical' }} />
-      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>💡 Para leitura de nota por IA, comparativo NF × recebimento e baixa no estoque, use o <strong>📥 Recebimento Inteligente</strong> — aqui o foco é o controle do ciclo (pedido × entregue × pendente).</div>
+      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>💡 Para leitura de nota por IA, comparativo NF × recebimento e baixa no estoque, use o <strong>📥 Recebimento Inteligente</strong> — aqui o foco é o controle do ciclo (pedido × entregue × pendente × desvios × valor).</div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
         <button className="btn" onClick={onClose} style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', padding: '9px 16px' }}>Cancelar</button>
         <button className="btn" onClick={salvar} disabled={busy} style={{ padding: '9px 16px', opacity: busy ? .6 : 1 }}>{busy ? 'Salvando…' : 'Registrar entrega'}</button>
@@ -423,58 +492,101 @@ function TabMacro({ pedidos, semana, setSemana }: any) {
 }
 
 // ═══════════════ ABA: PENDÊNCIAS ═══════════════
-function TabPendencias({ pedidos }: { pedidos: Pedido[] }) {
+function TabPendencias({ pedidos, openRec }: { pedidos: Pedido[]; openRec: (p: Pedido) => void }) {
   const abertos = pedidos.filter(p => !p.fechamento?.fechado)
-  const linhas = abertos.flatMap(p => (p.itens || []).map(it => ({ p, it, s: itemSituacao(p, it) })).filter(x => x.s.pend > 0.0001))
+  // agrupa por pedido (só os que têm item pendente), ordenado por atraso
+  const grupos = abertos.map(p => ({ p, itens: (p.itens || []).map(it => ({ it, s: itemSituacao(p, it) })).filter(x => x.s.pend > 0.0001) }))
+    .filter(g => g.itens.length > 0)
     .sort((a, b) => diasAtraso(b.p.prev_entrega) - diasAtraso(a.p.prev_entrega))
-  if (!linhas.length) return <div style={{ textAlign: 'center', padding: 40, color: '#15803D', fontSize: 14, border: '1px dashed var(--border)', borderRadius: 10 }}>✅ Nenhuma pendência de entrega em aberto nesta loja.</div>
+  const totItens = grupos.reduce((s, g) => s + g.itens.length, 0)
+  const totFalta = grupos.reduce((s, g) => s + valorPendente(g.p), 0)
+  if (!grupos.length) return <div style={{ textAlign: 'center', padding: 40, color: '#15803D', fontSize: 14, border: '1px dashed var(--border)', borderRadius: 10 }}>✅ Nenhuma pendência de entrega em aberto nesta loja.</div>
   return (
-    <div style={card}>
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>🔴 Pendências de entrega em aberto <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: 12 }}>· {linhas.length} item(ns)</span></div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 680 }}>
-          <thead><tr style={{ textAlign: 'left', color: 'var(--muted)', fontSize: 10.5, textTransform: 'uppercase' }}><th style={{ padding: 6 }}>Produto</th><th>Falta</th><th>Fornecedor</th><th>Pedido</th><th>Loja</th><th>Prev.</th><th>Atraso</th></tr></thead>
-          <tbody>{linhas.map((x, k) => { const at = diasAtraso(x.p.prev_entrega); return (
-            <tr key={k} style={{ borderTop: '1px solid var(--border)', background: at > 0 ? 'rgba(220,38,38,0.05)' : undefined }}>
-              <td style={{ padding: 6, fontWeight: 600 }}>{x.it.produto}</td>
-              <td style={{ fontWeight: 700, color: '#B91C1C' }}>{x.s.pend} {x.it.un || ''}</td>
-              <td>{x.p.fornecedor}</td>
-              <td style={{ fontFamily: 'monospace', fontSize: 11.5 }}>{x.p.numero || '—'}</td>
-              <td>{x.p.loja}</td>
-              <td>{fmtD(x.p.prev_entrega)}</td>
-              <td style={{ fontWeight: 700, color: at > 0 ? '#B91C1C' : 'var(--muted)' }}>{at > 0 ? `⏰ ${at}d` : '—'}</td>
-            </tr>) })}</tbody>
-        </table>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ ...card, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>🔴 Pendências de entrega em aberto</div>
+        <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>{grupos.length} pedido(s) · {totItens} item(ns) · falta <strong style={{ color: '#B91C1C' }}>{fmtR$(totFalta)}</strong></div>
       </div>
+      {grupos.map(({ p, itens }) => { const at = diasAtraso(p.prev_entrega); return (
+        <div key={p.chave} style={{ ...card, ...(at > 0 ? { borderLeft: '4px solid #DC2626' } : {}) }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{p.fornecedor} {p.numero && <span style={{ fontFamily: 'monospace', fontSize: 11.5, color: 'var(--muted)' }}>· {p.numero}</span>}</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{p.loja} · prev. {fmtD(p.prev_entrega)}{at > 0 ? ` · ⏰ ${at}d atraso` : ''} · falta {fmtR$(valorPendente(p))}</div>
+            </div>
+            <button onClick={() => openRec(p)} className="btn" style={{ padding: '7px 13px', fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 5 }}><PackageCheck size={14} /> Atualizar entrega</button>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 460 }}>
+              <thead><tr style={{ textAlign: 'left', color: 'var(--muted)', fontSize: 10.5, textTransform: 'uppercase' }}><th style={{ padding: 6 }}>Produto</th><th>Pedido</th><th>Entregue</th><th>Falta</th><th>Valor falta</th></tr></thead>
+              <tbody>{itens.map(({ it, s }, k) => (
+                <tr key={k} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: 6, fontWeight: 600 }}>{it.produto}</td>
+                  <td>{s.ped} {it.un || ''}</td>
+                  <td style={{ color: 'var(--muted)' }}>{s.ent} {it.un || ''}</td>
+                  <td style={{ fontWeight: 700, color: '#B91C1C' }}>{s.pend} {it.un || ''}</td>
+                  <td>{fmtR$(s.pend * (Number(it.preco) || 0))}</td>
+                </tr>) )}</tbody>
+            </table>
+          </div>
+        </div>
+      ) })}
     </div>
   )
 }
 
-// ═══════════════ ABA: RELATÓRIO DO DIA (17h30) ═══════════════
+// ═══════════════ ABA: RELATÓRIO DO DIA ═══════════════
+// Fluxo: às 16h o relatório vai automático para o comprador (Esdras, cron VPS);
+// ele revisa, alimenta as OBSERVAÇÕES, escolhe o usuário e faz o disparo manual.
 function TabRelatorio({ pedidos, dia, setDia, loja, LOJAS, toast }: any) {
   const [lojaRel, setLojaRel] = useState(LOJAS.includes(loja) ? loja : 'Todas')
   const [fone, setFone] = useState('')
   const [enviando, setEnviando] = useState(false)
+  const [obs, setObs] = useState('')
+  const [obsMap, setObsMap] = useState<Record<string, string>>({})
+  const [salvandoObs, setSalvandoObs] = useState(false)
+  const [profs, setProfs] = useState<{ nome: string; fone: string }[]>([])
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const obsKey = `${lojaRel}|${dia}`
+
+  // usuários com WhatsApp (para o disparo manual)
+  useEffect(() => { (async () => {
+    const { data } = await sb.from('profiles').select('name,permissions_override')
+    const seen = new Set<string>(); const uniq: { nome: string; fone: string }[] = []
+    ;(data || []).forEach((p: any) => { const perf = p.permissions_override?.__perfil__ || {}; const fone = String(perf.whatsapp || perf.telefone || '').replace(/\D/g, ''); if (p.name && fone.length >= 10 && !seen.has(fone)) { seen.add(fone); uniq.push({ nome: p.name, fone }) } })
+    uniq.sort((a, b) => a.nome.localeCompare(b.nome)); setProfs(uniq)
+  })() }, [])
+  // observações salvas (app_config ciclo_rel_obs) — para o relatório mostrar
+  useEffect(() => { (async () => { const { data } = await sb.from('app_config').select('valor').eq('chave', 'ciclo_rel_obs').maybeSingle(); setObsMap(data?.valor || {}) })() }, [])
+  useEffect(() => { setObs(obsMap[obsKey] || '') }, [obsMap, obsKey])
+
+  const salvarObs = async (avisar = true) => {
+    setSalvandoObs(true)
+    try { const novo = { ...obsMap, [obsKey]: obs }; setObsMap(novo); await sb.from('app_config').upsert({ chave: 'ciclo_rel_obs', valor: novo }, { onConflict: 'chave' }); if (avisar) toast('Observações salvas — já aparecem no relatório. ✅') }
+    catch { if (avisar) toast('Não foi possível salvar as observações.', 'error') }
+    finally { setSalvandoObs(false) }
+  }
+  const toggleSel = (fone: string) => setSel(s => { const n = new Set(s); n.has(fone) ? n.delete(fone) : n.add(fone); return n })
 
   const texto = useMemo(() => {
     const lista = (pedidos as Pedido[]).filter(p => lojaRel === 'Todas' || p.loja === lojaRel)
-    // entregas do dia
     const entregasDia: { p: Pedido; e: Entrega }[] = []
     lista.forEach(p => (p.entregas || []).forEach(e => { if ((e.data || '').slice(0, 10) === dia) entregasDia.push({ p, e }) }))
-    const nRecebidos = entregasDia.reduce((s, x) => s + (x.e.itens || []).length, 0)
+    const itensDia = entregasDia.flatMap(({ p, e }) => (e.itens || []).map(i => ({ p, i }))).filter(x => (Number(x.i.qtd) || 0) > 0)
+    const nProdutos = new Set(itensDia.map(x => normP(x.i.produto))).size
     const precoDe = (p: Pedido, produto: string) => { const pit = (p.itens || []).find(x => normP(x.produto) === normP(produto)); return pit ? Number(pit.preco) || 0 : 0 }
-    const valorDia = entregasDia.reduce((s, x) => s + (x.e.itens || []).reduce((a, i) => a + (Number(i.qtd) || 0) * precoDe(x.p, i.produto), 0), 0)
+    const valorDia = itensDia.reduce((s, x) => s + (Number(x.i.qtd) || 0) * precoDe(x.p, x.i.produto), 0)
+    const nDesviosDia = entregasDia.reduce((s, x) => s + (x.e.itens || []).filter(i => i.desvio?.tipo).length, 0)
     const concluidosHoje = lista.filter(p => p.fechamento?.fechado && (p.fechamento.em || '').slice(0, 10) === dia && p.fechamento.tipo === 'concluido')
-    // pendências abertas
     const pend = lista.filter(p => !p.fechamento?.fechado).flatMap(p => (p.itens || []).map(it => ({ p, it, s: itemSituacao(p, it) })).filter(x => x.s.pend > 0.0001))
 
     let t = `📦 *RELATÓRIO DIÁRIO DE RECEBIMENTO*\n${fmtD(dia)} · ${lojaRel === 'Todas' ? 'Todas as lojas' : lojaRel}\n`
-    t += `\n*Entregas do dia:* ${entregasDia.length} · ${nRecebidos} item(ns) · ${fmtR$(valorDia)} · ${concluidosHoje.length} pedido(s) concluído(s)\n`
+    t += `\n*Entregue no dia:* ${nProdutos} produto(s) · ${fmtR$(valorDia)} · ${concluidosHoje.length} pedido(s) concluído(s)${nDesviosDia ? ` · ⚠ ${nDesviosDia} desvio(s)` : ''}\n`
     if (entregasDia.length) {
-      t += `\n📥 *ENTREGUE HOJE* (pedido → entregue · falta)`
+      t += `\n📥 *ENTREGUE HOJE* (pedido → entregue · falta · valor)`
       entregasDia.forEach(({ p, e }) => {
         t += `\n• ${p.numero || p.fornecedor} — ${p.fornecedor}${e.hora ? ` (${e.hora})` : ''}${e.responsavel ? ` · recebeu ${e.responsavel}` : ''}${e.nf ? ` · NF ${e.nf}` : ''}`
-        ;(e.itens || []).forEach(i => { const pit = (p.itens || []).find(x => normP(x.produto) === normP(i.produto)); const s = pit ? itemSituacao(p, pit) : null; t += `\n   - ${i.produto}: ped ${s ? s.ped : '—'} → entregue ${i.qtd}${s ? ` · falta ${s.pend}` : ''} ${pit?.un || ''}`.trimEnd() })
+        ;(e.itens || []).forEach(i => { const pit = (p.itens || []).find(x => normP(x.produto) === normP(i.produto)); const s = pit ? itemSituacao(p, pit) : null; const v = (Number(i.qtd) || 0) * (pit ? Number(pit.preco) || 0 : 0); t += `\n   - ${i.produto}: ped ${s ? s.ped : '—'} → entregue ${i.qtd}${s ? ` · falta ${s.pend}` : ''}${v > 0 ? ` · ${fmtR$(v)}` : ''}${i.desvio?.tipo ? ` · ⚠ ${ocorrLabel(i.desvio.tipo)}` : ''}` })
       })
     }
     if (pend.length) {
@@ -489,19 +601,23 @@ function TabRelatorio({ pedidos, dia, setDia, loja, LOJAS, toast }: any) {
     } else {
       t += `\n\n✅ Sem pendências de entrega em aberto.`
     }
+    if (obs.trim()) t += `\n\n📝 *OBSERVAÇÕES:* ${obs.trim()}`
     return t
-  }, [pedidos, dia, lojaRel])
+  }, [pedidos, dia, lojaRel, obs])
 
   const link = useMemo(() => `${siteOrigin()}/relatorio-ciclo.html?d=${dia}${lojaRel !== 'Todas' ? '&loja=' + encodeURIComponent(lojaRel) : ''}`, [dia, lojaRel])
-  const msgLink = useMemo(() => `📦 *Relatório Diário de Recebimento — Ciclo de Compras*\n${fmtD(dia)} · ${lojaRel === 'Todas' ? 'Todas as lojas' : lojaRel}\n\nEntregas do dia e pendências em aberto no link (layout do painel):\n${link}\n— Compras Amore 💚`, [dia, lojaRel, link])
+  const msgLink = useMemo(() => `📦 *Relatório Diário de Recebimento — Ciclo de Compras*\n${fmtD(dia)} · ${lojaRel === 'Todas' ? 'Todas as lojas' : lojaRel}\n\nEntregas do dia (pedido × entregue × falta × valor) e pendências no link:\n${link}${obs.trim() ? `\n\n📝 Observações: ${obs.trim()}` : ''}\n— Compras Amore 💚`, [dia, lojaRel, link, obs])
 
   const enviar = async () => {
-    const f = fone.replace(/\D/g, '')
-    if (f.length < 10) { toast('Informe um WhatsApp com DDD.', 'error'); return }
+    const alvos = new Set<string>(sel)
+    const f = fone.replace(/\D/g, ''); if (f.length >= 10) alvos.add(f)
+    if (!alvos.size) { toast('Escolha ao menos um usuário ou informe um WhatsApp.', 'error'); return }
     setEnviando(true)
-    try { const ok = await enviarWhatsApp(f, msgLink); toast(ok ? 'Link do relatório enviado. ✅' : 'Não foi possível enviar.', ok ? 'success' : 'error') }
-    catch { toast('Não foi possível enviar.', 'error') }
-    finally { setEnviando(false) }
+    try {
+      await salvarObs(false) // grava as observações para o link já mostrá-las
+      let ok = 0; for (const a of alvos) { if (await enviarWhatsApp(a, msgLink)) ok++ }
+      toast(`Relatório enviado para ${ok}/${alvos.size} destino(s). ✅`)
+    } catch { toast('Não foi possível enviar.', 'error') } finally { setEnviando(false) }
   }
   const copiarLink = async () => { try { await navigator.clipboard.writeText(link); toast('Link copiado. 📋') } catch { toast('Não foi possível copiar.', 'error') } }
   const copiarTexto = async () => { try { await navigator.clipboard.writeText(texto); toast('Texto copiado. 📋') } catch { toast('Não foi possível copiar.', 'error') } }
@@ -512,14 +628,36 @@ function TabRelatorio({ pedidos, dia, setDia, loja, LOJAS, toast }: any) {
         <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>Dia<input type="date" value={dia} onChange={e => setDia(e.target.value)} style={inp} /></label>
         <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>Loja<select value={lojaRel} onChange={e => setLojaRel(e.target.value)} style={inp}><option value="Todas">Todas as lojas</option>{LOJAS.map((l: string) => <option key={l} value={l}>{l}</option>)}</select></label>
         <div style={{ flex: 1 }} />
-        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>WhatsApp destino<input value={fone} onChange={e => setFone(e.target.value)} placeholder="Ex.: 81 99999-9999" style={{ ...inp, minWidth: 170 }} /></label>
         <a href={link} target="_blank" rel="noreferrer" className="btn" style={{ padding: '9px 14px', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}><ExternalLink size={14} /> Abrir</a>
         <button onClick={copiarLink} className="btn" style={{ padding: '9px 14px', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Copy size={14} /> Copiar link</button>
-        <button onClick={enviar} disabled={enviando} className="btn" style={{ padding: '9px 16px', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: enviando ? .6 : 1 }}><Send size={14} /> {enviando ? 'Enviando…' : 'Enviar link'}</button>
       </div>
+
+      {/* Observações do comprador */}
+      <div style={card}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>📝 Observações do comprador <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: 11.5 }}>· entram no relatório e no disparo ({fmtD(dia)}{lojaRel !== 'Todas' ? ` · ${lojaRel}` : ''})</span></div>
+        <textarea value={obs} onChange={e => setObs(e.target.value)} style={{ ...inp, width: '100%', minHeight: 64, resize: 'vertical' }} placeholder="Ex.: cobrar acém do frigorífico; combinei reposição amanhã; conferir validade do leite…" />
+        <div style={{ marginTop: 8 }}><button onClick={() => salvarObs(true)} disabled={salvandoObs} className="btn" style={{ padding: '7px 14px', fontSize: 12.5, opacity: salvandoObs ? .6 : 1 }}>{salvandoObs ? 'Salvando…' : '💾 Salvar observações'}</button></div>
+      </div>
+
+      {/* Escolher usuário + disparo manual */}
+      <div style={card}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>📲 Enviar relatório <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: 11.5 }}>· escolha o(s) usuário(s) e dispare manualmente</span></div>
+        {profs.length === 0 ? <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 8 }}>Nenhum usuário com WhatsApp cadastrado. Use o campo abaixo para digitar um número.</div>
+          : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+            {profs.map(pr => { const on = sel.has(pr.fone); return (
+              <button key={pr.fone} onClick={() => toggleSel(pr.fone)} style={{ padding: '6px 12px', borderRadius: 20, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', border: '1px solid ' + (on ? 'var(--bordo)' : 'var(--border)'), background: on ? 'var(--bordo)' : 'var(--bg)', color: on ? '#fff' : 'var(--text)' }}>{on ? '✓ ' : ''}{pr.nome}</button>
+            ) })}
+          </div>}
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>Ou um WhatsApp avulso<input value={fone} onChange={e => setFone(e.target.value)} placeholder="Ex.: 81 99999-9999" style={{ ...inp, minWidth: 180 }} /></label>
+          <div style={{ flex: 1 }} />
+          <button onClick={enviar} disabled={enviando} className="btn" style={{ padding: '10px 18px', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: enviando ? .6 : 1 }}><Send size={15} /> {enviando ? 'Enviando…' : `Disparar (${sel.size + (fone.replace(/\D/g, '').length >= 10 ? 1 : 0)})`}</button>
+        </div>
+      </div>
+
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>Prévia do relatório · o WhatsApp envia o <b>link da página</b> (layout do painel). Agendamento fixo 17h30 entra na próxima fase (cron do VPS).</div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>Prévia do relatório · o WhatsApp envia o <b>link da página</b> + suas observações. Automação: às <b>16h</b> vai automático para o comprador revisar antes do disparo (cron VPS).</div>
           <button onClick={copiarTexto} className="btn" style={{ padding: '5px 10px', fontSize: 11.5, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Copy size={12} /> Copiar texto</button>
         </div>
         <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, margin: 0, lineHeight: 1.5 }}>{texto}</pre>

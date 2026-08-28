@@ -64,6 +64,8 @@ const dDMY=s=>{if(!s)return '—';const p=String(s).slice(0,10).split('-');retur
 const nrm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
 const r3=n=>Math.round((Number(n)||0)*1000)/1000;
 const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const OCOR={produto_diferente:'Produto diferente do pedido',quantidade_divergente:'Quantidade divergente',valor_divergente:'Valor diferente do pedido',produto_faltando:'Produto faltando (não entregue)',produto_faturado_nao_entregue:'Faturado, mas não entregue',produto_excedente:'Produto excedente',embalagem_danificada:'Embalagem danificada',produto_avariado:'Produto avariado',validade_curta:'Validade curta',produto_vencido:'Produto vencido',qualidade_fora_padrao:'Qualidade fora do padrão',peso_divergente:'Peso divergente',outro:'Outro'};
+const ocorL=v=>OCOR[v]||v;
 const diasAtraso=prev=>{if(!prev)return 0;const d=Math.floor((Date.parse(hojeRecife())-Date.parse(String(prev).slice(0,10)))/86400000);return d>0?d:0};
 function entregueDe(p,produto){const n=nrm(produto);return (p.entregas||[]).reduce((s,e)=>s+(e.itens||[]).filter(i=>nrm(i.produto)===n).reduce((a,i)=>a+(Number(i.qtd)||0),0),0)}
 function itemSit(p,it){const ped=Number(it.qtd)||0;const ent=entregueDe(p,it.produto);const pend=Math.max(0,r3(ped-ent));return {ped,ent:r3(ent),pend,sit:ent<=0?'nao':pend<=0.0001?'ok':'parcial'}}
@@ -87,6 +89,13 @@ async function run(){
     itensEntregues.push({p,e,produto:i.produto,un:pit?pit.un||'':'',pedQ:pit?Number(pit.qtd)||0:null,entQ:qEnt,falta:pit?itemSit(p,pit).pend:null,valor:val});
   }));
   const concluidosHoje=pedidos.filter(p=>p.fechamento&&p.fechamento.fechado&&String(p.fechamento.em||'').slice(0,10)===D&&p.fechamento.tipo==='concluido');
+  const nProdutos=new Set(itensEntregues.filter(x=>x.entQ>0).map(x=>nrm(x.produto))).size;
+  // desvios/ocorrências do dia
+  const desviosDia=[];
+  entregasDia.forEach(({p,e})=>(e.itens||[]).forEach(i=>{if(i.desvio&&i.desvio.tipo)desviosDia.push({produto:i.produto,tipo:i.desvio.tipo,descricao:i.desvio.descricao||'',fornecedor:p.fornecedor,numero:p.numero,hora:e.hora});}));
+  // observações do comprador (app_config ciclo_rel_obs)
+  let obsTxt='';
+  try{const or=await g('app_config?chave=eq.ciclo_rel_obs&select=valor');const map=(or&&or[0]&&or[0].valor)||{};obsTxt=map[(LOJA||'Todas')+'|'+D]||'';}catch(e){}
 
   // pendências abertas
   const pend=[];
@@ -121,15 +130,17 @@ async function run(){
   document.getElementById('app').innerHTML=
     `<header class="top"><div><div class="eyebrow">Painel Amore · Ciclo de Compras</div><h1>Relatório Diário de Recebimento</h1><div class="sub">${dataFmt}${LOJA?` · ${esc(LOJA)}`:' · Todas as lojas'}</div></div><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></header>`
    +`<div class="ia">📦 <b>Recebimento do dia:</b> ${resumo}</div>`
+   +(obsTxt?`<div class="ia" style="border-left-color:#0369A1">📝 <b>Observações do comprador:</b> ${esc(obsTxt)}</div>`:'')
    +`<div class="kpis">`
-   +kchip('Entregas do dia',entregasDia.length,'ok')
-   +kchip('Itens recebidos',nRecebidos,'ok')
+   +kchip('Produtos entregues',nProdutos,'ok',`${nRecebidos} item(ns)`)
    +kchip('Valor entregue no dia',brl(valorDia),'ok','soma p/ Gestão de Compras')
    +kchip('Pedidos concluídos',concluidosHoje.length,'ok')
+   +kchip('Desvios',desviosDia.length,desviosDia.length?'bad':'ok')
    +kchip('Itens pendentes',pend.length,pend.length?'bad':'ok',atrasadas?`${atrasadas} em atraso`:'')
    +`</div>`
    +`<h2>📥 Entregue hoje <span class="h2s">— pedido × entregue × falta, quem recebeu e horário</span></h2>`+tabela([{h:'Produto'},{h:'Pedido',num:1},{h:'Entregue',num:1},{h:'Falta',num:1},{h:'Recebido por'},{h:'Hora'},{h:'Valor',num:1}],linhasEnt,'Nenhuma entrega registrada neste dia.')
-   +(linhasEnt.length?`<div style="text-align:right;font-weight:800;margin-top:8px;font-size:15px">Valor entregue no dia: <span style="color:var(--vinho)">${brl(valorDia)}</span></div>`:'')
+   +(linhasEnt.length?`<div style="text-align:right;font-weight:800;margin-top:8px;font-size:15px">Total entregue no dia: <span style="color:var(--vinho)">${nProdutos} produto(s) · ${brl(valorDia)}</span></div>`:'')
+   +(desviosDia.length?`<h2>⚠️ Desvios / ocorrências <span class="h2s">— registrados nas entregas do dia</span></h2>`+tabela([{h:'Produto'},{h:'Ocorrência'},{h:'Fornecedor'},{h:'Pedido'},{h:'Descrição'}],desviosDia.map(d=>`<tr><td class="prod">${esc(d.produto)}</td><td data-label="Ocorrência"><span class="badge b-no">${esc(ocorL(d.tipo))}</span></td><td data-label="Fornecedor">${esc(d.fornecedor||'—')}</td><td data-label="Pedido">${esc(d.numero||'—')}</td><td data-label="Descrição">${esc(d.descricao||'—')}</td></tr>`),'Nenhum desvio.'):'')
    +`<h2>🔴 Pendências de entrega <span class="h2s">— em aberto</span></h2>`+tabela([{h:'Produto'},{h:'Falta',num:1},{h:'Fornecedor'},{h:'Pedido'},{h:'Loja'},{h:'Prev.'},{h:'Atraso'}],linhasPend,'Sem pendências de entrega em aberto. 🎉')
    +`<div class="foot"><b>Relatório de Recebimento — Ciclo de Compras (Fase 1).</b> Consolida as entregas registradas e as pendências dos pedidos em aberto. Um pedido só encerra quando tudo é entregue ou a pendência é formalmente tratada. Painel Amore · gerado ${new Date().toLocaleString('pt-BR')}</div>`;
 }

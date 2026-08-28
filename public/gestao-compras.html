@@ -33,7 +33,7 @@
   .pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap}
   .pill.lj-flow{background:#e6f4e6;color:var(--flow)}.pill.lj-amore{background:#fde8ea;color:var(--bordo)}
   .st{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap}
-  .st.ok{background:#DCFCE7;color:var(--ok)}.st.wait{background:#E0F2FE;color:var(--wait)}
+  .st.ok{background:#DCFCE7;color:var(--ok)}.st.wait{background:#FFEDD5;color:#C2410C}.st.warn{background:#FEF3C7;color:#B45309}.st.enc{background:#E5E7EB;color:#374151}
   .ab{background:var(--bordo);color:#fff;border-radius:9px;padding:7px 12px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap}
   .msg{text-align:center;padding:50px 20px;color:var(--muted)}
   .foot{text-align:center;color:var(--muted);font-size:11px;margin:16px 0}
@@ -51,7 +51,7 @@
   <div class="lojas" id="lojas"></div>
   <div class="bar">
     <select id="fLoja" onchange="render()"><option value="">Todas as lojas</option></select>
-    <select id="fStatus" onchange="render()"><option value="">Todos os status</option><option value="wait">Aguardando</option><option value="ok">Recebido</option></select>
+    <select id="fStatus" onchange="render()"><option value="">Todos os status</option><option value="aguardando">Aguardando</option><option value="parcial">Parcial</option><option value="concluido">Concluído</option><option value="encerrado">Encerrado</option></select>
     <input id="fBusca" placeholder="Buscar fornecedor ou item..." oninput="render()">
   </div>
   <div class="card"><div id="tabela"><div class="msg">Carregando pedidos…</div></div></div>
@@ -64,45 +64,62 @@ const H={apikey:ANON,Authorization:'Bearer '+ANON};
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fD=s=>{if(!s)return '—';const p=String(s).slice(0,10).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:s};
+const nrm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
+const r3=n=>Math.round((Number(n)||0)*1000)/1000;
+// entregue de um produto (soma das entregas do ciclo)
+function entregueDe(p,produto){const n=nrm(produto);return (p.entregas||[]).reduce((s,e)=>s+(e.itens||[]).filter(i=>nrm(i.produto)===n).reduce((a,i)=>a+(Number(i.qtd)||0),0),0)}
+// status do ciclo do pedido + valores
+function cicloDe(v){
+  const itens=(v.itens||[]);
+  let vEnt=0,vPend=0,pendTotal=0,entTotal=0;
+  itens.forEach(it=>{const ped=Number(it.qtd)||0;const ent=entregueDe(v,it.produto);const pend=Math.max(0,r3(ped-ent));const preco=Number(it.preco)||0;vEnt+=Math.min(ent,ped)*preco;vPend+=pend*preco;pendTotal+=pend;entTotal+=ent;});
+  let st;
+  if(v.fechamento&&v.fechamento.fechado) st=v.fechamento.tipo==='concluido'?'concluido':'encerrado';
+  else if(entTotal>0&&pendTotal>0.0001) st='parcial';
+  else if(entTotal>0) st='recebido';
+  else st='aguardando';
+  return {vEnt:r3(vEnt),vPend:r3(vPend),st};
+}
+const ST_META={concluido:{l:'🟢 Concluído',c:'ok'},recebido:{l:'🟢 Recebido',c:'ok'},parcial:{l:'🟡 Parcial',c:'warn'},aguardando:{l:'🟠 Aguardando',c:'wait'},encerrado:{l:'⚫ Encerrado',c:'enc'}};
 let PED=[];
 async function load(){
   document.getElementById('tabela').innerHTML='<div class="msg">Carregando pedidos…</div>';
   let rows=[];
   try{ rows=await (await fetch(SB+'/rest/v1/app_config?select=chave,valor&chave=like.pedido_*&limit=2000',{headers:H})).json(); }catch(e){}
   PED=(rows||[]).map(r=>{const v=r.valor||{};const itens=(v.itens||[]).filter(i=>!/^desconto$|^frete|^adicional/i.test(i.produto||''));
-    return {chave:r.chave, fornecedor:v.fornecedor||'—', loja:v.loja||'—', data:v.janela_entrega||v.data||null, em:v.em||null,
+    const c=cicloDe(v);
+    return {chave:r.chave, fornecedor:v.fornecedor||'—', loja:v.loja||'—', data:v.janela_entrega||v.data||null, em:v.em||null, numero:v.numero||'',
       n:itens.length, itensTxt:itens.map(i=>i.produto).join(' | ').toLowerCase(), total:Number(v.total)||0,
-      receb:!!v.recebimento, receberde:v.recebimento_responsavel||'', obs:v.obs||''};
+      vEnt:c.vEnt, vPend:c.vPend, st:c.st, receberde:v.recebimento_responsavel||''};
   }).sort((a,b)=>(b.em||'')<(a.em||'')?-1:1);
-  // popula filtro loja
   const lojas=[...new Set(PED.map(p=>p.loja))].sort();
   const sel=document.getElementById('fLoja');sel.length=1;lojas.forEach(l=>{const o=document.createElement('option');o.value=l;o.textContent=l;sel.appendChild(o);});
   render();
 }
 function render(){
   const fl=document.getElementById('fLoja').value, fs=document.getElementById('fStatus').value, fb=(document.getElementById('fBusca').value||'').toLowerCase();
-  let list=PED.filter(p=>(!fl||p.loja===fl)&&(!fs||(fs==='ok'?p.receb:!p.receb))&&(!fb||p.fornecedor.toLowerCase().includes(fb)||p.itensTxt.includes(fb)));
-  // KPIs (sobre o filtro atual)
-  const tot=list.reduce((s,p)=>s+p.total,0), aguard=list.filter(p=>!p.receb).length, receb=list.filter(p=>p.receb).length;
+  let list=PED.filter(p=>(!fl||p.loja===fl)&&(!fs||(fs==='concluido'?(p.st==='concluido'||p.st==='recebido'):p.st===fs))&&(!fb||p.fornecedor.toLowerCase().includes(fb)||p.itensTxt.includes(fb)));
+  // KPIs
+  const tot=list.reduce((s,p)=>s+p.total,0), tEnt=list.reduce((s,p)=>s+p.vEnt,0), tPend=list.reduce((s,p)=>s+p.vPend,0);
   document.getElementById('kpis').innerHTML=
-    kpi(list.length,'Pedidos')+kpi(brl(tot),'Valor total')+kpi(aguard,'Aguardando')+kpi(receb,'Recebidos');
-  // por loja (sempre sobre tudo)
-  const byL={};PED.forEach(p=>{(byL[p.loja]=byL[p.loja]||{n:0,t:0}); byL[p.loja].n++; byL[p.loja].t+=p.total;});
-  document.getElementById('lojas').innerHTML=Object.keys(byL).sort().map(l=>`<div class="lj"><div class="nm">${esc(l)}</div><div class="v">${brl(byL[l].t)}</div><div class="c">${byL[l].n} pedido(s)</div></div>`).join('');
-  // tabela
+    kpi(list.length,'Pedidos')+kpi(brl(tot),'Valor pedido')+kpi(brl(tEnt),'Valor entregue')+kpi(brl(tPend),'A entregar');
+  // por loja (sempre sobre tudo) — pedido / entregue
+  const byL={};PED.forEach(p=>{(byL[p.loja]=byL[p.loja]||{n:0,t:0,e:0}); byL[p.loja].n++; byL[p.loja].t+=p.total; byL[p.loja].e+=p.vEnt;});
+  document.getElementById('lojas').innerHTML=Object.keys(byL).sort().map(l=>`<div class="lj"><div class="nm">${esc(l)}</div><div class="v">${brl(byL[l].e)}</div><div class="c">entregue · de ${brl(byL[l].t)} · ${byL[l].n} ped.</div></div>`).join('');
   if(!list.length){document.getElementById('tabela').innerHTML='<div class="msg">Nenhum pedido encontrado.</div>';document.getElementById('foot').textContent='';return;}
   const isFlow=l=>/flow/i.test(l);
-  const rows=list.map(p=>`<tr>
+  const rows=list.map(p=>{const m=ST_META[p.st]||ST_META.aguardando;return `<tr>
     <td class="hide-m">${fD(p.data)}</td>
     <td><span class="pill ${isFlow(p.loja)?'lj-flow':'lj-amore'}">${esc(p.loja)}</span></td>
-    <td><div class="forn">${esc(p.fornecedor)}</div>${p.receberde?`<div class="sub2">recebe: ${esc(p.receberde)}</div>`:''}</td>
-    <td class="hide-m">${p.n}</td>
+    <td><div class="forn">${esc(p.fornecedor)}</div>${p.numero?`<div class="sub2">${esc(p.numero)}</div>`:''}${p.receberde?`<div class="sub2">recebe: ${esc(p.receberde)}</div>`:''}</td>
     <td class="tot">${brl(p.total)}</td>
-    <td><span class="st ${p.receb?'ok':'wait'}">${p.receb?'✓ Recebido':'Aguardando'}</span></td>
-    <td><a class="ab" href="/pedido.html?p=${encodeURIComponent(p.chave)}" target="_blank">abrir</a></td>
-  </tr>`).join('');
-  document.getElementById('tabela').innerHTML=`<table><thead><tr><th class="hide-m">Data</th><th>Loja</th><th>Fornecedor</th><th class="hide-m">Itens</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
-  document.getElementById('foot').textContent=`${list.length} pedido(s) · ${brl(tot)}`;
+    <td style="color:#15803D;font-weight:700;white-space:nowrap">${brl(p.vEnt)}</td>
+    <td style="color:${p.vPend>0?'#B91C1C':'#9ca3af'};font-weight:700;white-space:nowrap">${brl(p.vPend)}</td>
+    <td><span class="st ${m.c}">${m.l}</span></td>
+    <td><a class="ab" href="/relatorio-ciclo.html?d=${(p.data||'').slice(0,10)}${p.loja?'&loja='+encodeURIComponent(p.loja):''}" target="_blank">ciclo</a></td>
+  </tr>`}).join('');
+  document.getElementById('tabela').innerHTML=`<table><thead><tr><th class="hide-m">Data</th><th>Loja</th><th>Fornecedor</th><th>Pedido</th><th>Entregue</th><th>A entregar</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById('foot').textContent=`${list.length} pedido(s) · pedido ${brl(tot)} · entregue ${brl(tEnt)} · a entregar ${brl(tPend)}`;
 }
 function kpi(n,l){return `<div class="kpi"><div class="n">${n}</div><div class="l">${l}</div></div>`;}
 load();
