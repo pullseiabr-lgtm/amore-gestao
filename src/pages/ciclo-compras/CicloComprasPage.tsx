@@ -462,15 +462,20 @@ function TabRelatorio({ pedidos, dia, setDia, loja, LOJAS, toast }: any) {
     const entregasDia: { p: Pedido; e: Entrega }[] = []
     lista.forEach(p => (p.entregas || []).forEach(e => { if ((e.data || '').slice(0, 10) === dia) entregasDia.push({ p, e }) }))
     const nRecebidos = entregasDia.reduce((s, x) => s + (x.e.itens || []).length, 0)
+    const precoDe = (p: Pedido, produto: string) => { const pit = (p.itens || []).find(x => normP(x.produto) === normP(produto)); return pit ? Number(pit.preco) || 0 : 0 }
+    const valorDia = entregasDia.reduce((s, x) => s + (x.e.itens || []).reduce((a, i) => a + (Number(i.qtd) || 0) * precoDe(x.p, i.produto), 0), 0)
     const concluidosHoje = lista.filter(p => p.fechamento?.fechado && (p.fechamento.em || '').slice(0, 10) === dia && p.fechamento.tipo === 'concluido')
     // pendências abertas
     const pend = lista.filter(p => !p.fechamento?.fechado).flatMap(p => (p.itens || []).map(it => ({ p, it, s: itemSituacao(p, it) })).filter(x => x.s.pend > 0.0001))
 
     let t = `📦 *RELATÓRIO DIÁRIO DE RECEBIMENTO*\n${fmtD(dia)} · ${lojaRel === 'Todas' ? 'Todas as lojas' : lojaRel}\n`
-    t += `\n*Entregas do dia:* ${entregasDia.length} · ${nRecebidos} item(ns) recebido(s) · ${concluidosHoje.length} pedido(s) concluído(s)\n`
+    t += `\n*Entregas do dia:* ${entregasDia.length} · ${nRecebidos} item(ns) · ${fmtR$(valorDia)} · ${concluidosHoje.length} pedido(s) concluído(s)\n`
     if (entregasDia.length) {
-      t += `\n📥 *ENTREGUE HOJE*`
-      entregasDia.forEach(({ p, e }) => { t += `\n• ${p.numero || p.fornecedor} — ${p.fornecedor}${e.hora ? ` (${e.hora})` : ''}${e.responsavel ? ` · recebeu ${e.responsavel}` : ''}${e.nf ? ` · NF ${e.nf}` : ''}`; (e.itens || []).forEach(i => t += `\n   - ${i.qtd} ${i.produto}`) })
+      t += `\n📥 *ENTREGUE HOJE* (pedido → entregue · falta)`
+      entregasDia.forEach(({ p, e }) => {
+        t += `\n• ${p.numero || p.fornecedor} — ${p.fornecedor}${e.hora ? ` (${e.hora})` : ''}${e.responsavel ? ` · recebeu ${e.responsavel}` : ''}${e.nf ? ` · NF ${e.nf}` : ''}`
+        ;(e.itens || []).forEach(i => { const pit = (p.itens || []).find(x => normP(x.produto) === normP(i.produto)); const s = pit ? itemSituacao(p, pit) : null; t += `\n   - ${i.produto}: ped ${s ? s.ped : '—'} → entregue ${i.qtd}${s ? ` · falta ${s.pend}` : ''} ${pit?.un || ''}`.trimEnd() })
+      })
     }
     if (pend.length) {
       t += `\n\n🔴 *PENDÊNCIAS DE ENTREGA*`

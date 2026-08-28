@@ -63,6 +63,7 @@ const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 const dDMY=s=>{if(!s)return '—';const p=String(s).slice(0,10).split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s};
 const nrm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
 const r3=n=>Math.round((Number(n)||0)*1000)/1000;
+const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const diasAtraso=prev=>{if(!prev)return 0;const d=Math.floor((Date.parse(hojeRecife())-Date.parse(String(prev).slice(0,10)))/86400000);return d>0?d:0};
 function entregueDe(p,produto){const n=nrm(produto);return (p.entregas||[]).reduce((s,e)=>s+(e.itens||[]).filter(i=>nrm(i.produto)===n).reduce((a,i)=>a+(Number(i.qtd)||0),0),0)}
 function itemSit(p,it){const ped=Number(it.qtd)||0;const ent=entregueDe(p,it.produto);const pend=Math.max(0,r3(ped-ent));return {ped,ent:r3(ent),pend,sit:ent<=0?'nao':pend<=0.0001?'ok':'parcial'}}
@@ -72,10 +73,19 @@ async function run(){
   const pedRows=await g('app_config?chave=like.pedido_*&select=chave,valor');
   const pedidos=(pedRows||[]).map(r=>({chave:r.chave,...(r.valor||{})})).filter(p=>(!LOJA||canon(p.loja)===LOJA));
 
-  // entregas do dia
+  // entregas do dia (item a item: pedido × entregue × falta × quem × hora × valor)
   const entregasDia=[];
   pedidos.forEach(p=>(p.entregas||[]).forEach(e=>{if(String(e.data||'').slice(0,10)===D)entregasDia.push({p,e})}));
-  const nRecebidos=entregasDia.reduce((s,x)=>s+((x.e.itens||[]).length),0);
+  let valorDia=0, nRecebidos=0;
+  const itensEntregues=[];
+  entregasDia.forEach(({p,e})=>(e.itens||[]).forEach(i=>{
+    const pit=(p.itens||[]).find(x=>nrm(x.produto)===nrm(i.produto));
+    const preco=pit?Number(pit.preco)||0:0;
+    const qEnt=Number(i.qtd)||0;
+    const val=qEnt*preco;
+    valorDia+=val; nRecebidos++;
+    itensEntregues.push({p,e,produto:i.produto,un:pit?pit.un||'':'',pedQ:pit?Number(pit.qtd)||0:null,entQ:qEnt,falta:pit?itemSit(p,pit).pend:null,valor:val});
+  }));
   const concluidosHoje=pedidos.filter(p=>p.fechamento&&p.fechamento.fechado&&String(p.fechamento.em||'').slice(0,10)===D&&p.fechamento.tipo==='concluido');
 
   // pendências abertas
@@ -87,10 +97,11 @@ async function run(){
   const kchip=(l,v,cls,sub)=>`<div class="kpi ${cls||''}"><div class="kn">${v}</div><div class="kl">${l}</div>${sub?`<div class="ks">${sub}</div>`:''}</div>`;
   const tabela=(cols,rows,vazio)=>rows.length?`<div class="tw"><table><thead><tr>${cols.map(c=>`<th class="${c.num?'num':''}">${c.h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`:`<div class="empty">${vazio}</div>`;
 
-  // entregue hoje
-  const linhasEnt=entregasDia.map(({p,e})=>{
-    const itl=(e.itens||[]).map(i=>`<li>${r3(i.qtd)} ${esc(i.produto)}</li>`).join('');
-    return `<tr><td class="prod">${esc(p.numero||'—')}<span class="mc">${esc(p.fornecedor||'')} · ${esc(p.loja||'')}</span><ul class="itlist">${itl}</ul></td><td data-label="Hora">${esc(e.hora||'—')}</td><td data-label="Recebido por">${esc(e.responsavel||'—')}</td><td data-label="NF">${esc(e.nf||'—')}</td><td class="num" data-label="Itens">${(e.itens||[]).length}</td></tr>`;
+  // entregue hoje — item a item
+  const linhasEnt=itensEntregues.map(x=>{
+    const un=esc(x.un||'');
+    const faltaCel=x.falta==null?'—':(x.falta>0.0001?`<b style="color:var(--bad)">${r3(x.falta)} ${un}</b>`:'<span class="badge b-ok">0</span>');
+    return `<tr><td class="prod">${esc(x.produto)}<span class="mc">${esc(x.p.numero||'')}${x.p.numero?' · ':''}${esc(x.p.fornecedor||'')} · ${esc(x.p.loja||'')}${x.e.nf?' · NF '+esc(x.e.nf):''}</span></td><td class="num" data-label="Pedido">${x.pedQ!=null?r3(x.pedQ)+' '+un:'—'}</td><td class="num" data-label="Entregue">${r3(x.entQ)} ${un}</td><td class="num" data-label="Falta">${faltaCel}</td><td data-label="Recebido por">${esc(x.e.responsavel||'—')}</td><td data-label="Hora">${esc(x.e.hora||'—')}</td><td class="num" data-label="Valor">${x.valor>0?brl(x.valor):'—'}</td></tr>`;
   });
 
   // pendências agrupadas por pedido
@@ -104,7 +115,7 @@ async function run(){
     });
   });
 
-  const resumo=`No dia ${dataFmt}${LOJA?` (${esc(LOJA)})`:''} foram registradas <b>${entregasDia.length} entrega(s)</b> (${nRecebidos} linha(s) de item), com <b>${concluidosHoje.length} pedido(s) concluído(s)</b>. `+
+  const resumo=`No dia ${dataFmt}${LOJA?` (${esc(LOJA)})`:''} foram registradas <b>${entregasDia.length} entrega(s)</b> (${nRecebidos} item(ns)), no valor de <b>${brl(valorDia)}</b>, com <b>${concluidosHoje.length} pedido(s) concluído(s)</b>. `+
     (pend.length?`Restam <b style="color:var(--bad)">${pend.length} item(ns) pendente(s)</b> de entrega${atrasadas?`, sendo <b>${atrasadas} em atraso</b>`:''}. Aja hoje: cobre o fornecedor ou faça a compra emergencial.`:'Sem pendências de entrega em aberto. 🎉');
 
   document.getElementById('app').innerHTML=
@@ -113,10 +124,12 @@ async function run(){
    +`<div class="kpis">`
    +kchip('Entregas do dia',entregasDia.length,'ok')
    +kchip('Itens recebidos',nRecebidos,'ok')
+   +kchip('Valor entregue no dia',brl(valorDia),'ok','soma p/ Gestão de Compras')
    +kchip('Pedidos concluídos',concluidosHoje.length,'ok')
    +kchip('Itens pendentes',pend.length,pend.length?'bad':'ok',atrasadas?`${atrasadas} em atraso`:'')
    +`</div>`
-   +`<h2>📥 Entregue hoje</h2>`+tabela([{h:'Pedido / Fornecedor'},{h:'Hora'},{h:'Recebido por'},{h:'NF'},{h:'Itens',num:1}],linhasEnt,'Nenhuma entrega registrada neste dia.')
+   +`<h2>📥 Entregue hoje <span class="h2s">— pedido × entregue × falta, quem recebeu e horário</span></h2>`+tabela([{h:'Produto'},{h:'Pedido',num:1},{h:'Entregue',num:1},{h:'Falta',num:1},{h:'Recebido por'},{h:'Hora'},{h:'Valor',num:1}],linhasEnt,'Nenhuma entrega registrada neste dia.')
+   +(linhasEnt.length?`<div style="text-align:right;font-weight:800;margin-top:8px;font-size:15px">Valor entregue no dia: <span style="color:var(--vinho)">${brl(valorDia)}</span></div>`:'')
    +`<h2>🔴 Pendências de entrega <span class="h2s">— em aberto</span></h2>`+tabela([{h:'Produto'},{h:'Falta',num:1},{h:'Fornecedor'},{h:'Pedido'},{h:'Loja'},{h:'Prev.'},{h:'Atraso'}],linhasPend,'Sem pendências de entrega em aberto. 🎉')
    +`<div class="foot"><b>Relatório de Recebimento — Ciclo de Compras (Fase 1).</b> Consolida as entregas registradas e as pendências dos pedidos em aberto. Um pedido só encerra quando tudo é entregue ou a pendência é formalmente tratada. Painel Amore · gerado ${new Date().toLocaleString('pt-BR')}</div>`;
 }
