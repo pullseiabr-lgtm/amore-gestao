@@ -111,13 +111,14 @@ export default function CicloComprasPage() {
   const { toast } = useToast()
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'ciclo' | 'macro' | 'pend' | 'rel'>('ciclo')
+  const [tab, setTab] = useState<'conf' | 'ciclo' | 'macro' | 'pend' | 'rel'>('conf')
   const [aberto, setAberto] = useState<string | null>(null)
   const [semana, setSemana] = useState(() => semanaISO(hoje()).ini)
   const [diaRel, setDiaRel] = useState(hoje())
   const [recModal, setRecModal] = useState<Pedido | null>(null)
   const [confModal, setConfModal] = useState<Pedido | null>(null)
   const [fechModal, setFechModal] = useState<Pedido | null>(null)
+  const [estoqueMap, setEstoqueMap] = useState<Record<string, number>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -127,6 +128,14 @@ export default function CicloComprasPage() {
     setPedidos(list); setLoading(false)
   }, [])
   useEffect(() => { load() }, [load])
+  // estoque atual por loja+produto (para a conferência)
+  useEffect(() => { (async () => {
+    const { data } = await sb.from('produtos').select('loja,nome,estoque_atual').eq('ativo', true)
+    const m: Record<string, number> = {}
+    ;(data || []).forEach((p: any) => { const v = Number(p.estoque_atual) || 0; m[p.loja + '|' + normP(p.nome)] = v })
+    setEstoqueMap(m)
+  })() }, [])
+  const estoqueDe = useCallback((loja: string, produto: string) => estoqueMap[loja + '|' + normP(produto)], [estoqueMap])
 
   const daLoja = (p: Pedido) => loja === 'Todas as Lojas' || !loja || p.loja === loja
   const filtrados = useMemo(() => pedidos.filter(daLoja), [pedidos, loja])
@@ -177,12 +186,13 @@ export default function CicloComprasPage() {
 
       {/* Abas */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {([['ciclo', <ClipboardList size={14} />, 'Pedidos & Ciclo'], ['macro', <CalendarDays size={14} />, 'Pedido Macro Semanal'], ['pend', <AlertTriangle size={14} />, 'Pendências'], ['rel', <Send size={14} />, 'Relatório do dia']] as const).map(([id, ic, lb]) => (
+        {([['conf', <PackageCheck size={14} />, 'Conferência por Loja'], ['ciclo', <ClipboardList size={14} />, 'Pedidos & Ciclo'], ['macro', <CalendarDays size={14} />, 'Pedido Macro Semanal'], ['pend', <AlertTriangle size={14} />, 'Pendências'], ['rel', <Send size={14} />, 'Relatório do dia']] as const).map(([id, ic, lb]) => (
           <button key={id} onClick={() => setTab(id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 13, fontWeight: 700, background: tab === id ? 'var(--bordo)' : 'var(--card)', color: tab === id ? '#fff' : 'var(--text)' }}>{ic}{lb}</button>
         ))}
       </div>
 
       {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><Loader2 className="spin" size={26} /></div> : <>
+        {tab === 'conf' && <TabConferencia pedidos={filtrados} estoqueDe={estoqueDe} reload={load} user={user} toast={toast} />}
         {tab === 'ciclo' && <TabCiclo pedidos={filtrados} aberto={aberto} setAberto={setAberto} emitirNumero={emitirNumero} openRec={setRecModal} openConf={setConfModal} openFech={setFechModal} />}
         {tab === 'macro' && <TabMacro pedidos={filtrados} semana={semana} setSemana={setSemana} />}
         {tab === 'pend' && <TabPendencias pedidos={filtrados} openRec={setRecModal} />}
@@ -431,6 +441,128 @@ function FecharModal({ p, onClose, salvarPedido, user }: { p: Pedido; onClose: (
         <button className="btn" onClick={fechar} disabled={busy} style={{ padding: '9px 16px', background: '#15803D', opacity: busy ? .6 : 1 }}>{busy ? 'Fechando…' : concluido ? 'Fechar como concluído' : 'Encerrar pedido'}</button>
       </div>
     </Overlay>
+  )
+}
+
+// ═══════════════ ABA: CONFERÊNCIA POR LOJA (editável) ═══════════════
+// Loja por loja, produto a produto: Estoque · Pedido · Chegou (editável) · Falta.
+// Editar "Chegou" e salvar registra a entrega no(s) pedido(s) daquela loja (atualiza tudo).
+function TabConferencia({ pedidos, estoqueDe, reload, user, toast }: any) {
+  const [edits, setEdits] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState<string>('')
+  const [soFalta, setSoFalta] = useState(false)
+
+  // pedidos abertos agrupados por loja → produtos consolidados
+  const porLoja = useMemo(() => {
+    const abertos = (pedidos as Pedido[]).filter(p => !p.fechamento?.fechado)
+    const lojas: Record<string, { produtos: Record<string, { produto: string; un: string; pedido: number; chegou: number; pedidos: { chave: string; pend: number }[] }> }> = {}
+    abertos.forEach(p => {
+      const L = p.loja || '—'
+      if (!lojas[L]) lojas[L] = { produtos: {} }
+      ;(p.itens || []).forEach(it => {
+        const k = normP(it.produto)
+        const s = itemSituacao(p, it)
+        if (!lojas[L].produtos[k]) lojas[L].produtos[k] = { produto: it.produto, un: it.un || '', pedido: 0, chegou: 0, pedidos: [] }
+        const row = lojas[L].produtos[k]
+        row.pedido += s.ped; row.chegou += s.ent
+        if (s.pend > 0.0001) row.pedidos.push({ chave: p.chave, pend: s.pend })
+      })
+    })
+    return Object.entries(lojas).map(([loja, o]) => ({
+      loja,
+      produtos: Object.values(o.produtos).map(r => ({ ...r, pedido: Math.round(r.pedido * 1000) / 1000, chegou: Math.round(r.chegou * 1000) / 1000 }))
+        .sort((a, b) => (b.pedido - b.chegou) - (a.pedido - a.chegou)),
+    })).sort((a, b) => a.loja.localeCompare(b.loja))
+  }, [pedidos])
+
+  const salvarLoja = async (loja: string, produtos: any[]) => {
+    // acumula deltas de "chegou" por pedido → uma entrega por pedido (data de hoje)
+    const porPedido: Record<string, { chave: string; itens: { produto: string; qtd: number }[] }> = {}
+    let mudou = 0
+    for (const r of produtos) {
+      const k = loja + '|' + normP(r.produto)
+      const raw = edits[k]
+      if (raw == null || raw === '') continue
+      const novo = Number(raw)
+      if (isNaN(novo)) continue
+      let delta = Math.round((novo - r.chegou) * 1000) / 1000
+      if (delta <= 0.0001) continue // só aplica aumento de "chegou"
+      mudou++
+      // distribui o delta nos pedidos com pendência (primeiro que aparece)
+      for (const ped of r.pedidos) {
+        if (delta <= 0.0001) break
+        const usar = Math.min(delta, ped.pend)
+        if (usar <= 0.0001) continue
+        if (!porPedido[ped.chave]) porPedido[ped.chave] = { chave: ped.chave, itens: [] }
+        porPedido[ped.chave].itens.push({ produto: r.produto, qtd: Math.round(usar * 1000) / 1000 })
+        delta = Math.round((delta - usar) * 1000) / 1000
+      }
+    }
+    if (!mudou) { toast('Nada para atualizar nesta loja — edite "Chegou".', 'error'); return }
+    const chaves = Object.keys(porPedido)
+    if (!chaves.length) { toast('Os valores informados já estão entregues (sem pendência).', 'error'); return }
+    setBusy(loja)
+    try {
+      for (const chave of chaves) {
+        const p = (pedidos as Pedido[]).find(x => x.chave === chave); if (!p) continue
+        const entrega: Entrega = { id: 'e' + Date.now().toString(36) + Math.floor(Math.random() * 99), em: new Date().toISOString(), data: hoje(), hora: agoraHora(), responsavel: user?.name || 'Conferência', obs: 'Conferência por loja', itens: porPedido[chave].itens }
+        const totalItens = porPedido[chave].itens.length
+        const { chave: _c, ...rest } = { ...p }
+        const valor: any = { ...rest, entregas: [...(p.entregas || []), entrega], historico: [...(p.historico || []), { em: new Date().toISOString(), quem: user?.name || 'Painel', acao: 'Entrega (conferência por loja)', detalhe: `${totalItens} item(ns)` }] }
+        await sb.from('app_config').upsert({ chave, valor }, { onConflict: 'chave' })
+      }
+      toast(`Conferência de ${loja} atualizada. ✅`)
+      setEdits({}); await reload()
+    } catch { toast('Não foi possível atualizar.', 'error') }
+    finally { setBusy('') }
+  }
+
+  if (!porLoja.length) return <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 13, border: '1px dashed var(--border)', borderRadius: 10 }}>Nenhum pedido em aberto para conferir. Gere pedidos em <strong>🧾 Pedidos de Compra</strong>.</div>
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, fontSize: 12.5, color: 'var(--muted)' }}>Confira <strong>loja por loja</strong>: estoque atual, quanto foi pedido, quanto chegou e o que falta. Edite <strong>Chegou</strong> e salve — atualiza os pedidos, as pendências e a Gestão de Compras.</div>
+        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={soFalta} onChange={e => setSoFalta(e.target.checked)} /> Só o que falta</label>
+      </div>
+
+      {porLoja.map(({ loja, produtos }) => {
+        const lista = soFalta ? produtos.filter(r => (r.pedido - r.chegou) > 0.0001) : produtos
+        const totFalta = produtos.reduce((s, r) => s + Math.max(0, r.pedido - r.chegou), 0)
+        return (
+          <div key={loja} style={card}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--bordo)' }}>🏪 {loja}</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>{produtos.length} produto(s){totFalta > 0.0001 ? ` · falta entregar itens` : ' · tudo entregue'}</div>
+              <div style={{ flex: 1 }} />
+              <button onClick={() => salvarLoja(loja, produtos)} disabled={busy === loja} className="btn" style={{ padding: '8px 15px', fontSize: 12.5, opacity: busy === loja ? .6 : 1 }}>{busy === loja ? 'Salvando…' : '💾 Salvar atualização'}</button>
+            </div>
+            {lista.length === 0 ? <div style={{ fontSize: 12.5, color: '#15803D' }}>✅ Tudo entregue nesta loja.</div> : <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 560 }}>
+                <thead><tr style={{ textAlign: 'left', color: 'var(--muted)', fontSize: 10.5, textTransform: 'uppercase' }}><th style={{ padding: 6 }}>Produto</th><th>Estoque</th><th>Pedido</th><th>Chegou</th><th>Falta</th></tr></thead>
+                <tbody>{lista.map((r, k) => {
+                  const key = loja + '|' + normP(r.produto)
+                  const chegouEdit = edits[key] != null ? edits[key] : String(r.chegou)
+                  const chegouNum = Number(chegouEdit) || 0
+                  const falta = Math.max(0, Math.round((r.pedido - chegouNum) * 1000) / 1000)
+                  const est = estoqueDe(loja, r.produto)
+                  return (
+                    <tr key={k} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: 6, fontWeight: 600 }}>{r.produto}</td>
+                      <td style={{ color: est == null ? 'var(--muted)' : est <= 0 ? '#B91C1C' : 'var(--text)' }}>{est == null ? '—' : `${Math.round(est * 1000) / 1000} ${r.un}`}</td>
+                      <td>{r.pedido} {r.un}</td>
+                      <td style={{ width: 120 }}><input type="number" min={0} step="0.001" value={chegouEdit} onChange={e => setEdits(ed => ({ ...ed, [key]: e.target.value }))} style={{ ...inp, width: 104, ...(chegouNum > r.chegou + 0.0001 ? { borderColor: '#15803D', background: 'rgba(34,197,94,0.06)' } : {}) }} /> {r.un}</td>
+                      <td style={{ fontWeight: 700, color: falta > 0.0001 ? '#B91C1C' : '#15803D' }}>{falta} {r.un}</td>
+                    </tr>
+                  )
+                })}</tbody>
+              </table>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>💡 Aumentar <strong>Chegou</strong> e salvar registra a entrega (data de hoje) e some da pendência. Estoque vem do módulo Estoque. Para diminuir uma entrega lançada errada, use a aba <strong>Pedidos & Ciclo</strong>.</div>
+            </div>}
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

@@ -14,22 +14,22 @@ header.top{border-bottom:2px solid var(--vinho);padding-bottom:14px;margin-botto
 .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
 h1{font-size:22px;margin:6px 0 4px}.sub{color:var(--muted);font-size:13.5px}
 .btn{border:1px solid var(--vinho);background:var(--vinho);color:#fff;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
-h2{font-size:16.5px;margin:26px 0 10px;color:var(--vinho)}h2 .h2s{font-size:12px;font-weight:500;color:var(--muted)}
+h2{font-size:16.5px;margin:26px 0 10px;color:var(--vinho);display:flex;align-items:center;gap:8px}h2 .h2s{font-size:12px;font-weight:500;color:var(--muted)}
 .ia{background:color-mix(in srgb,var(--vinho) 6%,var(--card));border:1px solid var(--border);border-left:4px solid var(--vinho);border-radius:12px;padding:14px 16px;font-size:14px;margin:14px 0}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin:14px 0}
 .kpi{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:12px 14px;box-shadow:var(--shadow)}
 .kpi.ok{border-left:4px solid var(--ok)}.kpi.warn{border-left:4px solid var(--warn)}.kpi.bad{border-left:4px solid var(--bad)}
 .kpi .kn{font-size:21px;font-weight:800}.kpi .ks{font-size:12px;font-weight:600;color:var(--muted)}.kpi .kl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-top:2px}
 .tw{overflow-x:auto;border:1px solid var(--border);border-radius:13px;box-shadow:var(--shadow);background:var(--card)}
-table{width:100%;border-collapse:collapse;font-size:13px;min-width:560px}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:520px}
 thead th{text-align:left;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:9px 11px;border-bottom:1px solid var(--border);white-space:nowrap}
 tbody td{padding:8px 11px;border-bottom:1px solid var(--border)}tbody tr:last-child td{border-bottom:none}
 .num{text-align:right;white-space:nowrap}.prod{font-weight:600}.mut{color:var(--muted)}.mc{display:block;font-size:10.5px;color:var(--muted);font-weight:400}
 .badge{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap}
-.b-ok{background:#DCFCE7;color:#15803D}.b-no{background:#FEE2E2;color:#B91C1C}.b-warn{background:#FEF3C7;color:#B45309}.b-info{background:#E0F2FE;color:#0369A1}
-@media(prefers-color-scheme:dark){.b-ok{background:#0f2e1b;color:#4ade80}.b-no{background:#3a1414;color:#f87171}.b-warn{background:#33270a;color:#fbbf24}.b-info{background:#0b2a3a;color:#7dd3fc}}
+.b-ok{background:#DCFCE7;color:#15803D}.b-no{background:#FEE2E2;color:#B91C1C}.b-warn{background:#FEF3C7;color:#B45309}
+@media(prefers-color-scheme:dark){.b-ok{background:#0f2e1b;color:#4ade80}.b-no{background:#3a1414;color:#f87171}.b-warn{background:#33270a;color:#fbbf24}}
 .empty{padding:16px;color:var(--muted);font-size:12.5px;border:1px dashed var(--border);border-radius:10px}
-.itlist{margin:4px 0 0;padding-left:16px;font-size:12px;color:var(--muted)}
+.lojahd{font-size:11px;font-weight:800;color:#fff;background:var(--vinho);border-radius:8px;padding:3px 10px}
 .foot{margin-top:26px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
 .msg{text-align:center;padding:60px 20px;color:var(--muted)}
 @media(max-width:680px){
@@ -48,7 +48,7 @@ tbody td{padding:8px 11px;border-bottom:1px solid var(--border)}tbody tr:last-ch
 </style>
 </head>
 <body>
-<div class="wrap" id="app"><div class="msg">Consolidando o recebimento do dia…</div></div>
+<div class="wrap" id="app"><div class="msg">Consolidando a conferência por loja…</div></div>
 <script>
 const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
 const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
@@ -63,88 +63,62 @@ const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 const dDMY=s=>{if(!s)return '—';const p=String(s).slice(0,10).split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s};
 const nrm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
 const r3=n=>Math.round((Number(n)||0)*1000)/1000;
-const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-const OCOR={produto_diferente:'Produto diferente do pedido',quantidade_divergente:'Quantidade divergente',valor_divergente:'Valor diferente do pedido',produto_faltando:'Produto faltando (não entregue)',produto_faturado_nao_entregue:'Faturado, mas não entregue',produto_excedente:'Produto excedente',embalagem_danificada:'Embalagem danificada',produto_avariado:'Produto avariado',validade_curta:'Validade curta',produto_vencido:'Produto vencido',qualidade_fora_padrao:'Qualidade fora do padrão',peso_divergente:'Peso divergente',outro:'Outro'};
+const OCOR={produto_diferente:'Produto diferente',quantidade_divergente:'Quantidade divergente',valor_divergente:'Valor divergente',produto_faltando:'Produto faltando',produto_faturado_nao_entregue:'Faturado, não entregue',produto_excedente:'Excedente',embalagem_danificada:'Embalagem danificada',produto_avariado:'Avariado',validade_curta:'Validade curta',produto_vencido:'Vencido',qualidade_fora_padrao:'Qualidade fora do padrão',peso_divergente:'Peso divergente',outro:'Outro'};
 const ocorL=v=>OCOR[v]||v;
-const diasAtraso=prev=>{if(!prev)return 0;const d=Math.floor((Date.parse(hojeRecife())-Date.parse(String(prev).slice(0,10)))/86400000);return d>0?d:0};
 function entregueDe(p,produto){const n=nrm(produto);return (p.entregas||[]).reduce((s,e)=>s+(e.itens||[]).filter(i=>nrm(i.produto)===n).reduce((a,i)=>a+(Number(i.qtd)||0),0),0)}
-function itemSit(p,it){const ped=Number(it.qtd)||0;const ent=entregueDe(p,it.produto);const pend=Math.max(0,r3(ped-ent));return {ped,ent:r3(ent),pend,sit:ent<=0?'nao':pend<=0.0001?'ok':'parcial'}}
 
 async function run(){
   const dataFmt=dDMY(D);
-  const pedRows=await g('app_config?chave=like.pedido_*&select=chave,valor');
-  const pedidos=(pedRows||[]).map(r=>({chave:r.chave,...(r.valor||{})})).filter(p=>(!LOJA||canon(p.loja)===LOJA));
+  const [pedRows, estRows, obsRows]=await Promise.all([
+    g('app_config?chave=like.pedido_*&select=chave,valor'),
+    g('produtos?select=loja,nome,estoque_atual&ativo=eq.true&limit=8000'),
+    g('app_config?chave=eq.ciclo_rel_obs&select=valor'),
+  ]);
+  const pedidos=(Array.isArray(pedRows)?pedRows:[]).map(r=>({chave:r.chave,...(r.valor||{})})).filter(p=>(!LOJA||canon(p.loja)===LOJA));
+  const estM={}; (Array.isArray(estRows)?estRows:[]).forEach(p=>{estM[canon(p.loja)+'|'+nrm(p.nome)]=Number(p.estoque_atual)||0});
+  const estoqueDe=(loja,prod)=>estM[canon(loja)+'|'+nrm(prod)];
+  const obsMap=(obsRows&&obsRows[0]&&obsRows[0].valor)||{}; const obsTxt=obsMap[(LOJA||'Todas')+'|'+D]||'';
 
-  // entregas do dia (item a item: pedido × entregue × falta × quem × hora × valor)
-  const entregasDia=[];
-  pedidos.forEach(p=>(p.entregas||[]).forEach(e=>{if(String(e.data||'').slice(0,10)===D)entregasDia.push({p,e})}));
-  let valorDia=0, nRecebidos=0;
-  const itensEntregues=[];
-  entregasDia.forEach(({p,e})=>(e.itens||[]).forEach(i=>{
-    const pit=(p.itens||[]).find(x=>nrm(x.produto)===nrm(i.produto));
-    const preco=pit?Number(pit.preco)||0:0;
-    const qEnt=Number(i.qtd)||0;
-    const val=qEnt*preco;
-    valorDia+=val; nRecebidos++;
-    itensEntregues.push({p,e,produto:i.produto,un:pit?pit.un||'':'',pedQ:pit?Number(pit.qtd)||0:null,entQ:qEnt,falta:pit?itemSit(p,pit).pend:null,valor:val});
-  }));
-  const concluidosHoje=pedidos.filter(p=>p.fechamento&&p.fechamento.fechado&&String(p.fechamento.em||'').slice(0,10)===D&&p.fechamento.tipo==='concluido');
-  const nProdutos=new Set(itensEntregues.filter(x=>x.entQ>0).map(x=>nrm(x.produto))).size;
-  // desvios/ocorrências do dia
-  const desviosDia=[];
-  entregasDia.forEach(({p,e})=>(e.itens||[]).forEach(i=>{if(i.desvio&&i.desvio.tipo)desviosDia.push({produto:i.produto,tipo:i.desvio.tipo,descricao:i.desvio.descricao||'',fornecedor:p.fornecedor,numero:p.numero,hora:e.hora});}));
-  // observações do comprador (app_config ciclo_rel_obs)
-  let obsTxt='';
-  try{const or=await g('app_config?chave=eq.ciclo_rel_obs&select=valor');const map=(or&&or[0]&&or[0].valor)||{};obsTxt=map[(LOJA||'Todas')+'|'+D]||'';}catch(e){}
+  const abertos=pedidos.filter(p=>!(p.fechamento&&p.fechamento.fechado));
+  // agrupa por loja → produtos (pedido × chegou × falta) + estoque
+  const lojas={};
+  abertos.forEach(p=>{const L=p.loja||'—'; if(!lojas[L])lojas[L]={}; (p.itens||[]).forEach(it=>{const k=nrm(it.produto); if(!lojas[L][k])lojas[L][k]={produto:it.produto,un:it.un||'',pedido:0,chegou:0}; lojas[L][k].pedido+=Number(it.qtd)||0; lojas[L][k].chegou+=entregueDe(p,it.produto);});});
+  // desvios em aberto
+  const desvios=[]; abertos.forEach(p=>(p.entregas||[]).forEach(e=>(e.itens||[]).forEach(i=>{if(i.desvio&&i.desvio.tipo)desvios.push({produto:i.produto,tipo:i.desvio.tipo,descricao:i.desvio.descricao||'',fornecedor:p.fornecedor,loja:p.loja});})));
 
-  // pendências abertas
-  const pend=[];
-  pedidos.filter(p=>!(p.fechamento&&p.fechamento.fechado)).forEach(p=>(p.itens||[]).forEach(it=>{const s=itemSit(p,it);if(s.pend>0.0001)pend.push({p,it,s})}));
-  pend.sort((a,b)=>diasAtraso(b.p.prev_entrega)-diasAtraso(a.p.prev_entrega));
-  const atrasadas=pend.filter(x=>diasAtraso(x.p.prev_entrega)>0).length;
+  let totPed=0,totCheg=0,totFalta=0,nFalta=0,nProd=0;
+  Object.values(lojas).forEach(prods=>Object.values(prods).forEach(r=>{const f=Math.max(0,r3(r.pedido-r.chegou)); totPed++; totCheg+=(r.chegou>0?1:0); totFalta+=f; nProd++; if(f>0.0001)nFalta++;}));
 
-  const kchip=(l,v,cls,sub)=>`<div class="kpi ${cls||''}"><div class="kn">${v}</div><div class="kl">${l}</div>${sub?`<div class="ks">${sub}</div>`:''}</div>`;
   const tabela=(cols,rows,vazio)=>rows.length?`<div class="tw"><table><thead><tr>${cols.map(c=>`<th class="${c.num?'num':''}">${c.h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`:`<div class="empty">${vazio}</div>`;
+  const kchip=(l,v,cls,sub)=>`<div class="kpi ${cls||''}"><div class="kn">${v}</div><div class="kl">${l}</div>${sub?`<div class="ks">${sub}</div>`:''}</div>`;
 
-  // entregue hoje — item a item
-  const linhasEnt=itensEntregues.map(x=>{
-    const un=esc(x.un||'');
-    const faltaCel=x.falta==null?'—':(x.falta>0.0001?`<b style="color:var(--bad)">${r3(x.falta)} ${un}</b>`:'<span class="badge b-ok">0</span>');
-    return `<tr><td class="prod">${esc(x.produto)}<span class="mc">${esc(x.p.numero||'')}${x.p.numero?' · ':''}${esc(x.p.fornecedor||'')} · ${esc(x.p.loja||'')}${x.e.nf?' · NF '+esc(x.e.nf):''}</span></td><td class="num" data-label="Pedido">${x.pedQ!=null?r3(x.pedQ)+' '+un:'—'}</td><td class="num" data-label="Entregue">${r3(x.entQ)} ${un}</td><td class="num" data-label="Falta">${faltaCel}</td><td data-label="Recebido por">${esc(x.e.responsavel||'—')}</td><td data-label="Hora">${esc(x.e.hora||'—')}</td><td class="num" data-label="Valor">${x.valor>0?brl(x.valor):'—'}</td></tr>`;
-  });
-
-  // pendências agrupadas por pedido
-  const porPed={};
-  pend.forEach(x=>{const k=x.p.chave;if(!porPed[k])porPed[k]={p:x.p,itens:[]};porPed[k].itens.push(x)});
-  const linhasPend=[];
-  Object.values(porPed).forEach(({p,itens})=>{
-    const at=diasAtraso(p.prev_entrega);
-    itens.forEach((x,idx)=>{
-      linhasPend.push(`<tr><td class="prod">${esc(x.it.produto)}</td><td class="num" data-label="Falta"><b style="color:var(--bad)">${r3(x.s.pend)} ${esc(x.it.un||'')}</b></td><td data-label="Fornecedor">${idx===0?esc(p.fornecedor||'—'):'<span class="mut">↳</span>'}</td><td data-label="Pedido">${esc(p.numero||'—')}</td><td data-label="Loja">${esc(p.loja||'')}</td><td data-label="Prev.">${dDMY(p.prev_entrega)}</td><td data-label="Atraso">${at>0?`<span class="badge b-no">⏰ ${at}d</span>`:'—'}</td></tr>`);
+  const lojasOrden=Object.keys(lojas).sort();
+  const secoes=lojasOrden.map(L=>{
+    const prods=Object.values(lojas[L]).map(r=>({...r,pedido:r3(r.pedido),chegou:r3(r.chegou),falta:Math.max(0,r3(r.pedido-r.chegou))})).sort((a,b)=>b.falta-a.falta);
+    const rows=prods.map(r=>{const est=estoqueDe(L,r.produto); const un=esc(r.un);
+      return `<tr><td class="prod">${esc(r.produto)}</td><td class="num" data-label="Estoque">${est==null?'—':`${r3(est)} ${un}`}</td><td class="num" data-label="Pedido">${r.pedido} ${un}</td><td class="num" data-label="Chegou">${r.chegou} ${un}</td><td class="num" data-label="Falta">${r.falta>0.0001?`<b style="color:var(--bad)">${r.falta} ${un}</b>`:'<span class="badge b-ok">0</span>'}</td></tr>`;
     });
-  });
+    const faltaL=prods.reduce((s,r)=>s+r.falta,0);
+    return `<h2>🏪 ${esc(L)} <span class="h2s">· ${prods.length} produto(s)${faltaL>0.0001?' · há itens a entregar':' · tudo entregue'}</span></h2>`+tabela([{h:'Produto'},{h:'Estoque',num:1},{h:'Pedido',num:1},{h:'Chegou',num:1},{h:'Falta',num:1}],rows,'Sem itens em aberto nesta loja.');
+  }).join('');
 
-  const resumo=`No dia ${dataFmt}${LOJA?` (${esc(LOJA)})`:''} foram registradas <b>${entregasDia.length} entrega(s)</b> (${nRecebidos} item(ns)), no valor de <b>${brl(valorDia)}</b>, com <b>${concluidosHoje.length} pedido(s) concluído(s)</b>. `+
-    (pend.length?`Restam <b style="color:var(--bad)">${pend.length} item(ns) pendente(s)</b> de entrega${atrasadas?`, sendo <b>${atrasadas} em atraso</b>`:''}. Aja hoje: cobre o fornecedor ou faça a compra emergencial.`:'Sem pendências de entrega em aberto. 🎉');
+  const resumo=`Conferência de ${dataFmt}${LOJA?` (${esc(LOJA)})`:' · todas as lojas'}: <b>${nProd} produto(s)</b> em pedidos abertos, <b style="color:var(--bad)">${nFalta} ainda com falta</b> de entrega. Confira loja por loja abaixo — estoque, quanto foi pedido, quanto chegou e o que falta.`;
 
   document.getElementById('app').innerHTML=
-    `<header class="top"><div><div class="eyebrow">Painel Amore · Ciclo de Compras</div><h1>Relatório Diário de Recebimento</h1><div class="sub">${dataFmt}${LOJA?` · ${esc(LOJA)}`:' · Todas as lojas'}</div></div><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></header>`
-   +`<div class="ia">📦 <b>Recebimento do dia:</b> ${resumo}</div>`
+    `<header class="top"><div><div class="eyebrow">Painel Amore · Ciclo de Compras</div><h1>Conferência de Recebimento — Loja por Loja</h1><div class="sub">${dataFmt}${LOJA?` · ${esc(LOJA)}`:' · Todas as lojas'}</div></div><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></header>`
+   +`<div class="ia">📦 <b>Resumo:</b> ${resumo}</div>`
    +(obsTxt?`<div class="ia" style="border-left-color:#0369A1">📝 <b>Observações do comprador:</b> ${esc(obsTxt)}</div>`:'')
    +`<div class="kpis">`
-   +kchip('Produtos entregues',nProdutos,'ok',`${nRecebidos} item(ns)`)
-   +kchip('Valor entregue no dia',brl(valorDia),'ok','soma p/ Gestão de Compras')
-   +kchip('Pedidos concluídos',concluidosHoje.length,'ok')
-   +kchip('Desvios',desviosDia.length,desviosDia.length?'bad':'ok')
-   +kchip('Itens pendentes',pend.length,pend.length?'bad':'ok',atrasadas?`${atrasadas} em atraso`:'')
+   +kchip('Produtos em aberto',nProd,'ok')
+   +kchip('Com falta de entrega',nFalta,nFalta?'bad':'ok')
+   +kchip('Lojas',lojasOrden.length,'ok')
+   +kchip('Desvios',desvios.length,desvios.length?'bad':'ok')
    +`</div>`
-   +`<h2>📥 Entregue hoje <span class="h2s">— pedido × entregue × falta, quem recebeu e horário</span></h2>`+tabela([{h:'Produto'},{h:'Pedido',num:1},{h:'Entregue',num:1},{h:'Falta',num:1},{h:'Recebido por'},{h:'Hora'},{h:'Valor',num:1}],linhasEnt,'Nenhuma entrega registrada neste dia.')
-   +(linhasEnt.length?`<div style="text-align:right;font-weight:800;margin-top:8px;font-size:15px">Total entregue no dia: <span style="color:var(--vinho)">${nProdutos} produto(s) · ${brl(valorDia)}</span></div>`:'')
-   +(desviosDia.length?`<h2>⚠️ Desvios / ocorrências <span class="h2s">— registrados nas entregas do dia</span></h2>`+tabela([{h:'Produto'},{h:'Ocorrência'},{h:'Fornecedor'},{h:'Pedido'},{h:'Descrição'}],desviosDia.map(d=>`<tr><td class="prod">${esc(d.produto)}</td><td data-label="Ocorrência"><span class="badge b-no">${esc(ocorL(d.tipo))}</span></td><td data-label="Fornecedor">${esc(d.fornecedor||'—')}</td><td data-label="Pedido">${esc(d.numero||'—')}</td><td data-label="Descrição">${esc(d.descricao||'—')}</td></tr>`),'Nenhum desvio.'):'')
-   +`<h2>🔴 Pendências de entrega <span class="h2s">— em aberto</span></h2>`+tabela([{h:'Produto'},{h:'Falta',num:1},{h:'Fornecedor'},{h:'Pedido'},{h:'Loja'},{h:'Prev.'},{h:'Atraso'}],linhasPend,'Sem pendências de entrega em aberto. 🎉')
-   +`<div class="foot"><b>Relatório de Recebimento — Ciclo de Compras (Fase 1).</b> Consolida as entregas registradas e as pendências dos pedidos em aberto. Um pedido só encerra quando tudo é entregue ou a pendência é formalmente tratada. Painel Amore · gerado ${new Date().toLocaleString('pt-BR')}</div>`;
+   +(secoes||`<div class="empty">Nenhum pedido em aberto para conferir.</div>`)
+   +(desvios.length?`<h2>⚠️ Desvios / ocorrências</h2>`+tabela([{h:'Produto'},{h:'Ocorrência'},{h:'Loja'},{h:'Fornecedor'},{h:'Descrição'}],desvios.map(d=>`<tr><td class="prod">${esc(d.produto)}</td><td data-label="Ocorrência"><span class="badge b-no">${esc(ocorL(d.tipo))}</span></td><td data-label="Loja">${esc(d.loja||'')}</td><td data-label="Fornecedor">${esc(d.fornecedor||'—')}</td><td data-label="Descrição">${esc(d.descricao||'—')}</td></tr>`),'Nenhum desvio.'):'')
+   +`<div class="foot"><b>Conferência de Recebimento — Ciclo de Compras.</b> Loja por loja: estoque atual, quanto foi pedido, quanto chegou e o que falta entregar (pedidos em aberto). No painel (Ciclo de Compras → Conferência por Loja) o comprador edita e atualiza estes valores. Painel Amore · gerado ${new Date().toLocaleString('pt-BR')}</div>`;
 }
-run().catch(function(e){document.getElementById('app').innerHTML='<div class="msg">Erro ao gerar o relatório: '+esc(e&&e.message||e)+'</div>';});
+run().catch(function(e){document.getElementById('app').innerHTML='<div class="msg">Erro ao gerar a conferência: '+esc(e&&e.message||e)+'</div>';});
 </script>
 </body>
 </html>
