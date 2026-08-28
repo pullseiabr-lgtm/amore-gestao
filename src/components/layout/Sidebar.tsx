@@ -72,6 +72,7 @@ const COMPRAS_SUBMENU: NavItem[] = [
   { id: 'requisicoes',            label: 'Requisições',         icon: <ClipboardList size={12} /> },
   { id: 'cotacao',                label: '💰 Cotação Inteligente', icon: <DollarSign size={12} />, perm: 'requisicoes' },
   { id: 'pedidos',                label: '🧾 Pedidos de Compra', icon: <ClipboardList size={12} />, perm: 'requisicoes' },
+  { id: 'ciclo-compras',          label: '🔄 Ciclo de Compras', icon: <span style={{ fontSize: 13, lineHeight: 1 }}>🔄</span>, perm: 'requisicoes' },
   { id: 'relatorio-diario',       label: '📅 Relatório Diário', icon: <ClipboardList size={12} />, perm: 'requisicoes' },
   { id: 'requisicao-inteligente', label: '🧠 Requisição Inteligente', icon: <ClipboardList size={12} />, perm: 'requisicoes' },
   { id: 'analise-semanal', label: '📈 Análise Semanal de Compra', icon: <ClipboardList size={12} />, perm: 'requisicoes' },
@@ -122,7 +123,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
   const isProdutosGroup = (p: string) => p === 'produtos' || p === 'produtos-categorias'
 
   // Abre o dropdown automaticamente se a página ativa for do grupo Compras
-  const isComprasGroup = (p: string) => p === 'pipeline-suprimentos' || p === 'dashboard-suprimentos' || p === 'lista-padrao' || p === 'compras' || p === 'requisicoes' || p === 'cotacao' || p === 'pedidos' || p === 'relatorio-diario' || p === 'requisicao-inteligente' || p === 'analise-semanal' || p === 'entregas' || p === 'req-automaticas' || p === 'estoque' || p === 'fornecedores' || p === 'compras-agente'
+  const isComprasGroup = (p: string) => p === 'pipeline-suprimentos' || p === 'dashboard-suprimentos' || p === 'lista-padrao' || p === 'compras' || p === 'requisicoes' || p === 'cotacao' || p === 'pedidos' || p === 'ciclo-compras' || p === 'relatorio-diario' || p === 'requisicao-inteligente' || p === 'analise-semanal' || p === 'entregas' || p === 'req-automaticas' || p === 'estoque' || p === 'fornecedores' || p === 'compras-agente'
   const isRelatoriosGroup = (p: string) => p === 'relatorio-cvl' || p === 'ruptura' || p === 'market'
 
   const [gestaoOpen, setGestaoOpen] = useState(isGestaoGroup(activePage))

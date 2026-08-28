@@ -28,6 +28,7 @@ import RequisoesPage from './pages/requisicoes/RequisoesPage'
 import CotacaoPage from './pages/cotacao/CotacaoPage'
 import PedidosPage from './pages/pedidos/PedidosPage'
 import RelatorioDiarioPage from './pages/relatorio-diario/RelatorioDiarioPage'
+import CicloComprasPage from './pages/ciclo-compras/CicloComprasPage'
 import RequisicaoInteligentePage from './pages/requisicao-inteligente/RequisicaoInteligentePage'
 import AnaliseSemanalPage from './pages/analise-semanal/AnaliseSemanalPage'
 import EntregasPage from './pages/entregas/EntregasPage'
@@ -80,6 +81,7 @@ export type PageId =
   | 'cotacao'
   | 'pedidos'
   | 'relatorio-diario'
+  | 'ciclo-compras'
   | 'requisicao-inteligente'
   | 'analise-semanal'
   | 'entregas'
@@ -144,6 +146,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   cotacao: 'Cotação Inteligente de Compras',
   pedidos: 'Pedidos de Compra',
   'relatorio-diario': 'Relatório Diário',
+  'ciclo-compras': 'Ciclo de Compras & Recebimento',
   'requisicao-inteligente': 'Requisição Inteligente',
   'analise-semanal': 'Análise Semanal de Compra',
   'entregas': 'Agendamento de Entregas',
@@ -245,6 +248,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'cotacao':          return <CotacaoPage />
     case 'pedidos':          return <PedidosPage />
     case 'relatorio-diario': return <RelatorioDiarioPage />
+    case 'ciclo-compras': return <CicloComprasPage />
     case 'requisicao-inteligente': return <RequisicaoInteligentePage />
     case 'analise-semanal': return <AnaliseSemanalPage />
     case 'entregas': return <EntregasPage />
