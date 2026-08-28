@@ -118,7 +118,6 @@ export default function CicloComprasPage() {
   const [recModal, setRecModal] = useState<Pedido | null>(null)
   const [confModal, setConfModal] = useState<Pedido | null>(null)
   const [fechModal, setFechModal] = useState<Pedido | null>(null)
-  const [estoqueMap, setEstoqueMap] = useState<Record<string, number>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -128,14 +127,6 @@ export default function CicloComprasPage() {
     setPedidos(list); setLoading(false)
   }, [])
   useEffect(() => { load() }, [load])
-  // estoque atual por loja+produto (para a conferência)
-  useEffect(() => { (async () => {
-    const { data } = await sb.from('produtos').select('loja,nome,estoque_atual').eq('ativo', true)
-    const m: Record<string, number> = {}
-    ;(data || []).forEach((p: any) => { const v = Number(p.estoque_atual) || 0; m[p.loja + '|' + normP(p.nome)] = v })
-    setEstoqueMap(m)
-  })() }, [])
-  const estoqueDe = useCallback((loja: string, produto: string) => estoqueMap[loja + '|' + normP(produto)], [estoqueMap])
 
   const daLoja = (p: Pedido) => loja === 'Todas as Lojas' || !loja || p.loja === loja
   const filtrados = useMemo(() => pedidos.filter(daLoja), [pedidos, loja])
@@ -192,7 +183,7 @@ export default function CicloComprasPage() {
       </div>
 
       {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><Loader2 className="spin" size={26} /></div> : <>
-        {tab === 'conf' && <TabConferencia pedidos={filtrados} estoqueDe={estoqueDe} reload={load} user={user} toast={toast} />}
+        {tab === 'conf' && <TabConferencia pedidos={filtrados} loja={loja} diaRel={diaRel} setDiaRel={setDiaRel} reload={load} user={user} toast={toast} />}
         {tab === 'ciclo' && <TabCiclo pedidos={filtrados} aberto={aberto} setAberto={setAberto} emitirNumero={emitirNumero} openRec={setRecModal} openConf={setConfModal} openFech={setFechModal} />}
         {tab === 'macro' && <TabMacro pedidos={filtrados} semana={semana} setSemana={setSemana} />}
         {tab === 'pend' && <TabPendencias pedidos={filtrados} openRec={setRecModal} />}
@@ -445,12 +436,36 @@ function FecharModal({ p, onClose, salvarPedido, user }: { p: Pedido; onClose: (
 }
 
 // ═══════════════ ABA: CONFERÊNCIA POR LOJA (editável) ═══════════════
-// Loja por loja, produto a produto: Estoque · Pedido · Chegou (editável) · Falta.
+// Loja por loja, produto a produto: Pedido · Chegou (editável) · Falta.
 // Editar "Chegou" e salvar registra a entrega no(s) pedido(s) daquela loja (atualiza tudo).
-function TabConferencia({ pedidos, estoqueDe, reload, user, toast }: any) {
+// Barra de disparo: escolhe quem recebe o relatório e envia o link.
+function TabConferencia({ pedidos, loja, diaRel, setDiaRel, reload, user, toast }: any) {
   const [edits, setEdits] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string>('')
   const [soFalta, setSoFalta] = useState(false)
+  // disparo
+  const [profs, setProfs] = useState<{ nome: string; fone: string }[]>([])
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [fone, setFone] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  useEffect(() => { (async () => {
+    const { data } = await sb.from('profiles').select('name,permissions_override')
+    const seen = new Set<string>(); const uniq: { nome: string; fone: string }[] = []
+    ;(data || []).forEach((p: any) => { const perf = p.permissions_override?.__perfil__ || {}; const f = String(perf.whatsapp || perf.telefone || '').replace(/\D/g, ''); if (p.name && f.length >= 10 && !seen.has(f)) { seen.add(f); uniq.push({ nome: p.name, fone: f }) } })
+    uniq.sort((a, b) => a.nome.localeCompare(b.nome)); setProfs(uniq)
+  })() }, [])
+  const toggleSel = (f: string) => setSel(s => { const n = new Set(s); n.has(f) ? n.delete(f) : n.add(f); return n })
+  const lojaParam = loja && loja !== 'Todas as Lojas' ? '&loja=' + encodeURIComponent(loja) : ''
+  const link = `${siteOrigin()}/relatorio-ciclo.html?d=${diaRel}${lojaParam}`
+  const dispararRelatorio = async () => {
+    const alvos = new Set<string>(sel)
+    const f = fone.replace(/\D/g, ''); if (f.length >= 10) alvos.add(f)
+    if (!alvos.size) { toast('Escolha quem vai receber ou informe um WhatsApp.', 'error'); return }
+    const msg = `🔄 *Ciclo de Compras — Conferência por Loja*\n${fmtD(diaRel)}${loja && loja !== 'Todas as Lojas' ? ` · ${loja}` : ' · Todas as lojas'}\n\nPor produto: Pedido × Chegou × Falta (loja por loja):\n${link}\n— Compras Amore 💚`
+    setEnviando(true)
+    try { let ok = 0; for (const a of alvos) { if (await enviarWhatsApp(a, msg)) ok++ }; toast(`Relatório enviado para ${ok}/${alvos.size} destino(s). ✅`) }
+    catch { toast('Não foi possível enviar.', 'error') } finally { setEnviando(false) }
+  }
 
   // pedidos abertos agrupados por loja → produtos consolidados
   const porLoja = useMemo(() => {
@@ -522,8 +537,30 @@ function TabConferencia({ pedidos, estoqueDe, reload, user, toast }: any) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, fontSize: 12.5, color: 'var(--muted)' }}>Confira <strong>loja por loja</strong>: estoque atual, quanto foi pedido, quanto chegou e o que falta. Edite <strong>Chegou</strong> e salve — atualiza os pedidos, as pendências e a Gestão de Compras.</div>
+        <div style={{ flex: 1, fontSize: 12.5, color: 'var(--muted)' }}>Confira <strong>loja por loja</strong>: quanto foi pedido, quanto chegou e o que falta. Edite <strong>Chegou</strong> e salve — atualiza os pedidos, as pendências e a Gestão de Compras.</div>
         <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={soFalta} onChange={e => setSoFalta(e.target.checked)} /> Só o que falta</label>
+      </div>
+
+      {/* Barra de disparo — escolher quem recebe + enviar */}
+      <div style={card}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>📲 Disparar relatório</div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>Dia <input type="date" value={diaRel} onChange={e => setDiaRel(e.target.value)} style={{ ...inp, padding: '5px 8px' }} /></label>
+          <div style={{ flex: 1 }} />
+          <a href={link} target="_blank" rel="noreferrer" className="btn" style={{ padding: '7px 12px', fontSize: 12, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}><ExternalLink size={13} /> Abrir</a>
+          <button onClick={async () => { try { await navigator.clipboard.writeText(link); toast('Link copiado. 📋') } catch { toast('Não foi possível copiar.', 'error') } }} className="btn" style={{ padding: '7px 12px', fontSize: 12, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: 5 }}><Copy size={13} /> Copiar</button>
+        </div>
+        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 6 }}>Direcione para quem vai receber:</div>
+        {profs.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+          {profs.map(pr => { const on = sel.has(pr.fone); return (
+            <button key={pr.fone} onClick={() => toggleSel(pr.fone)} style={{ padding: '6px 12px', borderRadius: 20, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', border: '1px solid ' + (on ? 'var(--bordo)' : 'var(--border)'), background: on ? 'var(--bordo)' : 'var(--bg)', color: on ? '#fff' : 'var(--text)' }}>{on ? '✓ ' : ''}{pr.nome}</button>
+          ) })}
+        </div>}
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>Ou um WhatsApp avulso<input value={fone} onChange={e => setFone(e.target.value)} placeholder="Ex.: 81 99999-9999" style={{ ...inp, minWidth: 180 }} /></label>
+          <div style={{ flex: 1 }} />
+          <button onClick={dispararRelatorio} disabled={enviando} className="btn" style={{ padding: '10px 18px', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: enviando ? .6 : 1 }}><Send size={15} /> {enviando ? 'Enviando…' : `Disparar (${sel.size + (fone.replace(/\D/g, '').length >= 10 ? 1 : 0)})`}</button>
+        </div>
       </div>
 
       {porLoja.map(({ loja, produtos }) => {
@@ -539,17 +576,15 @@ function TabConferencia({ pedidos, estoqueDe, reload, user, toast }: any) {
             </div>
             {lista.length === 0 ? <div style={{ fontSize: 12.5, color: '#15803D' }}>✅ Tudo entregue nesta loja.</div> : <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 560 }}>
-                <thead><tr style={{ textAlign: 'left', color: 'var(--muted)', fontSize: 10.5, textTransform: 'uppercase' }}><th style={{ padding: 6 }}>Produto</th><th>Estoque</th><th>Pedido</th><th>Chegou</th><th>Falta</th></tr></thead>
+                <thead><tr style={{ textAlign: 'left', color: 'var(--muted)', fontSize: 10.5, textTransform: 'uppercase' }}><th style={{ padding: 6 }}>Produto</th><th>Pedido</th><th>Chegou</th><th>Falta</th></tr></thead>
                 <tbody>{lista.map((r, k) => {
                   const key = loja + '|' + normP(r.produto)
                   const chegouEdit = edits[key] != null ? edits[key] : String(r.chegou)
                   const chegouNum = Number(chegouEdit) || 0
                   const falta = Math.max(0, Math.round((r.pedido - chegouNum) * 1000) / 1000)
-                  const est = estoqueDe(loja, r.produto)
                   return (
                     <tr key={k} style={{ borderTop: '1px solid var(--border)' }}>
                       <td style={{ padding: 6, fontWeight: 600 }}>{r.produto}</td>
-                      <td style={{ color: est == null ? 'var(--muted)' : est <= 0 ? '#B91C1C' : 'var(--text)' }}>{est == null ? '—' : `${Math.round(est * 1000) / 1000} ${r.un}`}</td>
                       <td>{r.pedido} {r.un}</td>
                       <td style={{ width: 120 }}><input type="number" min={0} step="0.001" value={chegouEdit} onChange={e => setEdits(ed => ({ ...ed, [key]: e.target.value }))} style={{ ...inp, width: 104, ...(chegouNum > r.chegou + 0.0001 ? { borderColor: '#15803D', background: 'rgba(34,197,94,0.06)' } : {}) }} /> {r.un}</td>
                       <td style={{ fontWeight: 700, color: falta > 0.0001 ? '#B91C1C' : '#15803D' }}>{falta} {r.un}</td>
@@ -557,7 +592,7 @@ function TabConferencia({ pedidos, estoqueDe, reload, user, toast }: any) {
                   )
                 })}</tbody>
               </table>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>💡 Aumentar <strong>Chegou</strong> e salvar registra a entrega (data de hoje) e some da pendência. Estoque vem do módulo Estoque. Para diminuir uma entrega lançada errada, use a aba <strong>Pedidos & Ciclo</strong>.</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>💡 Aumentar <strong>Chegou</strong> e salvar registra a entrega (data de hoje) e some da pendência. Para corrigir uma entrega lançada errada, use a aba <strong>Pedidos & Ciclo</strong>.</div>
             </div>}
           </div>
         )

@@ -69,14 +69,11 @@ function entregueDe(p,produto){const n=nrm(produto);return (p.entregas||[]).redu
 
 async function run(){
   const dataFmt=dDMY(D);
-  const [pedRows, estRows, obsRows]=await Promise.all([
+  const [pedRows, obsRows]=await Promise.all([
     g('app_config?chave=like.pedido_*&select=chave,valor'),
-    g('produtos?select=loja,nome,estoque_atual&ativo=eq.true&limit=8000'),
     g('app_config?chave=eq.ciclo_rel_obs&select=valor'),
   ]);
   const pedidos=(Array.isArray(pedRows)?pedRows:[]).map(r=>({chave:r.chave,...(r.valor||{})})).filter(p=>(!LOJA||canon(p.loja)===LOJA));
-  const estM={}; (Array.isArray(estRows)?estRows:[]).forEach(p=>{estM[canon(p.loja)+'|'+nrm(p.nome)]=Number(p.estoque_atual)||0});
-  const estoqueDe=(loja,prod)=>estM[canon(loja)+'|'+nrm(prod)];
   const obsMap=(obsRows&&obsRows[0]&&obsRows[0].valor)||{}; const obsTxt=obsMap[(LOJA||'Todas')+'|'+D]||'';
 
   const abertos=pedidos.filter(p=>!(p.fechamento&&p.fechamento.fechado));
@@ -95,14 +92,14 @@ async function run(){
   const lojasOrden=Object.keys(lojas).sort();
   const secoes=lojasOrden.map(L=>{
     const prods=Object.values(lojas[L]).map(r=>({...r,pedido:r3(r.pedido),chegou:r3(r.chegou),falta:Math.max(0,r3(r.pedido-r.chegou))})).sort((a,b)=>b.falta-a.falta);
-    const rows=prods.map(r=>{const est=estoqueDe(L,r.produto); const un=esc(r.un);
-      return `<tr><td class="prod">${esc(r.produto)}</td><td class="num" data-label="Estoque">${est==null?'—':`${r3(est)} ${un}`}</td><td class="num" data-label="Pedido">${r.pedido} ${un}</td><td class="num" data-label="Chegou">${r.chegou} ${un}</td><td class="num" data-label="Falta">${r.falta>0.0001?`<b style="color:var(--bad)">${r.falta} ${un}</b>`:'<span class="badge b-ok">0</span>'}</td></tr>`;
+    const rows=prods.map(r=>{const un=esc(r.un);
+      return `<tr><td class="prod">${esc(r.produto)}</td><td class="num" data-label="Pedido">${r.pedido} ${un}</td><td class="num" data-label="Chegou">${r.chegou} ${un}</td><td class="num" data-label="Falta">${r.falta>0.0001?`<b style="color:var(--bad)">${r.falta} ${un}</b>`:'<span class="badge b-ok">0</span>'}</td></tr>`;
     });
     const faltaL=prods.reduce((s,r)=>s+r.falta,0);
-    return `<h2>🏪 ${esc(L)} <span class="h2s">· ${prods.length} produto(s)${faltaL>0.0001?' · há itens a entregar':' · tudo entregue'}</span></h2>`+tabela([{h:'Produto'},{h:'Estoque',num:1},{h:'Pedido',num:1},{h:'Chegou',num:1},{h:'Falta',num:1}],rows,'Sem itens em aberto nesta loja.');
+    return `<h2>🏪 ${esc(L)} <span class="h2s">· ${prods.length} produto(s)${faltaL>0.0001?' · há itens a entregar':' · tudo entregue'}</span></h2>`+tabela([{h:'Produto'},{h:'Pedido',num:1},{h:'Chegou',num:1},{h:'Falta',num:1}],rows,'Sem itens em aberto nesta loja.');
   }).join('');
 
-  const resumo=`Conferência de ${dataFmt}${LOJA?` (${esc(LOJA)})`:' · todas as lojas'}: <b>${nProd} produto(s)</b> em pedidos abertos, <b style="color:var(--bad)">${nFalta} ainda com falta</b> de entrega. Confira loja por loja abaixo — estoque, quanto foi pedido, quanto chegou e o que falta.`;
+  const resumo=`Conferência de ${dataFmt}${LOJA?` (${esc(LOJA)})`:' · todas as lojas'}: <b>${nProd} produto(s)</b> em pedidos abertos, <b style="color:var(--bad)">${nFalta} ainda com falta</b> de entrega. Confira loja por loja abaixo — quanto foi pedido, quanto chegou e o que falta.`;
 
   document.getElementById('app').innerHTML=
     `<header class="top"><div><div class="eyebrow">Painel Amore · Ciclo de Compras</div><h1>Conferência de Recebimento — Loja por Loja</h1><div class="sub">${dataFmt}${LOJA?` · ${esc(LOJA)}`:' · Todas as lojas'}</div></div><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></header>`
@@ -116,7 +113,7 @@ async function run(){
    +`</div>`
    +(secoes||`<div class="empty">Nenhum pedido em aberto para conferir.</div>`)
    +(desvios.length?`<h2>⚠️ Desvios / ocorrências</h2>`+tabela([{h:'Produto'},{h:'Ocorrência'},{h:'Loja'},{h:'Fornecedor'},{h:'Descrição'}],desvios.map(d=>`<tr><td class="prod">${esc(d.produto)}</td><td data-label="Ocorrência"><span class="badge b-no">${esc(ocorL(d.tipo))}</span></td><td data-label="Loja">${esc(d.loja||'')}</td><td data-label="Fornecedor">${esc(d.fornecedor||'—')}</td><td data-label="Descrição">${esc(d.descricao||'—')}</td></tr>`),'Nenhum desvio.'):'')
-   +`<div class="foot"><b>Conferência de Recebimento — Ciclo de Compras.</b> Loja por loja: estoque atual, quanto foi pedido, quanto chegou e o que falta entregar (pedidos em aberto). No painel (Ciclo de Compras → Conferência por Loja) o comprador edita e atualiza estes valores. Painel Amore · gerado ${new Date().toLocaleString('pt-BR')}</div>`;
+   +`<div class="foot"><b>Conferência de Recebimento — Ciclo de Compras.</b> Loja por loja: quanto foi pedido, quanto chegou e o que falta entregar (pedidos em aberto). No painel (Ciclo de Compras → Conferência por Loja) o comprador edita e atualiza estes valores e dispara o relatório. Painel Amore · gerado ${new Date().toLocaleString('pt-BR')}</div>`;
 }
 run().catch(function(e){document.getElementById('app').innerHTML='<div class="msg">Erro ao gerar a conferência: '+esc(e&&e.message||e)+'</div>';});
 </script>
