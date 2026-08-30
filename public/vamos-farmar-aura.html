@@ -22,10 +22,9 @@ body{font-family:'Poppins',system-ui,sans-serif;color:var(--cream);
   background:repeating-radial-gradient(circle at 50% 34%, transparent 0 62px, rgba(244,238,228,.035) 62px 63px)}
 .wrap>*{position:relative;z-index:1}
 /* header / marca */
-.brand{display:flex;align-items:center;gap:12px;margin-bottom:26px}
-.brand .logo{height:26px;width:auto;display:block}
-.brand .div{width:1px;height:22px;background:var(--line)}
-.brand .paiva{font-weight:600;letter-spacing:.32em;font-size:13px;color:var(--cream)}
+.brand{display:inline-flex;flex-direction:column;align-items:flex-start;gap:4px;margin-bottom:26px}
+.brand .logo{height:30px;width:auto;display:block}
+.brand .paiva{font-weight:600;letter-spacing:.44em;font-size:12px;color:var(--cream);opacity:.85;padding-left:4px}
 /* hero */
 .hero{margin:8px 0 6px}
 .hero h1{font-family:'Anton',sans-serif;line-height:.86;letter-spacing:.5px;text-transform:uppercase;font-size:clamp(58px,20vw,104px);font-weight:400}
@@ -71,7 +70,7 @@ input:focus{outline:none;border-color:var(--pink)}
 <div class="wrap" id="app">
   <div class="brand">
     <img src="/logo-amore-white.png" alt="Amore" class="logo" />
-    <span class="div"></span><span class="paiva">PAIVA</span>
+    <span class="paiva">PAIVA</span>
   </div>
 
   <div class="hero">
