@@ -23,7 +23,7 @@ body{font-family:'Poppins',system-ui,sans-serif;color:var(--cream);
 .wrap>*{position:relative;z-index:1}
 /* header / marca */
 .brand{display:flex;align-items:center;gap:12px;margin-bottom:26px}
-.brand svg{height:30px;width:auto}
+.brand .logo{height:26px;width:auto;display:block}
 .brand .div{width:1px;height:22px;background:var(--line)}
 .brand .paiva{font-weight:600;letter-spacing:.32em;font-size:13px;color:var(--cream)}
 /* hero */
@@ -70,11 +70,7 @@ input:focus{outline:none;border-color:var(--pink)}
 <div class="rings"></div>
 <div class="wrap" id="app">
   <div class="brand">
-    <svg viewBox="0 0 300 60" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Amore">
-      <path d="M18 46 L34 14 L46 38 L58 14 L74 46" fill="none" stroke="#F4EEE4" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="46" cy="30" r="5" fill="#F4EEE4"/>
-      <text x="86" y="44" font-family="Poppins,sans-serif" font-weight="800" font-size="40" fill="#F4EEE4">amore</text>
-    </svg>
+    <img src="/logo-amore-white.png" alt="Amore" class="logo" />
     <span class="div"></span><span class="paiva">PAIVA</span>
   </div>
 
