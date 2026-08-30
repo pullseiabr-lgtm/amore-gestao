@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vamos Farmar Aura — Amore Paiva</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#160404; --cream:#F4EEE4; --orange:#F5821F; --orange-l:#FFA24D; --pink:#FF4FA3; --pink-d:#E23DA0;
+  --maroon:#4a0f0f; --line:rgba(244,238,228,.14); --card:rgba(255,255,255,.04); --muted:#c8a9ad;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Poppins',system-ui,sans-serif;color:var(--cream);
+  background:radial-gradient(120% 90% at 50% 30%, #55110f 0%, #360a0a 42%, #180404 100%) fixed;
+  min-height:100vh;min-height:100dvh;-webkit-font-smoothing:antialiased}
+.wrap{max-width:560px;margin:0 auto;padding:22px 18px 60px;position:relative}
+/* faixas concêntricas sutis do card */
+.rings{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+  background:repeating-radial-gradient(circle at 50% 34%, transparent 0 62px, rgba(244,238,228,.035) 62px 63px)}
+.wrap>*{position:relative;z-index:1}
+/* header / marca */
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:26px}
+.brand svg{height:30px;width:auto}
+.brand .div{width:1px;height:22px;background:var(--line)}
+.brand .paiva{font-weight:600;letter-spacing:.32em;font-size:13px;color:var(--cream)}
+/* hero */
+.hero{margin:8px 0 6px}
+.hero h1{font-family:'Anton',sans-serif;line-height:.86;letter-spacing:.5px;text-transform:uppercase;font-size:clamp(58px,20vw,104px);font-weight:400}
+.hero .l1{color:var(--cream)}
+.hero .l2{color:var(--orange);margin-top:-.06em}
+.hero .l3{margin-top:-.06em;background:linear-gradient(92deg,var(--pink) 60%,var(--orange) 120%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.subhero{display:flex;align-items:center;gap:12px;margin:16px 0 2px}
+.subhero .n{background:var(--orange);color:#2a0808;font-family:'Anton',sans-serif;font-size:24px;padding:6px 12px;border-radius:12px;line-height:1}
+.subhero .t{font-weight:800;font-size:15px;text-transform:uppercase;letter-spacing:.02em;line-height:1.15}
+.subhero .t b{color:var(--pink)}
+.tags{font-size:12px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin:14px 0 4px}
+.lead{font-size:14.5px;color:#eaddda;line-height:1.5;margin:18px 0 8px;border-left:3px solid var(--orange);padding-left:12px}
+/* form */
+.q{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 15px;margin:14px 0}
+.q .lab{font-weight:700;font-size:15px;margin-bottom:12px;display:flex;gap:8px}
+.q .lab .qn{font-family:'Anton',sans-serif;color:var(--orange);font-weight:400}
+.q .hint{font-weight:400;font-size:12px;color:var(--muted);margin:-6px 0 12px}
+.opts{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--cream);border-radius:999px;padding:10px 14px;font-size:13.5px;font-weight:500;cursor:pointer;transition:.15s;user-select:none}
+.chip:hover{border-color:var(--orange-l)}
+.chip.on{background:linear-gradient(92deg,var(--orange),var(--pink));border-color:transparent;color:#fff;font-weight:700;box-shadow:0 6px 18px -8px rgba(255,79,163,.6)}
+.chip.on.single{background:linear-gradient(92deg,var(--pink),var(--orange))}
+input[type=text],input[type=tel]{width:100%;background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:12px;padding:12px 14px;color:var(--cream);font:inherit;font-size:14.5px;margin-top:2px}
+input::placeholder{color:#9a7d81}
+input:focus{outline:none;border-color:var(--pink)}
+.field+.field{margin-top:10px}
+.field label{font-size:12.5px;color:var(--muted);font-weight:600;display:block;margin-bottom:5px}
+.cta{position:sticky;bottom:14px;margin-top:22px}
+.btn{width:100%;border:none;border-radius:14px;padding:17px;font:inherit;font-weight:800;font-size:16px;letter-spacing:.02em;text-transform:uppercase;color:#fff;cursor:pointer;
+  background:linear-gradient(92deg,var(--orange),var(--pink));box-shadow:0 14px 34px -12px rgba(245,130,31,.7)}
+.btn:disabled{opacity:.6;cursor:default}
+.err{color:#ffcaca;font-size:13px;margin-top:10px;text-align:center;min-height:18px}
+.footbar{margin-top:30px;background:#6E0D0D;border-radius:12px;text-align:center;padding:13px;font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--cream)}
+/* sucesso */
+.done{text-align:center;padding:40px 10px}
+.done .big{font-family:'Anton',sans-serif;font-size:clamp(48px,16vw,80px);line-height:.9;text-transform:uppercase;background:linear-gradient(92deg,var(--pink),var(--orange));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:14px}
+.done p{color:#eaddda;font-size:15px;line-height:1.55;max-width:420px;margin:0 auto 8px}
+.aura-badge{display:inline-block;margin-top:16px;font-weight:800;font-size:15px;padding:10px 18px;border-radius:999px;background:linear-gradient(92deg,var(--orange),var(--pink));color:#fff}
+</style>
+</head>
+<body>
+<div class="rings"></div>
+<div class="wrap" id="app">
+  <div class="brand">
+    <svg viewBox="0 0 300 60" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Amore">
+      <path d="M18 46 L34 14 L46 38 L58 14 L74 46" fill="none" stroke="#F4EEE4" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="46" cy="30" r="5" fill="#F4EEE4"/>
+      <text x="86" y="44" font-family="Poppins,sans-serif" font-weight="800" font-size="40" fill="#F4EEE4">amore</text>
+    </svg>
+    <span class="div"></span><span class="paiva">PAIVA</span>
+  </div>
+
+  <div class="hero">
+    <h1><span class="l1">VAMOS</span><br><span class="l2">FARMAR</span><br><span class="l3">AURA</span></h1>
+    <div class="subhero"><span class="n">67</span><span class="t">O HAPPY HOUR QUE<br>TEM A <b>SUA VIBE</b></span></div>
+  </div>
+  <div class="tags">Mocktails sem álcool · DJ ao vivo · Combos para dividir</div>
+  <p class="lead">Esse happy hour é feito <b>por você</b>. Responde em 60 segundos e ajuda a montar a vibe — música, brincadeiras, dia e horário. No fim, deixa seu contato pra ser o primeiro a saber quando a aura for liberada. ✨</p>
+
+  <form id="form" autocomplete="off">
+    <div class="q" data-q="participaria" data-single="1" data-req="1">
+      <div class="lab"><span class="qn">1</span><span>Você participaria do Vamos Farmar Aura no Amore Paiva?</span></div>
+      <div class="opts">
+        <span class="chip" data-v="com_certeza">🔥 Com certeza!</span>
+        <span class="chip" data-v="talvez">😎 Talvez, quero saber mais</span>
+        <span class="chip" data-v="galera">👀 Só se minha galera for</span>
+        <span class="chip" data-v="nao">❌ Não participaria</span>
+      </div>
+    </div>
+
+    <div class="q" data-q="musica" data-multi="1">
+      <div class="lab"><span class="qn">2</span><span>Qual vibe musical você prefere?</span></div>
+      <div class="hint">Pode marcar mais de uma.</div>
+      <div class="opts">
+        <span class="chip" data-v="Funk">🎧 Funk</span><span class="chip" data-v="Pop">🎤 Pop</span>
+        <span class="chip" data-v="Trap">🔥 Trap</span><span class="chip" data-v="Eletrônica">🪩 Eletrônica</span>
+        <span class="chip" data-v="Pagode">🥁 Pagode</span><span class="chip" data-v="Hits/Top Brasil">🎶 Hits/Top Brasil</span>
+        <span class="chip" data-v="Mistura de tudo">🎵 Mistura de tudo</span>
+      </div>
+    </div>
+
+    <div class="q" data-q="brincadeiras" data-multi="1">
+      <div class="lab"><span class="qn">3</span><span>Que tipo de brincadeira deveria rolar?</span></div>
+      <div class="opts">
+        <span class="chip" data-v="Competições entre grupos">🏆 Competições entre grupos</span>
+        <span class="chip" data-v="Complete a música">🎤 Complete a música</span>
+        <span class="chip" data-v="Desafio de dança">🕺 Desafio de dança</span>
+        <span class="chip" data-v="Desafios de habilidade">⚽ Desafios de habilidade</span>
+        <span class="chip" data-v="Desafios para redes sociais">📸 Desafios pra redes</span>
+        <span class="chip" data-v="Games">🎮 Games</span>
+      </div>
+      <div class="field" style="margin-top:10px"><input type="text" id="brincadeira_outra" placeholder="✍️ Outra ideia de brincadeira..."></div>
+    </div>
+
+    <div class="q" data-q="horario" data-single="1">
+      <div class="lab"><span class="qn">4</span><span>Qual horário seria melhor?</span></div>
+      <div class="opts">
+        <span class="chip" data-v="16h–18h">16h–18h</span><span class="chip" data-v="17h–19h">17h–19h</span>
+        <span class="chip" data-v="18h–20h">18h–20h</span><span class="chip" data-v="19h–21h">19h–21h</span>
+      </div>
+    </div>
+
+    <div class="q" data-q="dia" data-single="1">
+      <div class="lab"><span class="qn">5</span><span>Qual dia você prefere?</span></div>
+      <div class="opts">
+        <span class="chip" data-v="Quinta">Quinta</span><span class="chip" data-v="Sexta">Sexta</span>
+        <span class="chip" data-v="Sábado">Sábado</span>
+      </div>
+    </div>
+
+    <div class="q">
+      <div class="lab"><span class="qn">6</span><span>Que música não pode faltar?</span></div>
+      <div class="field"><input type="text" id="musica_hino" placeholder="Nome da música / artista"></div>
+    </div>
+
+    <div class="q">
+      <div class="lab"><span class="qn">7</span><span>Quem você indicaria pra banca/produção do evento?</span></div>
+      <div class="field"><input type="text" id="indicacao" placeholder="Nome ou @instagram"></div>
+    </div>
+
+    <div class="q" data-q="galera_tam" data-single="1">
+      <div class="lab"><span class="qn">8</span><span>Você iria sozinho ou com a galera?</span></div>
+      <div class="opts">
+        <span class="chip" data-v="Sozinho">Sozinho</span><span class="chip" data-v="2–3 amigos">2–3 amigos</span>
+        <span class="chip" data-v="4–6 amigos">4–6 amigos</span><span class="chip" data-v="7+">7+</span>
+      </div>
+    </div>
+
+    <div class="q" data-q="motivadores" data-multi="1">
+      <div class="lab"><span class="qn">9</span><span>O que faria você querer ir?</span></div>
+      <div class="opts">
+        <span class="chip" data-v="Música">Música</span><span class="chip" data-v="Comida">Comida</span>
+        <span class="chip" data-v="Drinks sem álcool">Drinks sem álcool</span><span class="chip" data-v="Brincadeiras">Brincadeiras</span>
+        <span class="chip" data-v="Prêmios">Prêmios</span><span class="chip" data-v="Encontrar a galera">Encontrar a galera</span>
+        <span class="chip" data-v="Tudo isso">😎 Tudo isso</span>
+      </div>
+    </div>
+
+    <div class="q">
+      <div class="lab"><span class="qn">10</span><span>Quer receber o convite oficial?</span></div>
+      <div class="hint">Se você quer viver essa vibe, deixa seu contato. Quando a aura for liberada, você vai saber primeiro. ✨</div>
+      <div class="field"><label>Seu nome</label><input type="text" id="nome" placeholder="Como te chamam"></div>
+      <div class="field"><label>WhatsApp</label><input type="tel" id="whatsapp" inputmode="numeric" placeholder="(81) 9 9999-9999"></div>
+      <div class="field"><label>Instagram (opcional)</label><input type="text" id="instagram" placeholder="@seu.insta"></div>
+    </div>
+
+    <div class="cta">
+      <button type="submit" class="btn" id="send">Quero essa vibe ✨</button>
+      <div class="err" id="err"></div>
+    </div>
+  </form>
+
+  <div class="footbar">Acompanhe @amorepaiva</div>
+</div>
+
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+const $=s=>document.querySelector(s); const $$=s=>[...document.querySelectorAll(s)];
+const state={participaria:'',musica:[],brincadeiras:[],horario:'',dia:'',galera_tam:'',motivadores:[]};
+const q=new URLSearchParams(location.search); // ?loja= permite reuso p/ outra unidade
+const LOJA = /flow/i.test(q.get('loja')||'') ? 'Flow CD' : (q.get('loja')==='cd'?'Amore CD':'Amore Paiva');
+
+$$('.q').forEach(box=>{
+  const key=box.dataset.q; if(!key) return;
+  const multi=box.dataset.multi==='1';
+  box.querySelectorAll('.chip').forEach(chip=>{
+    chip.addEventListener('click',()=>{
+      const v=chip.dataset.v;
+      if(multi){ chip.classList.toggle('on'); const arr=state[key]; const i=arr.indexOf(v); i>=0?arr.splice(i,1):arr.push(v); }
+      else{ const on=chip.classList.contains('on'); box.querySelectorAll('.chip').forEach(c=>c.classList.remove('on')); if(!on){chip.classList.add('on','single'); state[key]=v;} else {chip.classList.remove('single'); state[key]='';} chip.classList.toggle('single',!on); }
+    });
+  });
+});
+
+function soDig(s){return (s||'').replace(/\D/g,'');}
+function aura(){
+  const p=state.participaria; const contato=soDig($('#whatsapp').value).length>=10;
+  let base = p==='com_certeza'?90 : p==='galera'?70 : p==='talvez'?40 : p==='nao'?10 : 30;
+  let s = contato ? Math.min(100, base+(p==='com_certeza'?10:p==='talvez'?10:5)) : base;
+  const faixa = s>=90?'AURA 100 🔥':s>=60?'AURA 70 🔥':s>=35?'AURA 40 ✨':'AURA 10 👀';
+  const nivel = s>=60?'Alto':s>=35?'Médio':'Baixo';
+  return {score:s,faixa,nivel};
+}
+
+$('#form').addEventListener('submit',async e=>{
+  e.preventDefault();
+  if(!state.participaria){ $('#err').textContent='Responde a pergunta 1 pra continuar 🙂'; document.querySelector('[data-q=participaria]').scrollIntoView({behavior:'smooth',block:'center'}); return; }
+  const btn=$('#send'); btn.disabled=true; btn.textContent='Enviando...'; $('#err').textContent='';
+  const a=aura();
+  const brinc=[...state.brincadeiras]; const outra=$('#brincadeira_outra').value.trim(); if(outra) brinc.push(outra);
+  const resp={
+    campanha:'Vamos Farmar Aura', loja:LOJA, origem:'Pesquisa Gen Z — '+LOJA,
+    participaria:state.participaria, musica:state.musica, brincadeiras:brinc,
+    horario:state.horario, dia:state.dia, musica_hino:$('#musica_hino').value.trim(),
+    indicacao:$('#indicacao').value.trim(), galera_tam:state.galera_tam, motivadores:state.motivadores,
+    quer_convite: soDig($('#whatsapp').value).length>=10,
+    nome:$('#nome').value.trim(), whatsapp:soDig($('#whatsapp').value), instagram:$('#instagram').value.trim().replace(/^@/,''),
+    aura:a.score, aura_faixa:a.faixa, interesse:a.nivel, created_at:new Date().toISOString(),
+    ua:navigator.userAgent.slice(0,120)
+  };
+  const chave='pesquisa_vfa_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  try{
+    const r=await fetch(SB+'/rest/v1/app_config',{method:'POST',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify({chave,valor:resp})});
+    if(!r.ok) throw new Error('http '+r.status);
+    $('#app').innerHTML='<div class="done"><div class="big">TÁ NA VIBE ✨</div>'
+      +'<p>Valeu por farmar essa aura com a gente! Suas respostas vão ajudar a montar o <b>Vamos Farmar Aura</b> do jeito da sua galera.</p>'
+      +(resp.quer_convite?'<p>Quando a aura for liberada, <b>você vai saber primeiro</b> no WhatsApp. 💛</p><div class="aura-badge">'+a.faixa+'</div>':'<p>Quer receber o convite oficial? É só voltar e deixar seu WhatsApp. 😉</p>')
+      +'<div class="footbar" style="margin-top:26px">Acompanhe @amorepaiva</div></div>';
+    window.scrollTo({top:0,behavior:'smooth'});
+  }catch(err){ btn.disabled=false; btn.textContent='Quero essa vibe ✨'; $('#err').textContent='Ops, não consegui enviar. Confere a internet e tenta de novo.'; }
+});
+</script>
+</body>
+</html>

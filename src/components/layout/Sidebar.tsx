@@ -38,6 +38,7 @@ const MENU_TOP: NavItem[] = [
   { id: 'raspadinha',  label: '🎟️ Raspadinha Digital', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🎟️</span> },
   { id: 'clientes',    label: '💚 Clientes Amore (CRM)', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>💚</span> },
   { id: 'campanhas',   label: '📣 Campanhas', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>📣</span> },
+  { id: 'pesquisa-aura', label: '✨ Pesquisa Vamos Farmar Aura', perm: 'campanhas', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>✨</span> },
   { id: 'agente-controle', label: '🤖 Controle do Agente', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🤖</span> },
   { id: 'marketing',   label: 'Marketing 360°',     icon: <Megaphone size={13} /> },
   { id: 'mkt-contatos', label: 'Contatos & Consent.', icon: <Megaphone size={13} /> },
@@ -169,7 +170,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
           <div className="sb-sec">Módulos</div>
 
           {/* Itens superiores */}
-          {MENU_TOP.filter(m => can(m.id, 'view')).map(m => (
+          {MENU_TOP.filter(m => can(m.perm ?? m.id, 'view')).map(m => (
             <div
               key={m.id}
               className={`nav-item${activePage === m.id ? ' active' : ''}`}
