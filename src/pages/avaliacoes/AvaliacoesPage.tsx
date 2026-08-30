@@ -8,10 +8,16 @@ const FEEDBACK_URL = 'https://painel.amorefood.com.br/feedback.html'
 
 const LOJAS = [
   { key: '', label: 'Todas as lojas' },
-  { key: 'Amore Paiva', label: 'Amore Paiva', slug: 'paiva' },
-  { key: 'Amore CD', label: 'Amore Costa Dourada', slug: 'cd' },
+  { key: 'Amore Paiva', label: 'Amore Paiva', slug: 'paiva', curto: 'Paiva' },
+  { key: 'Amore CD', label: 'Amore Costa Dourada', slug: 'cd', curto: 'Costa Dourada' },
+  { key: 'Flow CD', label: 'Flow Costa Dourada', slug: 'flow', curto: 'Flow CD' },
 ]
-const slugLoja = (l: string) => (l === 'Amore CD' ? 'cd' : l === 'Amore Paiva' ? 'paiva' : l)
+// Lojas reais (sem o "Todas") — cada uma é tratada de forma individual e autônoma nas análises
+const STORES = LOJAS.filter(l => l.key) as { key: string; label: string; slug: string; curto: string }[]
+const STORE_KEYS = STORES.map(l => l.key)
+const lojaCurto = (l: string) => STORES.find(s => s.key === l)?.curto || l
+const lojaLabelFull = (l: string) => STORES.find(s => s.key === l)?.label || l
+const slugLoja = (l: string) => STORES.find(s => s.key === l)?.slug || l
 const EXP: Record<string, { v: number; e: string; l: string; c: string }> = {
   excelente: { v: 5, e: '😍', l: 'Excelente', c: '#10B981' },
   boa:       { v: 4, e: '🙂', l: 'Muito boa', c: '#84CC16' },
@@ -116,7 +122,7 @@ export default function AvaliacoesPage() {
 
   // Google real (informado) x encaminhados acumulados (todo o período) → conversão real
   const googleStats = useMemo(() => {
-    const lojas = loja ? [loja] : ['Amore Paiva', 'Amore CD']
+    const lojas = loja ? [loja] : STORE_KEYS
     let real = 0, encAll = 0, temReal = false, em: string | null = null
     lojas.forEach(l => {
       const r = googleReal[l]
@@ -151,9 +157,9 @@ export default function AvaliacoesPage() {
     const MOT_COZINHA = ['Qualidade do prato', 'Comida fria', 'Demora']
     const recFood: Record<string, number> = {}
     fbFiltrado.forEach(f => { if (MOT_COZINHA.includes(f.motivo)) recFood[f.motivo] = (recFood[f.motivo] || 0) + 1 })
-    const porLoja = ['Amore Paiva', 'Amore CD'].map(l => {
+    const porLoja = STORE_KEYS.map(l => {
       const arr = comFood.filter(f => f.loja === l)
-      return { loja: l === 'Amore CD' ? 'Costa Dourada' : 'Paiva', n: arr.length, media: arr.length ? arr.reduce((a, f) => a + f.nota_comida, 0) / arr.length : null }
+      return { loja: lojaCurto(l), n: arr.length, media: arr.length ? arr.reduce((a, f) => a + f.nota_comida, 0) / arr.length : null }
     })
     return { media, dist, total: t, baixa, pctBaixa: t ? Math.round((baixa / t) * 100) : 0, recFood: Object.entries(recFood).sort((a, b) => b[1] - a[1]), porLoja }
   }, [fbFiltrado])
@@ -403,9 +409,9 @@ function GarconsTab({ garcons, config, reload, toast, googleReal, reloadGoogleRe
     <div style={card}>
       <b style={{ fontSize: 14 }}>Links de avaliação do Google (por loja)</b>
       <p style={{ fontSize: 13, color: '#9ca3af', margin: '4px 0 12px' }}>Cole o link direto de avaliação de cada unidade (Google Meu Negócio → "Peça avaliações").</p>
-      {['Amore Paiva', 'Amore CD'].map(l => {
+      {STORE_KEYS.map(l => {
         const cfg = config.find(c => c.loja === l)
-        return <ConfigRow key={l} loja={l} label={l === 'Amore CD' ? 'Amore Costa Dourada' : l} url={cfg?.google_url || ''} onSave={salvarGoogle} />
+        return <ConfigRow key={l} loja={l} label={lojaLabelFull(l)} url={cfg?.google_url || ''} onSave={salvarGoogle} />
       })}
     </div>
 
@@ -413,9 +419,9 @@ function GarconsTab({ garcons, config, reload, toast, googleReal, reloadGoogleRe
     <div style={card}>
       <b style={{ fontSize: 14 }}>Total real de avaliações no Google (por loja)</b>
       <p style={{ fontSize: 13, color: '#9ca3af', margin: '4px 0 12px' }}>Abra a página de cada loja no Google e informe o número total de avaliações exibido. O painel calcula a conversão (avaliações reais ÷ encaminhados) no dashboard. Atualize periodicamente.</p>
-      {['Amore Paiva', 'Amore CD'].map(l => {
+      {STORE_KEYS.map(l => {
         const r = googleReal[l]
-        return <GoogleRealRow key={l} loja={l} label={l === 'Amore CD' ? 'Amore Costa Dourada' : l} total={r?.total != null ? String(r.total) : ''} em={r?.em || ''} onSave={salvarGoogleReal} />
+        return <GoogleRealRow key={l} loja={l} label={lojaLabelFull(l)} total={r?.total != null ? String(r.total) : ''} em={r?.em || ''} onSave={salvarGoogleReal} />
       })}
     </div>
 
@@ -426,7 +432,7 @@ function GarconsTab({ garcons, config, reload, toast, googleReal, reloadGoogleRe
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome do garçom" style={{ padding: '.55rem .8rem', borderRadius: 10, border: '1px solid #e5e7eb', flex: 1, minWidth: 160 }} />
         <select value={lojaG} onChange={e => setLojaG(e.target.value)} style={{ padding: '.55rem .8rem', borderRadius: 10, border: '1px solid #e5e7eb' }}>
-          <option value="Amore Paiva">Amore Paiva</option><option value="Amore CD">Amore Costa Dourada</option>
+          {STORES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
         <button onClick={add} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.55rem 1rem', borderRadius: 10, border: 'none', background: '#6B1212', color: '#fff', cursor: 'pointer' }}><Plus size={16} />Adicionar</button>
       </div>
@@ -437,7 +443,7 @@ function GarconsTab({ garcons, config, reload, toast, googleReal, reloadGoogleRe
             return <div key={g.id} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, textAlign: 'center' }}>
               <img src={qrImg(link, 180)} alt={g.nome} style={{ width: '100%', maxWidth: 160, aspectRatio: '1', margin: '0 auto', display: 'block' }} />
               <div style={{ fontWeight: 600, marginTop: 8 }}>{g.nome}</div>
-              <div style={{ fontSize: 12, color: '#9ca3af' }}>{g.loja === 'Amore CD' ? 'Costa Dourada' : 'Paiva'}</div>
+              <div style={{ fontSize: 12, color: '#9ca3af' }}>{lojaCurto(g.loja)}</div>
               <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginTop: 8 }}>
                 <a href={qrImg(link, 600)} download={`QR_${g.nome}.png`} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#6B1212', textDecoration: 'none' }}><Download size={13} />Baixar</a>
                 <a href={link} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#6b7280', textDecoration: 'none' }}><ExternalLink size={13} />Testar</a>
