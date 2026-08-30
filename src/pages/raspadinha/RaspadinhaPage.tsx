@@ -8,7 +8,9 @@ import { fetchRaspBloqueio, setRaspBloqueio, pausarPremio, editarPremio, fetchRa
 
 const sb = supabase as any
 const RASP_URL = 'https://painel.amorefood.com.br/raspadinha.html'
-const slugLoja = (l: string) => (l === 'Amore CD' ? 'cd' : l === 'Amore Paiva' ? 'paiva' : l)
+const slugLoja = (l: string) => (l === 'Amore CD' ? 'cd' : l === 'Amore Paiva' ? 'paiva' : /flow/i.test(l) ? 'flow' : l)
+const lojaLabel = (l: string) => (l === 'Amore CD' ? 'Amore Costa Dourada' : /flow/i.test(l) ? 'Flow Costa Dourada' : l)
+const LOJAS_PADRAO = ['Amore Paiva', 'Amore CD', 'Flow CD']
 const qrImg = (data: string, size = 200) => `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=8&data=${encodeURIComponent(data)}`
 const fmtDT = (d: string | null) => d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
 const fmtD = (d: string | null) => d ? d.split('-').reverse().join('/') : '—'
@@ -170,11 +172,11 @@ export default function RaspadinhaPage() {
         <b style={{ fontSize: 14 }}>QR Codes da campanha — 1 por unidade</b>
         <p style={{ fontSize: 13, color: '#9ca3af', margin: '4px 0 14px' }}>Imprima e coloque nas mesas/balcão de cada loja. Cada QR já identifica a unidade.</p>
         <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
-          {(camp.unidades && camp.unidades.length ? camp.unidades : ['Amore Paiva', 'Amore CD']).map((u: string) => {
+          {(camp.unidades && camp.unidades.length ? camp.unidades : LOJAS_PADRAO).map((u: string) => {
             const link = `${RASP_URL}?loja=${slugLoja(u)}&c=${camp.slug}`
             return <div key={u} style={{ textAlign: 'center', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14 }}>
               <img src={qrImg(link, 190)} alt={u} style={{ width: 170, height: 170, display: 'block', margin: '0 auto' }} />
-              <div style={{ fontWeight: 700, marginTop: 8 }}>{u === 'Amore CD' ? 'Amore Costa Dourada' : u}</div>
+              <div style={{ fontWeight: 700, marginTop: 8 }}>{lojaLabel(u)}</div>
               <a href={qrImg(link, 700)} download={`QR_Raspadinha_${u}.png`} style={{ fontSize: 12, color: '#8B1212' }}>⬇ Baixar</a>
               <span style={{ margin: '0 6px', color: '#e5e7eb' }}>·</span>
               <a href={link} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#6b7280' }}>Testar</a>

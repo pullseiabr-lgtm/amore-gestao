@@ -7,9 +7,12 @@ const sb = supabase as any
 
 const LOJAS = [
   { key: '', label: 'Todas as lojas' },
-  { key: 'Amore Paiva', label: 'Amore Paiva' },
-  { key: 'Amore CD', label: 'Amore Costa Dourada' },
+  { key: 'Amore Paiva', label: 'Amore Paiva', curto: 'Paiva' },
+  { key: 'Amore CD', label: 'Amore Costa Dourada', curto: 'Costa Dourada' },
+  { key: 'Flow CD', label: 'Flow Costa Dourada', curto: 'Flow CD' },
 ]
+// Rótulo curto da loja — cada loja é filtrada individualmente por origin_store
+const lojaCurto = (l: string) => LOJAS.find(x => x.key === l)?.curto || l || '—'
 type Seg =
   | 'todos' | 'aniv_hoje' | 'aniv_semana' | 'aniv_mes'
   | 'cinco_estrelas' | 'nota_baixa' | 'ganhou_nao_resgatou'
@@ -152,7 +155,7 @@ export default function ClientesPage() {
                         {(c.tags || []).length > 0 && <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>{c.tags.map((t: string) => <span key={t} style={{ fontSize: 10.5, background: '#EEF2FF', color: '#4338CA', padding: '1px 6px', borderRadius: 20 }}>{t}</span>)}</div>}
                       </td>
                       <td>{fmtFone(c.phone)}</td>
-                      <td>{c.origin_store === 'Amore CD' ? 'Costa Dourada' : (c.origin_store || '—')}</td>
+                      <td>{lojaCurto(c.origin_store)}</td>
                       <td>{fmtAniv(c)}</td>
                       <td>{c.avaliacoes_count || 0}</td>
                       <td>{c.nota_media ? Number(c.nota_media).toFixed(1) + '⭐' : '—'}</td>
