@@ -63,6 +63,28 @@ input:focus{outline:none;border-color:var(--pink)}
 .done .big{font-family:'Anton',sans-serif;font-size:clamp(48px,16vw,80px);line-height:.9;text-transform:uppercase;background:linear-gradient(92deg,var(--pink),var(--orange));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:14px}
 .done p{color:#eaddda;font-size:15px;line-height:1.55;max-width:420px;margin:0 auto 8px}
 .aura-badge{display:inline-block;margin-top:16px;font-weight:800;font-size:15px;padding:10px 18px;border-radius:999px;background:linear-gradient(92deg,var(--orange),var(--pink));color:#fff}
+.hint-card{margin:22px 0 4px;font-size:13px;color:#c8a9ad}
+/* ===== card/flyer da campanha (mostrado após envio) ===== */
+.flyer{max-width:330px;min-height:560px;margin:6px auto 0;border-radius:18px;overflow:hidden;position:relative;background:#0a0506;border:1px solid #2a1216;text-align:left;box-shadow:0 26px 64px -26px rgba(0,0,0,.85)}
+.flyer .glow{position:absolute;inset:0;background:radial-gradient(120% 70% at 82% 40%, rgba(245,130,31,.34), rgba(226,61,160,.10) 42%, transparent 64%)}
+.flyer .frings{position:absolute;inset:0;opacity:.5;background:repeating-radial-gradient(circle at 84% 40%, transparent 0 32px, rgba(244,238,228,.05) 32px 33px)}
+.flyer .in{position:relative;z-index:1;padding:18px 18px 0;height:100%;min-height:560px;display:flex;flex-direction:column}
+.flyer .fbrand{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.flyer .fbrand img{height:20px;width:auto;display:block}
+.flyer .fbrand .d{width:1px;height:15px;background:rgba(244,238,228,.28)}
+.flyer .fbrand .p{font-size:10px;letter-spacing:.32em;font-weight:600;color:var(--cream)}
+.flyer h2{font-family:'Anton',sans-serif;text-transform:uppercase;line-height:.84;letter-spacing:.5px;font-size:56px;margin-top:auto}
+.flyer .v1{color:var(--cream)} .flyer .v2{color:var(--orange);margin-top:-.05em}
+.flyer .v3{margin-top:-.05em;background:linear-gradient(92deg,var(--pink) 62%,var(--orange));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.flyer .fsub{display:flex;align-items:center;gap:10px;margin:14px 0 12px}
+.flyer .fsub .n{background:var(--orange);color:#1a0808;font-family:'Anton',sans-serif;font-size:18px;padding:5px 10px;border-radius:8px;line-height:1}
+.flyer .fsub .t{font-size:11px;font-weight:800;text-transform:uppercase;line-height:1.18;color:var(--cream)}
+.flyer .fsub .t b{color:var(--pink)}
+.flyer .fmeta{border-top:1px solid rgba(244,238,228,.14);padding-top:10px;display:flex;gap:26px}
+.flyer .fmeta .l{color:#9a8386;font-size:9px;letter-spacing:.09em;text-transform:uppercase}
+.flyer .fmeta .val{font-family:'Anton',sans-serif;font-size:17px;text-transform:uppercase;color:var(--cream)}
+.flyer .ftags{font-size:9px;color:#8a7376;letter-spacing:.05em;text-transform:uppercase;margin:9px 0 12px}
+.flyer .fbar{margin:0 -18px;background:var(--orange);color:#1a0808;text-align:center;padding:12px;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
 </style>
 </head>
 <body>
@@ -207,6 +229,17 @@ function aura(){
   return {score:s,faixa,nivel};
 }
 
+function flyerHTML(){
+  const logoEl=document.querySelector('.brand .logo'); const logo=logoEl?logoEl.src:'';
+  return '<div class="flyer"><div class="glow"></div><div class="frings"></div><div class="in">'
+    +'<div class="fbrand"><img src="'+logo+'" alt="Amore"><span class="d"></span><span class="p">PAIVA</span></div>'
+    +'<h2><span class="v1">VAMOS</span><br><span class="v2">FARMAR</span><br><span class="v3">AURA</span></h2>'
+    +'<div class="fsub"><span class="n">67</span><span class="t">O HAPPY HOUR QUE<br>TEM A <b>SUA VIBE</b></span></div>'
+    +'<div class="fmeta"><div><div class="l">Local</div><div class="val">Amore Paiva</div></div><div><div class="l">Data e horário</div><div class="val">Em breve</div></div></div>'
+    +'<div class="ftags">Mocktails sem álcool · DJ ao vivo · Combos para dividir</div>'
+    +'<div class="fbar">Acompanhe @amorepaiva</div>'
+    +'</div></div>';
+}
 $('#form').addEventListener('submit',async e=>{
   e.preventDefault();
   if(!state.participaria){ $('#err').textContent='Responde a pergunta 1 pra continuar 🙂'; document.querySelector('[data-q=participaria]').scrollIntoView({behavior:'smooth',block:'center'}); return; }
@@ -230,7 +263,9 @@ $('#form').addEventListener('submit',async e=>{
     $('#app').innerHTML='<div class="done"><div class="big">TÁ NA VIBE ✨</div>'
       +'<p>Valeu por farmar essa aura com a gente! Suas respostas vão ajudar a montar o <b>Vamos Farmar Aura</b> do jeito da sua galera.</p>'
       +(resp.quer_convite?'<p>Quando a aura for liberada, <b>você vai saber primeiro</b> no WhatsApp. 💛</p><div class="aura-badge">'+a.faixa+'</div>':'<p>Quer receber o convite oficial? É só voltar e deixar seu WhatsApp. 😉</p>')
-      +'<div class="footbar" style="margin-top:26px">Acompanhe @amorepaiva</div></div>';
+      +'<div class="hint-card">📌 Salva esse card — o Vamos Farmar Aura tá chegando. 👇</div>'
+      + flyerHTML()
+      +'</div>';
     window.scrollTo({top:0,behavior:'smooth'});
   }catch(err){ btn.disabled=false; btn.textContent='Quero essa vibe ✨'; $('#err').textContent='Ops, não consegui enviar. Confere a internet e tenta de novo.'; }
 });
