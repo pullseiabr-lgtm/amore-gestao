@@ -35,17 +35,27 @@ export default async function handler(req, res) {
 
   let body = req.body
   if (typeof body === 'string') { try { body = JSON.parse(body) } catch { body = {} } }
-  const { phone, message } = body || {}
-  if (!phone)   return res.status(400).json({ error: 'Informe o número (phone).' })
-  if (!message) return res.status(400).json({ error: 'Mensagem vazia.' })
+  const { phone, message, image, caption } = body || {}
+  if (!phone) return res.status(400).json({ error: 'Informe o número (phone).' })
+  // Aceita: só texto (message), só imagem (image), ou imagem+legenda (image+caption/message).
+  if (!message && !image) return res.status(400).json({ error: 'Envie message e/ou image.' })
 
   const fone = String(phone).replace(/\D/g, '')
 
   try {
-    const r = await fetch(`${url}/message/sendText/${instance}`, {
+    let endpoint, payload
+    if (image) {
+      // Envio de mídia (imagem) — aceita URL pública ou base64. Legenda = caption || message.
+      endpoint = `${url}/message/sendMedia/${instance}`
+      payload = { number: fone, mediatype: 'image', mimetype: 'image/jpeg', media: image, caption: caption || message || '', fileName: 'flyer.jpg' }
+    } else {
+      endpoint = `${url}/message/sendText/${instance}`
+      payload = { number: fone, text: message }
+    }
+    const r = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: key },
-      body: JSON.stringify({ number: fone, text: message }),
+      body: JSON.stringify(payload),
     })
     const data = await r.json().catch(() => ({}))
     if (!r.ok) return res.status(r.status).json({ error: data?.message || data?.error || `Evolution HTTP ${r.status}`, data })

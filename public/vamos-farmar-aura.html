@@ -202,6 +202,7 @@ input:focus{outline:none;border-color:var(--pink)}
 const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
 const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
 const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+const FLYER_URL='https://xdwnsqkzgopymufsuccr.supabase.co/storage/v1/object/public/anexos/campanhas/aura-flyer.jpg';
 const $=s=>document.querySelector(s); const $$=s=>[...document.querySelectorAll(s)];
 const state={participaria:'',musica:[],brincadeiras:[],horario:'',dia:'',galera_tam:'',motivadores:[]};
 const q=new URLSearchParams(location.search); // ?loja= permite reuso p/ outra unidade
@@ -260,6 +261,12 @@ $('#form').addEventListener('submit',async e=>{
   try{
     const r=await fetch(SB+'/rest/v1/app_config',{method:'POST',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify({chave,valor:resp})});
     if(!r.ok) throw new Error('http '+r.status);
+    // dispara o flyer da campanha no WhatsApp do numero cadastrado (fire-and-forget)
+    if(resp.whatsapp && resp.whatsapp.length>=10){
+      const fone = resp.whatsapp.length<=11 ? '55'+resp.whatsapp : resp.whatsapp;
+      const cap = '🔥 *VAMOS FARMAR AURA* — '+LOJA+'\n\nVocê farmou aura com a gente'+(resp.nome?', '+resp.nome.split(' ')[0]:'')+'! ✨\nGuarda esse card — quando a data for liberada, você é o *primeiro* a saber. 💛\n\nAcompanhe @amorepaiva';
+      fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:fone,image:FLYER_URL,caption:cap})}).catch(function(){});
+    }
     $('#app').innerHTML='<div class="done"><div class="big">TÁ NA VIBE ✨</div>'
       +'<p>Valeu por farmar essa aura com a gente! Suas respostas vão ajudar a montar o <b>Vamos Farmar Aura</b> do jeito da sua galera.</p>'
       +(resp.quer_convite?'<p>Quando a aura for liberada, <b>você vai saber primeiro</b> no WhatsApp. 💛</p><div class="aura-badge">'+a.faixa+'</div>':'<p>Quer receber o convite oficial? É só voltar e deixar seu WhatsApp. 😉</p>')
