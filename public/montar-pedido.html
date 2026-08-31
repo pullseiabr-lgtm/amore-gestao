@@ -137,6 +137,8 @@ async function load(){
 }
 function matchOne(prod){const st=toks(prod);if(!st.length)return{status:'no'};const main=st.slice().sort((a,b)=>b.length-a.length)[0];let best=null,bs=0,qsum=0,vsum=0,forns=new Set();for(const c of COMPRADOS){if(!c.norm.includes(main))continue;let sc=0;for(const t of st)if(c.norm.includes(t))sc++;if(sc>0){qsum+=Number(c.qtd)||0;vsum+=c.subtotal;forns.add(c.fornecedor);}if(sc>bs){bs=sc;best=c;}}if(!best)return{status:'no'};return{status:bs>=st.length?'ok':'wr',best,qsum,vsum,forns:[...forns]};}
 function compute(){ROWS=SOLIC.map(si=>{const m=matchOne(si.produto);const o=OVER[norm(si.produto)]||{};const b=m.best||{};return {...si,m,
+  _key:norm(si.produto),_op:si.produto,_oq:si.qtd,_ou:si.un,
+  produto:(o.produto!=null?o.produto:si.produto),qtd:(o.qtd!=null?o.qtd:si.qtd),un:(o.un!=null?o.un:si.un),
   manual:(typeof o.comprado==='boolean'?o.comprado:undefined),
   forn:(o.forn!=null?o.forn:(m.forns&&m.forns.length?m.forns.join(', '):'')),
   wpp:o.whatsapp||'',
@@ -168,7 +170,8 @@ function render(){
     const conf=r.recebido?' <span class="st ok" style="font-size:9px;padding:1px 6px">✓ conf.</span>':'';
     const oldTag=(r.diasPed!=null&&r.diasPed>7)?`<span title="pedido com ${r.diasPed} dias — pode ser antigo" style="color:#B45309">⏳</span> `:'';
     html+=`<tr>
-      <td>${esc(r.produto)}</td><td class="q">${esc(r.qtd)} ${esc(r.un)}</td>
+      <td><input value="${esc(r.produto)}" onchange="ov(${gi},'produto',this.value)" placeholder="produto" style="width:100%"></td>
+      <td class="q"><input value="${esc(r.qtd)}" onchange="ov(${gi},'qtd',this.value)" style="width:48px"> <input value="${esc(r.un)}" onchange="ov(${gi},'un',this.value)" placeholder="un" style="width:70px"></td>
       <td>${badge(eff(r))}${conf}${r.manual!=null?' <span class="q">(man.)</span>':''}</td>
       <td>${inp(gi,'vUnit',r.vUnit,'0,00','pri')}</td>
       <td>${inp(gi,'vTotal',r.vTotal,'0,00','val')}</td>
@@ -184,7 +187,7 @@ function render(){
 }
 function ov(i,k,v){ROWS[i][k]=v;}
 function setComprado(i,checked){ROWS[i].manual=checked;render();}
-async function salvar(silent){const map={};for(const r of ROWS){const o={};if((r.forn||'')!=='')o.forn=r.forn;if(r.wpp)o.whatsapp=r.wpp;if((r.vUnit||'')!=='')o.vUnit=r.vUnit;if((r.vTotal||'')!=='')o.vTotal=r.vTotal;if((r.entrega||'')!=='')o.entrega=r.entrega;if((r.dataPed||'')!=='')o.dataPed=r.dataPed;if(typeof r.manual==='boolean')o.comprado=r.manual;if(Object.keys(o).length)map[norm(r.produto)]=o;}
+async function salvar(silent){const map={};for(const r of ROWS){const o={};if(r.produto!==r._op)o.produto=r.produto;if(String(r.qtd)!==String(r._oq))o.qtd=r.qtd;if(r.un!==r._ou)o.un=r.un;if((r.forn||'')!=='')o.forn=r.forn;if(r.wpp)o.whatsapp=r.wpp;if((r.vUnit||'')!=='')o.vUnit=r.vUnit;if((r.vTotal||'')!=='')o.vTotal=r.vTotal;if((r.entrega||'')!=='')o.entrega=r.entrega;if((r.dataPed||'')!=='')o.dataPed=r.dataPed;if(typeof r.manual==='boolean')o.comprado=r.manual;if(Object.keys(o).length)map[r._key||norm(r.produto)]=o;}
   const chave=OVKEY||('compras_overrides_'+SUF[LOJA]);
   try{let ex=await fetch(SB+'/rest/v1/app_config?chave=eq.'+chave+'&select=chave',{headers:H}).then(r=>r.json());const body={valor:{map,updated_at:new Date().toISOString()}};let r;
     if(ex&&ex.length)r=await fetch(SB+'/rest/v1/app_config?chave=eq.'+chave,{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify(body)});
