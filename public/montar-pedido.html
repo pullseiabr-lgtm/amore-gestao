@@ -102,7 +102,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));const rnd=(a,b)=>a+Math.floor(M
 const nomeLoja=l=>({'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'})[l]||l;
 function show(m,ok){const e=el('msg');e.textContent=m;e.className='msg '+(ok?'ok':'err');}
 function lojaMatch(pedLoja,sel){pedLoja=pedLoja||'';if(sel==='Flow CD')return /flow/i.test(pedLoja);if(sel==='Amore CD')return pedLoja==='Amore CD'||/amore costa dourada/i.test(pedLoja);if(sel==='Amore Paiva')return pedLoja==='Amore Paiva';return false;}
-let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],TOTALPED=0,FILTRO='',ROWS=[],REQNUM=null,REQID='',REQINFO='',OVKEY='',VIEW='gestao';
+let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],TOTALPED=0,FILTRO='',ROWS=[],REQNUM=null,REQID='',REQINFO='',REQDATE='',OVKEY='',VIEW='gestao';
 
 function trocaLoja(){LOJA=el('loja').value;load();}
 async function load(){
@@ -113,7 +113,7 @@ async function load(){
   try{
     const rs=await (await fetch(SB+'/rest/v1/requisicoes?loja=eq.'+encodeURIComponent(LOJA)+'&status=neq.concluida&order=numero.desc&limit=1&select=id,numero,responsavel_nome,created_at',{headers:H})).json();
     const rq=rs&&rs[0];
-    if(rq){ REQNUM=rq.numero; REQID=rq.id;
+    if(rq){ REQNUM=rq.numero; REQID=rq.id; REQDATE=String(rq.created_at||'').slice(0,10);
       REQINFO='REQ-'+String(rq.numero).padStart(4,'0')+(rq.responsavel_nome?' · '+rq.responsavel_nome:'')+(rq.created_at?' · '+String(rq.created_at).slice(0,10).split('-').reverse().join('/'):'');
       const its=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=eq.'+rq.id+'&select=produto_nome,categoria,quantidade,unidade',{headers:H})).json();
       solItens=(its||[]).map(i=>({produto:i.produto_nome,qtd:i.quantidade,un:i.unidade,categoria:i.categoria}));
@@ -127,7 +127,10 @@ async function load(){
   try{ped=await (await fetch(SB+'/rest/v1/app_config?select=chave,valor&chave=like.pedido_*&limit=2000',{headers:H})).json();}catch(e){}
   try{ov=((await (await fetch(SB+'/rest/v1/app_config?chave=eq.'+OVKEY+'&select=valor',{headers:H})).json())[0]||{}).valor||{};}catch(e){}
   OVER=ov.map||{};
-  const doL=(ped||[]).filter(r=>r.valor&&lojaMatch(r.valor.loja,LOJA));
+  // Só pedidos a partir da data da requisição (pedidos de hoje) — não puxa pedidos antigos que não convergem
+  const CORTE=REQDATE||new Date().toISOString().slice(0,10);
+  const pedData=r=>String((r.valor&&(r.valor.em||r.valor.data))||'').slice(0,10);
+  const doL=(ped||[]).filter(r=>r.valor&&lojaMatch(r.valor.loja,LOJA)&&pedData(r)>=CORTE);
   TOTALPED=doL.reduce((s,r)=>s+(Number(r.valor.total)||0),0);
   COMPRADOS=[];for(const r of doL)for(const it of (r.valor.itens||[])){if(/^desconto$|^frete|^adicional/i.test(it.produto||''))continue;COMPRADOS.push({fornecedor:r.valor.fornecedor,produto:it.produto,qtd:it.qtd,un:it.un,subtotal:Number(it.subtotal)||0,preco:Number(it.preco)||0,entrega:r.valor.janela_entrega||r.valor.data||'',dataPedido:r.valor.em||r.valor.data||'',comprador:r.valor.created_by||'',chave:r.chave,recebido:!!r.valor.recebimento,norm:norm(it.produto)});}
   compute();render();
