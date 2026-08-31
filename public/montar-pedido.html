@@ -152,11 +152,10 @@ function compute(){ROWS=SOLIC.map(si=>{const m=matchOne(si.produto);const o=OVER
   recebido:!!b.recebido, comprador:b.comprador||''
 };});}
 function eff(r){
-  if(r.manual===true)return 'ok';
   if(r.manual===false)return 'no';
   const qs=nb(r.qtd),qc=nb(r.qComprada);
-  if(qc<=0)return r.m.status==='no'?'no':(r.m.status||'no');
-  if(qs>0&&qc<qs)return 'parcial';
+  if(qc<=0)return (r.manual===true)?'ok':(r.m.status==='no'?'no':(r.m.status||'no'));
+  if(qs>0&&qc<qs)return 'parcial';   // comprou menos que o solicitado = PARCIAL (mesmo confirmado)
   return 'ok';
 }
 function falta(r){const f=nb(r.qtd)-nb(r.qComprada);return f>0?f:0;}
@@ -200,7 +199,7 @@ function render(){
   el('foot').textContent=`${REQINFO?REQINFO+' · ':''}${LOJA} · ${ROWS.length} solicitados · ${nNo} faltando · total comprado ${brl(TOTALPED)} · ${prontos.size} fornecedor(es) p/ disparo`;
 }
 function ov(i,k,v){ROWS[i][k]=v; if(k==='vUnit'||k==='qComprada'){ const r=ROWS[i]; const t=nb(r.vUnit)*nb(r.qComprada); r.vTotal=t?String(t.toFixed(2)).replace('.',','):''; render(); } }
-function setComprado(i,checked){ROWS[i].manual=checked;render();}
+function setComprado(i,checked){const r=ROWS[i];if(checked){r.manual=true;if(r.qComprada===''||nb(r.qComprada)<nb(r.qtd))r.qComprada=r.qtd;const t=nb(r.vUnit)*nb(r.qComprada);if(t)r.vTotal=String(t.toFixed(2)).replace('.',',');}else{r.manual=undefined;}render();}
 async function salvar(silent){const map={};for(const r of ROWS){const o={};if(r.produto!==r._op)o.produto=r.produto;if(String(r.qtd)!==String(r._oq))o.qtd=r.qtd;if(r.un!==r._ou)o.un=r.un;if(r.qComprada!==''&&String(r.qComprada)!==String(r.m.qsum||''))o.qComprada=r.qComprada;if((r.forn||'')!=='')o.forn=r.forn;if(r.wpp)o.whatsapp=r.wpp;if((r.vUnit||'')!=='')o.vUnit=r.vUnit;if((r.vTotal||'')!=='')o.vTotal=r.vTotal;if((r.entrega||'')!=='')o.entrega=r.entrega;if((r.dataPed||'')!=='')o.dataPed=r.dataPed;if(typeof r.manual==='boolean')o.comprado=r.manual;if(Object.keys(o).length)map[r._key||norm(r.produto)]=o;}
   const chave=OVKEY||('compras_overrides_'+SUF[LOJA]);
   try{let ex=await fetch(SB+'/rest/v1/app_config?chave=eq.'+chave+'&select=chave',{headers:H}).then(r=>r.json());const body={valor:{map,updated_at:new Date().toISOString()}};let r;
