@@ -105,22 +105,23 @@ const norm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,
 const UNIDS=['Unidade(s)','kg','g','L','ml','Caixa','Pacote','Fardo','Bandeja','Maço(s)','Saco','Balde','Rolo','Cápsula','Barra','Penca(s)'];
 // Categorias padrão (ordem = ordem de exibição na lista)
 const CATS=['Hortifruti','Carnes e Pescados','Laticínios e Frios','Congelados','Mercearia','Secos e Grãos','Padaria e Confeitaria','Temperos e Condimentos','Bebidas','Limpeza','Descartáveis','Higiene','Material Sushi','Outros'];
-function mapCat(raw){ const n=norm(raw);
-  if(!n)return 'Outros';
-  if(/(hortifr|legume|verdura|fruta|folhagem)/.test(n))return 'Hortifruti';
-  if(/(carne|bovin|frango|aves|su[ií]no|pescado|peixe|frutos do mar|linguado|tilapia|salmao|bacon|charque|calabresa|linguica)/.test(n))return 'Carnes e Pescados';
-  if(/(latic|queijo|leite|iogurte|requeij|manteiga|margarina|frios|presunto|mussarela|provolone)/.test(n))return 'Laticínios e Frios';
-  if(/(congelad|sorvete)/.test(n))return 'Congelados';
-  if(/(bebida|refri|refrigerante|cerveja|suco|agua|água|energetic|chopp|vinho|whisky|drink|tonica|monster)/.test(n))return 'Bebidas';
-  if(/(seco|gr[aã]o|cereal|arroz|feij[aã]o|massa|macarr|farinha|a[çc]ucar|acucar)/.test(n))return 'Secos e Grãos';
-  if(/(padaria|confeit|doce|chocolate|nutella|avel[aã])/.test(n))return 'Padaria e Confeitaria';
-  if(/(tempero|condiment|molho|shoyu|vinagre|azeite|sal|pimenta|gergelim|hondashi)/.test(n))return 'Temperos e Condimentos';
-  if(/(limpeza|detergente|sanit|alcool|álcool|bombril|desinfet)/.test(n))return 'Limpeza';
-  if(/(descart|embalag|copo|saco|guardanapo|talher|canudo|luva|sacola|bucha|touca|filme)/.test(n))return 'Descartáveis';
+function classify(n){
+  if(!n)return '';
+  if(/(hortifr|legume|verdura|fruta|folhagem|couve|tomate|cebola|batata|cenoura|alface|banana|laranja|abacaxi|manga|limao|beterraba|pepino|piment[aã]o|repolho|melancia|melao|uva|abobrinha|chuchu|salsa|coentro|macaxeira)/.test(n))return 'Hortifruti';
+  if(/(carne|bovin|frango|aves|su[ií]no|pescado|peixe|frutos do mar|linguado|tilapia|salmao|bacon|charque|calabresa|linguica|peito de peru|presunto)/.test(n))return 'Carnes e Pescados';
+  if(/(latic|queijo|leite liquido|leite 1|leite l|iogurte|requeij|manteiga|margarina|frios|mussarela|muçarela|provolone|creme de leite)/.test(n))return 'Laticínios e Frios';
+  if(/(congelad|sorvete|batata rustica|nuggets|empanad)/.test(n))return 'Congelados';
+  if(/(bebida|refri|refrigerante|cerveja|suco|\bagua\b|\bágua\b|energetic|chopp|vinho|whisky|drink|tonica|monster|coca|sprite|fanta|guarana|del valle|cha leao|stella|heineken|kuat|brahma)/.test(n))return 'Bebidas';
+  if(/(seco|gr[aã]o|cereal|arroz|feij[aã]o|massa|macarr|espaguet|farinha|a[çc]ucar|fuba|flocos de milho|leite em po|leite em pó)/.test(n))return 'Secos e Grãos';
+  if(/(padaria|confeit|\bdoce\b|chocolate|nutella|avel[aã]|pacoca|granola)/.test(n))return 'Padaria e Confeitaria';
+  if(/(tempero|condiment|molho|shoyu|vinagre|azeite|\bsal\b|pimenta|gergelim|hondashi|extrato de tomate|mostarda|maionese|ketchup|hibisco|cominho|oregano)/.test(n))return 'Temperos e Condimentos';
+  if(/(limpeza|detergente|sanit|alcool|álcool|bombril|desinfet|agua sanitaria|mop|\brodo\b|bucha)/.test(n))return 'Limpeza';
+  if(/(descart|embalag|copo|saco de lixo|guardanapo|talher|canudo|luva|sacola|touca|filme|\bcolher\b|\bgarfo\b|\bfaca\b|rolo de porcao|papel toalha)/.test(n))return 'Descartáveis';
   if(/(higiene|papel higi|sabonete)/.test(n))return 'Higiene';
-  if(/(sushi|nori|hashi|wasabi|gengibre)/.test(n))return 'Material Sushi';
-  return 'Mercearia';
+  if(/(sushi|nori|hashi|wasabi|gengibre|arroz japones|arroz sushi)/.test(n))return 'Material Sushi';
+  return '';
 }
+function mapCat(raw,nome){ let c=classify(norm(raw)); if(!c)c=classify(norm(nome)); return c||'Mercearia'; }
 let CAT=[], ITENS=[];
 
 function brand(){ const flow=/flow/i.test(el('loja').value); document.documentElement.style.setProperty('--v',flow?'#2E7D34':'#8B1212'); el('eyebrow').textContent='Painel '+(flow?'Flow':'Amore')+' · Requisição de Compra'; }
@@ -131,7 +132,7 @@ async function carregarCatalogo(){
     const rows=await (await fetch(SB+'/rest/v1/estoque_produtos?select=nome,gramatura,categoria,marca,codigo_barras,codigo_fornecedor,preco_unitario&ativo=eq.true&limit=8000',{headers:H})).json();
     const seen={}; CAT=[];
     for(const r of (rows||[])){ const nm=norm(r.nome); if(!nm)continue; const custo=Number(r.preco_unitario)||0; const k=nm+'#'+custo; if(seen[k])continue; seen[k]=1;
-      CAT.push({nome:r.nome,un:r.gramatura||'Unidade(s)',categoria:mapCat(r.categoria),marca:r.marca||'',codigo:r.codigo_barras||r.codigo_fornecedor||'',custo}); }
+      CAT.push({nome:r.nome,un:r.gramatura||'Unidade(s)',categoria:mapCat(r.categoria,r.nome),marca:r.marca||'',codigo:r.codigo_barras||r.codigo_fornecedor||'',custo:Math.round(custo*100)/100}); }
     // mostra primeiro os com custo médio, depois os sem (mesmo item aparece nas duas formas)
     CAT.sort((a,b)=>(b.custo>0)-(a.custo>0)||a.nome.localeCompare(b.nome));
     el('cathint').textContent=CAT.length+' produtos no catálogo · busque por nome ou código';
@@ -159,7 +160,7 @@ async function addNovo(){
   const custo=nb(prompt('Custo médio unitário (opcional, ex.: 4,50):','')||'0');
   // cadastra no estoque para virar catálogo
   try{ await fetch(SB+'/rest/v1/estoque_produtos',{method:'POST',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify({loja:el('loja').value,nome:nome,gramatura:un,categoria:categoria,marca:marca||null,codigo_barras:codigo||null,preco_unitario:custo||null,ativo:true,status_cadastro:'validado'})}); }catch(e){}
-  const catStd=mapCat(categoria);
+  const catStd=mapCat(categoria,nome);
   CAT.push({nome,un,categoria:catStd,marca,codigo,custo});
   add({produto:nome,marca,un,codigo,custo,categoria:catStd,qtd:1});
   busca.value='';results.classList.remove('show');busca.focus();
@@ -183,7 +184,7 @@ function render(){
       <td><input class="mrc" value="${esc(it.marca||'')}" onchange="upd(${i},'marca',this.value)" placeholder="marca"></td>
       <td><select class="und" onchange="upd(${i},'un',this.value)">${opts}</select></td>
       <td><input class="num" value="${esc(it.qtd)}" onchange="upd(${i},'qtd',this.value)" inputmode="decimal"></td>
-      <td><input class="num" value="${it.custo?String(it.custo).replace('.',','):''}" onchange="upd(${i},'custo',this.value)" placeholder="0,00" inputmode="decimal"></td>
+      <td><input class="num" value="${it.custo?nb(it.custo).toFixed(2).replace('.',','):''}" onchange="upd(${i},'custo',this.value)" placeholder="0,00" inputmode="decimal"></td>
       <td style="white-space:nowrap;font-weight:600">${brl(sub)}</td>
       <td><button class="rm" onclick="rm(${i})" title="Remover">✕</button></td>
     </tr>`; }
