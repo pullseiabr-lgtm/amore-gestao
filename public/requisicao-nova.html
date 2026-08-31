@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Nova Requisição de Compra — Amore</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--v:#8B1212;--v2:#6d0e0e;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:var(--text);padding:14px;line-height:1.45}
+.wrap{max-width:1000px;margin:0 auto}
+.top{border-bottom:2px solid var(--v);padding-bottom:12px;margin-bottom:14px;display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--v);font-weight:700}
+h1{font-size:22px;margin-top:4px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px}
+input,select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font:inherit;font-size:14px;background:var(--bg)}
+input:focus,select:focus{outline:none;border-color:var(--v)}
+.searchwrap{position:relative}
+.results{position:absolute;z-index:20;left:0;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 30px -10px rgba(0,0,0,.2);max-height:320px;overflow:auto;display:none}
+.results.show{display:block}
+.ritem{padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13.5px;display:flex;justify-content:space-between;gap:10px}
+.ritem:hover{background:var(--bg)}
+.ritem .cod{color:var(--muted);font-size:11.5px}
+.ritem.new{color:var(--v);font-weight:700}
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:12px}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:720px}
+th{text-align:left;color:var(--muted);font-size:10.5px;text-transform:uppercase;padding:9px 8px;border-bottom:1px solid var(--border);background:#fbf7f7;white-space:nowrap}
+td{padding:6px 8px;border-bottom:1px solid #f4eeef;vertical-align:middle}
+td input{padding:7px 8px;font-size:13px}
+.num{width:70px}.und{width:120px}.mrc{width:120px}
+.rm{background:none;border:none;color:#DC2626;cursor:pointer;font-size:16px}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}
+.tot{font-size:14px;color:var(--muted)}.tot b{font-size:22px;color:var(--v);display:block}
+.btn{border:none;border-radius:12px;padding:13px 22px;font:inherit;font-weight:800;font-size:15px;color:#fff;background:var(--v);cursor:pointer}
+.btn:disabled{opacity:.55}
+.btn-sec{background:#fff;color:var(--text);border:1px solid var(--border);font-weight:600;padding:10px 16px;font-size:13px;border-radius:10px;cursor:pointer}
+.msg{padding:11px 14px;border-radius:10px;margin-top:10px;font-size:13.5px;display:none}
+.msg.ok{background:#DCFCE7;color:#15803D;display:block}.msg.err{background:#FEE2E2;color:#DC2626;display:block}
+.empty{padding:20px;text-align:center;color:var(--muted);font-size:13px}
+.done{text-align:center;padding:40px 16px}
+.done .big{font-size:40px;font-weight:800;color:var(--ok);margin-bottom:8px}
+.done a.link{display:inline-block;margin-top:14px;background:var(--v);color:#fff;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700}
+.hint{font-size:11.5px;color:var(--muted);margin-top:4px}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="top">
+    <div><div class="eyebrow" id="eyebrow">Painel Amore · Requisição de Compra</div><h1>Nova Requisição de Compra</h1></div>
+  </div>
+
+  <div class="card">
+    <div class="grid">
+      <div><label>Loja</label><select id="loja"><option value="Amore Paiva">Amore Paiva</option><option value="Amore CD">Amore Costa Dourada</option><option value="Flow CD">Flow Costa Dourada</option></select></div>
+      <div><label>Nome da requisição</label><input id="nome" placeholder="Ex.: Compras da semana"></div>
+      <div><label>Solicitante</label><input id="solic" placeholder="Quem está pedindo"></div>
+      <div><label>Tipo de requisição</label><select id="tipo"><option>Semanal</option><option>Reposição</option><option>Emergencial</option><option>Evento</option><option>Outro</option></select></div>
+      <div><label>Prioridade</label><select id="prio"><option value="baixa">Baixa</option><option value="media" selected>Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></div>
+      <div><label>Data de entrega</label><input id="entrega" type="date"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <label>Buscar produto (nome ou código) e adicionar</label>
+    <div class="searchwrap">
+      <input id="busca" placeholder="Digite o nome ou o código do produto…" autocomplete="off">
+      <div class="results" id="results"></div>
+    </div>
+    <div class="hint" id="cathint">Carregando catálogo…</div>
+  </div>
+
+  <div class="card">
+    <div class="tw"><table>
+      <thead><tr><th>Código</th><th>Produto</th><th>Marca</th><th>Unidade</th><th>Qtd</th><th>Custo médio</th><th>Subtotal</th><th></th></tr></thead>
+      <tbody id="itens"><tr><td colspan="8" class="empty">Nenhum item ainda. Busque acima e adicione.</td></tr></tbody>
+    </table></div>
+    <div class="foot">
+      <div class="tot">Centro de custo (estimado pelo custo médio já comprado)<b id="total">R$ 0,00</b></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="gerar" onclick="gerar()">✅ Gerar requisição</button>
+      </div>
+    </div>
+    <div class="msg" id="msg"></div>
+  </div>
+  <div style="text-align:center;color:var(--muted);font-size:11.5px;padding-bottom:24px" id="rodape"></div>
+</div>
+
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+// notificar quando gerar (Esdras = compras). Pode acrescentar mais números.
+const NOTIFICAR=[{nome:'Esdras',fone:'5581992573535'}];
+const $=s=>document.querySelector(s); const el=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const nb=n=>Number(String(n==null?'':n).replace(',','.'))||0;
+const brl=n=>'R$ '+nb(n).toFixed(2).replace('.',',');
+const norm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+const UNIDS=['Unidade(s)','kg','g','L','ml','Caixa','Pacote','Fardo','Bandeja','Maço(s)','Saco','Balde','Rolo','Cápsula','Barra','Penca(s)'];
+let CAT=[], ITENS=[];
+
+function brand(){ const flow=/flow/i.test(el('loja').value); document.documentElement.style.setProperty('--v',flow?'#2E7D34':'#8B1212'); el('eyebrow').textContent='Painel '+(flow?'Flow':'Amore')+' · Requisição de Compra'; }
+el('loja').addEventListener('change',brand); brand();
+
+async function carregarCatalogo(){
+  try{
+    const rows=await (await fetch(SB+'/rest/v1/estoque_produtos?select=nome,gramatura,categoria,marca,codigo_barras,codigo_fornecedor,preco_unitario&ativo=eq.true&limit=8000',{headers:H})).json();
+    const seen={}; CAT=[];
+    for(const r of (rows||[])){ const k=norm(r.nome); if(!k||seen[k])continue; seen[k]=1;
+      CAT.push({nome:r.nome,un:r.gramatura||'Unidade(s)',categoria:r.categoria||'',marca:r.marca||'',codigo:r.codigo_barras||r.codigo_fornecedor||'',custo:Number(r.preco_unitario)||0}); }
+    el('cathint').textContent=CAT.length+' produtos no catálogo · busque por nome ou código';
+  }catch(e){ el('cathint').textContent='Não consegui carregar o catálogo (você ainda pode cadastrar itens novos).'; }
+}
+carregarCatalogo();
+
+const busca=el('busca'), results=el('results');
+busca.addEventListener('input',()=>{
+  const q=norm(busca.value); if(q.length<2){results.classList.remove('show');return;}
+  const hits=CAT.filter(p=>norm(p.nome).includes(q)||(p.codigo&&norm(p.codigo).includes(q))).slice(0,12);
+  let html=hits.map((p,i)=>`<div class="ritem" onclick="addCat(${CAT.indexOf(p)})"><span>${esc(p.nome)} <span class="cod">${p.un}${p.marca?' · '+esc(p.marca):''}${p.custo?' · '+brl(p.custo):''}</span></span><span class="cod">${esc(p.codigo||'')}</span></div>`).join('');
+  html+=`<div class="ritem new" onclick="addNovo()">➕ Cadastrar novo produto: "${esc(busca.value.trim())}"</div>`;
+  results.innerHTML=html; results.classList.add('show');
+});
+document.addEventListener('click',e=>{ if(!e.target.closest('.searchwrap'))results.classList.remove('show'); });
+
+function addCat(i){ const p=CAT[i]; if(!p)return; add({produto:p.nome,marca:p.marca,un:p.un,codigo:p.codigo,custo:p.custo,categoria:p.categoria,qtd:1}); busca.value='';results.classList.remove('show');busca.focus(); }
+async function addNovo(){
+  const nome=busca.value.trim(); if(!nome)return;
+  const un=prompt('Unidade do novo produto (ex.: kg, Caixa, Unidade(s)):','Unidade(s)'); if(un===null)return;
+  const categoria=prompt('Categoria (ex.: Mercearia, Bebidas, Frios):','')||'';
+  const marca=prompt('Marca (opcional):','')||'';
+  const codigo=prompt('Código de barras/fornecedor (opcional):','')||'';
+  const custo=nb(prompt('Custo médio unitário (opcional, ex.: 4,50):','')||'0');
+  // cadastra no estoque para virar catálogo
+  try{ await fetch(SB+'/rest/v1/estoque_produtos',{method:'POST',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify({loja:el('loja').value,nome:nome,gramatura:un,categoria:categoria,marca:marca||null,codigo_barras:codigo||null,preco_unitario:custo||null,ativo:true,status_cadastro:'validado'})}); }catch(e){}
+  CAT.push({nome,un,categoria,marca,codigo,custo});
+  add({produto:nome,marca,un,codigo,custo,categoria,qtd:1});
+  busca.value='';results.classList.remove('show');busca.focus();
+}
+function add(it){ if(ITENS.some(x=>norm(x.produto)===norm(it.produto))){ /* já existe: soma 1 */ const ex=ITENS.find(x=>norm(x.produto)===norm(it.produto)); ex.qtd=nb(ex.qtd)+1; } else ITENS.push(it); render(); }
+function upd(i,k,v){ ITENS[i][k]=v; if(k==='qtd'||k==='custo')render(); }
+function rm(i){ ITENS.splice(i,1); render(); }
+function render(){
+  const tb=el('itens'); if(!ITENS.length){ tb.innerHTML='<tr><td colspan="8" class="empty">Nenhum item ainda. Busque acima e adicione.</td></tr>'; el('total').textContent='R$ 0,00'; return; }
+  let total=0;
+  tb.innerHTML=ITENS.map((it,i)=>{ const sub=nb(it.qtd)*nb(it.custo); total+=sub;
+    const opts=UNIDS.concat(UNIDS.includes(it.un)?[]:[it.un]).map(u=>`<option ${u===it.un?'selected':''}>${esc(u)}</option>`).join('');
+    return `<tr>
+      <td class="cod" style="font-size:11.5px;color:var(--muted)">${esc(it.codigo||'')}</td>
+      <td><input value="${esc(it.produto)}" onchange="upd(${i},'produto',this.value)" style="width:100%"></td>
+      <td><input class="mrc" value="${esc(it.marca||'')}" onchange="upd(${i},'marca',this.value)" placeholder="marca"></td>
+      <td><select class="und" onchange="upd(${i},'un',this.value)">${opts}</select></td>
+      <td><input class="num" value="${esc(it.qtd)}" onchange="upd(${i},'qtd',this.value)" inputmode="decimal"></td>
+      <td><input class="num" value="${it.custo?String(it.custo).replace('.',','):''}" onchange="upd(${i},'custo',this.value)" placeholder="0,00" inputmode="decimal"></td>
+      <td style="white-space:nowrap;font-weight:600">${brl(sub)}</td>
+      <td><button class="rm" onclick="rm(${i})" title="Remover">✕</button></td>
+    </tr>`; }).join('');
+  el('total').textContent=brl(total);
+}
+
+async function gerar(){
+  const loja=el('loja').value, nome=el('nome').value.trim(), solic=el('solic').value.trim();
+  if(!nome){ show('Dê um nome à requisição.',false); return; }
+  if(!solic){ show('Informe o solicitante.',false); return; }
+  if(!ITENS.length){ show('Adicione ao menos 1 item.',false); return; }
+  const btn=el('gerar'); btn.disabled=true; btn.textContent='Gerando…'; show('',true); el('msg').className='msg';
+  const total=ITENS.reduce((s,it)=>s+nb(it.qtd)*nb(it.custo),0);
+  const head={loja,titulo:nome,responsavel_nome:solic,prioridade:el('prio').value,prazo_entrega:el('entrega').value||null,data_necessidade:null,status:'enviada',observacoes:'Tipo: '+el('tipo').value,centro_custo:'Estimado '+brl(total),total_estimado:Math.round(total*100)/100,total_final:0,created_by:solic};
+  try{
+    const r=await fetch(SB+'/rest/v1/requisicoes',{method:'POST',headers:Object.assign({},H,{Prefer:'return=representation'}),body:JSON.stringify(head)});
+    if(!r.ok) throw new Error('req '+r.status+' '+(await r.text()));
+    const req=(await r.json())[0]; const id=req.id; const num='REQ-'+String(req.numero).padStart(4,'0');
+    const linhas=ITENS.map(it=>({requisicao_id:id,produto_nome:it.produto,categoria:it.categoria||'Outros',quantidade:nb(it.qtd),unidade:it.un,preco_referencia:nb(it.custo)||null,observacoes:it.marca?('Marca: '+it.marca):null,bloqueado:false}));
+    const ri=await fetch(SB+'/rest/v1/requisicao_itens',{method:'POST',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify(linhas)});
+    if(!ri.ok) throw new Error('itens '+ri.status);
+    const link='https://painel.amorefood.com.br/requisicao.html?id='+id;
+    const entregaTxt=el('entrega').value?el('entrega').value.split('-').reverse().join('/'):'a definir';
+    // avisa Esdras (e demais cadastrados)
+    const msg='📝 *Nova requisição de compra* — '+loja+'\n'+num+' · '+nome+'\n👤 Solicitante: '+solic+'\n🏷️ Tipo: '+el('tipo').value+' · Prioridade: '+el('prio').value+'\n📅 Entrega: '+entregaTxt+'\n🧾 '+ITENS.length+' itens · 💰 estimado '+brl(total)+'\n\nVer requisição:\n'+link;
+    for(const n of NOTIFICAR){ try{ await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:n.fone,message:msg})}); }catch(e){} }
+    el('app').innerHTML='<div class="done"><div class="big">✅ '+num+' gerada!</div><p>Requisição <b>'+esc(nome)+'</b> criada para <b>'+esc(loja)+'</b> por <b>'+esc(solic)+'</b> · '+ITENS.length+' itens · estimado '+brl(total)+'.</p><p style="color:var(--muted);margin-top:6px">Aviso enviado ao Esdras. 📲</p><a class="link" href="'+link+'" target="_blank">Abrir requisição</a> <a class="link" href="requisicao-nova.html" style="background:#6b7280">Nova requisição</a></div>';
+    window.scrollTo({top:0,behavior:'smooth'});
+  }catch(e){ btn.disabled=false; btn.textContent='✅ Gerar requisição'; show('Erro ao gerar: '+e.message,false); }
+}
+function show(m,ok){ const e=el('msg'); if(!m){e.className='msg';return;} e.textContent=m; e.className='msg '+(ok?'ok':'err'); }
+el('rodape').textContent='Requisição gerada no Painel Amore · numerada automaticamente · avisa o comprador ao gerar';
+</script>
+</body>
+</html>

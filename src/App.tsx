@@ -55,6 +55,8 @@ import AvaliacoesPage from './pages/avaliacoes/AvaliacoesPage'
 import RaspadinhaPage from './pages/raspadinha/RaspadinhaPage'
 import LizCentralPage from './pages/liz/LizCentralPage'
 import ClientesPage from './pages/clientes/ClientesPage'
+import GestaoListaPage from './pages/gestao-lista/GestaoListaPage'
+import RequisicaoNovaPage from './pages/requisicao-nova/RequisicaoNovaPage'
 import CampanhasPage from './pages/campanhas/CampanhasPage'
 import PesquisaAuraPage from './pages/pesquisa/PesquisaAuraPage'
 import ControleAgentePage from './pages/agente-controle/ControleAgentePage'
@@ -135,6 +137,8 @@ export type PageId =
   | 'recebimento'
   | 'etiquetas'
   | 'pesquisa-aura'
+  | 'gestao-lista'
+  | 'requisicao-nova'
 
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Dashboard',
@@ -201,6 +205,8 @@ const PAGE_TITLES: Record<PageId, string> = {
   recebimento: 'Recebimento Inteligente',
   etiquetas: 'Etiquetas & Leitura',
   'pesquisa-aura': 'Pesquisa — Vamos Farmar Aura',
+  'gestao-lista': 'Gestão da Lista de Compras',
+  'requisicao-nova': 'Nova Requisição de Compra',
 }
 
 // Aplica a paleta Flow (verde) no painel quando a loja ativa é "Flow CD".
@@ -296,6 +302,8 @@ function PageContent({ page }: { page: PageId }) {
     case 'recebimento':          return <RecebimentoPage />
     case 'etiquetas':            return <EtiquetasPage />
     case 'pesquisa-aura':        return <PesquisaAuraPage />
+    case 'gestao-lista':         return <GestaoListaPage />
+    case 'requisicao-nova':      return <RequisicaoNovaPage />
     case 'tarefas':              return <TarefasPage />
     case 'checklists':           return <ChecklistsPage />
     case 'pauta-reuniao':        return <PautaReuniaoPage />

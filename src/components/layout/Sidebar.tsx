@@ -295,13 +295,20 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
                   >
                     <ClipboardCheck size={12} /> 📦 Gestão de Compras
                   </a>
-                  <a
-                    href="/montar-pedido.html" target="_blank" rel="noreferrer"
-                    className="nav-item"
-                    style={{ paddingLeft: 28, fontSize: 12, borderLeft: '2px solid var(--bordo-l)', marginLeft: 16, borderRadius: '0 6px 6px 0', textDecoration: 'none', color: 'inherit' }}
+                  <div
+                    className={`nav-item${activePage === 'requisicao-nova' ? ' active' : ''}`}
+                    onClick={() => onNav('requisicao-nova', 'Nova Requisição de Compra')}
+                    style={{ paddingLeft: 28, fontSize: 12, borderLeft: '2px solid var(--bordo-l)', marginLeft: 16, borderRadius: '0 6px 6px 0' }}
                   >
-                    <ClipboardList size={12} /> 🛒 Montar Pedido & Disparar
-                  </a>
+                    <ClipboardList size={12} /> 📝 Nova Requisição
+                  </div>
+                  <div
+                    className={`nav-item${activePage === 'gestao-lista' ? ' active' : ''}`}
+                    onClick={() => onNav('gestao-lista', 'Gestão da Lista de Compras')}
+                    style={{ paddingLeft: 28, fontSize: 12, borderLeft: '2px solid var(--bordo-l)', marginLeft: 16, borderRadius: '0 6px 6px 0' }}
+                  >
+                    <ClipboardList size={12} /> 🛒 Gestão da Lista de Compras
+                  </div>
                 </div>
               )}
             </div>
