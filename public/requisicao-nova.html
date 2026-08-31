@@ -45,6 +45,8 @@ td input{padding:7px 8px;font-size:13px}
 .done .big{font-size:40px;font-weight:800;color:var(--ok);margin-bottom:8px}
 .done a.link{display:inline-block;margin-top:14px;background:var(--v);color:#fff;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700}
 .hint{font-size:11.5px;color:var(--muted);margin-top:4px}
+tr.cat td{background:#f3eef0;color:var(--v);font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding:7px 10px}
+.catsel{width:130px;font-size:11.5px;padding:6px 6px}
 </style>
 </head>
 <body>
@@ -75,8 +77,8 @@ td input{padding:7px 8px;font-size:13px}
 
   <div class="card">
     <div class="tw"><table>
-      <thead><tr><th>Código</th><th>Produto</th><th>Marca</th><th>Unidade</th><th>Qtd</th><th>Custo médio</th><th>Subtotal</th><th></th></tr></thead>
-      <tbody id="itens"><tr><td colspan="8" class="empty">Nenhum item ainda. Busque acima e adicione.</td></tr></tbody>
+      <thead><tr><th>Categoria</th><th>Código</th><th>Produto</th><th>Marca</th><th>Unidade</th><th>Qtd</th><th>Custo médio</th><th>Subtotal</th><th></th></tr></thead>
+      <tbody id="itens"><tr><td colspan="9" class="empty">Nenhum item ainda. Busque acima e adicione.</td></tr></tbody>
     </table></div>
     <div class="foot">
       <div class="tot">Centro de custo (estimado pelo custo médio já comprado)<b id="total">R$ 0,00</b></div>
@@ -101,6 +103,24 @@ const nb=n=>Number(String(n==null?'':n).replace(',','.'))||0;
 const brl=n=>'R$ '+nb(n).toFixed(2).replace('.',',');
 const norm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
 const UNIDS=['Unidade(s)','kg','g','L','ml','Caixa','Pacote','Fardo','Bandeja','Maço(s)','Saco','Balde','Rolo','Cápsula','Barra','Penca(s)'];
+// Categorias padrão (ordem = ordem de exibição na lista)
+const CATS=['Hortifruti','Carnes e Pescados','Laticínios e Frios','Congelados','Mercearia','Secos e Grãos','Padaria e Confeitaria','Temperos e Condimentos','Bebidas','Limpeza','Descartáveis','Higiene','Material Sushi','Outros'];
+function mapCat(raw){ const n=norm(raw);
+  if(!n)return 'Outros';
+  if(/(hortifr|legume|verdura|fruta|folhagem)/.test(n))return 'Hortifruti';
+  if(/(carne|bovin|frango|aves|su[ií]no|pescado|peixe|frutos do mar|linguado|tilapia|salmao|bacon|charque|calabresa|linguica)/.test(n))return 'Carnes e Pescados';
+  if(/(latic|queijo|leite|iogurte|requeij|manteiga|margarina|frios|presunto|mussarela|provolone)/.test(n))return 'Laticínios e Frios';
+  if(/(congelad|sorvete)/.test(n))return 'Congelados';
+  if(/(bebida|refri|refrigerante|cerveja|suco|agua|água|energetic|chopp|vinho|whisky|drink|tonica|monster)/.test(n))return 'Bebidas';
+  if(/(seco|gr[aã]o|cereal|arroz|feij[aã]o|massa|macarr|farinha|a[çc]ucar|acucar)/.test(n))return 'Secos e Grãos';
+  if(/(padaria|confeit|doce|chocolate|nutella|avel[aã])/.test(n))return 'Padaria e Confeitaria';
+  if(/(tempero|condiment|molho|shoyu|vinagre|azeite|sal|pimenta|gergelim|hondashi)/.test(n))return 'Temperos e Condimentos';
+  if(/(limpeza|detergente|sanit|alcool|álcool|bombril|desinfet)/.test(n))return 'Limpeza';
+  if(/(descart|embalag|copo|saco|guardanapo|talher|canudo|luva|sacola|bucha|touca|filme)/.test(n))return 'Descartáveis';
+  if(/(higiene|papel higi|sabonete)/.test(n))return 'Higiene';
+  if(/(sushi|nori|hashi|wasabi|gengibre)/.test(n))return 'Material Sushi';
+  return 'Mercearia';
+}
 let CAT=[], ITENS=[];
 
 function brand(){ const flow=/flow/i.test(el('loja').value); document.documentElement.style.setProperty('--v',flow?'#2E7D34':'#8B1212'); el('eyebrow').textContent='Painel '+(flow?'Flow':'Amore')+' · Requisição de Compra'; }
@@ -110,8 +130,10 @@ async function carregarCatalogo(){
   try{
     const rows=await (await fetch(SB+'/rest/v1/estoque_produtos?select=nome,gramatura,categoria,marca,codigo_barras,codigo_fornecedor,preco_unitario&ativo=eq.true&limit=8000',{headers:H})).json();
     const seen={}; CAT=[];
-    for(const r of (rows||[])){ const k=norm(r.nome); if(!k||seen[k])continue; seen[k]=1;
-      CAT.push({nome:r.nome,un:r.gramatura||'Unidade(s)',categoria:r.categoria||'',marca:r.marca||'',codigo:r.codigo_barras||r.codigo_fornecedor||'',custo:Number(r.preco_unitario)||0}); }
+    for(const r of (rows||[])){ const nm=norm(r.nome); if(!nm)continue; const custo=Number(r.preco_unitario)||0; const k=nm+'#'+custo; if(seen[k])continue; seen[k]=1;
+      CAT.push({nome:r.nome,un:r.gramatura||'Unidade(s)',categoria:mapCat(r.categoria),marca:r.marca||'',codigo:r.codigo_barras||r.codigo_fornecedor||'',custo}); }
+    // mostra primeiro os com custo médio, depois os sem (mesmo item aparece nas duas formas)
+    CAT.sort((a,b)=>(b.custo>0)-(a.custo>0)||a.nome.localeCompare(b.nome));
     el('cathint').textContent=CAT.length+' produtos no catálogo · busque por nome ou código';
   }catch(e){ el('cathint').textContent='Não consegui carregar o catálogo (você ainda pode cadastrar itens novos).'; }
 }
@@ -137,19 +159,25 @@ async function addNovo(){
   const custo=nb(prompt('Custo médio unitário (opcional, ex.: 4,50):','')||'0');
   // cadastra no estoque para virar catálogo
   try{ await fetch(SB+'/rest/v1/estoque_produtos',{method:'POST',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify({loja:el('loja').value,nome:nome,gramatura:un,categoria:categoria,marca:marca||null,codigo_barras:codigo||null,preco_unitario:custo||null,ativo:true,status_cadastro:'validado'})}); }catch(e){}
-  CAT.push({nome,un,categoria,marca,codigo,custo});
-  add({produto:nome,marca,un,codigo,custo,categoria,qtd:1});
+  const catStd=mapCat(categoria);
+  CAT.push({nome,un,categoria:catStd,marca,codigo,custo});
+  add({produto:nome,marca,un,codigo,custo,categoria:catStd,qtd:1});
   busca.value='';results.classList.remove('show');busca.focus();
 }
 function add(it){ if(ITENS.some(x=>norm(x.produto)===norm(it.produto))){ /* já existe: soma 1 */ const ex=ITENS.find(x=>norm(x.produto)===norm(it.produto)); ex.qtd=nb(ex.qtd)+1; } else ITENS.push(it); render(); }
-function upd(i,k,v){ ITENS[i][k]=v; if(k==='qtd'||k==='custo')render(); }
+function upd(i,k,v){ ITENS[i][k]=v; if(k==='qtd'||k==='custo'||k==='categoria')render(); }
 function rm(i){ ITENS.splice(i,1); render(); }
 function render(){
-  const tb=el('itens'); if(!ITENS.length){ tb.innerHTML='<tr><td colspan="8" class="empty">Nenhum item ainda. Busque acima e adicione.</td></tr>'; el('total').textContent='R$ 0,00'; return; }
-  let total=0;
-  tb.innerHTML=ITENS.map((it,i)=>{ const sub=nb(it.qtd)*nb(it.custo); total+=sub;
+  const tb=el('itens'); if(!ITENS.length){ tb.innerHTML='<tr><td colspan="9" class="empty">Nenhum item ainda. Busque acima e adicione.</td></tr>'; el('total').textContent='R$ 0,00'; return; }
+  const idx=c=>{const i=CATS.indexOf(c);return i<0?CATS.length:i;};
+  const ordered=ITENS.map((it,i)=>({it,i})).sort((a,b)=>idx(a.it.categoria||'Outros')-idx(b.it.categoria||'Outros'));
+  let total=0,cur='',html='';
+  for(const o of ordered){ const it=o.it,i=o.i; const sub=nb(it.qtd)*nb(it.custo); total+=sub; const cat=it.categoria||'Outros';
+    if(cat!==cur){cur=cat; const nCat=ITENS.filter(x=>(x.categoria||'Outros')===cat).length; html+=`<tr class="cat"><td colspan="9">📦 ${esc(cat)} <span style="opacity:.6">· ${nCat}</span></td></tr>`;}
     const opts=UNIDS.concat(UNIDS.includes(it.un)?[]:[it.un]).map(u=>`<option ${u===it.un?'selected':''}>${esc(u)}</option>`).join('');
-    return `<tr>
+    const catopts=CATS.map(c=>`<option ${c===cat?'selected':''}>${esc(c)}</option>`).join('');
+    html+=`<tr>
+      <td><select class="catsel" onchange="upd(${i},'categoria',this.value)">${catopts}</select></td>
       <td class="cod" style="font-size:11.5px;color:var(--muted)">${esc(it.codigo||'')}</td>
       <td><input value="${esc(it.produto)}" onchange="upd(${i},'produto',this.value)" style="width:100%"></td>
       <td><input class="mrc" value="${esc(it.marca||'')}" onchange="upd(${i},'marca',this.value)" placeholder="marca"></td>
@@ -158,8 +186,8 @@ function render(){
       <td><input class="num" value="${it.custo?String(it.custo).replace('.',','):''}" onchange="upd(${i},'custo',this.value)" placeholder="0,00" inputmode="decimal"></td>
       <td style="white-space:nowrap;font-weight:600">${brl(sub)}</td>
       <td><button class="rm" onclick="rm(${i})" title="Remover">✕</button></td>
-    </tr>`; }).join('');
-  el('total').textContent=brl(total);
+    </tr>`; }
+  tb.innerHTML=html; el('total').textContent=brl(total);
 }
 
 async function gerar(){
