@@ -69,13 +69,17 @@
       <button data-f="ok" onclick="setF('ok')">✅ Comprados</button>
     </span>
     <button class="btn btn-save" onclick="salvar()">💾 Salvar / dar baixa</button>
+    <button class="btn" style="background:#15803D;color:#fff" onclick="confirmarTodas()">✅ Confirmar todas</button>
     <button class="btn btn-pdf" onclick="gerarPDF()">📄 Gerar PDF</button>
     <button class="btn btn-fire" onclick="disparar()">📲 Disparar faltantes</button>
+    <button class="btn" style="background:#6b1212;color:#fff" onclick="fecharRequisicao()">🔒 Fechar requisição</button>
+    <button class="btn" style="background:#fff;color:#374151;border:1px solid #cbd5e1" onclick="verBaixadas()">📁 Requisições baixadas</button>
   </div>
-  <div class="card"><table><thead><tr>
+  <div class="card" id="mainCard"><table><thead><tr>
     <th>Produto solicitado</th><th>Qtd</th><th>Status</th><th>Valor unit.</th><th>Valor total</th><th>Fornecedor</th>
-    <th>Entrega</th><th>Pedido</th><th>Data pedido</th><th>Fez o pedido</th><th class="ed">WhatsApp</th><th>✔</th>
-  </tr></thead><tbody id="tb"><tr><td colspan="12" style="padding:20px;text-align:center;color:#6b7280">Carregando…</td></tr></tbody></table></div>
+    <th>Entrega</th><th>Data pedido</th><th>Pedido</th><th>✔</th>
+  </tr></thead><tbody id="tb"><tr><td colspan="10" style="padding:20px;text-align:center;color:#6b7280">Carregando…</td></tr></tbody></table></div>
+  <div class="card" id="baixadasBox" style="display:none;margin-top:12px"></div>
   <div class="msg" id="msg"></div><div class="prog" id="prog"></div><div class="foot" id="foot"></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -98,17 +102,18 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));const rnd=(a,b)=>a+Math.floor(M
 const nomeLoja=l=>({'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'})[l]||l;
 function show(m,ok){const e=el('msg');e.textContent=m;e.className='msg '+(ok?'ok':'err');}
 function lojaMatch(pedLoja,sel){pedLoja=pedLoja||'';if(sel==='Flow CD')return /flow/i.test(pedLoja);if(sel==='Amore CD')return pedLoja==='Amore CD'||/amore costa dourada/i.test(pedLoja);if(sel==='Amore Paiva')return pedLoja==='Amore Paiva';return false;}
-let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],TOTALPED=0,FILTRO='',ROWS=[],REQNUM=null,REQINFO='',OVKEY='';
+let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],TOTALPED=0,FILTRO='',ROWS=[],REQNUM=null,REQID='',REQINFO='',OVKEY='',VIEW='gestao';
 
 function trocaLoja(){LOJA=el('loja').value;load();}
 async function load(){
   const suf=SUF[LOJA];let ped=[],ov={},solItens=[];
-  REQNUM=null;REQINFO='';
-  // FONTE = última requisição da loja (requisição de hoje) — tabelas requisicoes/requisicao_itens
+  REQNUM=null;REQID='';REQINFO='';VIEW='gestao';
+  { const mc=el('mainCard'),bb=el('baixadasBox'); if(mc)mc.style.display=''; if(bb)bb.style.display='none'; }
+  // FONTE = última requisição ATIVA da loja (requisição de hoje) — tabelas requisicoes/requisicao_itens
   try{
-    const rs=await (await fetch(SB+'/rest/v1/requisicoes?loja=eq.'+encodeURIComponent(LOJA)+'&order=numero.desc&limit=1&select=id,numero,responsavel_nome,created_at',{headers:H})).json();
+    const rs=await (await fetch(SB+'/rest/v1/requisicoes?loja=eq.'+encodeURIComponent(LOJA)+'&status=neq.concluida&order=numero.desc&limit=1&select=id,numero,responsavel_nome,created_at',{headers:H})).json();
     const rq=rs&&rs[0];
-    if(rq){ REQNUM=rq.numero;
+    if(rq){ REQNUM=rq.numero; REQID=rq.id;
       REQINFO='REQ-'+String(rq.numero).padStart(4,'0')+(rq.responsavel_nome?' · '+rq.responsavel_nome:'')+(rq.created_at?' · '+String(rq.created_at).slice(0,10).split('-').reverse().join('/'):'');
       const its=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=eq.'+rq.id+'&select=produto_nome,categoria,quantidade,unidade',{headers:H})).json();
       solItens=(its||[]).map(i=>({produto:i.produto_nome,qtd:i.quantidade,un:i.unidade,categoria:i.categoria}));
@@ -128,7 +133,18 @@ async function load(){
   compute();render();
 }
 function matchOne(prod){const st=toks(prod);if(!st.length)return{status:'no'};const main=st.slice().sort((a,b)=>b.length-a.length)[0];let best=null,bs=0,qsum=0,vsum=0,forns=new Set();for(const c of COMPRADOS){if(!c.norm.includes(main))continue;let sc=0;for(const t of st)if(c.norm.includes(t))sc++;if(sc>0){qsum+=Number(c.qtd)||0;vsum+=c.subtotal;forns.add(c.fornecedor);}if(sc>bs){bs=sc;best=c;}}if(!best)return{status:'no'};return{status:bs>=st.length?'ok':'wr',best,qsum,vsum,forns:[...forns]};}
-function compute(){ROWS=SOLIC.map(si=>{const m=matchOne(si.produto);const o=OVER[norm(si.produto)]||{};return {...si,m,forn:o.fornecedor||'',wpp:o.whatsapp||'',preco:o.preco||'',manual:(typeof o.comprado==='boolean'?o.comprado:undefined),compradoEm:(o.compradoEm!=null?o.compradoEm:undefined),valor:(o.valor!=null?o.valor:undefined)};});}
+function compute(){ROWS=SOLIC.map(si=>{const m=matchOne(si.produto);const o=OVER[norm(si.produto)]||{};const b=m.best||{};return {...si,m,
+  manual:(typeof o.comprado==='boolean'?o.comprado:undefined),
+  forn:(o.forn!=null?o.forn:(m.forns&&m.forns.length?m.forns.join(', '):'')),
+  wpp:o.whatsapp||'',
+  vUnit:(o.vUnit!=null?o.vUnit:(b.preco?String(b.preco).replace('.',','):'')),
+  vTotal:(o.vTotal!=null?o.vTotal:(m.vsum?m.vsum.toFixed(2).replace('.',','):'')),
+  entrega:(o.entrega!=null?o.entrega:(b.entrega?dmy(b.entrega):'')),
+  dataPed:(o.dataPed!=null?o.dataPed:(b.dataPedido?dmy(b.dataPedido):'')),
+  diasPed:diasAtras(b.dataPedido),
+  link:(b.chave?('pedido.html?p='+String(b.chave).replace(/^pedido_/,'')):''),
+  recebido:!!b.recebido, comprador:b.comprador||''
+};});}
 function eff(r){return r.manual===true?'ok':r.manual===false?'no':r.m.status;}
 function compEm(r){return r.compradoEm!=null?r.compradoEm:(r.m.forns?r.m.forns.join(', '):'');}
 function valorC(r){return r.valor!=null&&r.valor!==''?nb(r.valor):(r.m.vsum||0);}
@@ -143,41 +159,61 @@ function render(){
   const list=ROWS.filter(r=>!FILTRO||eff(r)===FILTRO);
   const badge=s=>s==='ok'?'<span class="st ok">✅ Comprado</span>':s==='wr'?'<span class="st wr">⚠️ Verificar</span>':'<span class="st no">❌ Faltando</span>';
   let cur='',html='';
+  const inp=(gi,k,val,ph,cls)=>`<input class="${cls||''}" value="${esc(val)}" onchange="ov(${gi},'${k}',this.value)" placeholder="${ph||''}">`;
   for(const r of list){const gi=ROWS.indexOf(r);
-    if((r.categoria||'')!==cur){cur=r.categoria||'';html+=`<tr class="cat"><td colspan="12">${esc(cur||'—')}</td></tr>`;}
-    const b=r.m.best||{}; const comprado=eff(r)!=='no';
-    const vUnit=b.preco?brl(b.preco):''; const vTot=r.valor!=null&&r.valor!==''?brl(r.valor):(r.m.vsum?brl(r.m.vsum):'');
-    const forn=comprado?(r.m.forns&&r.m.forns.length?r.m.forns.join(', '):''):'';
-    const entrega=b.entrega?dmy(b.entrega):''; const link=b.chave?('pedido.html?p='+String(b.chave).replace(/^pedido_/,'')):'';
-    const dias=diasAtras(b.dataPedido); const dp=b.dataPedido?dmy(b.dataPedido):'';
-    const dpCell=dp?(dias!=null&&dias>7?`<span style="color:#B45309" title="pedido com ${dias} dias — pode ser antigo">${dp} ⏳</span>`:`<span style="color:#15803D" title="pedido recente">${dp}</span>`):'';
-    const conf=b.recebido?' <span class="st ok" style="font-size:9px;padding:1px 6px">✓ confirmado</span>':'';
+    if((r.categoria||'')!==cur){cur=r.categoria||'';html+=`<tr class="cat"><td colspan="10">${esc(cur||'—')}</td></tr>`;}
+    const conf=r.recebido?' <span class="st ok" style="font-size:9px;padding:1px 6px">✓ conf.</span>':'';
+    const oldTag=(r.diasPed!=null&&r.diasPed>7)?`<span title="pedido com ${r.diasPed} dias — pode ser antigo" style="color:#B45309">⏳</span> `:'';
     html+=`<tr>
-      <td>${esc(r.produto)}${conf}</td><td class="q">${esc(r.qtd)} ${esc(r.un)}</td>
-      <td>${badge(eff(r))}${r.manual!=null?' <span class="q">(man.)</span>':''}</td>
-      <td class="q">${vUnit}</td>
-      <td class="q">${vTot}</td>
-      <td>${comprado?esc(forn):`<input value="${esc(r.forn)}" onchange="ov(${gi},'fornecedor',this.value)" placeholder="fornecedor">`}</td>
-      <td class="q">${entrega}</td>
-      <td>${link?`<a href="${link}" target="_blank" style="color:var(--v);font-weight:700">ver</a>`:''}</td>
-      <td class="q">${dpCell}</td>
-      <td>${esc(b.comprador||'')}</td>
-      <td class="ed">${comprado?'':`<input class="wpp" value="${esc(r.wpp)}" onchange="ov(${gi},'whatsapp',this.value)" placeholder="DDD+nº" inputmode="numeric">`}</td>
+      <td>${esc(r.produto)}</td><td class="q">${esc(r.qtd)} ${esc(r.un)}</td>
+      <td>${badge(eff(r))}${conf}${r.manual!=null?' <span class="q">(man.)</span>':''}</td>
+      <td>${inp(gi,'vUnit',r.vUnit,'0,00','pri')}</td>
+      <td>${inp(gi,'vTotal',r.vTotal,'0,00','val')}</td>
+      <td>${inp(gi,'forn',r.forn,'fornecedor','cin')}${eff(r)==='no'?inp(gi,'wpp',r.wpp,'WhatsApp','wpp'):''}</td>
+      <td>${inp(gi,'entrega',r.entrega,'dd/mm/aaaa','pri')}</td>
+      <td>${oldTag}${inp(gi,'dataPed',r.dataPed,'dd/mm/aaaa','pri')}</td>
+      <td>${r.link?`<a href="${r.link}" target="_blank" style="color:var(--v);font-weight:700">ver</a>`:''}</td>
       <td style="text-align:center"><input type="checkbox" ${eff(r)==='ok'?'checked':''} onchange="setComprado(${gi},this.checked)" title="Marcar como comprado / dar baixa"></td>
     </tr>`;}
-  el('tb').innerHTML=html||'<tr><td colspan="12" style="padding:20px;text-align:center;color:#6b7280">Nenhum item neste filtro.</td></tr>';
+  el('tb').innerHTML=html||'<tr><td colspan="10" style="padding:20px;text-align:center;color:#6b7280">Nenhum item neste filtro.</td></tr>';
   const prontos=new Set(ROWS.filter(r=>eff(r)!=='ok'&&(r.wpp||'').replace(/\D/g,'').length>=10&&r.forn.trim()).map(r=>r.forn.trim().toLowerCase()));
   el('foot').textContent=`${REQINFO?REQINFO+' · ':''}${LOJA} · ${ROWS.length} solicitados · ${nNo} faltando · total comprado ${brl(TOTALPED)} · ${prontos.size} fornecedor(es) p/ disparo`;
 }
-function ov(i,k,v){const map={fornecedor:'forn',whatsapp:'wpp',preco:'preco',compradoEm:'compradoEm',valor:'valor'};ROWS[i][map[k]]=v;}
+function ov(i,k,v){ROWS[i][k]=v;}
 function setComprado(i,checked){ROWS[i].manual=checked;render();}
-async function salvar(){const map={};for(const r of ROWS){const o={};if(r.forn)o.fornecedor=r.forn;if(r.wpp)o.whatsapp=r.wpp;if(r.preco)o.preco=r.preco;if(typeof r.manual==='boolean')o.comprado=r.manual;if(r.compradoEm!=null)o.compradoEm=r.compradoEm;if(r.valor!=null&&r.valor!=='')o.valor=r.valor;if(Object.keys(o).length)map[norm(r.produto)]=o;}
+async function salvar(silent){const map={};for(const r of ROWS){const o={};if((r.forn||'')!=='')o.forn=r.forn;if(r.wpp)o.whatsapp=r.wpp;if((r.vUnit||'')!=='')o.vUnit=r.vUnit;if((r.vTotal||'')!=='')o.vTotal=r.vTotal;if((r.entrega||'')!=='')o.entrega=r.entrega;if((r.dataPed||'')!=='')o.dataPed=r.dataPed;if(typeof r.manual==='boolean')o.comprado=r.manual;if(Object.keys(o).length)map[norm(r.produto)]=o;}
   const chave=OVKEY||('compras_overrides_'+SUF[LOJA]);
   try{let ex=await fetch(SB+'/rest/v1/app_config?chave=eq.'+chave+'&select=chave',{headers:H}).then(r=>r.json());const body={valor:{map,updated_at:new Date().toISOString()}};let r;
     if(ex&&ex.length)r=await fetch(SB+'/rest/v1/app_config?chave=eq.'+chave,{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify(body)});
     else r=await fetch(SB+'/rest/v1/app_config',{method:'POST',headers:{...H,Prefer:'resolution=merge-duplicates'},body:JSON.stringify({chave,...body})});
-    if(r.ok){ setF('no'); show('✅ Salvo e baixado. Mostrando o que ainda falta comprar.',true); } else { show('Falha ao salvar ('+r.status+').',false); } }catch(e){show('Falha ao salvar.',false);}
+    if(r.ok){ if(!silent){ setF('no'); show('✅ Salvo e baixado. Mostrando o que ainda falta comprar.',true); } } else if(!silent){ show('Falha ao salvar ('+r.status+').',false); } return r.ok; }catch(e){ if(!silent)show('Falha ao salvar.',false); return false; }
 }
+async function confirmarTodas(){
+  const alvo=ROWS.filter(r=>eff(r)!=='no').length;
+  if(!alvo){show('Nenhuma compra para confirmar (nada casou com os pedidos).',false);return;}
+  if(!confirm(`Confirmar / dar baixa em ${alvo} item(ns) já comprado(s)?`))return;
+  ROWS.forEach(r=>{ if(r.m.status!=='no') r.manual=true; });
+  const ok=await salvar(true); render(); show(ok?`✅ ${alvo} compra(s) confirmada(s) e baixada(s).`:'Falha ao salvar.',ok);
+}
+async function fecharRequisicao(){
+  if(!REQID){show('Não há requisição ativa para fechar.',false);return;}
+  const pend=ROWS.filter(r=>eff(r)==='no').length;
+  if(!confirm(`Fechar e baixar a requisição ${REQINFO}?`+(pend?`\n\n⚠️ Ainda há ${pend} item(ns) FALTANDO.`:'\n\nTodos os itens foram comprados. 🎉')))return;
+  await salvar(true);
+  try{const r=await fetch(SB+'/rest/v1/requisicoes?id=eq.'+REQID,{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({status:'concluida'})});
+    if(r.ok){show('🔒 Requisição baixada. Carregando a próxima pendente…',true);setTimeout(load,700);}else show('Falha ao fechar ('+r.status+').',false);
+  }catch(e){show('Falha ao fechar a requisição.',false);}
+}
+async function verBaixadas(){
+  const mc=el('mainCard'),bb=el('baixadasBox');
+  VIEW=VIEW==='baixadas'?'gestao':'baixadas';
+  if(VIEW==='gestao'){bb.style.display='none';mc.style.display='';return;}
+  let rows=[];try{rows=await (await fetch(SB+'/rest/v1/requisicoes?loja=eq.'+encodeURIComponent(LOJA)+'&status=eq.concluida&order=numero.desc&select=id,numero,responsavel_nome,created_at,updated_at',{headers:H})).json();}catch(e){}
+  const body=(rows||[]).map(q=>`<tr><td style="font-weight:700;color:var(--v)">REQ-${String(q.numero).padStart(4,'0')}</td><td>${esc(q.responsavel_nome||'—')}</td><td class="q">${dmy(q.created_at)}</td><td class="q">${dmy(q.updated_at)}</td><td><a href="requisicao.html?id=${q.id}" target="_blank" style="color:var(--v);font-weight:700">ver</a></td><td><button class="btn" style="padding:4px 10px;background:#fff;color:#374151;border:1px solid #cbd5e1" onclick="reabrir('${q.id}')">↩︎ Reabrir</button></td></tr>`).join('')||'<tr><td colspan="6" style="padding:16px;text-align:center;color:#6b7280">Nenhuma requisição baixada nesta loja.</td></tr>';
+  bb.innerHTML=`<table style="min-width:0"><thead><tr><th>Requisição</th><th>Solicitante</th><th>Criada</th><th>Baixada</th><th>Ver</th><th></th></tr></thead><tbody>${body}</tbody></table>`;
+  mc.style.display='none';bb.style.display='';el('foot').textContent=LOJA+' · '+(rows||[]).length+' requisição(ões) baixada(s)';
+}
+async function reabrir(id){ if(!confirm('Reabrir esta requisição? Ela volta para a gestão ativa.'))return; try{await fetch(SB+'/rest/v1/requisicoes?id=eq.'+id,{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({status:'enviada'})});}catch(e){} VIEW='gestao'; load(); }
 function gerarPDF(){
   try{const J=window.jspdf&&window.jspdf.jsPDF;if(!J){show('PDF carregando, tente de novo.',false);return;}
     const doc=new J({orientation:'landscape',unit:'pt',format:'a4'});
@@ -185,8 +221,8 @@ function gerarPDF(){
     doc.setFontSize(9);doc.setTextColor(120);doc.text('Gerado em '+new Date().toLocaleString('pt-BR')+'  ·  Total comprado no período: '+brl(TOTALPED),40,50);
     const stTxt=s=>s==='ok'?'Comprado':s==='wr'?'Verificar':'Faltando';
     const list=ROWS.filter(r=>!FILTRO||eff(r)===FILTRO);
-    const body=list.map(r=>[r.produto||'',((r.qtd||'')+' '+(r.un||'')).trim(),stTxt(eff(r)),compEm(r),valorC(r)?brl(valorC(r)):'',r.forn||'']);
-    doc.autoTable({head:[['Produto','Qtd','Status','Comprado em','Valor','Fornecedor p/ comprar']],body,startY:64,styles:{fontSize:8,cellPadding:3,overflow:'linebreak'},headStyles:{fillColor:[46,125,52],textColor:255},columnStyles:{0:{cellWidth:200}},didParseCell:d=>{if(d.section==='body'&&d.column.index===2){const t=d.cell.raw;if(t==='Faltando')d.cell.styles.textColor=[220,38,38];else if(t==='Comprado')d.cell.styles.textColor=[21,128,61];else if(t==='Verificar')d.cell.styles.textColor=[180,83,9];}}});
+    const body=list.map(r=>[r.produto||'',((r.qtd||'')+' '+(r.un||'')).trim(),stTxt(eff(r)),r.forn||'',r.vTotal?('R$ '+r.vTotal):'',r.dataPed||'']);
+    doc.autoTable({head:[['Produto','Qtd','Status','Fornecedor','Valor total','Data pedido']],body,startY:64,styles:{fontSize:8,cellPadding:3,overflow:'linebreak'},headStyles:{fillColor:[46,125,52],textColor:255},columnStyles:{0:{cellWidth:200}},didParseCell:d=>{if(d.section==='body'&&d.column.index===2){const t=d.cell.raw;if(t==='Faltando')d.cell.styles.textColor=[220,38,38];else if(t==='Comprado')d.cell.styles.textColor=[21,128,61];else if(t==='Verificar')d.cell.styles.textColor=[180,83,9];}}});
     doc.save('lista-compras-'+SUF[LOJA]+'-'+new Date().toISOString().slice(0,10)+'.pdf');
     show('✅ PDF gerado (veja os downloads).',true);
   }catch(e){show('Erro no PDF: '+e.message,false);}
@@ -199,7 +235,7 @@ async function disparar(){
   if(!confirm(`Disparar ${gs.length} pedido(s) pela ${nomeLoja(LOJA)}?`))return;
   await salvar();const P=el('prog');P.style.display='block';P.innerHTML='<b>Disparando…</b>';let ok=0,fail=0,prev=-1;
   for(let i=0;i<gs.length;i++){const x=gs[i];let fone=x.wpp;if(fone.length<=11)fone='55'+fone;
-    const linhas=x.itens.map(it=>`• ${it.qtd||''} ${it.un||''} — *${it.produto}*`+(String(it.preco).trim()?` — ${brl(it.preco)}`:'')).join('\n');
+    const linhas=x.itens.map(it=>`• ${it.qtd||''} ${it.un||''} — *${it.produto}*`+(String(it.vUnit||'').trim()?` — ${brl(it.vUnit)}`:'')).join('\n');
     const msg=`Olá, ${x.forn}! 👋 Aqui é da *${nomeLoja(LOJA)}*.\n\nSegue nosso *pedido de compra*:\n${linhas}\n\nObrigado! 💚`;
     try{const r=await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:fone,message:msg})});
       if(r.ok){ok++;P.innerHTML+=`<div class="ln">✅ ${esc(x.forn)} (${x.itens.length} itens)</div>`;}else{fail++;P.innerHTML+=`<div class="ln">❌ ${esc(x.forn)} — HTTP ${r.status}</div>`;}}
