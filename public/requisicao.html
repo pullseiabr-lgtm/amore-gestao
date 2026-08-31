@@ -66,6 +66,9 @@ async function run(){
   if(!req){document.getElementById('app').innerHTML='<div class="msg">Requisição não encontrada.</div>';return;}
   const num='REQ-'+String(req.numero||0).padStart(4,'0');
   const lojaLabel={'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'}[req.loja]||req.loja;
+  const flow=/flow/i.test(req.loja||''); const MARCA=flow?'Flow':'Amore';
+  const LOGO_FLOW='<svg viewBox="0 0 300 60" xmlns="http://www.w3.org/2000/svg" style="height:26px;width:auto" role="img" aria-label="Flow"><text x="0" y="46" font-family="system-ui,Segoe UI,sans-serif" font-weight="800" font-size="50" letter-spacing="-2" fill="#2E7D34">FLO</text><path d="M118 12 C142 12 134 46 158 46 C182 46 174 12 198 12 C222 12 214 46 238 46 C262 46 266 14 278 14" fill="none" stroke="#2E7D34" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  if(flow){ document.documentElement.style.setProperty('--vinho','#2E7D34'); }
 
   const byCat={}; itens.forEach(i=>{const c=i.categoria||'Outros';(byCat[c]=byCat[c]||[]).push(i);});
   const cats=Object.keys(byCat).sort((a,b)=>{const ia=ORD.indexOf(a),ib=ORD.indexOf(b);return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b);});
@@ -81,7 +84,8 @@ async function run(){
 
   document.getElementById('app').innerHTML=
    `<header class="top"><div>`+
-     `<div class="eyebrow">Painel Amore · Requisição de Compra</div>`+
+     (flow?`<div style="margin-bottom:6px">${LOGO_FLOW}</div>`:'')+
+     `<div class="eyebrow">Painel ${MARCA} · Requisição de Compra</div>`+
      `<h1>${num}</h1>`+
      `<div class="sub">${esc(lojaLabel)} · Solicitante: <b>${esc(req.responsavel_nome||req.created_by||'—')}</b> · ${dDMY(req.created_at)}</div>`+
      `<span class="badge">${esc(STATUS[req.status]||req.status||'—')}</span>`+
@@ -94,7 +98,7 @@ async function run(){
    `</div>`+
    (req.observacoes?`<div style="background:color-mix(in srgb,var(--vinho) 5%,var(--card));border:1px solid var(--border);border-left:4px solid var(--vinho);border-radius:12px;padding:12px 15px;font-size:13.5px;margin-bottom:6px">📝 ${esc(req.observacoes)}</div>`:'')+
    secoes+
-   `<div class="foot">Requisição gerada no Painel Amore para cotação com os fornecedores. ${num} · ${esc(lojaLabel)} · ${new Date().toLocaleString('pt-BR')}</div>`;
+   `<div class="foot">Requisição gerada no Painel ${MARCA} para cotação com os fornecedores. ${num} · ${esc(lojaLabel)} · ${new Date().toLocaleString('pt-BR')}</div>`;
   document.title=`${num} — ${lojaLabel} — Requisição`;
 }
 run().catch(function(e){document.getElementById('app').innerHTML='<div class="msg">Erro ao carregar: '+esc(e&&e.message||e)+'</div>';});
