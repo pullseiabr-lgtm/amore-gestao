@@ -73,9 +73,9 @@
     <button class="btn btn-fire" onclick="disparar()">📲 Disparar faltantes</button>
   </div>
   <div class="card"><table><thead><tr>
-    <th>Produto solicitado</th><th>Qtd</th><th>Status</th><th>✔</th><th>Comprado em</th><th>Valor comprado</th>
-    <th class="ed">Fornecedor p/ comprar</th><th class="ed">WhatsApp</th><th class="ed">Preço un.</th>
-  </tr></thead><tbody id="tb"><tr><td colspan="9" style="padding:20px;text-align:center;color:#6b7280">Carregando…</td></tr></tbody></table></div>
+    <th>Produto solicitado</th><th>Qtd</th><th>Status</th><th>Valor unit.</th><th>Valor total</th><th>Fornecedor</th>
+    <th>Entrega</th><th>Pedido</th><th>Data pedido</th><th>Fez o pedido</th><th class="ed">WhatsApp</th><th>✔</th>
+  </tr></thead><tbody id="tb"><tr><td colspan="12" style="padding:20px;text-align:center;color:#6b7280">Carregando…</td></tr></tbody></table></div>
   <div class="msg" id="msg"></div><div class="prog" id="prog"></div><div class="foot" id="foot"></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -92,6 +92,8 @@ const STOP=new Set(['de','do','da','com','sem','em','kg','g','l','ml','un','und'
 const toks=s=>norm(s).split(' ').filter(w=>w.length>=3&&!STOP.has(w)&&!/^\d+$/.test(w));
 const nb=n=>Number(String(n).replace(',','.'))||0;
 const brl=n=>'R$ '+nb(n).toFixed(2).replace('.',',');
+const dmy=s=>{if(!s)return '';const p=String(s).slice(0,10).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:String(s);};
+const diasAtras=s=>{if(!s)return null;const d=new Date(String(s).slice(0,10));if(isNaN(d))return null;return Math.floor((Date.now()-d.getTime())/864e5);};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
 const nomeLoja=l=>({'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'})[l]||l;
 function show(m,ok){const e=el('msg');e.textContent=m;e.className='msg '+(ok?'ok':'err');}
@@ -122,7 +124,7 @@ async function load(){
   OVER=ov.map||{};
   const doL=(ped||[]).filter(r=>r.valor&&lojaMatch(r.valor.loja,LOJA));
   TOTALPED=doL.reduce((s,r)=>s+(Number(r.valor.total)||0),0);
-  COMPRADOS=[];for(const r of doL)for(const it of (r.valor.itens||[])){if(/^desconto$|^frete|^adicional/i.test(it.produto||''))continue;COMPRADOS.push({fornecedor:r.valor.fornecedor,produto:it.produto,qtd:it.qtd,un:it.un,subtotal:Number(it.subtotal)||0,norm:norm(it.produto)});}
+  COMPRADOS=[];for(const r of doL)for(const it of (r.valor.itens||[])){if(/^desconto$|^frete|^adicional/i.test(it.produto||''))continue;COMPRADOS.push({fornecedor:r.valor.fornecedor,produto:it.produto,qtd:it.qtd,un:it.un,subtotal:Number(it.subtotal)||0,preco:Number(it.preco)||0,entrega:r.valor.janela_entrega||r.valor.data||'',dataPedido:r.valor.em||r.valor.data||'',comprador:r.valor.created_by||'',chave:r.chave,recebido:!!r.valor.recebimento,norm:norm(it.produto)});}
   compute();render();
 }
 function matchOne(prod){const st=toks(prod);if(!st.length)return{status:'no'};const main=st.slice().sort((a,b)=>b.length-a.length)[0];let best=null,bs=0,qsum=0,vsum=0,forns=new Set();for(const c of COMPRADOS){if(!c.norm.includes(main))continue;let sc=0;for(const t of st)if(c.norm.includes(t))sc++;if(sc>0){qsum+=Number(c.qtd)||0;vsum+=c.subtotal;forns.add(c.fornecedor);}if(sc>bs){bs=sc;best=c;}}if(!best)return{status:'no'};return{status:bs>=st.length?'ok':'wr',best,qsum,vsum,forns:[...forns]};}
@@ -132,6 +134,7 @@ function compEm(r){return r.compradoEm!=null?r.compradoEm:(r.m.forns?r.m.forns.j
 function valorC(r){return r.valor!=null&&r.valor!==''?nb(r.valor):(r.m.vsum||0);}
 function setF(f){FILTRO=f;[...document.querySelectorAll('#seg button')].forEach(b=>b.classList.toggle('on',b.dataset.f===f));render();}
 function render(){
+  const sub=document.querySelector('.hdr .sub'); if(sub) sub.textContent=(REQINFO?'Requisição de hoje: '+REQINFO:'Sem requisição para esta loja')+' × Pedidos — o que já comprou e o que falta';
   const nOk=ROWS.filter(r=>eff(r)==='ok').length,nWr=ROWS.filter(r=>eff(r)==='wr').length,nNo=ROWS.filter(r=>eff(r)==='no').length;
   el('kpis').innerHTML=`<div class="kpi"><div class="n">${ROWS.length}</div><div class="l">Solicitados</div></div><div class="kpi ok"><div class="n">${nOk}</div><div class="l">Comprados</div></div><div class="kpi wr"><div class="n">${nWr}</div><div class="l">Verificar</div></div><div class="kpi no"><div class="n">${nNo}</div><div class="l">Faltando</div></div><div class="kpi tt"><div class="n">${brl(TOTALPED)}</div><div class="l">Total comprado (período)</div></div>`;
   const falt=ROWS.filter(r=>eff(r)==='no');
@@ -141,18 +144,28 @@ function render(){
   const badge=s=>s==='ok'?'<span class="st ok">✅ Comprado</span>':s==='wr'?'<span class="st wr">⚠️ Verificar</span>':'<span class="st no">❌ Faltando</span>';
   let cur='',html='';
   for(const r of list){const gi=ROWS.indexOf(r);
-    if((r.categoria||'')!==cur){cur=r.categoria||'';html+=`<tr class="cat"><td colspan="9">${esc(cur||'—')}</td></tr>`;}
+    if((r.categoria||'')!==cur){cur=r.categoria||'';html+=`<tr class="cat"><td colspan="12">${esc(cur||'—')}</td></tr>`;}
+    const b=r.m.best||{}; const comprado=eff(r)!=='no';
+    const vUnit=b.preco?brl(b.preco):''; const vTot=r.valor!=null&&r.valor!==''?brl(r.valor):(r.m.vsum?brl(r.m.vsum):'');
+    const forn=comprado?(r.m.forns&&r.m.forns.length?r.m.forns.join(', '):''):'';
+    const entrega=b.entrega?dmy(b.entrega):''; const link=b.chave?('pedido.html?p='+String(b.chave).replace(/^pedido_/,'')):'';
+    const dias=diasAtras(b.dataPedido); const dp=b.dataPedido?dmy(b.dataPedido):'';
+    const dpCell=dp?(dias!=null&&dias>7?`<span style="color:#B45309" title="pedido com ${dias} dias — pode ser antigo">${dp} ⏳</span>`:`<span style="color:#15803D" title="pedido recente">${dp}</span>`):'';
+    const conf=b.recebido?' <span class="st ok" style="font-size:9px;padding:1px 6px">✓ confirmado</span>':'';
     html+=`<tr>
-      <td>${esc(r.produto)}</td><td class="q">${esc(r.qtd)} ${esc(r.un)}</td>
+      <td>${esc(r.produto)}${conf}</td><td class="q">${esc(r.qtd)} ${esc(r.un)}</td>
       <td>${badge(eff(r))}${r.manual!=null?' <span class="q">(man.)</span>':''}</td>
-      <td style="text-align:center"><input type="checkbox" ${eff(r)==='ok'?'checked':''} onchange="setComprado(${gi},this.checked)" title="Já comprado"></td>
-      <td><input class="cin" value="${esc(compEm(r))}" onchange="ov(${gi},'compradoEm',this.value)" placeholder="fornecedor"></td>
-      <td><input class="val" value="${r.valor!=null&&r.valor!==''?esc(r.valor):(r.m.vsum?r.m.vsum.toFixed(2).replace('.',','):'')}" onchange="ov(${gi},'valor',this.value)" placeholder="0,00" inputmode="decimal"></td>
-      <td class="ed"><input value="${esc(r.forn)}" onchange="ov(${gi},'fornecedor',this.value)" placeholder="fornecedor"></td>
-      <td class="ed"><input class="wpp" value="${esc(r.wpp)}" onchange="ov(${gi},'whatsapp',this.value)" placeholder="DDD+nº" inputmode="numeric"></td>
-      <td class="ed"><input class="pri" value="${esc(r.preco)}" onchange="ov(${gi},'preco',this.value)" placeholder="0,00" inputmode="decimal"></td>
+      <td class="q">${vUnit}</td>
+      <td class="q">${vTot}</td>
+      <td>${comprado?esc(forn):`<input value="${esc(r.forn)}" onchange="ov(${gi},'fornecedor',this.value)" placeholder="fornecedor">`}</td>
+      <td class="q">${entrega}</td>
+      <td>${link?`<a href="${link}" target="_blank" style="color:var(--v);font-weight:700">ver</a>`:''}</td>
+      <td class="q">${dpCell}</td>
+      <td>${esc(b.comprador||'')}</td>
+      <td class="ed">${comprado?'':`<input class="wpp" value="${esc(r.wpp)}" onchange="ov(${gi},'whatsapp',this.value)" placeholder="DDD+nº" inputmode="numeric">`}</td>
+      <td style="text-align:center"><input type="checkbox" ${eff(r)==='ok'?'checked':''} onchange="setComprado(${gi},this.checked)" title="Marcar como comprado / dar baixa"></td>
     </tr>`;}
-  el('tb').innerHTML=html||'<tr><td colspan="9" style="padding:20px;text-align:center;color:#6b7280">Nenhum item neste filtro.</td></tr>';
+  el('tb').innerHTML=html||'<tr><td colspan="12" style="padding:20px;text-align:center;color:#6b7280">Nenhum item neste filtro.</td></tr>';
   const prontos=new Set(ROWS.filter(r=>eff(r)!=='ok'&&(r.wpp||'').replace(/\D/g,'').length>=10&&r.forn.trim()).map(r=>r.forn.trim().toLowerCase()));
   el('foot').textContent=`${REQINFO?REQINFO+' · ':''}${LOJA} · ${ROWS.length} solicitados · ${nNo} faltando · total comprado ${brl(TOTALPED)} · ${prontos.size} fornecedor(es) p/ disparo`;
 }
