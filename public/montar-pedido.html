@@ -49,7 +49,7 @@
 <body>
 <div class="wrap">
   <div class="hdr">
-    <div><h1>🛒 Gestão da Lista de Compras</h1><div class="sub">Requisição macro × Pedidos — comprado, valor e o que falta</div></div>
+    <div><h1>🛒 Gestão da Lista de Compras</h1><div class="sub">Requisição de hoje × Pedidos de hoje — o que já comprou e o que falta</div></div>
     <div class="lojasel">
       <select id="loja" onchange="trocaLoja()">
         <option value="Flow CD">Flow CD</option>
@@ -68,7 +68,7 @@
       <button data-f="wr" onclick="setF('wr')">⚠️ Verificar</button>
       <button data-f="ok" onclick="setF('ok')">✅ Comprados</button>
     </span>
-    <button class="btn btn-save" onclick="salvar()">💾 Salvar</button>
+    <button class="btn btn-save" onclick="salvar()">💾 Salvar / dar baixa</button>
     <button class="btn btn-pdf" onclick="gerarPDF()">📄 Gerar PDF</button>
     <button class="btn btn-fire" onclick="disparar()">📲 Disparar faltantes</button>
   </div>
@@ -96,15 +96,30 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));const rnd=(a,b)=>a+Math.floor(M
 const nomeLoja=l=>({'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'})[l]||l;
 function show(m,ok){const e=el('msg');e.textContent=m;e.className='msg '+(ok?'ok':'err');}
 function lojaMatch(pedLoja,sel){pedLoja=pedLoja||'';if(sel==='Flow CD')return /flow/i.test(pedLoja);if(sel==='Amore CD')return pedLoja==='Amore CD'||/amore costa dourada/i.test(pedLoja);if(sel==='Amore Paiva')return pedLoja==='Amore Paiva';return false;}
-let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],TOTALPED=0,FILTRO='',ROWS=[];
+let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],TOTALPED=0,FILTRO='',ROWS=[],REQNUM=null,REQINFO='',OVKEY='';
 
 function trocaLoja(){LOJA=el('loja').value;load();}
 async function load(){
-  const suf=SUF[LOJA];let sol={},ped=[],ov={};
-  try{sol=((await (await fetch(SB+'/rest/v1/app_config?chave=eq.compras_solicitacao_'+suf+'&select=valor',{headers:H})).json())[0]||{}).valor||{};}catch(e){}
+  const suf=SUF[LOJA];let ped=[],ov={},solItens=[];
+  REQNUM=null;REQINFO='';
+  // FONTE = última requisição da loja (requisição de hoje) — tabelas requisicoes/requisicao_itens
+  try{
+    const rs=await (await fetch(SB+'/rest/v1/requisicoes?loja=eq.'+encodeURIComponent(LOJA)+'&order=numero.desc&limit=1&select=id,numero,responsavel_nome,created_at',{headers:H})).json();
+    const rq=rs&&rs[0];
+    if(rq){ REQNUM=rq.numero;
+      REQINFO='REQ-'+String(rq.numero).padStart(4,'0')+(rq.responsavel_nome?' · '+rq.responsavel_nome:'')+(rq.created_at?' · '+String(rq.created_at).slice(0,10).split('-').reverse().join('/'):'');
+      const its=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=eq.'+rq.id+'&select=produto_nome,categoria,quantidade,unidade',{headers:H})).json();
+      solItens=(its||[]).map(i=>({produto:i.produto_nome,qtd:i.quantidade,un:i.unidade,categoria:i.categoria}));
+    }
+  }catch(e){}
+  // fallback: solicitação antiga (app_config) se a loja ainda não tiver requisição
+  if(!solItens.length){ try{ const sol=((await (await fetch(SB+'/rest/v1/app_config?chave=eq.compras_solicitacao_'+suf+'&select=valor',{headers:H})).json())[0]||{}).valor||{}; solItens=sol.itens||[]; }catch(e){} }
+  SOLIC=solItens;
+  // overrides ESCOPADOS por requisição — ao trocar de requisição, a gestão anterior "cai" sozinha
+  OVKEY='compras_overrides_'+suf+(REQNUM?('_req'+REQNUM):'');
   try{ped=await (await fetch(SB+'/rest/v1/app_config?select=chave,valor&chave=like.pedido_*&limit=2000',{headers:H})).json();}catch(e){}
-  try{ov=((await (await fetch(SB+'/rest/v1/app_config?chave=eq.compras_overrides_'+suf+'&select=valor',{headers:H})).json())[0]||{}).valor||{};}catch(e){}
-  SOLIC=sol.itens||[];OVER=ov.map||{};
+  try{ov=((await (await fetch(SB+'/rest/v1/app_config?chave=eq.'+OVKEY+'&select=valor',{headers:H})).json())[0]||{}).valor||{};}catch(e){}
+  OVER=ov.map||{};
   const doL=(ped||[]).filter(r=>r.valor&&lojaMatch(r.valor.loja,LOJA));
   TOTALPED=doL.reduce((s,r)=>s+(Number(r.valor.total)||0),0);
   COMPRADOS=[];for(const r of doL)for(const it of (r.valor.itens||[])){if(/^desconto$|^frete|^adicional/i.test(it.produto||''))continue;COMPRADOS.push({fornecedor:r.valor.fornecedor,produto:it.produto,qtd:it.qtd,un:it.un,subtotal:Number(it.subtotal)||0,norm:norm(it.produto)});}
@@ -139,16 +154,16 @@ function render(){
     </tr>`;}
   el('tb').innerHTML=html||'<tr><td colspan="9" style="padding:20px;text-align:center;color:#6b7280">Nenhum item neste filtro.</td></tr>';
   const prontos=new Set(ROWS.filter(r=>eff(r)!=='ok'&&(r.wpp||'').replace(/\D/g,'').length>=10&&r.forn.trim()).map(r=>r.forn.trim().toLowerCase()));
-  el('foot').textContent=`${LOJA} · ${ROWS.length} solicitados · ${nNo} faltando · total comprado ${brl(TOTALPED)} · ${prontos.size} fornecedor(es) p/ disparo`;
+  el('foot').textContent=`${REQINFO?REQINFO+' · ':''}${LOJA} · ${ROWS.length} solicitados · ${nNo} faltando · total comprado ${brl(TOTALPED)} · ${prontos.size} fornecedor(es) p/ disparo`;
 }
 function ov(i,k,v){const map={fornecedor:'forn',whatsapp:'wpp',preco:'preco',compradoEm:'compradoEm',valor:'valor'};ROWS[i][map[k]]=v;}
 function setComprado(i,checked){ROWS[i].manual=checked;render();}
 async function salvar(){const map={};for(const r of ROWS){const o={};if(r.forn)o.fornecedor=r.forn;if(r.wpp)o.whatsapp=r.wpp;if(r.preco)o.preco=r.preco;if(typeof r.manual==='boolean')o.comprado=r.manual;if(r.compradoEm!=null)o.compradoEm=r.compradoEm;if(r.valor!=null&&r.valor!=='')o.valor=r.valor;if(Object.keys(o).length)map[norm(r.produto)]=o;}
-  const chave='compras_overrides_'+SUF[LOJA];
+  const chave=OVKEY||('compras_overrides_'+SUF[LOJA]);
   try{let ex=await fetch(SB+'/rest/v1/app_config?chave=eq.'+chave+'&select=chave',{headers:H}).then(r=>r.json());const body={valor:{map,updated_at:new Date().toISOString()}};let r;
     if(ex&&ex.length)r=await fetch(SB+'/rest/v1/app_config?chave=eq.'+chave,{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify(body)});
     else r=await fetch(SB+'/rest/v1/app_config',{method:'POST',headers:{...H,Prefer:'resolution=merge-duplicates'},body:JSON.stringify({chave,...body})});
-    show(r.ok?'✅ Salvo.':'Falha ao salvar ('+r.status+').',r.ok);}catch(e){show('Falha ao salvar.',false);}
+    if(r.ok){ setF('no'); show('✅ Salvo e baixado. Mostrando o que ainda falta comprar.',true); } else { show('Falha ao salvar ('+r.status+').',false); } }catch(e){show('Falha ao salvar.',false);}
 }
 function gerarPDF(){
   try{const J=window.jspdf&&window.jspdf.jsPDF;if(!J){show('PDF carregando, tente de novo.',false);return;}
