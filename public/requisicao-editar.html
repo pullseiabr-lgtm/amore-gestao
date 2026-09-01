@@ -187,8 +187,9 @@ async function validar(){
   const num='REQ-'+String(REQ.numero).padStart(4,'0');
   try{
     await fetch(SB+'/rest/v1/requisicoes?id=eq.'+ID,{method:'PATCH',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify({status:'aprovada',aprovador_nome:quem,aprovador_at:new Date().toISOString()})});
-    const linkCot='https://painel.amorefood.com.br/?page=cotacao&req='+ID;
-    const msg='✅ *Requisição validada* — '+num+'\n'+(REQ.loja||'')+' · '+esc(REQ.titulo||'')+'\nValidada por: *'+quem+'*\n🧾 '+ITENS.length+' itens\n\n👉 Esdras, abrir para *gerar a cotação* (já abre a requisição no módulo de Cotação):\n'+linkCot;
+    const base='https://painel.amorefood.com.br';
+    const linkCot=base+'/?page=cotacao&req='+ID, linkPed=base+'/?page=pedidos', linkVer=base+'/requisicao.html?id='+ID;
+    const msg='✅ *Requisição validada* — '+num+'\n'+(REQ.loja||'')+' · '+esc(REQ.titulo||'')+'\nValidada por: *'+quem+'*\n🧾 '+ITENS.length+' itens\n\n*Esdras (Compras), escolha o próximo passo:*\n\n📊 Gerar cotação:\n'+linkCot+'\n\n🛒 Gerar pedido (sem cotação):\n'+linkPed+'\n\n📄 Ver requisição:\n'+linkVer;
     await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:ESDRAS,message:msg})});
   }catch(e){}
   const bs='display:inline-block;margin:14px 6px 0;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:700';
