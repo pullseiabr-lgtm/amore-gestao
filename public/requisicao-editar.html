@@ -187,11 +187,17 @@ async function validar(){
   const num='REQ-'+String(REQ.numero).padStart(4,'0');
   try{
     await fetch(SB+'/rest/v1/requisicoes?id=eq.'+ID,{method:'PATCH',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify({status:'aprovada',aprovador_nome:quem,aprovador_at:new Date().toISOString()})});
-    const link='https://painel.amorefood.com.br/requisicao.html?id='+ID;
-    const msg='✅ *Requisição validada* — '+num+'\n'+(REQ.loja||'')+' · '+esc(REQ.titulo||'')+'\nValidada por: *'+quem+'*\n🧾 '+ITENS.length+' itens\n\n👉 Esdras, seguir para *gerar a cotação*.\n'+link;
+    const linkCot='https://painel.amorefood.com.br/?page=cotacao&req='+ID;
+    const msg='✅ *Requisição validada* — '+num+'\n'+(REQ.loja||'')+' · '+esc(REQ.titulo||'')+'\nValidada por: *'+quem+'*\n🧾 '+ITENS.length+' itens\n\n👉 Esdras, abrir para *gerar a cotação* (já abre a requisição no módulo de Cotação):\n'+linkCot;
     await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:ESDRAS,message:msg})});
   }catch(e){}
-  el('app').innerHTML='<div class="done"><div class="big">✅ '+num+' validada!</div><p>Validada por <b>'+esc(quem)+'</b> · '+ITENS.length+' itens. O Esdras foi avisado para gerar a cotação. 📲</p><a href="requisicao.html?id='+ID+'" style="display:inline-block;margin-top:14px;background:var(--v);color:#fff;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700">Ver requisição</a></div>';
+  const bs='display:inline-block;margin:14px 6px 0;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:700';
+  el('app').innerHTML='<div class="done"><div class="big">✅ '+num+' validada!</div><p>Validada por <b>'+esc(quem)+'</b> · '+ITENS.length+' itens. O Esdras foi avisado. 📲</p>'
+    +'<div style="margin-top:8px">'
+    +'<a href="/?page=cotacao&req='+ID+'" style="'+bs+';background:var(--v)">📊 Gerar cotação</a>'
+    +'<a href="/?page=pedidos" style="'+bs+';background:#0369A1">🛒 Gerar pedido (sem cotação)</a>'
+    +'<a href="requisicao.html?id='+ID+'" style="'+bs+';background:#6b7280">Ver requisição</a>'
+    +'</div></div>';
   window.scrollTo({top:0,behavior:'smooth'});
 }
 load();

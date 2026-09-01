@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Search, ArrowLeft, Loader2, RefreshCw, ShoppingCart, Plus, X } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -95,6 +95,16 @@ export default function CotacaoPage() {
     try { setReqs(await fetchRequisicoes(loja).catch(() => [])) } finally { setLoading(false) }
   }, [loja])
   useEffect(() => { load() }, [load])
+
+  // deep-link ?req=<id> (vindo da validação da requisição) → abre a cotação já selecionada, 1x
+  const autoSelDone = useRef(false)
+  useEffect(() => {
+    if (autoSelDone.current || !reqs.length) return
+    const rid = new URLSearchParams(location.search).get('req')
+    if (!rid) { autoSelDone.current = true; return }
+    const f = reqs.find(r => r.id === rid)
+    if (f) { setSel(f); autoSelDone.current = true }
+  }, [reqs])
 
   // mantém a requisição selecionada atualizada após mudanças
   useEffect(() => { if (sel) { const f = reqs.find(r => r.id === sel.id); if (f && f !== sel) setSel(f) } }, [reqs, sel])
