@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Redefinir senha — Amore</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--v:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Poppins',system-ui,sans-serif;background:linear-gradient(160deg,#fff8f4,#ffe9eb);color:var(--text);min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:18px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:26px 22px;width:100%;max-width:400px;box-shadow:0 20px 50px -20px rgba(80,20,25,.25)}
+.logo{width:52px;height:52px;background:var(--v);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:#fff;font-weight:800;font-size:22px}
+h1{font-size:19px;font-weight:800;text-align:center}
+.sub{font-size:12.5px;color:var(--muted);text-align:center;margin:4px 0 18px}
+label{font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:5px}
+.fg{margin-bottom:14px;position:relative}
+input{width:100%;padding:11px 40px 11px 12px;border:1px solid var(--border);border-radius:10px;font:inherit;font-size:14px;background:var(--bg)}
+input:focus{outline:none;border-color:var(--v)}
+.eye{position:absolute;right:10px;top:34px;background:none;border:none;color:var(--muted);cursor:pointer}
+.btn{width:100%;border:none;border-radius:11px;padding:13px;font:inherit;font-weight:800;font-size:15px;color:#fff;background:var(--v);cursor:pointer}
+.btn:disabled{opacity:.55}
+.msg{padding:11px 13px;border-radius:10px;font-size:13px;margin-bottom:12px;display:none}
+.msg.ok{background:#DCFCE7;color:#15803D;display:block}.msg.err{background:#FEE2E2;color:#DC2626;display:block}
+.center{text-align:center;color:var(--muted);font-size:13px;padding:20px 0}
+a.link{display:inline-block;margin-top:16px;color:var(--v);font-weight:700;text-decoration:none}
+.hint{font-size:11px;color:var(--muted);margin-top:-8px;margin-bottom:12px}
+</style>
+</head>
+<body>
+<div class="card" id="app"><div class="center">Validando o link…</div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const LOGIN='https://painel.amorefood.com.br/';
+const app=document.getElementById('app');
+const sb=window.supabase.createClient(SB,ANON,{auth:{detectSessionInUrl:true,persistSession:true,autoRefreshToken:true}});
+let temSessao=false;
+
+function formHTML(){
+  return '<div class="logo">🔑</div><h1>Redefinir senha</h1><div class="sub">Crie uma nova senha para sua conta.</div>'
+  +'<div class="msg" id="msg"></div>'
+  +'<div class="fg"><label>Nova senha</label><input id="p1" type="password" placeholder="mínimo 6 caracteres"><button class="eye" onclick="tog(\'p1\')" type="button">👁</button></div>'
+  +'<div class="fg"><label>Confirmar nova senha</label><input id="p2" type="password" placeholder="repita a senha"><button class="eye" onclick="tog(\'p2\')" type="button">👁</button></div>'
+  +'<button class="btn" id="save" onclick="salvar()">Salvar nova senha</button>';
+}
+function invalido(txt){ app.innerHTML='<div class="logo">🔒</div><h1>Link inválido</h1><div class="sub">'+txt+'</div><div class="center"><a class="link" href="'+LOGIN+'">Voltar ao login</a></div>'; }
+window.tog=id=>{const i=document.getElementById(id);i.type=i.type==='password'?'text':'password';};
+function show(m,ok){const e=document.getElementById('msg');if(!e)return;e.textContent=m;e.className='msg '+(ok?'ok':'err');}
+
+window.salvar=async function(){
+  const p1=document.getElementById('p1').value, p2=document.getElementById('p2').value;
+  if((p1||'').length<6){ show('A senha precisa ter ao menos 6 caracteres.',false); return; }
+  if(p1!==p2){ show('As senhas não conferem.',false); return; }
+  const b=document.getElementById('save'); b.disabled=true; b.textContent='Salvando…';
+  const { error } = await sb.auth.updateUser({ password: p1 });
+  if(error){ b.disabled=false; b.textContent='Salvar nova senha'; show('Não foi possível: '+(error.message||'tente reenviar o link.'),false); return; }
+  try{ await sb.auth.signOut(); }catch(e){}
+  app.innerHTML='<div class="logo" style="background:#15803D">✓</div><h1>Senha alterada!</h1><div class="sub">Sua nova senha já está valendo. Faça login novamente.</div><div class="center"><a class="link" href="'+LOGIN+'">Ir para o login</a></div>';
+};
+
+// A sessão de recuperação chega pelo link do e-mail (evento PASSWORD_RECOVERY / hash da URL)
+sb.auth.onAuthStateChange((event, session)=>{ if(session){ temSessao=true; if(!document.getElementById('p1')) app.innerHTML=formHTML(); } });
+setTimeout(async ()=>{
+  const { data } = await sb.auth.getSession();
+  if(data && data.session){ temSessao=true; app.innerHTML=formHTML(); }
+  else if(!temSessao){ invalido('O link expirou ou já foi usado. Peça um novo em "Esqueci minha senha".'); }
+}, 1400);
+</script>
+</body>
+</html>

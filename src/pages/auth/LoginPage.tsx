@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Home, LogIn, Eye, EyeOff, AlertCircle } from 'lucide-react'
+import { Home, LogIn, Eye, EyeOff, AlertCircle, KeyRound, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
+import { supabase } from '../../lib/supabase'
 
 export default function LoginPage() {
   const { login, demoUsers } = useAuth()
@@ -11,6 +12,8 @@ export default function LoginPage() {
   const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [modo, setModo] = useState<'login' | 'recuperar'>('login')
+  const [okMsg, setOkMsg] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -18,6 +21,21 @@ export default function LoginPage() {
     setLoading(true)
     const err = await login(email, pass)
     if (err) setError(err)
+    setLoading(false)
+  }
+
+  const enviarReset = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(''); setOkMsg('')
+    const em = email.trim().toLowerCase()
+    if (!em) { setError('Informe o e-mail cadastrado.'); return }
+    setLoading(true)
+    try {
+      await supabase.auth.resetPasswordForEmail(em, { redirectTo: `${location.origin}/redefinir-senha.html` })
+      setOkMsg('Se este e-mail estiver cadastrado, enviamos um link para redefinir a senha. Confira sua caixa de entrada (e o spam).')
+    } catch {
+      setOkMsg('Se este e-mail estiver cadastrado, enviamos um link para redefinir a senha.')
+    }
     setLoading(false)
   }
 
@@ -35,6 +53,7 @@ export default function LoginPage() {
           <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Sistema Integrado v5.2</p>
         </div>
 
+        {modo === 'login' ? (
         <form onSubmit={handleSubmit}>
           <div className="fg">
             <label className="fl">E-mail</label>
@@ -61,7 +80,27 @@ export default function LoginPage() {
             <LogIn size={11} />
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
+          <button type="button" onClick={() => { setModo('recuperar'); setError(''); setOkMsg('') }} style={{ width: '100%', marginTop: 10, background: 'none', border: 'none', color: 'var(--bordo)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+            <KeyRound size={13} /> Esqueci minha senha
+          </button>
         </form>
+        ) : (
+        <form onSubmit={enviarReset}>
+          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 12 }}>Digite o e-mail cadastrado. Enviaremos um link para você redefinir a senha.</div>
+          <div className="fg">
+            <label className="fl">E-mail cadastrado</label>
+            <input className="inp" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com" required autoFocus />
+          </div>
+          {error && (<div className="al al-r" style={{ marginBottom: 10 }}><AlertCircle size={13} /><span>{error}</span></div>)}
+          {okMsg && (<div className="al" style={{ marginBottom: 10, background: '#DCFCE7', color: '#15803D', border: '1px solid #86EFAC', borderRadius: 8, padding: '9px 11px', display: 'flex', gap: 6, fontSize: 12.5 }}><span>✅</span><span>{okMsg}</span></div>)}
+          <button className="btn bp" type="submit" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
+            <KeyRound size={12} /> {loading ? 'Enviando...' : 'Enviar link de recuperação'}
+          </button>
+          <button type="button" onClick={() => { setModo('login'); setError(''); setOkMsg('') }} style={{ width: '100%', marginTop: 10, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+            <ArrowLeft size={13} /> Voltar ao login
+          </button>
+        </form>
+        )}
 
         <div style={{ marginTop: 16, padding: '10px 12px', background: 'var(--cream)', borderRadius: 7, border: '1px solid var(--border)' }}>
           <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 700, marginBottom: 6, textTransform: 'uppercase' }}>Contas demo</div>
