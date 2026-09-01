@@ -95,8 +95,8 @@ tr.cat td{background:#f3eef0;color:var(--v);font-weight:800;font-size:11px;text-
 const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
 const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
 const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
-// notificar quando gerar (Esdras = compras). Pode acrescentar mais números.
-const NOTIFICAR=[{nome:'Esdras',fone:'5581992573535'}];
+// notificar quando gerar → Wagner + Esdras recebem para VALIDAR (link editável). Pode acrescentar números.
+const NOTIFICAR=[{nome:'Wagner',fone:'5581994135602'},{nome:'Esdras',fone:'5581992573535'}];
 const $=s=>document.querySelector(s); const el=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const nb=n=>Number(String(n==null?'':n).replace(',','.'))||0;
@@ -206,12 +206,12 @@ async function gerar(){
     const linhas=ITENS.map(it=>({requisicao_id:id,produto_nome:it.produto,categoria:it.categoria||'Outros',quantidade:nb(it.qtd),unidade:it.un,preco_referencia:nb(it.custo)||null,observacoes:it.marca?('Marca: '+it.marca):null,bloqueado:false}));
     const ri=await fetch(SB+'/rest/v1/requisicao_itens',{method:'POST',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify(linhas)});
     if(!ri.ok) throw new Error('itens '+ri.status);
-    const link='https://painel.amorefood.com.br/requisicao.html?id='+id;
+    const link='https://painel.amorefood.com.br/requisicao-editar.html?id='+id;
     const entregaTxt=el('entrega').value?el('entrega').value.split('-').reverse().join('/'):'a definir';
-    // avisa Esdras (e demais cadastrados)
-    const msg='📝 *Nova requisição de compra* — '+loja+'\n'+num+' · '+nome+'\n👤 Solicitante: '+solic+'\n🏷️ Tipo: '+el('tipo').value+' · Prioridade: '+el('prio').value+'\n📅 Entrega: '+entregaTxt+'\n🧾 '+ITENS.length+' itens · 💰 estimado '+brl(total)+'\n\nVer requisição:\n'+link;
+    // avisa Wagner + Esdras para VALIDAR (podem editar: inserir/alterar/excluir antes da cotação)
+    const msg='📝 *Nova requisição para validar* — '+loja+'\n'+num+' · '+nome+'\n👤 Solicitante: '+solic+'\n🏷️ Tipo: '+el('tipo').value+' · Prioridade: '+el('prio').value+'\n📅 Entrega: '+entregaTxt+'\n🧾 '+ITENS.length+' itens · 💰 estimado '+brl(total)+'\n\n✏️ Abrir para *revisar/editar e validar* (depois segue p/ cotação):\n'+link;
     for(const n of NOTIFICAR){ try{ await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:n.fone,message:msg})}); }catch(e){} }
-    el('app').innerHTML='<div class="done"><div class="big">✅ '+num+' gerada!</div><p>Requisição <b>'+esc(nome)+'</b> criada para <b>'+esc(loja)+'</b> por <b>'+esc(solic)+'</b> · '+ITENS.length+' itens · estimado '+brl(total)+'.</p><p style="color:var(--muted);margin-top:6px">Aviso enviado ao Esdras. 📲</p><a class="link" href="'+link+'" target="_blank">Abrir requisição</a> <a class="link" href="requisicao-nova.html" style="background:#6b7280">Nova requisição</a></div>';
+    el('app').innerHTML='<div class="done"><div class="big">✅ '+num+' gerada!</div><p>Requisição <b>'+esc(nome)+'</b> criada para <b>'+esc(loja)+'</b> por <b>'+esc(solic)+'</b> · '+ITENS.length+' itens · estimado '+brl(total)+'.</p><p style="color:var(--muted);margin-top:6px">Enviada para Wagner e Esdras validarem. 📲</p><a class="link" href="'+link+'" target="_blank">Abrir para validar</a> <a class="link" href="requisicao-nova.html" style="background:#6b7280">Nova requisição</a></div>';
     window.scrollTo({top:0,behavior:'smooth'});
   }catch(e){ btn.disabled=false; btn.textContent='✅ Gerar requisição'; show('Erro ao gerar: '+e.message,false); }
 }

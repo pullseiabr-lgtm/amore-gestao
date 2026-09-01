@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Validar Requisição — Amore</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--v:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:var(--text);padding:14px;line-height:1.45}
+.wrap{max-width:1000px;margin:0 auto}
+.top{border-bottom:2px solid var(--v);padding-bottom:12px;margin-bottom:14px}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--v);font-weight:700}
+h1{font-size:22px;margin-top:4px}.sub{color:var(--muted);font-size:13px;margin-top:3px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+label{font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px}
+input,select{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:10px;font:inherit;font-size:14px;background:var(--bg)}
+input:focus,select:focus{outline:none;border-color:var(--v)}
+.searchwrap{position:relative}
+.results{position:absolute;z-index:20;left:0;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 30px -10px rgba(0,0,0,.2);max-height:300px;overflow:auto;display:none}
+.results.show{display:block}
+.ritem{padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13.5px;display:flex;justify-content:space-between;gap:10px}
+.ritem:hover{background:var(--bg)}.ritem .cod{color:var(--muted);font-size:11.5px}.ritem.new{color:var(--v);font-weight:700}
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:12px}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
+th{text-align:left;color:var(--muted);font-size:10.5px;text-transform:uppercase;padding:9px 8px;border-bottom:1px solid var(--border);background:#fbf7f7;white-space:nowrap}
+td{padding:6px 8px;border-bottom:1px solid #f4eeef;vertical-align:middle}
+td input,td select{padding:7px 8px;font-size:13px}
+tr.cat td{background:#f3eef0;color:var(--v);font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding:7px 10px}
+.num{width:70px}.und{width:118px}.mrc{width:110px}.catsel{width:130px;font-size:11.5px;padding:6px}
+.rm{background:none;border:none;color:#DC2626;cursor:pointer;font-size:16px}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}
+.btn{border:none;border-radius:12px;padding:12px 20px;font:inherit;font-weight:800;font-size:14px;color:#fff;background:var(--ok);cursor:pointer}
+.btn.sec{background:#0369A1}.btn:disabled{opacity:.55}
+.msg{padding:11px 14px;border-radius:10px;margin-top:10px;font-size:13.5px;display:none}
+.msg.ok{background:#DCFCE7;color:#15803D;display:block}.msg.err{background:#FEE2E2;color:#DC2626;display:block}
+.empty{padding:16px;text-align:center;color:var(--muted)}
+.hint{font-size:11.5px;color:var(--muted);margin-top:4px}
+.done{text-align:center;padding:40px 16px}.done .big{font-size:38px;font-weight:800;color:var(--ok);margin-bottom:8px}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:#FEF3C7;color:#92400E;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="card"><div class="empty">Carregando requisição…</div></div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+const ESDRAS='5581992573535';
+const $=s=>document.querySelector(s); const el=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const nb=n=>Number(String(n==null?'':n).replace(',','.'))||0;
+const brl=n=>'R$ '+nb(n).toFixed(2).replace('.',',');
+const norm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+const dmy=s=>{if(!s)return '';const p=String(s).slice(0,10).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:s;};
+const UNIDS=['Unidade(s)','kg','g','L','ml','Caixa','Pacote','Fardo','Bandeja','Maço(s)','Saco','Balde','Rolo','Cápsula','Barra','Penca(s)'];
+const CATS=['Hortifruti','Carnes e Pescados','Laticínios e Frios','Congelados','Mercearia','Secos e Grãos','Padaria e Confeitaria','Temperos e Condimentos','Bebidas','Limpeza','Descartáveis','Higiene','Material Sushi','Outros'];
+function classify(n){ if(!n)return '';
+  if(/(hortifr|legume|verdura|fruta|folhagem|couve|tomate|cebola|batata|cenoura|alface|banana|laranja|abacaxi|manga|limao|beterraba|pepino|piment[aã]o|repolho|melancia|melao|uva|abobrinha|chuchu|salsa|coentro|macaxeira)/.test(n))return 'Hortifruti';
+  if(/(carne|bovin|frango|aves|su[ií]no|pescado|peixe|frutos do mar|linguado|tilapia|salmao|bacon|charque|calabresa|linguica|peito de peru|presunto)/.test(n))return 'Carnes e Pescados';
+  if(/(latic|queijo|leite liquido|leite 1|leite l|iogurte|requeij|manteiga|margarina|frios|mussarela|muçarela|provolone|creme de leite)/.test(n))return 'Laticínios e Frios';
+  if(/(congelad|sorvete|batata rustica|nuggets|empanad)/.test(n))return 'Congelados';
+  if(/(bebida|refri|refrigerante|cerveja|suco|\bagua\b|\bágua\b|energetic|chopp|vinho|whisky|drink|tonica|monster|coca|sprite|fanta|guarana|del valle|cha leao|stella|heineken|kuat|brahma)/.test(n))return 'Bebidas';
+  if(/(seco|gr[aã]o|cereal|arroz|feij[aã]o|massa|macarr|espaguet|farinha|a[çc]ucar|fuba|flocos de milho|leite em po|leite em pó)/.test(n))return 'Secos e Grãos';
+  if(/(padaria|confeit|\bdoce\b|chocolate|nutella|avel[aã]|pacoca|granola)/.test(n))return 'Padaria e Confeitaria';
+  if(/(tempero|condiment|molho|shoyu|vinagre|azeite|\bsal\b|pimenta|gergelim|hondashi|extrato de tomate|mostarda|maionese|ketchup|hibisco|cominho|oregano)/.test(n))return 'Temperos e Condimentos';
+  if(/(limpeza|detergente|sanit|alcool|álcool|bombril|desinfet|agua sanitaria|mop|\brodo\b|bucha)/.test(n))return 'Limpeza';
+  if(/(descart|embalag|copo|saco de lixo|guardanapo|talher|canudo|luva|sacola|touca|filme|\bcolher\b|\bgarfo\b|\bfaca\b|rolo de porcao|papel toalha)/.test(n))return 'Descartáveis';
+  if(/(higiene|papel higi|sabonete)/.test(n))return 'Higiene';
+  if(/(sushi|nori|hashi|wasabi|gengibre|arroz japones|arroz sushi)/.test(n))return 'Material Sushi';
+  return ''; }
+function mapCat(raw,nome){ let c=classify(norm(raw)); if(!c)c=classify(norm(nome)); return c||'Mercearia'; }
+
+const q=new URLSearchParams(location.search); const ID=(q.get('id')||'').trim();
+let REQ=null, ITENS=[], CAT=[];
+
+async function carregarCatalogo(){
+  try{ const rows=await (await fetch(SB+'/rest/v1/estoque_produtos?select=nome,gramatura,marca,codigo_barras,codigo_fornecedor,preco_unitario,categoria&ativo=eq.true&limit=8000',{headers:H})).json();
+    const seen={}; CAT=[];
+    for(const r of (rows||[])){ const nm=norm(r.nome); if(!nm)continue; const custo=Number(r.preco_unitario)||0; const k=nm+'#'+custo; if(seen[k])continue; seen[k]=1;
+      CAT.push({nome:r.nome,un:r.gramatura||'Unidade(s)',marca:r.marca||'',codigo:r.codigo_barras||r.codigo_fornecedor||'',custo:Math.round(custo*100)/100,categoria:mapCat(r.categoria,r.nome)}); }
+    CAT.sort((a,b)=>(b.custo>0)-(a.custo>0)||a.nome.localeCompare(b.nome));
+  }catch(e){}
+}
+
+async function load(){
+  if(!ID){ el('app').innerHTML='<div class="card"><div class="empty">Link inválido — falta o id da requisição.</div></div>'; return; }
+  await carregarCatalogo();
+  const rows=await (await fetch(SB+'/rest/v1/requisicoes?id=eq.'+ID+'&select=*',{headers:H})).json();
+  REQ=rows&&rows[0];
+  if(!REQ){ el('app').innerHTML='<div class="card"><div class="empty">Requisição não encontrada.</div></div>'; return; }
+  const its=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=eq.'+ID+'&select=id,produto_nome,categoria,quantidade,unidade,preco_referencia,observacoes',{headers:H})).json();
+  ITENS=(its||[]).map(i=>({id:i.id,produto:i.produto_nome,categoria:(CATS.includes(i.categoria)?i.categoria:mapCat(i.categoria,i.produto_nome)),qtd:i.quantidade,un:i.unidade||'Unidade(s)',custo:Number(i.preco_referencia)||0,marca:(i.observacoes||'').replace(/^Marca:\s*/,'')||''}));
+  renderPage();
+}
+
+function renderPage(){
+  const flow=/flow/i.test(REQ.loja||''); document.documentElement.style.setProperty('--v',flow?'#2E7D34':'#8B1212');
+  const num='REQ-'+String(REQ.numero||0).padStart(4,'0');
+  const jaAprovada=/aprovad/i.test(REQ.status||'');
+  el('app').innerHTML=`
+    <div class="top"><div class="eyebrow">Painel ${flow?'Flow':'Amore'} · Validar Requisição</div>
+      <h1>${num} — ${esc(REQ.titulo||'Requisição')}</h1>
+      <div class="sub">${esc(REQ.loja||'')} · Solicitante: <b>${esc(REQ.responsavel_nome||REQ.created_by||'—')}</b> · ${dmy(REQ.created_at)}</div>
+      ${jaAprovada?'<span class="badge" style="background:#DCFCE7;color:#15803D">✅ Já validada</span>':'<span class="badge">Aguardando validação de Wagner/Esdras</span>'}
+    </div>
+    <div class="card"><div class="grid">
+      <div><label>Prioridade</label><select id="prio">${['baixa','media','alta','urgente'].map(p=>`<option value="${p}" ${REQ.prioridade===p?'selected':''}>${p[0].toUpperCase()+p.slice(1)}</option>`).join('')}</select></div>
+      <div><label>Data de entrega</label><input id="entrega" type="date" value="${(REQ.prazo_entrega||'').slice(0,10)}"></div>
+      <div><label>Tipo</label><input id="tipo" value="${esc((REQ.observacoes||'').replace(/^Tipo:\s*/,''))}" placeholder="Tipo"></div>
+    </div></div>
+    <div class="card">
+      <label>Inserir produto (nome ou código)</label>
+      <div class="searchwrap"><input id="busca" placeholder="Buscar produto para adicionar…" autocomplete="off"><div class="results" id="results"></div></div>
+      <div class="hint">${CAT.length} produtos no catálogo · você pode aumentar/reduzir quantidade e excluir itens abaixo</div>
+    </div>
+    <div class="card">
+      <div class="tw"><table><thead><tr><th>Categoria</th><th>Produto</th><th>Marca</th><th>Unidade</th><th>Qtd</th><th></th></tr></thead><tbody id="itens"></tbody></table></div>
+      <div class="foot">
+        <div style="font-size:13px;color:var(--muted)">Itens: <b id="cont">0</b> · estimado <b id="tot">R$ 0,00</b></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <select id="quem" style="width:auto"><option value="">Validado por…</option><option>Wagner</option><option>Esdras</option></select>
+          <button class="btn sec" onclick="salvar(false)">💾 Salvar alterações</button>
+          <button class="btn" onclick="validar()">✅ Validar e enviar p/ cotação</button>
+        </div>
+      </div>
+      <div class="msg" id="msg"></div>
+    </div>`;
+  const b=el('busca');
+  b.addEventListener('input',()=>{ const query=norm(b.value); const res=el('results'); if(query.length<2){res.classList.remove('show');return;}
+    const hits=CAT.filter(p=>norm(p.nome).includes(query)||(p.codigo&&norm(p.codigo).includes(query))).slice(0,12);
+    let html=hits.map(p=>`<div class="ritem" onclick="addCat(${CAT.indexOf(p)})"><span>${esc(p.nome)} <span class="cod">${p.un}${p.custo?' · '+brl(p.custo):''}</span></span><span class="cod">${esc(p.codigo||'')}</span></div>`).join('');
+    html+=`<div class="ritem new" onclick="addNovo()">➕ Adicionar novo: "${esc(b.value.trim())}"</div>`;
+    res.innerHTML=html; res.classList.add('show'); });
+  document.addEventListener('click',e=>{ if(!e.target.closest('.searchwrap')){const r=el('results');if(r)r.classList.remove('show');} });
+  render();
+}
+function addCat(i){ const p=CAT[i]; if(!p)return; addItem({produto:p.nome,marca:p.marca,un:p.un,custo:p.custo,categoria:p.categoria,qtd:1}); el('busca').value='';el('results').classList.remove('show');el('busca').focus(); }
+function addNovo(){ const nome=el('busca').value.trim(); if(!nome)return; const un=prompt('Unidade (ex.: kg, Caixa, Unidade(s)):','Unidade(s)')||'Unidade(s)'; addItem({produto:nome,marca:'',un,custo:0,categoria:mapCat('',nome),qtd:1}); el('busca').value='';el('results').classList.remove('show'); }
+function addItem(it){ const ex=ITENS.find(x=>norm(x.produto)===norm(it.produto)); if(ex){ex.qtd=nb(ex.qtd)+1;} else ITENS.push(it); render(); }
+function upd(i,k,v){ ITENS[i][k]=v; if(k==='qtd'||k==='custo'||k==='categoria')render(); }
+function rm(i){ if(!confirm('Excluir "'+ITENS[i].produto+'"?'))return; ITENS.splice(i,1); render(); }
+function render(){
+  const tb=el('itens'); if(!ITENS.length){ tb.innerHTML='<tr><td colspan="6" class="empty">Sem itens. Adicione acima.</td></tr>'; el('cont').textContent='0'; el('tot').textContent='R$ 0,00'; return; }
+  const idx=c=>{const i=CATS.indexOf(c);return i<0?CATS.length:i;};
+  const ordered=ITENS.map((it,i)=>({it,i})).sort((a,b)=>idx(a.it.categoria||'Outros')-idx(b.it.categoria||'Outros'));
+  let cur='',html='',tot=0;
+  for(const o of ordered){ const it=o.it,i=o.i; tot+=nb(it.qtd)*nb(it.custo); const cat=it.categoria||'Outros';
+    if(cat!==cur){cur=cat;const n=ITENS.filter(x=>(x.categoria||'Outros')===cat).length;html+=`<tr class="cat"><td colspan="6">📦 ${esc(cat)} · ${n}</td></tr>`;}
+    const un=UNIDS.concat(UNIDS.includes(it.un)?[]:[it.un]).map(u=>`<option ${u===it.un?'selected':''}>${esc(u)}</option>`).join('');
+    const co=CATS.map(c=>`<option ${c===cat?'selected':''}>${esc(c)}</option>`).join('');
+    html+=`<tr>
+      <td><select class="catsel" onchange="upd(${i},'categoria',this.value)">${co}</select></td>
+      <td><input value="${esc(it.produto)}" onchange="upd(${i},'produto',this.value)" style="width:100%"></td>
+      <td><input class="mrc" value="${esc(it.marca||'')}" onchange="upd(${i},'marca',this.value)" placeholder="marca"></td>
+      <td><select class="und" onchange="upd(${i},'un',this.value)">${un}</select></td>
+      <td><input class="num" value="${esc(it.qtd)}" onchange="upd(${i},'qtd',this.value)" inputmode="decimal"></td>
+      <td><button class="rm" onclick="rm(${i})" title="Excluir">✕</button></td>
+    </tr>`; }
+  tb.innerHTML=html; el('cont').textContent=ITENS.length; el('tot').textContent=brl(tot);
+}
+function show(m,ok){ const e=el('msg'); if(!m){e.className='msg';return;} e.textContent=m; e.className='msg '+(ok?'ok':'err'); }
+
+async function salvar(silent){
+  if(!ITENS.length){ show('A requisição precisa ter ao menos 1 item.',false); return false; }
+  // atualiza cabeçalho
+  const head={prioridade:el('prio').value,prazo_entrega:el('entrega').value||null,observacoes:'Tipo: '+el('tipo').value,total_estimado:Math.round(ITENS.reduce((s,it)=>s+nb(it.qtd)*nb(it.custo),0)*100)/100,updated_at:new Date().toISOString()};
+  try{
+    await fetch(SB+'/rest/v1/requisicoes?id=eq.'+ID,{method:'PATCH',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify(head)});
+    // regrava itens (apaga e reinsere — antes da cotação é seguro)
+    await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=eq.'+ID,{method:'DELETE',headers:Object.assign({},H,{Prefer:'return=minimal'})});
+    const linhas=ITENS.map(it=>({requisicao_id:ID,produto_nome:it.produto,categoria:it.categoria||'Outros',quantidade:nb(it.qtd),unidade:it.un,preco_referencia:nb(it.custo)||null,observacoes:it.marca?('Marca: '+it.marca):null,bloqueado:false}));
+    const r=await fetch(SB+'/rest/v1/requisicao_itens',{method:'POST',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify(linhas)});
+    if(!r.ok) throw new Error('itens '+r.status);
+    if(!silent) show('✅ Alterações salvas.',true);
+    return true;
+  }catch(e){ if(!silent) show('Erro ao salvar: '+e.message,false); return false; }
+}
+
+async function validar(){
+  const quem=el('quem').value; if(!quem){ show('Selecione quem está validando (Wagner ou Esdras).',false); return; }
+  if(!confirm('Validar a requisição '+('REQ-'+String(REQ.numero).padStart(4,'0'))+' e enviar para o Esdras gerar a cotação?'))return;
+  const ok=await salvar(true); if(!ok){ show('Não consegui salvar antes de validar.',false); return; }
+  const num='REQ-'+String(REQ.numero).padStart(4,'0');
+  try{
+    await fetch(SB+'/rest/v1/requisicoes?id=eq.'+ID,{method:'PATCH',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify({status:'aprovada',aprovador_nome:quem,aprovador_at:new Date().toISOString()})});
+    const link='https://painel.amorefood.com.br/requisicao.html?id='+ID;
+    const msg='✅ *Requisição validada* — '+num+'\n'+(REQ.loja||'')+' · '+esc(REQ.titulo||'')+'\nValidada por: *'+quem+'*\n🧾 '+ITENS.length+' itens\n\n👉 Esdras, seguir para *gerar a cotação*.\n'+link;
+    await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:ESDRAS,message:msg})});
+  }catch(e){}
+  el('app').innerHTML='<div class="done"><div class="big">✅ '+num+' validada!</div><p>Validada por <b>'+esc(quem)+'</b> · '+ITENS.length+' itens. O Esdras foi avisado para gerar a cotação. 📲</p><a href="requisicao.html?id='+ID+'" style="display:inline-block;margin-top:14px;background:var(--v);color:#fff;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700">Ver requisição</a></div>';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+load();
+</script>
+</body>
+</html>
