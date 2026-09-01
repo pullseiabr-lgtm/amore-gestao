@@ -97,6 +97,8 @@ const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6
 const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
 // notificar quando gerar → Wagner + Esdras recebem para VALIDAR (link editável). Pode acrescentar números.
 const NOTIFICAR=[{nome:'Wagner',fone:'5581994135602'},{nome:'Esdras',fone:'5581992573535'}];
+// modo teste (?teste=1): avisa SÓ o Esdras (não manda pro Wagner)
+const TESTE=/^(1|true|sim)$/i.test(new URLSearchParams(location.search).get('teste')||'');
 const $=s=>document.querySelector(s); const el=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const nb=n=>Number(String(n==null?'':n).replace(',','.'))||0;
@@ -210,7 +212,8 @@ async function gerar(){
     const entregaTxt=el('entrega').value?el('entrega').value.split('-').reverse().join('/'):'a definir';
     // avisa Wagner + Esdras para VALIDAR (podem editar: inserir/alterar/excluir antes da cotação)
     const msg='📝 *Nova requisição para validar* — '+loja+'\n'+num+' · '+nome+'\n👤 Solicitante: '+solic+'\n🏷️ Tipo: '+el('tipo').value+' · Prioridade: '+el('prio').value+'\n📅 Entrega: '+entregaTxt+'\n🧾 '+ITENS.length+' itens · 💰 estimado '+brl(total)+'\n\n✏️ Abrir para *revisar/editar e validar* (depois segue p/ cotação):\n'+link;
-    for(const n of NOTIFICAR){ try{ await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:n.fone,message:msg})}); }catch(e){} }
+    const alvos = TESTE ? NOTIFICAR.filter(n=>n.nome==='Esdras') : NOTIFICAR;
+    for(const n of alvos){ try{ await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:n.fone,message:(TESTE?'🧪 *TESTE* — ignore o fluxo normal\n':'')+msg})}); }catch(e){} }
     el('app').innerHTML='<div class="done"><div class="big">✅ '+num+' gerada!</div><p>Requisição <b>'+esc(nome)+'</b> criada para <b>'+esc(loja)+'</b> por <b>'+esc(solic)+'</b> · '+ITENS.length+' itens · estimado '+brl(total)+'.</p><p style="color:var(--muted);margin-top:6px">Enviada para Wagner e Esdras validarem. 📲</p><a class="link" href="'+link+'" target="_blank">Abrir para validar</a> <a class="link" href="requisicao-nova.html" style="background:#6b7280">Nova requisição</a></div>';
     window.scrollTo({top:0,behavior:'smooth'});
   }catch(e){ btn.disabled=false; btn.textContent='✅ Gerar requisição'; show('Erro ao gerar: '+e.message,false); }
