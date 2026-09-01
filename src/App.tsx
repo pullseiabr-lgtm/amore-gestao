@@ -4,6 +4,7 @@ import { carregarZapiCfgRemoto } from './lib/notify'
 import { useTheme } from './contexts/ThemeContext'
 import { LojaProvider, useLoja } from './contexts/LojaContext'
 import LoginPage from './pages/auth/LoginPage'
+import ResetPasswordPage from './pages/auth/ResetPasswordPage'
 import Sidebar from './components/layout/Sidebar'
 import Topbar from './components/layout/Topbar'
 import DashboardPage from './pages/dashboard/DashboardPage'
@@ -329,7 +330,7 @@ function setUrlPage(p: PageId) {
 }
 
 export default function App() {
-  const { user } = useAuth()
+  const { user, passwordRecovery } = useAuth()
   const { theme } = useTheme()
   const [page, setPage] = useState<PageId>(pageFromUrl)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -363,6 +364,7 @@ export default function App() {
     setSidebarOpen(false)
   }
 
+  if (passwordRecovery) return <ResetPasswordPage />
   if (!user) return <LoginPage />
 
   return (

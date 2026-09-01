@@ -29,6 +29,8 @@ interface AuthContextValue {
   effectivePermissions: PermissionsMap
   demoUsers: typeof DEMO_USERS
   refreshUser: () => Promise<void>
+  passwordRecovery: boolean
+  endPasswordRecovery: () => void
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -36,12 +38,16 @@ const AuthContext = createContext<AuthContextValue>({
   login: async () => null, logout: async () => {},
   can: () => false, effectivePermissions: {}, demoUsers: DEMO_USERS,
   refreshUser: async () => {},
+  passwordRecovery: false, endPasswordRecovery: () => {},
 })
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [isDemoMode, setIsDemoMode] = useState(false)
+  const [passwordRecovery, setPasswordRecovery] = useState(
+    () => (typeof location !== 'undefined' && (location.hash.includes('type=recovery') || new URLSearchParams(location.search).get('type') === 'recovery'))
+  )
 
   const loadDemoSession = () => {
     const stored = sessionStorage.getItem('amore_user')
@@ -76,7 +82,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Listen for real Supabase auth events
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT') {
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecovery(true)
+        setLoading(false)
+      } else if (event === 'SIGNED_OUT') {
         setUser(null)
         setIsDemoMode(false)
       } else if (event === 'SIGNED_IN' && session?.user) {
@@ -184,7 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, isDemoMode, login, logout, can, effectivePermissions, demoUsers: DEMO_USERS, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, isDemoMode, login, logout, can, effectivePermissions, demoUsers: DEMO_USERS, refreshUser, passwordRecovery, endPasswordRecovery: () => setPasswordRecovery(false) }}>
       {children}
     </AuthContext.Provider>
   )

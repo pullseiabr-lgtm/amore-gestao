@@ -31,7 +31,7 @@ export default function LoginPage() {
     if (!em) { setError('Informe o e-mail cadastrado.'); return }
     setLoading(true)
     try {
-      await supabase.auth.resetPasswordForEmail(em, { redirectTo: `${location.origin}/redefinir-senha.html` })
+      await supabase.auth.resetPasswordForEmail(em, { redirectTo: `${location.origin}/` })
       setOkMsg('Se este e-mail estiver cadastrado, enviamos um link para redefinir a senha. Confira sua caixa de entrada (e o spam).')
     } catch {
       setOkMsg('Se este e-mail estiver cadastrado, enviamos um link para redefinir a senha.')
