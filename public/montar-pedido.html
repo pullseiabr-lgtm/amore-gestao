@@ -56,13 +56,22 @@
         <option value="Amore CD">Amore CD</option>
         <option value="Amore Paiva">Amore Paiva</option>
       </select>
-      <select id="periodo" onchange="load()" title="Período dos pedidos considerados">
+      <select id="periodo" onchange="onPeriodo()" title="Período dos pedidos considerados">
+        <option value="1">Hoje (1 dia)</option>
+        <option value="2">Últimos 2 dias</option>
+        <option value="3">Últimos 3 dias</option>
         <option value="7">📅 Semana (7 dias)</option>
         <option value="15">Últimos 15 dias</option>
         <option value="30">Últimos 30 dias</option>
         <option value="req">Desde a requisição</option>
         <option value="0">Todos os pedidos</option>
+        <option value="custom">🗓️ Personalizado (intervalo)</option>
       </select>
+      <span id="rangeBox" style="display:none;gap:6px;align-items:center">
+        <input type="date" id="dtDe" onchange="load()" style="border:none;border-radius:8px;padding:7px 9px;font:inherit;font-size:12px">
+        <span style="color:#fff;font-size:12px">até</span>
+        <input type="date" id="dtAte" onchange="load()" style="border:none;border-radius:8px;padding:7px 9px;font:inherit;font-size:12px">
+      </span>
       <button onclick="load()">↻ Atualizar</button>
     </div>
   </div>
@@ -116,7 +125,10 @@ let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],TOTALPED=0,FILTRO='',ROWS=[],RE
 function isoWeek(d){d=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=d.getUTCDay()||7;d.setUTCDate(d.getUTCDate()+4-day);const y0=new Date(Date.UTC(d.getUTCFullYear(),0,1));const wk=Math.ceil(((d-y0)/864e5+1)/7);return d.getUTCFullYear()+'w'+String(wk).padStart(2,'0');}
 
 function trocaLoja(){LOJA=el('loja').value;load();}
-try{const pp=localStorage.getItem('gestao_periodo');if(pp&&el('periodo'))el('periodo').value=pp;}catch(e){}
+function onPeriodo(){const c=el('periodo').value==='custom';const rb=el('rangeBox');if(rb)rb.style.display=c?'inline-flex':'none';
+  if(c){const de=el('dtDe'),ate=el('dtAte');const hoje=new Date().toISOString().slice(0,10);if(ate&&!ate.value)ate.value=hoje;if(de&&!de.value){const d=new Date();d.setDate(d.getDate()-2);de.value=d.toISOString().slice(0,10);}}
+  load();}
+try{const pp=localStorage.getItem('gestao_periodo');if(pp&&el('periodo')){el('periodo').value=pp;if(pp==='custom'&&el('rangeBox'))el('rangeBox').style.display='inline-flex';}}catch(e){}
 async function load(){
   const suf=SUF[LOJA];let ped=[],ov={},solItens=[];
   REQNUM=null;REQID='';REQIDS=[];REQINFO='';VIEW='gestao';
@@ -152,14 +164,19 @@ async function load(){
   // Período dos pedidos considerados — padrão: últimos 7 dias (a semana). Assim TODOS os pedidos da semana
   // aparecem juntos (o novo soma aos anteriores), em vez de só os da data da requisição.
   const perv=(el('periodo')&&el('periodo').value)||'7';
-  let CORTE;
+  let CORTE,CORTEFIM='9999-99-99';
   if(perv==='req'){ CORTE=REQDATE||new Date().toISOString().slice(0,10); }
   else if(perv==='0'){ CORTE='0000-00-00'; }
-  else { const d=new Date(); d.setDate(d.getDate()-Number(perv)); CORTE=d.toISOString().slice(0,10); }
-  PERLABEL=perv==='req'?('desde a requisição ('+dmy(CORTE)+')'):perv==='0'?'todos os pedidos':('desde '+dmy(CORTE));
+  else if(perv==='custom'){
+    CORTE=(el('dtDe')&&el('dtDe').value)||'0000-00-00';
+    CORTEFIM=(el('dtAte')&&el('dtAte').value)||'9999-99-99';
+    if(CORTE>CORTEFIM){const t=CORTE;CORTE=CORTEFIM;CORTEFIM=t;} // troca se inverteu
+  }
+  else { const n=Number(perv); const d=new Date(); d.setDate(d.getDate()-(n-1)); CORTE=d.toISOString().slice(0,10); }
+  PERLABEL=perv==='req'?('desde a requisição ('+dmy(CORTE)+')'):perv==='0'?'(todos os pedidos)':perv==='custom'?('de '+dmy(CORTE)+' a '+dmy(CORTEFIM)):('desde '+dmy(CORTE));
   try{localStorage.setItem('gestao_periodo',perv);}catch(e){}
   const pedData=r=>String((r.valor&&(r.valor.em||r.valor.data))||'').slice(0,10);
-  const doL=(ped||[]).filter(r=>r.valor&&lojaMatch(r.valor.loja,LOJA)&&pedData(r)>=CORTE);
+  const doL=(ped||[]).filter(r=>{if(!r.valor||!lojaMatch(r.valor.loja,LOJA))return false;const pd=pedData(r);return pd>=CORTE&&pd<=CORTEFIM;});
   TOTALPED=doL.reduce((s,r)=>s+(Number(r.valor.total)||0),0);NPED=doL.length;
   COMPRADOS=[];for(const r of doL)for(const it of (r.valor.itens||[])){if(/^desconto$|^frete|^adicional/i.test(it.produto||''))continue;COMPRADOS.push({fornecedor:r.valor.fornecedor,produto:it.produto,qtd:it.qtd,un:it.un,subtotal:Number(it.subtotal)||0,preco:Number(it.preco)||0,entrega:r.valor.janela_entrega||r.valor.data||'',dataPedido:r.valor.em||r.valor.data||'',comprador:r.valor.created_by||'',chave:r.chave,recebido:!!r.valor.recebimento,norm:norm(it.produto)});}
   // lista de pedidos do período (para a aba "Pedidos da semana")
