@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Requisição — Próximos passos</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--v:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--blue:#0369A1}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;min-height:100dvh;padding:18px;line-height:1.45}
+.wrap{max-width:520px;margin:0 auto}
+.top{border-bottom:2px solid var(--v);padding-bottom:12px;margin-bottom:16px}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--v);font-weight:700}
+h1{font-size:22px;margin-top:4px}.sub{color:var(--muted);font-size:13px;margin-top:3px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px}
+.kpis{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.kpi{flex:1;min-width:120px;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px 12px}
+.kpi .l{font-size:10.5px;color:var(--muted);text-transform:uppercase}.kpi .n{font-size:18px;font-weight:800}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 11px;border-radius:20px;background:#DCFCE7;color:#15803D;margin-top:8px}
+.lbl{font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:2px 0 10px}
+.btns{display:flex;flex-direction:column;gap:12px}
+.act{display:flex;align-items:center;gap:14px;text-decoration:none;border-radius:14px;padding:16px 18px;color:#fff;font-weight:800;font-size:16px;box-shadow:0 8px 22px -12px rgba(0,0,0,.4)}
+.act .em{font-size:26px}.act .d{font-weight:500;font-size:12px;opacity:.92;display:block;margin-top:2px}
+.act.cot{background:var(--v)}.act.ped{background:var(--blue)}.act.ver{background:#4b5563}
+.msg{text-align:center;color:var(--muted);padding:40px 10px}
+.foot{text-align:center;color:var(--muted);font-size:11.5px;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Carregando…</div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY};
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const brl=n=>'R$ '+(Number(n)||0).toFixed(2).replace('.',',');
+const dmy=s=>{if(!s)return '—';const p=String(s).slice(0,10).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:s;};
+const ID=(new URLSearchParams(location.search).get('id')||'').trim();
+(async()=>{
+  const app=document.getElementById('app');
+  if(!ID){ app.innerHTML='<div class="msg">Link inválido — falta o id da requisição.</div>'; return; }
+  let req=null,itens=[];
+  try{ req=(await (await fetch(SB+'/rest/v1/requisicoes?id=eq.'+ID+'&select=numero,loja,titulo,responsavel_nome,status,prioridade,prazo_entrega,total_estimado,aprovador_nome,created_at',{headers:H})).json())[0];
+       itens=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=eq.'+ID+'&select=id',{headers:H})).json(); }catch(e){}
+  if(!req){ app.innerHTML='<div class="msg">Requisição não encontrada.</div>'; return; }
+  const flow=/flow/i.test(req.loja||''); document.documentElement.style.setProperty('--v',flow?'#2E7D34':'#8B1212');
+  const num='REQ-'+String(req.numero||0).padStart(4,'0');
+  const lojaLabel={'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'}[req.loja]||req.loja;
+  const aprov=/aprovad/i.test(req.status||'');
+  const linkCot='/?page=cotacao&req='+ID, linkPed='/?page=pedidos', linkVer='requisicao.html?id='+ID;
+  app.innerHTML=
+   '<div class="top"><div class="eyebrow">Painel '+(flow?'Flow':'Amore')+' · Compras</div>'
+   +'<h1>'+num+' — '+esc(req.titulo||'Requisição')+'</h1>'
+   +'<div class="sub">'+esc(lojaLabel)+' · Solicitante: <b>'+esc(req.responsavel_nome||'—')+'</b> · '+dmy(req.created_at)+'</div>'
+   +(aprov?'<span class="badge">✅ Validada'+(req.aprovador_nome?' por '+esc(req.aprovador_nome):'')+'</span>':'<span class="badge" style="background:#FEF3C7;color:#92400E">Aguardando validação</span>')+'</div>'
+   +'<div class="card"><div class="kpis">'
+     +'<div class="kpi"><div class="l">Itens</div><div class="n">'+(itens.length||0)+'</div></div>'
+     +'<div class="kpi"><div class="l">Estimado</div><div class="n">'+brl(req.total_estimado)+'</div></div>'
+     +'<div class="kpi"><div class="l">Entrega</div><div class="n" style="font-size:15px">'+dmy(req.prazo_entrega)+'</div></div>'
+   +'</div></div>'
+   +'<div class="card"><div class="lbl">Esdras (Compras) — próximo passo</div><div class="btns">'
+     +'<a class="act cot" href="'+linkCot+'"><span class="em">📊</span><span>Gerar cotação<span class="d">Enviar aos fornecedores e comparar preços</span></span></a>'
+     +'<a class="act ped" href="'+linkPed+'"><span class="em">🛒</span><span>Gerar pedido (sem cotação)<span class="d">Compra direta / balcão</span></span></a>'
+     +'<a class="act ver" href="'+linkVer+'"><span class="em">📄</span><span>Ver requisição<span class="d">Conferir itens e imprimir</span></span></a>'
+   +'</div></div>'
+   +'<div class="foot">Fluxo: Requisição → Validação → Cotação/Pedido. Ação executada pelo comprador (Esdras) ou por quem ele direcionar.</div>';
+  document.title=num+' — Próximos passos';
+})();
+</script>
+</body>
+</html>
