@@ -49,12 +49,19 @@
 <body>
 <div class="wrap">
   <div class="hdr">
-    <div><h1>🛒 Gestão da Lista de Compras</h1><div class="sub">Requisição de hoje × Pedidos de hoje — o que já comprou e o que falta</div></div>
+    <div><h1>🛒 Gestão da Lista de Compras</h1><div class="sub">Requisição × pedidos da semana — o que já comprou e o que falta</div></div>
     <div class="lojasel">
       <select id="loja" onchange="trocaLoja()">
         <option value="Flow CD">Flow CD</option>
         <option value="Amore CD">Amore CD</option>
         <option value="Amore Paiva">Amore Paiva</option>
+      </select>
+      <select id="periodo" onchange="load()" title="Período dos pedidos considerados">
+        <option value="7">📅 Semana (7 dias)</option>
+        <option value="15">Últimos 15 dias</option>
+        <option value="30">Últimos 30 dias</option>
+        <option value="req">Desde a requisição</option>
+        <option value="0">Todos os pedidos</option>
       </select>
       <button onclick="load()">↻ Atualizar</button>
     </div>
@@ -73,6 +80,7 @@
     <button class="btn btn-pdf" onclick="gerarPDF()">📄 Gerar PDF</button>
     <button class="btn btn-fire" onclick="disparar()">📲 Disparar faltantes</button>
     <button class="btn" style="background:#6b1212;color:#fff" onclick="fecharRequisicao()">🔒 Fechar requisição</button>
+    <button class="btn" style="background:#fff;color:#374151;border:1px solid #cbd5e1" onclick="verPedidos()">🧾 Pedidos da semana</button>
     <button class="btn" style="background:#fff;color:#374151;border:1px solid #cbd5e1" onclick="verBaixadas()">📁 Requisições baixadas</button>
   </div>
   <div class="card" id="mainCard"><table><thead><tr>
@@ -80,6 +88,7 @@
     <th>Entrega</th><th>Data pedido</th><th>Pedido</th>
   </tr></thead><tbody id="tb"><tr><td colspan="9" style="padding:20px;text-align:center;color:#6b7280">Carregando…</td></tr></tbody></table></div>
   <div class="card" id="baixadasBox" style="display:none;margin-top:12px"></div>
+  <div class="card" id="pedidosBox" style="display:none;margin-top:12px"></div>
   <div class="msg" id="msg"></div><div class="prog" id="prog"></div><div class="foot" id="foot"></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -102,37 +111,59 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));const rnd=(a,b)=>a+Math.floor(M
 const nomeLoja=l=>({'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'})[l]||l;
 function show(m,ok){const e=el('msg');e.textContent=m;e.className='msg '+(ok?'ok':'err');}
 function lojaMatch(pedLoja,sel){pedLoja=pedLoja||'';if(sel==='Flow CD')return /flow/i.test(pedLoja);if(sel==='Amore CD')return pedLoja==='Amore CD'||/amore costa dourada/i.test(pedLoja);if(sel==='Amore Paiva')return pedLoja==='Amore Paiva';return false;}
-let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],TOTALPED=0,FILTRO='',ROWS=[],REQNUM=null,REQID='',REQINFO='',REQDATE='',OVKEY='',VIEW='gestao';
+let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],TOTALPED=0,FILTRO='',ROWS=[],REQNUM=null,REQID='',REQIDS=[],REQINFO='',REQDATE='',OVKEY='',VIEW='gestao',PERLABEL='',NPED=0,PEDLIST=[];
+// chave semanal (ISO week) — baixas valem por semana e renovam sozinhas na semana seguinte
+function isoWeek(d){d=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=d.getUTCDay()||7;d.setUTCDate(d.getUTCDate()+4-day);const y0=new Date(Date.UTC(d.getUTCFullYear(),0,1));const wk=Math.ceil(((d-y0)/864e5+1)/7);return d.getUTCFullYear()+'w'+String(wk).padStart(2,'0');}
 
 function trocaLoja(){LOJA=el('loja').value;load();}
+try{const pp=localStorage.getItem('gestao_periodo');if(pp&&el('periodo'))el('periodo').value=pp;}catch(e){}
 async function load(){
   const suf=SUF[LOJA];let ped=[],ov={},solItens=[];
-  REQNUM=null;REQID='';REQINFO='';VIEW='gestao';
-  { const mc=el('mainCard'),bb=el('baixadasBox'); if(mc)mc.style.display=''; if(bb)bb.style.display='none'; }
-  // FONTE = última requisição ATIVA da loja (requisição de hoje) — tabelas requisicoes/requisicao_itens
+  REQNUM=null;REQID='';REQIDS=[];REQINFO='';VIEW='gestao';
+  { const mc=el('mainCard'),bb=el('baixadasBox'),pb=el('pedidosBox'); if(mc)mc.style.display=''; if(bb)bb.style.display='none'; if(pb)pb.style.display='none'; }
+  // FONTE = TODAS as requisições ABERTAS da loja (status≠concluida) consolidadas — a semana inteira,
+  // não só a mais recente. Itens repetidos entre requisições são somados.
   try{
-    const rs=await (await fetch(SB+'/rest/v1/requisicoes?loja=eq.'+encodeURIComponent(LOJA)+'&status=neq.concluida&order=numero.desc&limit=1&select=id,numero,responsavel_nome,created_at',{headers:H})).json();
-    const rq=rs&&rs[0];
-    if(rq){ REQNUM=rq.numero; REQID=rq.id; REQDATE=String(rq.created_at||'').slice(0,10);
-      REQINFO='REQ-'+String(rq.numero).padStart(4,'0')+(rq.responsavel_nome?' · '+rq.responsavel_nome:'')+(rq.created_at?' · '+String(rq.created_at).slice(0,10).split('-').reverse().join('/'):'');
-      const its=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=eq.'+rq.id+'&select=produto_nome,categoria,quantidade,unidade',{headers:H})).json();
-      solItens=(its||[]).map(i=>({produto:i.produto_nome,qtd:i.quantidade,un:i.unidade,categoria:i.categoria}));
+    const rs=await (await fetch(SB+'/rest/v1/requisicoes?loja=eq.'+encodeURIComponent(LOJA)+'&status=neq.concluida&order=numero.asc&select=id,numero,responsavel_nome,created_at',{headers:H})).json();
+    if(rs&&rs.length){
+      REQIDS=rs.map(r=>r.id); REQID=rs[0].id; REQNUM=rs[rs.length-1].numero;
+      REQDATE=String(rs[0].created_at||'').slice(0,10); // a mais antiga aberta = início da semana de compras
+      const nums=rs.map(r=>'REQ-'+String(r.numero).padStart(4,'0'));
+      REQINFO=(rs.length>1?rs.length+' requisições abertas: ':'')+nums.join(', ')+(rs.length===1&&rs[0].responsavel_nome?' · '+rs[0].responsavel_nome:'');
+      const idIn='('+rs.map(r=>r.id).join(',')+')';
+      const its=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=in.'+idIn+'&select=produto_nome,categoria,quantidade,unidade&limit=5000',{headers:H})).json();
+      // consolida por nome de produto (soma quantidades quando repetido)
+      const acc={};
+      for(const i of (its||[])){const k=norm(i.produto_nome);if(!k)continue;
+        if(!acc[k]){acc[k]={produto:i.produto_nome,qtd:Number(i.quantidade)||0,un:i.unidade,categoria:i.categoria};}
+        else{acc[k].qtd+=Number(i.quantidade)||0; if(!acc[k].categoria&&i.categoria)acc[k].categoria=i.categoria; if(!acc[k].un&&i.unidade)acc[k].un=i.unidade;}
+      }
+      solItens=Object.values(acc);
     }
   }catch(e){}
   // fallback: solicitação antiga (app_config) se a loja ainda não tiver requisição
   if(!solItens.length){ try{ const sol=((await (await fetch(SB+'/rest/v1/app_config?chave=eq.compras_solicitacao_'+suf+'&select=valor',{headers:H})).json())[0]||{}).valor||{}; solItens=sol.itens||[]; }catch(e){} }
   SOLIC=solItens;
-  // overrides ESCOPADOS por requisição — ao trocar de requisição, a gestão anterior "cai" sozinha
-  OVKEY='compras_overrides_'+suf+(REQNUM?('_req'+REQNUM):'');
+  // overrides por SEMANA (loja+semana ISO) — as baixas valem a semana toda e renovam sozinhas na próxima
+  OVKEY='compras_overrides_'+suf+'_'+isoWeek(new Date());
   try{ped=await (await fetch(SB+'/rest/v1/app_config?select=chave,valor&chave=like.pedido_*&limit=2000',{headers:H})).json();}catch(e){}
   try{ov=((await (await fetch(SB+'/rest/v1/app_config?chave=eq.'+OVKEY+'&select=valor',{headers:H})).json())[0]||{}).valor||{};}catch(e){}
   OVER=ov.map||{};
-  // Só pedidos a partir da data da requisição (pedidos de hoje) — não puxa pedidos antigos que não convergem
-  const CORTE=REQDATE||new Date().toISOString().slice(0,10);
+  // Período dos pedidos considerados — padrão: últimos 7 dias (a semana). Assim TODOS os pedidos da semana
+  // aparecem juntos (o novo soma aos anteriores), em vez de só os da data da requisição.
+  const perv=(el('periodo')&&el('periodo').value)||'7';
+  let CORTE;
+  if(perv==='req'){ CORTE=REQDATE||new Date().toISOString().slice(0,10); }
+  else if(perv==='0'){ CORTE='0000-00-00'; }
+  else { const d=new Date(); d.setDate(d.getDate()-Number(perv)); CORTE=d.toISOString().slice(0,10); }
+  PERLABEL=perv==='req'?('desde a requisição ('+dmy(CORTE)+')'):perv==='0'?'todos os pedidos':('desde '+dmy(CORTE));
+  try{localStorage.setItem('gestao_periodo',perv);}catch(e){}
   const pedData=r=>String((r.valor&&(r.valor.em||r.valor.data))||'').slice(0,10);
   const doL=(ped||[]).filter(r=>r.valor&&lojaMatch(r.valor.loja,LOJA)&&pedData(r)>=CORTE);
-  TOTALPED=doL.reduce((s,r)=>s+(Number(r.valor.total)||0),0);
+  TOTALPED=doL.reduce((s,r)=>s+(Number(r.valor.total)||0),0);NPED=doL.length;
   COMPRADOS=[];for(const r of doL)for(const it of (r.valor.itens||[])){if(/^desconto$|^frete|^adicional/i.test(it.produto||''))continue;COMPRADOS.push({fornecedor:r.valor.fornecedor,produto:it.produto,qtd:it.qtd,un:it.un,subtotal:Number(it.subtotal)||0,preco:Number(it.preco)||0,entrega:r.valor.janela_entrega||r.valor.data||'',dataPedido:r.valor.em||r.valor.data||'',comprador:r.valor.created_by||'',chave:r.chave,recebido:!!r.valor.recebimento,norm:norm(it.produto)});}
+  // lista de pedidos do período (para a aba "Pedidos da semana")
+  PEDLIST=doL.map(r=>({chave:r.chave,forn:r.valor.fornecedor||'—',em:pedData(r),total:Number(r.valor.total)||0,nItens:(r.valor.itens||[]).filter(it=>!/^desconto$|^frete|^adicional/i.test(it.produto||'')).length,recebido:!!r.valor.recebimento,itens:(r.valor.itens||[]),link:'pedido.html?p='+String(r.chave).replace(/^pedido_/,'')})).sort((a,b)=>a.em<b.em?1:-1);
   compute();render();
 }
 function matchOne(prod){const st=toks(prod);if(!st.length)return{status:'no'};const main=st.slice().sort((a,b)=>b.length-a.length)[0];let best=null,bs=0,qsum=0,vsum=0,forns=new Set();for(const c of COMPRADOS){if(!c.norm.includes(main))continue;let sc=0;for(const t of st)if(c.norm.includes(t))sc++;if(sc>0){qsum+=Number(c.qtd)||0;vsum+=c.subtotal;forns.add(c.fornecedor);}if(sc>bs){bs=sc;best=c;}}if(!best)return{status:'no'};return{status:bs>=st.length?'ok':'wr',best,qsum,vsum,forns:[...forns]};}
@@ -163,9 +194,9 @@ function compEm(r){return r.compradoEm!=null?r.compradoEm:(r.m.forns?r.m.forns.j
 function valorC(r){return r.valor!=null&&r.valor!==''?nb(r.valor):(r.m.vsum||0);}
 function setF(f){FILTRO=f;[...document.querySelectorAll('#seg button')].forEach(b=>b.classList.toggle('on',b.dataset.f===f));render();}
 function render(){
-  const sub=document.querySelector('.hdr .sub'); if(sub) sub.textContent=(REQINFO?'Requisição de hoje: '+REQINFO:'Sem requisição para esta loja')+' × Pedidos — o que já comprou e o que falta';
+  const sub=document.querySelector('.hdr .sub'); if(sub) sub.textContent=(REQINFO?'Requisição ativa: '+REQINFO:'Sem requisição para esta loja')+' × '+NPED+' pedido(s) '+(PERLABEL||'')+' — o que já comprou e o que falta';
   const nOk=ROWS.filter(r=>eff(r)==='ok').length,nWr=ROWS.filter(r=>eff(r)==='parcial').length,nNo=ROWS.filter(r=>eff(r)==='no').length;
-  el('kpis').innerHTML=`<div class="kpi"><div class="n">${ROWS.length}</div><div class="l">Solicitados</div></div><div class="kpi ok"><div class="n">${nOk}</div><div class="l">Comprados</div></div><div class="kpi wr"><div class="n">${nWr}</div><div class="l">🟠 Parcial</div></div><div class="kpi no"><div class="n">${nNo}</div><div class="l">Faltando</div></div><div class="kpi tt"><div class="n">${brl(TOTALPED)}</div><div class="l">Total comprado (período)</div></div>`;
+  el('kpis').innerHTML=`<div class="kpi"><div class="n">${ROWS.length}</div><div class="l">Solicitados</div></div><div class="kpi ok"><div class="n">${nOk}</div><div class="l">Comprados</div></div><div class="kpi wr"><div class="n">${nWr}</div><div class="l">🟠 Parcial</div></div><div class="kpi no"><div class="n">${nNo}</div><div class="l">Faltando</div></div><div class="kpi tt"><div class="n">${brl(TOTALPED)}</div><div class="l">Comprado · ${NPED} pedido(s)</div></div>`;
   const falt=ROWS.filter(r=>eff(r)==='no');
   el('alert').style.display=falt.length?'block':'none';
   el('alert').innerHTML=`<b>⚠️ Faltando comprar: ${falt.length} item(ns)</b><div class="items">${falt.map(r=>`${esc(r.produto)} <span style="opacity:.7">(${esc(r.qtd)} ${esc(r.un)})</span>`).join(' · ')}</div>`;
@@ -196,7 +227,7 @@ function render(){
     </tr>`;}
   el('tb').innerHTML=html||'<tr><td colspan="11" style="padding:20px;text-align:center;color:#6b7280">Nenhum item neste filtro.</td></tr>';
   const prontos=new Set(ROWS.filter(r=>eff(r)!=='ok'&&(r.wpp||'').replace(/\D/g,'').length>=10&&r.forn.trim()).map(r=>r.forn.trim().toLowerCase()));
-  el('foot').textContent=`${REQINFO?REQINFO+' · ':''}${LOJA} · ${ROWS.length} solicitados · ${nNo} faltando · total comprado ${brl(TOTALPED)} · ${prontos.size} fornecedor(es) p/ disparo`;
+  el('foot').textContent=`${REQINFO?REQINFO+' · ':''}${LOJA} · ${ROWS.length} solicitados · ${nNo} faltando · ${NPED} pedido(s) ${PERLABEL||''} · total comprado ${brl(TOTALPED)} · ${prontos.size} fornecedor(es) p/ disparo`;
 }
 function ov(i,k,v){ROWS[i][k]=v; if(k==='vUnit'||k==='qComprada'){ const r=ROWS[i]; const t=nb(r.vUnit)*nb(r.qComprada); r.vTotal=t?String(t.toFixed(2)).replace('.',','):''; render(); } }
 function setComprado(i,checked){const r=ROWS[i];if(checked){r.manual=true;if(r.qComprada===''||nb(r.qComprada)<nb(r.qtd))r.qComprada=r.qtd;const t=nb(r.vUnit)*nb(r.qComprada);if(t)r.vTotal=String(t.toFixed(2)).replace('.',',');}else{r.manual=undefined;}render();}
@@ -215,16 +246,43 @@ async function confirmarTodas(){
   const ok=await salvar(true); render(); show(ok?`✅ ${alvo} compra(s) confirmada(s) e baixada(s).`:'Falha ao salvar.',ok);
 }
 async function fecharRequisicao(){
-  if(!REQID){show('Não há requisição ativa para fechar.',false);return;}
+  if(!REQIDS.length){show('Não há requisição aberta para fechar.',false);return;}
   const pend=ROWS.filter(r=>eff(r)==='no'||eff(r)==='parcial').length;
-  if(!confirm(`Fechar e baixar a requisição ${REQINFO}?`+(pend?`\n\n⚠️ Ainda há ${pend} item(ns) faltando/parcial.`:'\n\nTodos os itens foram comprados. 🎉')))return;
+  const quantas=REQIDS.length>1?`as ${REQIDS.length} requisições abertas`:`a requisição ${REQINFO}`;
+  if(!confirm(`Fechar e baixar ${quantas} desta loja?`+(pend?`\n\n⚠️ Ainda há ${pend} item(ns) faltando/parcial.`:'\n\nTodos os itens foram comprados. 🎉')))return;
   await salvar(true);
-  try{const r=await fetch(SB+'/rest/v1/requisicoes?id=eq.'+REQID,{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({status:'concluida'})});
-    if(r.ok){show('🔒 Requisição baixada. Carregando a próxima pendente…',true);setTimeout(load,700);}else show('Falha ao fechar ('+r.status+').',false);
+  try{const idIn='('+REQIDS.join(',')+')';
+    const r=await fetch(SB+'/rest/v1/requisicoes?id=in.'+idIn,{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({status:'concluida'})});
+    if(r.ok){show('🔒 Requisição(ões) baixada(s). Atualizando…',true);setTimeout(load,700);}else show('Falha ao fechar ('+r.status+').',false);
   }catch(e){show('Falha ao fechar a requisição.',false);}
 }
+function verPedidos(){
+  const mc=el('mainCard'),bb=el('baixadasBox'),pb=el('pedidosBox');
+  VIEW=VIEW==='pedidos'?'gestao':'pedidos';
+  bb.style.display='none';
+  if(VIEW==='gestao'){pb.style.display='none';mc.style.display='';return;}
+  const stTag=r=>r.recebido?'<span class="st ok">✓ recebido</span>':'<span class="st wr">🟠 em aberto</span>';
+  const linhas=PEDLIST.map((p,i)=>{
+    const its=(p.itens||[]).filter(it=>!/^desconto$|^frete|^adicional/i.test(it.produto||''))
+      .map(it=>`<div style="padding:2px 0;border-bottom:1px dashed #eef2ee">• ${esc(it.qtd||'')} ${esc(it.un||'')} — <b>${esc(it.produto)}</b>${it.subtotal?` <span class="q">(${brl(it.subtotal)})</span>`:''}</div>`).join('');
+    return `<tr>
+      <td style="font-weight:700">${esc(p.forn)}</td>
+      <td class="q">${dmy(p.em)}</td>
+      <td class="q" style="text-align:center">${p.nItens}</td>
+      <td style="font-weight:700;color:var(--v)">${brl(p.total)}</td>
+      <td>${stTag(p)}</td>
+      <td><a href="${p.link}" target="_blank" style="color:var(--v);font-weight:700">abrir</a></td>
+      <td><button class="btn" style="padding:4px 9px;background:#fff;color:#374151;border:1px solid #cbd5e1" onclick="var d=document.getElementById('pdit${i}');d.style.display=d.style.display==='none'?'':'none'">itens ▾</button></td>
+    </tr>
+    <tr id="pdit${i}" style="display:none"><td colspan="7" style="background:#f6faf5;font-size:11.5px">${its||'<span class=q>sem itens</span>'}</td></tr>`;
+  }).join('')||'<tr><td colspan="7" style="padding:16px;text-align:center;color:#6b7280">Nenhum pedido no período selecionado.</td></tr>';
+  const totRec=PEDLIST.filter(p=>p.recebido).length,totAb=PEDLIST.length-totRec;
+  pb.innerHTML=`<div style="padding:10px 12px;border-bottom:1px solid var(--border);font-size:12.5px"><b>🧾 Pedidos ${esc(PERLABEL||'')}</b> · ${PEDLIST.length} pedido(s) · <span style="color:#B45309">${totAb} em aberto</span> · <span style="color:#15803D">${totRec} recebido(s)</span> · total ${brl(TOTALPED)}</div>
+  <table style="min-width:640px"><thead><tr><th>Fornecedor</th><th>Data</th><th>Itens</th><th>Valor</th><th>Status</th><th>Pedido</th><th></th></tr></thead><tbody>${linhas}</tbody></table>`;
+  mc.style.display='none';pb.style.display='';el('foot').textContent=LOJA+' · '+PEDLIST.length+' pedido(s) '+(PERLABEL||'');
+}
 async function verBaixadas(){
-  const mc=el('mainCard'),bb=el('baixadasBox');
+  const mc=el('mainCard'),bb=el('baixadasBox'),pb=el('pedidosBox'); if(pb)pb.style.display='none';
   VIEW=VIEW==='baixadas'?'gestao':'baixadas';
   if(VIEW==='gestao'){bb.style.display='none';mc.style.display='';return;}
   let rows=[];try{rows=await (await fetch(SB+'/rest/v1/requisicoes?loja=eq.'+encodeURIComponent(LOJA)+'&status=eq.concluida&order=numero.desc&select=id,numero,responsavel_nome,created_at,updated_at',{headers:H})).json();}catch(e){}
