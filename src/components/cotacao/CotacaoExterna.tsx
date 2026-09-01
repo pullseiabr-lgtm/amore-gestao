@@ -41,7 +41,7 @@ const STA: Record<string, { l: string; c: string; bg: string }> = {
   cancelado: { l: 'Cancelado', c: '#6B7280', bg: '#F3F4F6' },
 }
 
-export default function CotacaoExterna({ req, userName, toast }: { req: Requisicao; userName: string; toast: (m: string, t?: any) => void }) {
+export default function CotacaoExterna({ req, userName, toast, readOnly }: { req: Requisicao; userName: string; toast: (m: string, t?: any) => void; readOnly?: boolean }) {
   const [forns, setForns] = useState<Fornecedor[]>([])
   const [tokens, setTokens] = useState<CotacaoToken[]>([])
   const [itens, setItens] = useState<RequisicaoItem[]>([])
@@ -205,9 +205,9 @@ export default function CotacaoExterna({ req, userName, toast }: { req: Requisic
                 </select>
               </label> })}
           </div>
-          <button className="btn" onClick={() => gerarParaFornecedor()} disabled={busy || selItens.size === 0} style={{ padding: '10px 16px', marginTop: 10 }}>
+          {!readOnly && <button className="btn" onClick={() => gerarParaFornecedor()} disabled={busy || selItens.size === 0} style={{ padding: '10px 16px', marginTop: 10 }}>
             {busy ? <Loader2 className="spin" size={15} /> : <Send size={15} />} Gerar link de {selItens.size} item(ns) e enviar para {fornSel?.nome}
-          </button>
+          </button>}
         </div>}
 
         {/* itens ainda sem fornecedor */}
@@ -235,7 +235,7 @@ export default function CotacaoExterna({ req, userName, toast }: { req: Requisic
                   <td>
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                       <button onClick={() => copiar(t)} title="Copiar link" style={ico}><Copy size={15} /></button>
-                      {ativo && temZap && <button onClick={() => reenviar(t)} title="Reenviar WhatsApp" style={ico}><RefreshCw size={15} /></button>}
+                      {!readOnly && ativo && temZap && <button onClick={() => reenviar(t)} title="Reenviar WhatsApp" style={ico}><RefreshCw size={15} /></button>}
                       {ativo && !temZap && <>
                         <input value={manualFone[t.token] || ''} onChange={e => setManualFone(m => ({ ...m, [t.token]: e.target.value }))} placeholder="WhatsApp c/ DDD" style={{ width: 128, padding: '5px 7px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 12 }} />
                         <button onClick={() => reenviar(t, manualFone[t.token])} title="Enviar para este número" style={{ ...ico, color: '#15803D' }}><Send size={14} /></button>

@@ -32,8 +32,9 @@ const ST: Record<string, { l: string; c: string; bg: string }> = {
 
 export default function CotacaoPage() {
   const { loja } = useLoja()
-  const { user } = useAuth()
+  const { user, can } = useAuth()
   const { toast } = useToast()
+  const podeCriar = can('requisicoes', 'create')  // só quem pode gerar cotação/pedido; os demais só visualizam
 
   const [reqs, setReqs] = useState<Requisicao[]>([])
   const [loading, setLoading] = useState(true)
@@ -143,10 +144,10 @@ export default function CotacaoPage() {
           </button>
           <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: st.bg, color: st.c }}>{st.l}</span>
         </div>
-        <CotacaoExterna req={sel} userName={user?.name || 'Sistema'} toast={toast} />
+        <CotacaoExterna req={sel} userName={user?.name || 'Sistema'} toast={toast} readOnly={!podeCriar} />
         <AnaliseCotacao
           req={sel} loja={sel.loja} userName={user?.name || 'Sistema'}
-          toast={toast} onAtualizar={load}
+          toast={toast} onAtualizar={load} readOnly={!podeCriar}
         />
 
         {mEnviar && (
@@ -216,9 +217,9 @@ export default function CotacaoPage() {
         <button className="btn" onClick={load} style={{ padding: '9px 13px', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }}>
           <RefreshCw size={14} />
         </button>
-        <button className="btn" onClick={() => setMNova(true)} style={{ padding: '9px 15px' }}>
+        {podeCriar && <button className="btn" onClick={() => setMNova(true)} style={{ padding: '9px 15px' }}>
           <Plus size={15} /> Nova cotação
-        </button>
+        </button>}
       </div>
 
       <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
@@ -230,9 +231,9 @@ export default function CotacaoPage() {
       ) : filtradas.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 13, border: '1px dashed var(--border)', borderRadius: 10 }}>
           <div style={{ marginBottom: 12 }}>Nenhuma cotação ou requisição nesta loja ainda.</div>
-          <button className="btn" onClick={() => setMNova(true)} style={{ padding: '9px 16px' }}>
+          {podeCriar && <button className="btn" onClick={() => setMNova(true)} style={{ padding: '9px 16px' }}>
             <Plus size={15} /> Criar a primeira cotação
-          </button>
+          </button>}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

@@ -27,7 +27,8 @@ export default function PedidosPage() {
   const { loja } = useLoja()
   const { theme } = useTheme()
   const LOJAS = (theme?.stores && theme.stores.length ? theme.stores : LOJAS_FALLBACK)
-  const { user } = useAuth()
+  const { user, can } = useAuth()
+  const podeCriar = can('requisicoes', 'create')  // só comprador (Esdras) gera/dispara pedido; demais só visualizam
   const { toast } = useToast()
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
@@ -214,13 +215,13 @@ export default function PedidosPage() {
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Pedidos de Compra</h2>
           <div style={{ fontSize: 13, opacity: 0.85 }}>Gere o pedido, abra o link (imprimir/compartilhar) e acompanhe o recebimento — Loja <strong>{loja}</strong></div>
         </div>
-        <button className="btn" onClick={abrirNovo} style={{ padding: '9px 15px', background: '#fff', color: '#8B1212' }}><Plus size={16} /> Novo pedido</button>
+        {podeCriar && <button className="btn" onClick={abrirNovo} style={{ padding: '9px 15px', background: '#fff', color: '#8B1212' }}><Plus size={16} /> Novo pedido</button>}
         <button onClick={load} title="Atualizar" style={{ background: 'rgba(255,255,255,.18)', border: 'none', color: '#fff', borderRadius: 10, padding: '9px 11px', cursor: 'pointer' }}><RefreshCw size={16} /></button>
       </div>
 
       {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><Loader2 className="spin" size={26} /></div>
         : filtrados.length === 0 ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)', fontSize: 13, border: '1px dashed var(--border)', borderRadius: 10 }}>
-            Nenhum pedido nesta loja ainda. <button className="btn" onClick={abrirNovo} style={{ padding: '7px 14px', marginLeft: 8 }}><Plus size={14} /> Novo pedido</button>
+            Nenhum pedido nesta loja ainda.{podeCriar && <button className="btn" onClick={abrirNovo} style={{ padding: '7px 14px', marginLeft: 8 }}><Plus size={14} /> Novo pedido</button>}
           </div>
         : <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {filtrados.map(p => { const an = analisePedido(p); const aberto = analiseAberta === p.chave; return (
@@ -244,9 +245,9 @@ export default function PedidosPage() {
                 <a href={link(p)} target="_blank" rel="noreferrer" className="btn" style={{ padding: '8px 14px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }}>
                   <ExternalLink size={15} /> Abrir
                 </a>
-                <button onClick={() => abrirEnviar(p)} className="btn" style={{ padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {podeCriar && <button onClick={() => abrirEnviar(p)} className="btn" style={{ padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <Send size={15} /> Enviar
-                </button>
+                </button>}
               </div>
               {aberto && <div style={{ ...card, marginTop: -6, background: 'var(--bg)' }}>
                 <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>📊 Análise de custo do pedido <span style={{ fontWeight: 400, color: 'var(--muted)', fontSize: 11.5 }}>· preço do pedido × custo médio de referência</span></div>

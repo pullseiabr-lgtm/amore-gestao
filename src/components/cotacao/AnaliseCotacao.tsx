@@ -50,12 +50,13 @@ const COT_BADGE: Record<string, { l: string; c: string; bg: string }> = {
 }
 
 /** Análise completa de cotação de uma requisição: cadastro, comparativo, frete rateado, sugestão e relatório. */
-export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar }: {
+export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar, readOnly }: {
   req: Requisicao
   loja: string
   userName: string
   toast: (m: string) => void
   onAtualizar?: () => void
+  readOnly?: boolean
 }) {
   const [itens, setItens] = useState<RequisicaoItem[]>([])
   const [cotacoes, setCotacoes] = useState<RequisicaoCotacao[]>([])
@@ -667,9 +668,9 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
             <input value={cotForm.observacoes} onChange={e => setCotForm(f => ({ ...f, observacoes: e.target.value }))} placeholder="pagamento, condição…"
               style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
           </div>
-          <button className="btn" onClick={addCotacao} disabled={savingCot || !cotForm.fornecedor_nome.trim()} style={{ padding: '9px 14px' }}>
+          {!readOnly && <button className="btn" onClick={addCotacao} disabled={savingCot || !cotForm.fornecedor_nome.trim()} style={{ padding: '9px 14px' }}>
             <Plus size={14} /> Adicionar
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -700,8 +701,8 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
               <div style={{ fontSize: 11, color: 'var(--muted)' }}>{c.prazo_entrega != null ? `${c.prazo_entrega} dias` : 'prazo —'} · atende {atendCot(c.id)}%</div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
-              {c.status !== 'aprovada' && <button className="btn" onClick={() => aprovarCotacao(c)} disabled={savingCot} style={{ background: '#15803D', padding: '6px 12px', fontSize: 12 }}><Check size={12} /> Aprovar</button>}
-              <button className="ib rd" onClick={() => delCotacao(c.id)} style={{ padding: '5px 9px' }}><Trash2 size={13} /></button>
+              {!readOnly && c.status !== 'aprovada' && <button className="btn" onClick={() => aprovarCotacao(c)} disabled={savingCot} style={{ background: '#15803D', padding: '6px 12px', fontSize: 12 }}><Check size={12} /> Aprovar</button>}
+              {!readOnly && <button className="ib rd" onClick={() => delCotacao(c.id)} style={{ padding: '5px 9px' }}><Trash2 size={13} /></button>}
             </div>
           </div>
           {/* Datas desta cotação — cada fornecedor tem a sua */}
@@ -959,7 +960,7 @@ export default function AnaliseCotacao({ req, loja, userName, toast, onAtualizar
         return <div className="card" style={{ marginTop: 12 }}>
           <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
             <span className="card-tt">🏆 Preços Campeões & Pedidos</span>
-            <button className="btn" onClick={abrirGerarPedidos} disabled={!nGrupos} style={{ padding: '7px 13px', fontSize: 12.5, background: '#15803D', opacity: nGrupos ? 1 : .5 }}>🧾 Gerar pedidos por fornecedor ({nGrupos})</button>
+            {!readOnly && <button className="btn" onClick={abrirGerarPedidos} disabled={!nGrupos} style={{ padding: '7px 13px', fontSize: 12.5, background: '#15803D', opacity: nGrupos ? 1 : .5 }}>🧾 Gerar pedidos por fornecedor ({nGrupos})</button>}
           </div>
           <div style={{ padding: '12px 14px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 9, marginBottom: 12 }}>
