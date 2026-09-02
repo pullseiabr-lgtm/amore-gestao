@@ -4,9 +4,13 @@ import { fetchProfile, upsertProfile, updateProfile, insertAuditLog } from '../l
 import { ROLE_PERMISSIONS } from '../lib/permissions'
 import type { Profile, PermissionsMap } from '../types/database'
 
+// Modo demo DESLIGADO em qualquer ambiente: nada de credencial fixa, nada de
+// backdoor. Só entra quem tem login real (usuário + senha) no Supabase Auth.
+const DEMO_ENABLED = false
+
 const DEMO_USERS: Record<string, { pass: string; profile: Profile }> = {
   'admin@amore.com.br': {
-    pass: 'admin123',
+    pass: 'admin123$',
     profile: { id: 'u-admin', email: 'admin@amore.com.br', name: 'Rodrigo Admin', role: 'super_admin', loja: 'Todas', status: 'active', avatar_color: '#6B1212', initials: 'RA', permissions_override: null, created_at: new Date().toISOString(), last_login: new Date().toISOString(), created_by: null },
   },
   'gerente@amore.com.br': {
@@ -50,6 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 
   const loadDemoSession = () => {
+    if (!DEMO_ENABLED) return false
     const stored = sessionStorage.getItem('amore_user')
     if (stored) {
       try { setUser(JSON.parse(stored)); setIsDemoMode(true); return true } catch {}
@@ -154,8 +159,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return null
     }
 
-    // 2. Fall back to demo users
-    const demo = DEMO_USERS[em]
+    // 2. Fall back to demo users — SOMENTE em desenvolvimento.
+    // Em produção esse caminho não existe: sem login real no Supabase, não entra.
+    const demo = DEMO_ENABLED ? DEMO_USERS[em] : undefined
     if (demo && demo.pass === password) {
       const profile = { ...demo.profile, last_login: new Date().toISOString() }
       setUser(profile)
@@ -193,7 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, isDemoMode, login, logout, can, effectivePermissions, demoUsers: DEMO_USERS, refreshUser, passwordRecovery, endPasswordRecovery: () => setPasswordRecovery(false) }}>
+    <AuthContext.Provider value={{ user, loading, isDemoMode, login, logout, can, effectivePermissions, demoUsers: DEMO_ENABLED ? DEMO_USERS : {}, refreshUser, passwordRecovery, endPasswordRecovery: () => setPasswordRecovery(false) }}>
       {children}
     </AuthContext.Provider>
   )

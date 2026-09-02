@@ -7,8 +7,8 @@ import { supabase } from '../../lib/supabase'
 export default function LoginPage() {
   const { login, demoUsers } = useAuth()
   const { theme } = useTheme()
-  const [email, setEmail] = useState('admin@amore.com.br')
-  const [pass, setPass] = useState('admin123')
+  const [email, setEmail] = useState('')
+  const [pass, setPass] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -102,8 +102,9 @@ export default function LoginPage() {
         </form>
         )}
 
+        {Object.keys(demoUsers).length > 0 && (
         <div style={{ marginTop: 16, padding: '10px 12px', background: 'var(--cream)', borderRadius: 7, border: '1px solid var(--border)' }}>
-          <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 700, marginBottom: 6, textTransform: 'uppercase' }}>Contas demo</div>
+          <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 700, marginBottom: 6, textTransform: 'uppercase' }}>Contas demo (somente dev)</div>
           {Object.entries(demoUsers).map(([em, d]) => (
             <div key={em} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginBottom: 3 }}>
               <button type="button" onClick={() => { setEmail(em); setPass(d.pass); }} style={{ background: 'none', border: 'none', color: 'var(--bordo)', cursor: 'pointer', fontWeight: 600, textAlign: 'left' }}>
@@ -113,6 +114,7 @@ export default function LoginPage() {
             </div>
           ))}
         </div>
+        )}
       </div>
     </div>
   )
