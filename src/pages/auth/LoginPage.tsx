@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Home, LogIn, Eye, EyeOff, AlertCircle, KeyRound, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
-import { supabase } from '../../lib/supabase'
 
 export default function LoginPage() {
   const { login, demoUsers } = useAuth()
@@ -25,22 +24,8 @@ export default function LoginPage() {
     setLoading(false)
   }
 
-  const enviarReset = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(''); setOkMsg('')
-    const em = email.trim().toLowerCase()
-    if (!em) { setError('Informe o e-mail cadastrado.'); return }
-    setLoading(true)
-    try {
-      await supabase.auth.resetPasswordForEmail(em, { redirectTo: `${location.origin}/` })
-      setOkMsg('Se este e-mail estiver cadastrado, enviamos um link para redefinir a senha. Confira sua caixa de entrada (e o spam).')
-    } catch {
-      setOkMsg('Se este e-mail estiver cadastrado, enviamos um link para redefinir a senha.')
-    }
-    setLoading(false)
-  }
-
-  const enviarResetWhatsApp = async () => {
+  const enviarResetWhatsApp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
     setError(''); setOkMsg('')
     const em = email.trim().toLowerCase()
     if (!em) { setError('Informe o e-mail cadastrado.'); return }
@@ -108,8 +93,8 @@ export default function LoginPage() {
           </button>
         </form>
         ) : (
-        <form onSubmit={enviarReset}>
-          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 12 }}>Digite o e-mail cadastrado. Você pode receber um <b>link por e-mail</b> ou um <b>código no WhatsApp</b>.</div>
+        <form onSubmit={enviarResetWhatsApp}>
+          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 12 }}>Digite o e-mail cadastrado. Enviaremos um <b>código no seu WhatsApp</b> para você criar uma nova senha.</div>
           <div className="fg">
             <label className="fl">E-mail cadastrado</label>
             <input className="inp" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com" required autoFocus />
@@ -122,9 +107,6 @@ export default function LoginPage() {
             </a>
           )}
           <button className="btn bp" type="submit" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
-            <KeyRound size={12} /> {loading ? 'Enviando...' : 'Enviar link por e-mail'}
-          </button>
-          <button type="button" onClick={enviarResetWhatsApp} disabled={loading} className="btn bo" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}>
             <span style={{ fontSize: 14 }}>💬</span> {loading ? 'Enviando...' : 'Receber código por WhatsApp'}
           </button>
           <button type="button" onClick={() => { setModo('login'); setError(''); setOkMsg(''); setWppSent(false) }} style={{ width: '100%', marginTop: 10, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
