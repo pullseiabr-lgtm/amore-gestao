@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Crédito & Prestação de Contas — Amore</title>
+<style>
+:root{--vinho:#8B1212;--brand:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--crit:#DC2626;--shadow:0 1px 2px rgba(80,20,25,.05),0 8px 24px -12px rgba(80,20,25,.12)}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6)}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5;font-variant-numeric:tabular-nums}
+.wrap{max-width:760px;margin:0 auto;padding:26px 18px 60px}
+header.top{border-bottom:2px solid var(--brand);padding-bottom:14px;margin-bottom:14px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--brand);font-weight:700}
+h1{font-size:22px;margin:6px 0 4px}.sub{color:var(--muted);font-size:13px}
+.badge{display:inline-block;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0 18px}
+.meta div{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 12px}
+.meta .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.meta .v{font-weight:600;font-size:14px}
+.cards3{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:0 0 18px}
+.big{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow)}
+.big .l{font-size:11px;color:var(--muted)}.big .v{font-size:20px;font-weight:800;margin-top:2px}
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);background:var(--card)}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:480px}
+thead th{text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody td{padding:10px 12px;border-bottom:1px solid var(--border)}tbody tr:last-child td{border-bottom:none}
+.num{text-align:right;white-space:nowrap}
+tfoot td{padding:12px;font-weight:800;font-size:15px;border-top:2px solid var(--border)}tfoot .tl{color:var(--brand)}
+.box{margin-top:14px;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:13px;box-shadow:var(--shadow)}
+.foot{margin-top:22px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
+.msg{text-align:center;padding:60px 20px;color:var(--muted)}
+.sec{font-size:13px;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.05em;margin:22px 0 8px}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Carregando crédito…</div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY};
+const q=new URLSearchParams(location.search); const ID=(q.get('id')||'').trim();
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fD=s=>{if(!s)return '—';const p=String(s).slice(0,10).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:s};
+const FIN={compras_semana:'🛒 Compras da semana',logistica:'🚚 Logística',servico:'🔧 Prestação de serviço',outras:'🧾 Outras despesas',reembolso:'🔄 Reembolso'};
+const STA={rascunho:['🟡 Rascunho','#92400E','#FEF3C7'],solicitado:['🔵 Solicitado','#1E40AF','#DBEAFE'],em_aprovacao:['🟠 Em aprovação','#9A3412','#FFEDD5'],aprovado:['🟢 Aprovado','#166534','#DCFCE7'],disponibilizado:['💰 Disponibilizado','#166534','#D1FAE5'],em_prestacao:['🧾 Em prestação','#3730A3','#E0E7FF'],prestacao_pendente:['🔴 Prestação pendente','#991B1B','#FEE2E2'],divergencia:['⚠️ Divergência','#9A3412','#FFEDD5'],aguardando_devolucao:['🔄 Aguardando devolução','#5B21B6','#EDE9FE'],remanescente:['🔵 Remanescente','#1E40AF','#DBEAFE'],encerrado:['✅ Encerrado','#065F46','#D1FAE5'],reprovado:['❌ Reprovado','#991B1B','#FEE2E2']};
+
+async function main(){
+  const app=document.getElementById('app');
+  if(!ID){ app.innerHTML='<div class="msg">Link inválido (sem id).</div>'; return; }
+  let c;
+  try{ c=(await (await fetch(SB+'/rest/v1/creditos?select=*&id=eq.'+encodeURIComponent(ID),{headers:H})).json())[0]; }catch(e){}
+  if(!c){ app.innerHTML='<div class="msg">Crédito não encontrado.</div>'; return; }
+  const despesas=await (await fetch(SB+'/rest/v1/credito_despesas?select=*&order=data&credito_id=eq.'+encodeURIComponent(ID),{headers:H})).json().catch(()=>[]);
+
+  // Brand Flow (verde) quando unidade Flow
+  const isFlow=/flow/i.test(c.unidade||'');
+  if(isFlow){ document.documentElement.style.setProperty('--brand','#2E7D34'); }
+  const s=STA[c.status]||[c.status,'#374151','#F3F4F6'];
+  const credito=Number(c.valor_aprovado||0), gasto=Number(c.total_gasto||0), saldo=credito-gasto;
+
+  let despHTML='';
+  if((despesas||[]).length){
+    despHTML='<div class="sec">🧾 Despesas realizadas</div><div class="tw"><table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Fornecedor</th><th class="num">Valor</th></tr></thead><tbody>'+
+      despesas.map(d=>'<tr><td>'+fD(d.data)+'</td><td>'+esc(d.descricao)+(d.comprovante_url?' <a href="'+esc(d.comprovante_url)+'" target="_blank" rel="noreferrer">📎</a>':'')+'</td><td>'+esc(d.categoria||'—')+'</td><td>'+esc(d.fornecedor||'—')+'</td><td class="num">'+brl(d.valor)+'</td></tr>').join('')+
+      '</tbody><tfoot><tr><td colspan="4">Total gasto</td><td class="num tl">'+brl(gasto)+'</td></tr></tfoot></table></div>';
+  }
+
+  let concHTML='';
+  const p=c.prestacao||{};
+  if(c.status==='encerrado'||c.status==='remanescente'||c.status==='aguardando_devolucao'||p.destino){
+    const destTxt={devolucao:'💵 Devolução ao caixa',remanescente:'🔄 Crédito remanescente',complemento:'➕ Complemento',reembolso:'🔴 Reembolso ao colaborador',zerado:'🟢 Totalmente utilizado'}[c.destino_saldo||p.destino]||'—';
+    concHTML='<div class="box"><b>Conciliação</b><br>Crédito '+brl(credito)+' = Despesas '+brl(gasto)+(saldo>=0?' + ':' − ')+brl(Math.abs(saldo))+' ('+(saldo>=0?'saldo':'excedente')+')<br>Destino do saldo: <b>'+destTxt+'</b>'+(p.justificativa?'<br>Justificativa: '+esc(p.justificativa):'')+(p.conciliado_por?'<br><span style="color:var(--muted);font-size:12px">Conciliado por '+esc(p.conciliado_por)+'</span>':'')+'</div>';
+  }
+
+  app.innerHTML=
+    '<header class="top"><div><div class="eyebrow">'+(isFlow?'Flow Costa Dourada':'Amore Food')+' · Crédito</div>'+
+    '<h1>CRD-'+esc(c.numero)+'</h1><div class="sub">'+esc(c.solicitante_nome)+' · '+esc(c.unidade)+(c.setor?' · '+esc(c.setor):'')+'</div></div>'+
+    '<span class="badge" style="background:'+s[2]+';color:'+s[1]+'">'+s[0]+'</span></header>'+
+    '<div class="meta">'+
+      '<div><div class="l">Finalidade</div><div class="v">'+(FIN[c.finalidade]||esc(c.finalidade))+(c.subcategoria?' · '+esc(c.subcategoria):'')+'</div></div>'+
+      '<div><div class="l">Solicitado em</div><div class="v">'+fD(c.data_solicitacao)+'</div></div>'+
+      (c.data_necessaria?'<div><div class="l">Necessário em</div><div class="v">'+fD(c.data_necessaria)+'</div></div>':'')+
+      (c.forma_recebimento?'<div><div class="l">Forma</div><div class="v">'+esc(c.forma_recebimento)+'</div></div>':'')+
+      (c.prioridade?'<div><div class="l">Prioridade</div><div class="v">'+esc(c.prioridade)+'</div></div>':'')+
+      (c.centro_custo?'<div><div class="l">Centro de custo</div><div class="v" style="font-size:12px">'+esc(c.centro_custo)+'</div></div>':'')+
+    '</div>'+
+    '<div class="cards3">'+
+      '<div class="big"><div class="l">Valor solicitado</div><div class="v">'+brl(c.valor_solicitado)+'</div></div>'+
+      '<div class="big"><div class="l">Crédito aprovado</div><div class="v" style="color:var(--ok)">'+(c.valor_aprovado!=null?brl(c.valor_aprovado):'—')+'</div></div>'+
+      (gasto>0?'<div class="big"><div class="l">Saldo</div><div class="v" style="color:'+(saldo<0?'var(--crit)':'var(--ok)')+'">'+brl(saldo)+'</div></div>':'')+
+    '</div>'+
+    (c.observacao?'<div class="box">📝 '+esc(c.observacao)+'</div>':'')+
+    (c.anexo_url?'<div class="box">📎 <a href="'+esc(c.anexo_url)+'" target="_blank" rel="noreferrer">Ver comprovante/orçamento anexado</a></div>':'')+
+    (c.reprovado_motivo?'<div class="box" style="color:var(--crit)">❌ Reprovado: '+esc(c.reprovado_motivo)+'</div>':'')+
+    despHTML+concHTML+
+    '<div class="foot">Documento gerado pelo painel '+(isFlow?'Flow':'Amore')+' · módulo Crédito &amp; Prestação de Contas. Este link reflete o status em tempo real.</div>';
+}
+main();
+</script>
+</body>
+</html>

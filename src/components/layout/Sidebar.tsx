@@ -94,6 +94,7 @@ const RELATORIOS_SUBMENU: NavItem[] = [
 const MENU_BOTTOM: NavItem[] = [
   { id: 'pdv',        label: 'PDV — Caixa',   icon: <Monitor size={13} /> },
   { id: 'financeiro', label: 'Financeiro',    icon: <DollarSign size={13} /> },
+  { id: 'creditos',   label: '💳 Créditos & Prestação', icon: <DollarSign size={13} />, perm: 'financeiro' },
   { id: 'boletos',    label: '🧾 Central de Boletos', icon: <DollarSign size={13} />, perm: 'financeiro' },
   { id: 'cozinha',    label: 'Cozinha',       icon: <ChefHat size={13} /> },
   { id: 'salao',      label: 'Salão',         icon: <Coffee size={13} /> },

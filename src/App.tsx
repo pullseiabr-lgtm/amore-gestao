@@ -52,6 +52,7 @@ import AgenteLizPage from './pages/agente/AgenteLizPage'
 import AgenteCMVPage from './pages/agente/AgenteCMVPage'
 import NotificacoesPage from './pages/notificacoes/NotificacoesPage'
 import CaixasPage from './pages/caixas/CaixasPage'
+import CreditosPage from './pages/creditos/CreditosPage'
 import AvaliacoesPage from './pages/avaliacoes/AvaliacoesPage'
 import RaspadinhaPage from './pages/raspadinha/RaspadinhaPage'
 import LizCentralPage from './pages/liz/LizCentralPage'
@@ -140,6 +141,7 @@ export type PageId =
   | 'pesquisa-aura'
   | 'gestao-lista'
   | 'requisicao-nova'
+  | 'creditos'
 
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Dashboard',
@@ -208,6 +210,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'pesquisa-aura': 'Pesquisa — Vamos Farmar Aura',
   'gestao-lista': 'Gestão da Lista de Compras',
   'requisicao-nova': 'Nova Requisição de Compra',
+  creditos: 'Créditos & Prestação de Contas',
 }
 
 // Aplica a paleta Flow (verde) no painel quando a loja ativa é "Flow CD".
@@ -274,6 +277,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'estoque': return <EstoquePage />
     case 'fornecedores': return <FornecedoresPage />
     case 'financeiro': return <FinanceiroPage />
+    case 'creditos': return <CreditosPage />
     case 'marketing': return <MarketingPage />
     case 'mkt-contatos': return <ContatosPage />
     case 'gamificacao': return <GamificacaoPage />
