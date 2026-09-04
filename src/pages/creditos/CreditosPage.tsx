@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Loader, Plus, RefreshCw, Wallet, FileCheck2, Send, Check, X, ChevronLeft, Paperclip, Trash2, ExternalLink, AlertTriangle } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -299,7 +299,10 @@ function CreditoCard({ c, podeAprovar, user, onChange, onPrestar }: {
           </>
         )}
         {c.status === 'aprovado' && !busy && (
-          <button className="btn bp bsm" onClick={disponibilizar}><Wallet size={12} /> Disponibilizar crédito</button>
+          <>
+            <button className="btn bp bsm" onClick={onPrestar}><FileCheck2 size={12} /> Prestar contas</button>
+            <button className="btn bo bsm" onClick={disponibilizar}><Wallet size={12} /> Só disponibilizar</button>
+          </>
         )}
         {['disponibilizado', 'em_prestacao', 'prestacao_pendente', 'divergencia', 'aguardando_devolucao'].includes(c.status) && !busy && (
           <button className="btn bp bsm" onClick={onPrestar}><FileCheck2 size={12} /> Prestar contas</button>
@@ -405,7 +408,7 @@ function NovoCredito({ onClose, onSaved, lojaAtual, profiles, user }: {
 function PrestacaoContas({ creditos, selId, setSelId, onChange, user }: {
   creditos: Credito[]; selId: string | null; setSelId: (id: string | null) => void; onChange: () => void; user: any
 }) {
-  const elegiveis = creditos.filter(c => ['disponibilizado', 'em_prestacao', 'prestacao_pendente', 'divergencia', 'aguardando_devolucao'].includes(c.status))
+  const elegiveis = creditos.filter(c => ['aprovado', 'disponibilizado', 'em_prestacao', 'prestacao_pendente', 'divergencia', 'aguardando_devolucao'].includes(c.status))
   const c = creditos.find(x => x.id === selId) || null
 
   if (!c) {
@@ -448,6 +451,20 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
     setLoading(false)
   }, [c.id])
   useEffect(() => { load() }, [load])
+
+  // Disponibiliza automaticamente ao abrir a prestação de um crédito aprovado
+  // (mantém o registro de liberação no caixa, sem exigir o clique manual).
+  const dispRef = useRef(false)
+  useEffect(() => {
+    if (c.status === 'aprovado' && !dispRef.current) {
+      dispRef.current = true
+      ;(async () => {
+        await sb.from('creditos').update({ status: 'disponibilizado', updated_at: new Date().toISOString() }).eq('id', c.id)
+        await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: 'liberacao', valor: c.valor_aprovado, data: hoje(), obs: 'Crédito disponibilizado (automático ao prestar contas)', created_by: user?.name || 'Painel' })
+        onChange()
+      })()
+    }
+  }, [c.status, c.id, c.valor_aprovado, user, onChange])
 
   const totalGasto = despesas.reduce((s, d) => s + (d.valor || 0), 0)
   const credito = c.valor_aprovado || 0
