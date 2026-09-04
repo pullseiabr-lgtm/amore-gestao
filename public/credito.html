@@ -73,6 +73,23 @@ async function main(){
     concHTML='<div class="box"><b>Conciliação</b><br>Crédito '+brl(credito)+' = Despesas '+brl(gasto)+(saldo>=0?' + ':' − ')+brl(Math.abs(saldo))+' ('+(saldo>=0?'saldo':'excedente')+')<br>Destino do saldo: <b>'+destTxt+'</b>'+(p.justificativa?'<br>Justificativa: '+esc(p.justificativa):'')+(p.conciliado_por?'<br><span style="color:var(--muted);font-size:12px">Conciliado por '+esc(p.conciliado_por)+'</span>':'')+'</div>';
   }
 
+  // Validação direta no link (aprovar/reprovar sem entrar no painel)
+  const podeValidar=['solicitado','em_aprovacao'].includes(c.status);
+  let valaHTML='';
+  if(podeValidar){
+    valaHTML='<div class="box" style="border-color:var(--brand)">'+
+      '<b>✅ Validação do crédito</b>'+
+      '<div style="color:var(--muted);font-size:12px;margin:4px 0 10px">Aprove ou recuse direto por aqui — sem precisar entrar no painel.</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'+
+        '<label style="font-size:12px;color:var(--muted)">Valor a aprovar (R$)<input id="valAprov" inputmode="decimal" value="'+(Number(c.valor_solicitado)||0).toFixed(2)+'" style="width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);font:inherit;margin-top:4px;box-sizing:border-box"></label>'+
+        '<label style="font-size:12px;color:var(--muted)">Quem aprova<input id="aprovNome" placeholder="Seu nome" style="width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);font:inherit;margin-top:4px;box-sizing:border-box"></label>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button id="btnAprovar" style="border:none;border-radius:9px;padding:11px 18px;font-weight:700;font-size:14px;color:#fff;background:var(--ok);cursor:pointer">✅ Aprovar</button>'+
+      '<button id="btnReprovar" style="border:none;border-radius:9px;padding:11px 18px;font-weight:700;font-size:14px;color:#fff;background:var(--crit);cursor:pointer">❌ Reprovar</button></div>'+
+      '<div id="valMsg" style="margin-top:10px;font-size:13px;font-weight:600"></div>'+
+    '</div>';
+  }
+
   app.innerHTML=
     '<header class="top"><div><div class="eyebrow">'+(isFlow?'Flow Costa Dourada':'Amore Food')+' · Crédito</div>'+
     '<h1>CRD-'+esc(c.numero)+'</h1><div class="sub">'+esc(c.solicitante_nome)+' · '+esc(c.unidade)+(c.setor?' · '+esc(c.setor):'')+'</div></div>'+
@@ -90,11 +107,39 @@ async function main(){
       '<div class="big"><div class="l">Crédito aprovado</div><div class="v" style="color:var(--ok)">'+(c.valor_aprovado!=null?brl(c.valor_aprovado):'—')+'</div></div>'+
       (gasto>0?'<div class="big"><div class="l">Saldo</div><div class="v" style="color:'+(saldo<0?'var(--crit)':'var(--ok)')+'">'+brl(saldo)+'</div></div>':'')+
     '</div>'+
+    valaHTML+
     (c.observacao?'<div class="box">📝 '+esc(c.observacao)+'</div>':'')+
     (c.anexo_url?'<div class="box">📎 <a href="'+esc(c.anexo_url)+'" target="_blank" rel="noreferrer">Ver comprovante/orçamento anexado</a></div>':'')+
     (c.reprovado_motivo?'<div class="box" style="color:var(--crit)">❌ Reprovado: '+esc(c.reprovado_motivo)+'</div>':'')+
     despHTML+concHTML+
     '<div class="foot">Documento gerado pelo painel '+(isFlow?'Flow':'Amore')+' · módulo Crédito &amp; Prestação de Contas. Este link reflete o status em tempo real.</div>';
+
+  // Wiring dos botões de validação
+  if(podeValidar){
+    const patch=async(body)=>{
+      const r=await fetch(SB+'/rest/v1/creditos?id=eq.'+encodeURIComponent(ID),{method:'PATCH',headers:Object.assign({},H,{'Content-Type':'application/json',Prefer:'return=minimal'}),body:JSON.stringify(Object.assign({updated_at:new Date().toISOString()},body))});
+      return r.ok;
+    };
+    const msg=document.getElementById('valMsg');
+    const bA=document.getElementById('btnAprovar'), bR=document.getElementById('btnReprovar');
+    bA.onclick=async()=>{
+      const v=Number(String(document.getElementById('valAprov').value).replace(',','.'));
+      if(!(v>0)){ msg.style.color='var(--crit)'; msg.textContent='Informe um valor válido.'; return; }
+      const nome=(document.getElementById('aprovNome').value||'').trim()||'Aprovador';
+      bA.disabled=true; bR.disabled=true; msg.style.color='var(--muted)'; msg.textContent='Aprovando…';
+      const ok=await patch({status:'aprovado',valor_aprovado:v,aprovado_por:nome,aprovado_em:new Date().toISOString()});
+      if(ok){ msg.style.color='var(--ok)'; msg.textContent='✅ Crédito aprovado!'; setTimeout(main,700); }
+      else{ bA.disabled=false; bR.disabled=false; msg.style.color='var(--crit)'; msg.textContent='Falha ao aprovar. Tente de novo.'; }
+    };
+    bR.onclick=async()=>{
+      const motivo=(prompt('Motivo da reprovação:')||'').trim();
+      if(!motivo) return;
+      bA.disabled=true; bR.disabled=true; msg.style.color='var(--muted)'; msg.textContent='Registrando…';
+      const ok=await patch({status:'reprovado',reprovado_motivo:motivo});
+      if(ok){ msg.style.color='var(--crit)'; msg.textContent='❌ Crédito reprovado.'; setTimeout(main,700); }
+      else{ bA.disabled=false; bR.disabled=false; msg.style.color='var(--crit)'; msg.textContent='Falha. Tente de novo.'; }
+    };
+  }
 }
 main();
 </script>
