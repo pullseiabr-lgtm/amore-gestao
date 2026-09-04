@@ -35,6 +35,39 @@ export default async function handler(req, res) {
 
   let body = req.body
   if (typeof body === 'string') { try { body = JSON.parse(body) } catch { body = {} } }
+
+  // ── Recuperação de senha por WhatsApp (self-service do login) ──────────────
+  // Body: { action:'recover', email }. Acha o WhatsApp no perfil, gera um código
+  // (OTP) via service role e manda pelo WhatsApp. Nunca revela se o e-mail existe.
+  if (body && body.action === 'recover') {
+    const email = String(body.email || '').trim().toLowerCase()
+    const generic = { ok: true, sent: false, message: 'Se o e-mail estiver cadastrado com WhatsApp, enviamos um código.' }
+    if (!email) return res.status(400).json({ error: 'Informe o e-mail.' })
+    const SUPA = process.env.VITE_SUPABASE_URL
+    const SR = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY
+    if (!SUPA || !SR) return res.status(503).json({ error: 'Recuperação por WhatsApp não configurada no servidor (falta SUPABASE_SERVICE_ROLE_KEY).' })
+    try {
+      const pr = await fetch(`${SUPA}/rest/v1/profiles?select=name,permissions_override&email=eq.${encodeURIComponent(email)}`, { headers: { apikey: SR, Authorization: `Bearer ${SR}` } })
+      const prof = (await pr.json().catch(() => []))?.[0]
+      if (!prof) return res.status(200).json(generic)
+      const wpp = String(prof?.permissions_override?.__perfil__?.whatsapp || '').replace(/\D/g, '')
+      if (!wpp) return res.status(200).json(generic)
+      const gl = await fetch(`${SUPA}/auth/v1/admin/generate_link`, { method: 'POST', headers: { apikey: SR, Authorization: `Bearer ${SR}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'recovery', email }) })
+      const gj = await gl.json().catch(() => ({}))
+      const otp = gj?.email_otp || gj?.properties?.email_otp
+      if (!otp) return res.status(200).json(generic)
+      const link = 'https://painel.amorefood.com.br/redefinir-senha.html?email=' + encodeURIComponent(email)
+      const nome = prof.name ? (', ' + String(prof.name).split(' ')[0]) : ''
+      const msg = `🔐 *Amore Food — Recuperação de senha*\n\nOlá${nome}! Recebemos um pedido para redefinir sua senha.\n\nSeu código: *${otp}*\n\n1) Abra: ${link}\n2) Aguarde o formulário de código\n3) Informe o código acima e crie a nova senha\n\nVálido por ~1h. Se não foi você, ignore esta mensagem.`
+      const send = await fetch(`${url}/message/sendText/${instance}`, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: key }, body: JSON.stringify({ number: wpp, text: msg }) })
+      const sd = await send.json().catch(() => ({}))
+      const mask = wpp.length >= 6 ? wpp.slice(0, 4) + '****' + wpp.slice(-2) : '****'
+      return res.status(200).json({ ok: true, sent: true, wpp_mask: mask, id: sd?.key?.id })
+    } catch (err) {
+      return res.status(500).json({ error: err.message || 'Erro na recuperação por WhatsApp' })
+    }
+  }
+
   const { phone, message, image, caption } = body || {}
   if (!phone) return res.status(400).json({ error: 'Informe o número (phone).' })
   // Aceita: só texto (message), só imagem (image), ou imagem+legenda (image+caption/message).

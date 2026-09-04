@@ -14,6 +14,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [modo, setModo] = useState<'login' | 'recuperar'>('login')
   const [okMsg, setOkMsg] = useState('')
+  const [wppSent, setWppSent] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,6 +36,28 @@ export default function LoginPage() {
       setOkMsg('Se este e-mail estiver cadastrado, enviamos um link para redefinir a senha. Confira sua caixa de entrada (e o spam).')
     } catch {
       setOkMsg('Se este e-mail estiver cadastrado, enviamos um link para redefinir a senha.')
+    }
+    setLoading(false)
+  }
+
+  const enviarResetWhatsApp = async () => {
+    setError(''); setOkMsg('')
+    const em = email.trim().toLowerCase()
+    if (!em) { setError('Informe o e-mail cadastrado.'); return }
+    setLoading(true)
+    try {
+      const r = await fetch('/api/evolution-send', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'recover', email: em }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { setError(d?.error || 'Não foi possível enviar agora. Tente o link por e-mail.'); setLoading(false); return }
+      setWppSent(true)
+      setOkMsg(d?.sent
+        ? `Código enviado para o WhatsApp ${d.wpp_mask || 'cadastrado'}. Abra o link abaixo e informe o código + a nova senha.`
+        : 'Se o e-mail estiver cadastrado com WhatsApp, enviamos um código. Abra o link abaixo para informá-lo.')
+    } catch {
+      setError('Falha de conexão. Tente novamente.')
     }
     setLoading(false)
   }
@@ -86,17 +109,25 @@ export default function LoginPage() {
         </form>
         ) : (
         <form onSubmit={enviarReset}>
-          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 12 }}>Digite o e-mail cadastrado. Enviaremos um link para você redefinir a senha.</div>
+          <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 12 }}>Digite o e-mail cadastrado. Você pode receber um <b>link por e-mail</b> ou um <b>código no WhatsApp</b>.</div>
           <div className="fg">
             <label className="fl">E-mail cadastrado</label>
             <input className="inp" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com" required autoFocus />
           </div>
           {error && (<div className="al al-r" style={{ marginBottom: 10 }}><AlertCircle size={13} /><span>{error}</span></div>)}
           {okMsg && (<div className="al" style={{ marginBottom: 10, background: '#DCFCE7', color: '#15803D', border: '1px solid #86EFAC', borderRadius: 8, padding: '9px 11px', display: 'flex', gap: 6, fontSize: 12.5 }}><span>✅</span><span>{okMsg}</span></div>)}
+          {wppSent && (
+            <a href={`/redefinir-senha.html?email=${encodeURIComponent(email.trim().toLowerCase())}`} className="btn bp" style={{ width: '100%', justifyContent: 'center', textDecoration: 'none', marginBottom: 10 }}>
+              Inserir código e criar nova senha →
+            </a>
+          )}
           <button className="btn bp" type="submit" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
-            <KeyRound size={12} /> {loading ? 'Enviando...' : 'Enviar link de recuperação'}
+            <KeyRound size={12} /> {loading ? 'Enviando...' : 'Enviar link por e-mail'}
           </button>
-          <button type="button" onClick={() => { setModo('login'); setError(''); setOkMsg('') }} style={{ width: '100%', marginTop: 10, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+          <button type="button" onClick={enviarResetWhatsApp} disabled={loading} className="btn bo" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}>
+            <span style={{ fontSize: 14 }}>💬</span> {loading ? 'Enviando...' : 'Receber código por WhatsApp'}
+          </button>
+          <button type="button" onClick={() => { setModo('login'); setError(''); setOkMsg(''); setWppSent(false) }} style={{ width: '100%', marginTop: 10, background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
             <ArrowLeft size={13} /> Voltar ao login
           </button>
         </form>
