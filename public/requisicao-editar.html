@@ -49,7 +49,7 @@ tr.cat td{background:#f3eef0;color:var(--v);font-weight:800;font-size:11px;text-
 const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
 const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
 const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
-const ESDRAS='5581992573535';
+const ESDRAS_LIST=['5581982710008','5581992573535'];
 const $=s=>document.querySelector(s); const el=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const nb=n=>Number(String(n==null?'':n).replace(',','.'))||0;
@@ -76,6 +76,8 @@ function mapCat(raw,nome){ let c=classify(norm(raw)); if(!c)c=classify(norm(nome
 
 const q=new URLSearchParams(location.search); const ID=(q.get('id')||'').trim();
 let REQ=null, ITENS=[], CAT=[];
+// snapshot original (para registrar o que mudou na edição)
+let ITENS_ORIG=[], HEAD_ORIG={prio:'',entrega:'',tipo:''};
 
 async function carregarCatalogo(){
   try{ const rows=await (await fetch(SB+'/rest/v1/estoque_produtos?select=nome,gramatura,marca,codigo_barras,codigo_fornecedor,preco_unitario,categoria&ativo=eq.true&limit=8000',{headers:H})).json();
@@ -94,7 +96,42 @@ async function load(){
   if(!REQ){ el('app').innerHTML='<div class="card"><div class="empty">Requisição não encontrada.</div></div>'; return; }
   const its=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=eq.'+ID+'&select=id,produto_nome,categoria,quantidade,unidade,preco_referencia,observacoes',{headers:H})).json();
   ITENS=(its||[]).map(i=>({id:i.id,produto:i.produto_nome,categoria:(CATS.includes(i.categoria)?i.categoria:mapCat(i.categoria,i.produto_nome)),qtd:i.quantidade,un:i.unidade||'Unidade(s)',custo:Number(i.preco_referencia)||0,marca:(i.observacoes||'').replace(/^Marca:\s*/,'')||''}));
+  // guarda estado original p/ comparar depois
+  ITENS_ORIG=ITENS.map(x=>({produto:x.produto,qtd:x.qtd,un:x.un}));
+  HEAD_ORIG={prio:REQ.prioridade||'',entrega:(REQ.prazo_entrega||'').slice(0,10),tipo:(REQ.observacoes||'').replace(/^Tipo:\s*/,'')};
   renderPage();
+}
+
+// Calcula, em linguagem simples, o que mudou entre o original e o estado atual do formulário.
+function calcMudancas(){
+  const out=[];
+  const cur={prio:el('prio').value,entrega:el('entrega').value||'',tipo:el('tipo').value||''};
+  if((HEAD_ORIG.prio||'')!==cur.prio) out.push('Prioridade: '+(HEAD_ORIG.prio||'—')+' → '+cur.prio);
+  if((HEAD_ORIG.entrega||'')!==cur.entrega) out.push('Entrega: '+(dmy(HEAD_ORIG.entrega)||'—')+' → '+(dmy(cur.entrega)||'—'));
+  if((HEAD_ORIG.tipo||'')!==(cur.tipo||'')) out.push('Tipo: '+(HEAD_ORIG.tipo||'—')+' → '+(cur.tipo||'—'));
+  const origMap={}; ITENS_ORIG.forEach(o=>origMap[norm(o.produto)]=o);
+  const curMap={}; ITENS.forEach(o=>curMap[norm(o.produto)]=o);
+  ITENS.forEach(it=>{ const o=origMap[norm(it.produto)];
+    if(!o) out.push('➕ Incluiu "'+it.produto+'" ('+nb(it.qtd)+' '+it.un+')');
+    else if(nb(o.qtd)!==nb(it.qtd)) out.push('✏️ "'+it.produto+'": '+nb(o.qtd)+' → '+nb(it.qtd)+' '+it.un); });
+  ITENS_ORIG.forEach(o=>{ if(!curMap[norm(o.produto)]) out.push('➖ Removeu "'+o.produto+'"'); });
+  return out;
+}
+
+// Registra um evento na linha do tempo da requisição (req_timeline) — mesma trilha da tela Requisições.
+async function timeline(tipo,descricao,usuario,dados){
+  try{
+    await fetch(SB+'/rest/v1/req_timeline',{method:'POST',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify({requisicao_id:ID,tipo,descricao,usuario:usuario||'—',dados:dados||null})});
+  }catch(e){}
+}
+// Grava o registro da ALTERAÇÃO (quem/quando/o quê) na timeline.
+async function logAlteracao(por,mudancas){
+  if(!mudancas||!mudancas.length) return;
+  await timeline('edicao','✏️ Editada por '+(por||'—')+': '+mudancas.join(' · '),por,{mudancas});
+}
+function snapshotAtual(){
+  ITENS_ORIG=ITENS.map(x=>({produto:x.produto,qtd:x.qtd,un:x.un}));
+  HEAD_ORIG={prio:el('prio').value,entrega:el('entrega').value||'',tipo:el('tipo').value||''};
 }
 
 function renderPage(){
@@ -164,8 +201,13 @@ function render(){
 }
 function show(m,ok){ const e=el('msg'); if(!m){e.className='msg';return;} e.textContent=m; e.className='msg '+(ok?'ok':'err'); }
 
-async function salvar(silent){
+async function salvar(silent,porArg){
   if(!ITENS.length){ show('A requisição precisa ter ao menos 1 item.',false); return false; }
+  // quem está alterando (para o registro)
+  let por = porArg || el('quem').value;
+  if(!por && !silent){ por=(prompt('Seu nome (quem está alterando a requisição)?')||'').trim(); if(!por){ show('Informe quem está alterando, para ficar registrado.',false); return false; } }
+  // calcula o que mudou ANTES de sobrescrever
+  const mudancas = calcMudancas();
   // atualiza cabeçalho
   const head={prioridade:el('prio').value,prazo_entrega:el('entrega').value||null,observacoes:'Tipo: '+el('tipo').value,total_estimado:Math.round(ITENS.reduce((s,it)=>s+nb(it.qtd)*nb(it.custo),0)*100)/100,updated_at:new Date().toISOString()};
   try{
@@ -175,7 +217,9 @@ async function salvar(silent){
     const linhas=ITENS.map(it=>({requisicao_id:ID,produto_nome:it.produto,categoria:it.categoria||'Outros',quantidade:nb(it.qtd),unidade:it.un,preco_referencia:nb(it.custo)||null,observacoes:it.marca?('Marca: '+it.marca):null,bloqueado:false}));
     const r=await fetch(SB+'/rest/v1/requisicao_itens',{method:'POST',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify(linhas)});
     if(!r.ok) throw new Error('itens '+r.status);
-    if(!silent) show('✅ Alterações salvas.',true);
+    await logAlteracao(por,mudancas);   // registra o que mudou (quem/quando/o quê)
+    snapshotAtual();                    // novo ponto de comparação
+    if(!silent) show(mudancas.length?('✅ Alterações salvas e registradas ('+mudancas.length+' mudança'+(mudancas.length>1?'s':'')+').'):'✅ Salvo (sem alterações a registrar).',true);
     return true;
   }catch(e){ if(!silent) show('Erro ao salvar: '+e.message,false); return false; }
 }
@@ -183,13 +227,14 @@ async function salvar(silent){
 async function validar(){
   const quem=el('quem').value; if(!quem){ show('Selecione quem está validando (Wagner ou Esdras).',false); return; }
   if(!confirm('Validar a requisição '+('REQ-'+String(REQ.numero).padStart(4,'0'))+' e enviar para o Esdras gerar a cotação?'))return;
-  const ok=await salvar(true); if(!ok){ show('Não consegui salvar antes de validar.',false); return; }
+  const ok=await salvar(true,quem); if(!ok){ show('Não consegui salvar antes de validar.',false); return; }
   const num='REQ-'+String(REQ.numero).padStart(4,'0');
   try{
     await fetch(SB+'/rest/v1/requisicoes?id=eq.'+ID,{method:'PATCH',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify({status:'aprovada',aprovador_nome:quem,aprovador_at:new Date().toISOString()})});
+    await timeline('aprovacao','✅ Validada por '+quem+' — liberada para cotação/pedido',quem,null);
     const linkAcao='https://painel.amorefood.com.br/requisicao-acao.html?id='+ID;
     const msg='✅ *Requisição validada* — '+num+'\n'+(REQ.loja||'')+' · '+esc(REQ.titulo||'')+'\nValidada por: *'+quem+'*\n🧾 '+ITENS.length+' itens\n\n👉 *Esdras (Compras)*, abra para escolher o próximo passo (Gerar cotação · Gerar pedido · Ver requisição):\n'+linkAcao;
-    await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:ESDRAS,message:msg})});
+    for(const fone of ESDRAS_LIST){ try{ await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:fone,message:msg})}); }catch(e){} }
   }catch(e){}
   const bs='display:inline-block;margin:14px 6px 0;color:#fff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:700';
   const ehComprador=/esdras/i.test(quem);   // só o comprador (Esdras) vê os botões de gerar

@@ -71,6 +71,7 @@ const COMPRAS_SUBMENU: NavItem[] = [
   { id: 'cmv-abc',                label: 'CMV & Curva ABC',     icon: <Trophy size={12} /> },
   { id: 'comprador-ia',           label: '🤖 Comprador IA',     icon: <span style={{ fontSize: 13, lineHeight: 1 }}>🤖</span> },
   { id: 'requisicoes',            label: 'Requisições',         icon: <ClipboardList size={12} /> },
+  { id: 'requisicoes-status',     label: '📊 Status das Requisições', icon: <Activity size={12} />, perm: 'requisicoes' },
   { id: 'cotacao',                label: '💰 Cotação Inteligente', icon: <DollarSign size={12} />, perm: 'requisicoes' },
   { id: 'pedidos',                label: '🧾 Pedidos de Compra', icon: <ClipboardList size={12} />, perm: 'requisicoes' },
   { id: 'ciclo-compras',          label: '🔄 Ciclo de Compras', icon: <span style={{ fontSize: 13, lineHeight: 1 }}>🔄</span>, perm: 'requisicoes' },
@@ -112,6 +113,7 @@ const COLAB_MENU: NavItem[] = [
   { id: 'avaliacoes',        label: 'Avaliações & NPS',          icon: <span style={{ fontSize: 15, lineHeight: 1 }}>⭐</span> },
   { id: 'entregas',          label: 'Agenda de Entregas',        icon: <span style={{ fontSize: 15, lineHeight: 1 }}>🚚</span> },
   { id: 'requisicao-nova',   label: 'Nova Requisição',           icon: <ClipboardList size={15} />, perm: 'requisicoes' },
+  { id: 'requisicoes-status',label: 'Status das Requisições',    icon: <Activity size={15} />, perm: 'requisicoes' },
   { id: 'creditos',          label: 'Créditos & Prestação',      icon: <DollarSign size={15} /> },
 ]
 
@@ -140,7 +142,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
   const isProdutosGroup = (p: string) => p === 'produtos' || p === 'produtos-categorias'
 
   // Abre o dropdown automaticamente se a página ativa for do grupo Compras
-  const isComprasGroup = (p: string) => p === 'pipeline-suprimentos' || p === 'dashboard-suprimentos' || p === 'lista-padrao' || p === 'compras' || p === 'requisicoes' || p === 'cotacao' || p === 'pedidos' || p === 'ciclo-compras' || p === 'relatorio-diario' || p === 'requisicao-inteligente' || p === 'analise-semanal' || p === 'entregas' || p === 'req-automaticas' || p === 'estoque' || p === 'fornecedores' || p === 'compras-agente'
+  const isComprasGroup = (p: string) => p === 'pipeline-suprimentos' || p === 'dashboard-suprimentos' || p === 'lista-padrao' || p === 'compras' || p === 'requisicoes' || p === 'requisicoes-status' || p === 'cotacao' || p === 'pedidos' || p === 'ciclo-compras' || p === 'relatorio-diario' || p === 'requisicao-inteligente' || p === 'analise-semanal' || p === 'entregas' || p === 'req-automaticas' || p === 'estoque' || p === 'fornecedores' || p === 'compras-agente'
   const isRelatoriosGroup = (p: string) => p === 'relatorio-cvl' || p === 'ruptura' || p === 'market'
 
   const [gestaoOpen, setGestaoOpen] = useState(isGestaoGroup(activePage))

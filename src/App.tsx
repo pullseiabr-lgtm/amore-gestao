@@ -59,6 +59,7 @@ import LizCentralPage from './pages/liz/LizCentralPage'
 import ClientesPage from './pages/clientes/ClientesPage'
 import GestaoListaPage from './pages/gestao-lista/GestaoListaPage'
 import RequisicaoNovaPage from './pages/requisicao-nova/RequisicaoNovaPage'
+import StatusRequisicoesPage from './pages/requisicoes/StatusRequisicoesPage'
 import CampanhasPage from './pages/campanhas/CampanhasPage'
 import PesquisaAuraPage from './pages/pesquisa/PesquisaAuraPage'
 import ControleAgentePage from './pages/agente-controle/ControleAgentePage'
@@ -141,6 +142,7 @@ export type PageId =
   | 'pesquisa-aura'
   | 'gestao-lista'
   | 'requisicao-nova'
+  | 'requisicoes-status'
   | 'creditos'
 
 const PAGE_TITLES: Record<PageId, string> = {
@@ -210,6 +212,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'pesquisa-aura': 'Pesquisa — Vamos Farmar Aura',
   'gestao-lista': 'Gestão da Lista de Compras',
   'requisicao-nova': 'Nova Requisição de Compra',
+  'requisicoes-status': 'Status das Requisições',
   creditos: 'Créditos & Prestação de Contas',
 }
 
@@ -309,6 +312,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'pesquisa-aura':        return <PesquisaAuraPage />
     case 'gestao-lista':         return <GestaoListaPage />
     case 'requisicao-nova':      return <RequisicaoNovaPage />
+    case 'requisicoes-status':   return <StatusRequisicoesPage />
     case 'tarefas':              return <TarefasPage />
     case 'checklists':           return <ChecklistsPage />
     case 'pauta-reuniao':        return <PautaReuniaoPage />
@@ -336,7 +340,7 @@ function setUrlPage(p: PageId) {
 // Algumas páginas usam a permissão de OUTRO módulo (ex.: telas de compras usam 'requisicoes').
 // Usado pela TRAVA DE ACESSO: sem a permissão, a rota não abre — nem por ?page= direto.
 const PAGE_PERM: Partial<Record<PageId, string>> = {
-  'requisicao-nova': 'requisicoes', 'gestao-lista': 'requisicoes', 'cotacao': 'requisicoes',
+  'requisicao-nova': 'requisicoes', 'requisicoes-status': 'requisicoes', 'gestao-lista': 'requisicoes', 'cotacao': 'requisicoes',
   'pedidos': 'requisicoes', 'ciclo-compras': 'requisicoes', 'relatorio-diario': 'requisicoes',
   'requisicao-inteligente': 'requisicoes', 'analise-semanal': 'requisicoes',
   'pipeline-suprimentos': 'requisicoes', 'dashboard-suprimentos': 'requisicoes',
