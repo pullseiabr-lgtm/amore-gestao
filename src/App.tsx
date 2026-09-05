@@ -333,8 +333,24 @@ function setUrlPage(p: PageId) {
   try { const u = new URL(window.location.href); u.searchParams.set('page', p); u.hash = ''; window.history.replaceState({}, '', u.toString()) } catch { /* ignore */ }
 }
 
+// Algumas páginas usam a permissão de OUTRO módulo (ex.: telas de compras usam 'requisicoes').
+// Usado pela TRAVA DE ACESSO: sem a permissão, a rota não abre — nem por ?page= direto.
+const PAGE_PERM: Partial<Record<PageId, string>> = {
+  'requisicao-nova': 'requisicoes', 'gestao-lista': 'requisicoes', 'cotacao': 'requisicoes',
+  'pedidos': 'requisicoes', 'ciclo-compras': 'requisicoes', 'relatorio-diario': 'requisicoes',
+  'requisicao-inteligente': 'requisicoes', 'analise-semanal': 'requisicoes',
+  'pipeline-suprimentos': 'requisicoes', 'dashboard-suprimentos': 'requisicoes',
+  'boletos': 'financeiro', 'pesquisa-aura': 'campanhas', 'produtos-categorias': 'produtos',
+}
+function permForPage(p: PageId): string { return PAGE_PERM[p] ?? p }
+// Ordem de fallback: primeira página que o usuário PODE ver (colaborador cai em Central de Tarefas).
+const PAGE_FALLBACK_ORDER: PageId[] = [
+  'dashboard', 'tarefas', 'checklists', 'recebimento', 'etiquetas',
+  'relatorios-precos', 'avaliacoes', 'entregas', 'requisicoes', 'creditos',
+]
+
 export default function App() {
-  const { user, passwordRecovery } = useAuth()
+  const { user, passwordRecovery, can, isOwner } = useAuth()
   const { theme } = useTheme()
   const [page, setPage] = useState<PageId>(pageFromUrl)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -368,6 +384,17 @@ export default function App() {
     setSidebarOpen(false)
   }
 
+  // ── TRAVA DE ACESSO ── Se o usuário abrir (ou tentar por ?page=) uma tela sem
+  // permissão, ele é redirecionado para a primeira página que pode acessar.
+  const pageAllowed = user ? can(permForPage(page), 'view') : true
+  useEffect(() => {
+    if (user && !pageAllowed) {
+      const first = PAGE_FALLBACK_ORDER.find(p => can(permForPage(p), 'view'))
+      if (first && first !== page) navigate(first)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, pageAllowed, page])
+
   if (passwordRecovery) return <ResetPasswordPage />
   if (!user) return <LoginPage />
 
@@ -388,12 +415,20 @@ export default function App() {
             onHamburger={() => setSidebarOpen(o => !o)}
           />
           <main className="page-content">
-            <PageContent page={page} />
+            {pageAllowed ? (
+              <PageContent page={page} />
+            ) : (
+              <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted, #888)' }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
+                <h2 style={{ margin: '0 0 6px' }}>Sem acesso a este módulo</h2>
+                <p style={{ margin: 0 }}>Redirecionando para uma tela disponível…</p>
+              </div>
+            )}
           </main>
         </div>
 
-        {/* ── Botão flutuante Liz ── */}
-        {page !== 'agente-liz' && (
+        {/* ── Botão flutuante Liz (só para donos; colaborador não usa) ── */}
+        {isOwner && page !== 'agente-liz' && (
           <div
             onClick={() => navigate('agente-liz')}
             title="Falar com Liz"

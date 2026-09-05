@@ -100,6 +100,21 @@ const MENU_BOTTOM: NavItem[] = [
   { id: 'salao',      label: 'Salão',         icon: <Coffee size={13} /> },
 ]
 
+// Menu ENXUTO do Colaborador — os 9 módulos operacionais liberados para os
+// demais logins (todos, menos Esdras e Esdras Santana). Ícones em destaque
+// para ficar intuitivo. Os ids batem com as rotas em App.tsx.
+const COLAB_MENU: NavItem[] = [
+  { id: 'tarefas',           label: 'Central de Tarefas',        icon: <ClipboardList size={15} /> },
+  { id: 'checklists',        label: 'Operação Padrão',           icon: <ClipboardCheck size={15} /> },
+  { id: 'recebimento',       label: 'Recebimento Inteligente',   icon: <span style={{ fontSize: 15, lineHeight: 1 }}>📥</span> },
+  { id: 'etiquetas',         label: 'Etiquetas & Leitura',       icon: <Tag size={15} /> },
+  { id: 'relatorios-precos', label: 'Relatório de Compras',      icon: <BarChart2 size={15} /> },
+  { id: 'avaliacoes',        label: 'Avaliações & NPS',          icon: <span style={{ fontSize: 15, lineHeight: 1 }}>⭐</span> },
+  { id: 'entregas',          label: 'Agenda de Entregas',        icon: <span style={{ fontSize: 15, lineHeight: 1 }}>🚚</span> },
+  { id: 'requisicoes',       label: 'Novas Requisições',         icon: <ClipboardList size={15} /> },
+  { id: 'creditos',          label: 'Créditos & Prestação',      icon: <DollarSign size={15} /> },
+]
+
 const ADMIN_MENU: NavItem[] = [
   { id: 'usuarios',       label: 'Usuários & Permissões', icon: <Users size={13} />, adminOnly: true },
   { id: 'configuracoes',  label: 'White Label',            icon: <Settings size={13} />, superAdminOnly: true },
@@ -113,7 +128,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick }: SidebarProps) {
-  const { user, logout, can } = useAuth()
+  const { user, logout, can, isOwner } = useAuth()
   const { theme } = useTheme()
   const { loja } = useLoja()
   const isFlow = /flow/i.test(loja || '')
@@ -168,6 +183,24 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
         </div>
 
         <nav className="sb-nav">
+          {!isOwner ? (
+          <>
+            {/* ── Menu do Colaborador: só os 9 módulos operacionais ── */}
+            <div className="sb-sec">Minha Operação</div>
+            {COLAB_MENU.filter(m => can(m.perm ?? m.id, 'view')).map(m => (
+              <div
+                key={m.id}
+                className={`nav-item${activePage === m.id ? ' active' : ''}`}
+                onClick={() => onNav(m.id, m.label)}
+              >
+                {m.icon}
+                {m.label}
+                {m.badge && <span className="nav-badge">{m.badge}</span>}
+              </div>
+            ))}
+          </>
+          ) : (
+          <>
           <div className="sb-sec">Módulos</div>
 
           {/* Itens superiores */}
@@ -377,6 +410,8 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
                 </div>
               ))}
             </>
+          )}
+          </>
           )}
         </nav>
 

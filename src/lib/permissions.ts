@@ -1,4 +1,4 @@
-import type { PermissionsMap, ModulePermission } from '../types/database'
+import type { PermissionsMap, ModulePermission, Profile } from '../types/database'
 
 // Tabela de permissões por papel — mantida aqui (fora de AuthContext)
 // para que o Vite React Fast Refresh não invalide o módulo de context.
@@ -236,6 +236,16 @@ for (const r of Object.keys(ROLE_PERMISSIONS)) {
   ROLE_PERMISSIONS[r]['pauta-reuniao'] = ROLE_PERMISSIONS[r]['atas'] || ROLE_PERMISSIONS[r]['tarefas'] || { view: false, create: false, edit: false, delete: false, export: false }
 }
 
+// Módulo "Agendamento de Entregas" — chave própria (antes dependia de 'requisicoes' no menu)
+for (const r of Object.keys(ROLE_PERMISSIONS)) {
+  ROLE_PERMISSIONS[r]['entregas'] = ROLE_PERMISSIONS[r]['requisicoes'] || { view: false, create: false, edit: false, delete: false, export: false }
+}
+
+// Módulo "Créditos & Prestação de Contas" — chave própria (antes dependia de 'financeiro' no menu)
+for (const r of Object.keys(ROLE_PERMISSIONS)) {
+  ROLE_PERMISSIONS[r]['creditos'] = ROLE_PERMISSIONS[r]['financeiro'] || { view: false, create: false, edit: false, delete: false, export: false }
+}
+
 const ALL_MODULE_IDS = Object.keys(ROLE_PERMISSIONS.super_admin)
 const FULL: ModulePermission = { view: true, create: true, edit: true, delete: true, export: true }
 const OFF: ModulePermission = { view: false, create: false, edit: false, delete: false, export: false }
@@ -325,3 +335,48 @@ export const PERMISSION_TEMPLATES: PermissionTemplate[] = [
 ]
 
 export const TEMPLATE_BY_ID = Object.fromEntries(PERMISSION_TEMPLATES.map(t => [t.id, t]))
+
+// ─────────────────────────────────────────────────────────────
+// CONTROLE DE ACESSO POR PERFIL — "Donos" x "Colaboradores"
+// Regra do Esdras: só Esdras e Esdras Santana (super_admin) mantêm
+// acesso total. TODOS os demais logins ficam restritos aos 9 módulos
+// operacionais abaixo — veem no menu e conseguem operar apenas eles.
+// ─────────────────────────────────────────────────────────────
+
+/** E-mails que mantêm acesso total mesmo sem papel super_admin.
+ *  Preencha aqui SÓ se um dos donos não estiver como super_admin. */
+export const OWNER_EMAILS: string[] = [
+  // 'esdras@amorefood.com.br',
+  // 'esdrassantana@amorefood.com.br',
+]
+
+/** Dono = acesso irrestrito (Esdras e Esdras Santana). */
+export function isOwner(user: Profile | null): boolean {
+  if (!user) return false
+  if (user.role === 'super_admin') return true
+  return OWNER_EMAILS.includes((user.email || '').trim().toLowerCase())
+}
+
+/** Os 9 módulos liberados para os demais logins (na ordem do menu). */
+export const COLAB_MODULES: string[] = [
+  'tarefas',          // Central de Tarefas
+  'checklists',       // Operação Padrão
+  'recebimento',      // Recebimento Inteligente
+  'etiquetas',        // Etiquetas & Leitura
+  'relatorios-precos',// Relatório de Compras
+  'avaliacoes',       // Avaliações & NPS
+  'entregas',         // Agenda de Entregas
+  'requisicoes',      // Novas Requisições
+  'creditos',         // Créditos & Prestação de Contas
+]
+
+// Colaborador pode ver e operar (criar/editar/exportar); apagar fica com o dono.
+const COLAB_PERM: ModulePermission = { view: true, create: true, edit: true, delete: false, export: true }
+
+/** Mapa de permissões de um colaborador restrito: só os 9 módulos, o resto OFF. */
+export function colabPermissions(): PermissionsMap {
+  const map: PermissionsMap = {}
+  for (const id of ALL_MODULE_IDS) map[id] = { ...OFF }
+  for (const id of COLAB_MODULES) if (id in map) map[id] = { ...COLAB_PERM }
+  return map
+}
