@@ -111,7 +111,7 @@ const COLAB_MENU: NavItem[] = [
   { id: 'relatorios-precos', label: 'Relatório de Compras',      icon: <BarChart2 size={15} /> },
   { id: 'avaliacoes',        label: 'Avaliações & NPS',          icon: <span style={{ fontSize: 15, lineHeight: 1 }}>⭐</span> },
   { id: 'entregas',          label: 'Agenda de Entregas',        icon: <span style={{ fontSize: 15, lineHeight: 1 }}>🚚</span> },
-  { id: 'requisicoes',       label: 'Novas Requisições',         icon: <ClipboardList size={15} /> },
+  { id: 'requisicao-nova',   label: 'Nova Requisição',           icon: <ClipboardList size={15} />, perm: 'requisicoes' },
   { id: 'creditos',          label: 'Créditos & Prestação',      icon: <DollarSign size={15} /> },
 ]
 
