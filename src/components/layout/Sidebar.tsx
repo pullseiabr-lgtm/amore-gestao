@@ -198,6 +198,18 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
                 {m.badge && <span className="nav-badge">{m.badge}</span>}
               </div>
             ))}
+            {/* Ajuda — abre o manual dos 9 módulos (não é um módulo, é consulta) */}
+            <div className="sb-sec" style={{ marginTop: 8 }}>Ajuda</div>
+            <a
+              href="/manual-modulos.html"
+              target="_blank"
+              rel="noreferrer"
+              className="nav-item"
+              style={{ textDecoration: 'none', color: 'inherit' }}
+            >
+              <span style={{ fontSize: 14, lineHeight: 1 }}>📘</span>
+              Manual / Ajuda
+            </a>
           </>
           ) : (
           <>
