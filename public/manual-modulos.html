@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Manual dos 9 Módulos — Amore</title>
+<style>
+:root{
+  --vinho:#8B1212; --vinho-d:#6B0F0F; --vinho-l:#B03A3A;
+  --bg:#faf7f6; --card:#fff; --text:#1c1517; --muted:#6f656a; --border:#ece4e5;
+  --ok:#15803D; --warn:#B45309; --gold:#A9791F;
+  --shadow:0 1px 2px rgba(80,20,25,.05),0 10px 30px -14px rgba(80,20,25,.18);
+}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#151011; --card:#1e1719; --text:#f3ecee; --muted:#a79ca0; --border:#342a2c;
+  --vinho-l:#D06A6A; --gold:#D8AE5A;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 34px -14px rgba(0,0,0,.65);
+}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.55;
+  font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+
+/* ── Deck ── */
+.deck{max-width:900px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
+.stage{flex:1;display:flex;align-items:center;padding:20px 16px}
+.slide{display:none;width:100%;background:var(--card);border:1px solid var(--border);
+  border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
+.slide.on{display:block;animation:fade .28s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.slide.on{animation:none}}
+
+/* faixa superior do slide */
+.shead{display:flex;align-items:center;gap:14px;padding:20px 26px;border-bottom:1px solid var(--border)}
+.badge{width:52px;height:52px;flex:none;border-radius:14px;display:flex;align-items:center;justify-content:center;
+  font-size:27px;background:color-mix(in srgb,var(--vinho) 12%,var(--card));border:1px solid color-mix(in srgb,var(--vinho) 22%,var(--card))}
+.shead .kick{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho-l);font-weight:800}
+.shead h2{margin:2px 0 0;font-size:clamp(19px,3.6vw,25px);line-height:1.12;color:var(--text);text-wrap:balance}
+.sbody{padding:22px 26px 26px}
+
+.lead{font-size:15.5px;color:var(--text);margin:0 0 20px;max-width:62ch}
+.lead b{color:var(--vinho-l)}
+
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:640px){.cols{grid-template-columns:1fr}}
+.box{border:1px solid var(--border);border-radius:14px;padding:15px 17px;background:color-mix(in srgb,var(--vinho) 3%,var(--card))}
+.box h3{margin:0 0 10px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  display:flex;align-items:center;gap:7px}
+.box h3 .dot{width:8px;height:8px;border-radius:50%;background:var(--vinho)}
+.serve p{margin:0;font-size:14.5px;color:var(--text)}
+ol.steps{margin:0;padding:0;list-style:none;counter-reset:s}
+ol.steps li{counter-increment:s;position:relative;padding:0 0 11px 34px;font-size:14px}
+ol.steps li:last-child{padding-bottom:0}
+ol.steps li::before{content:counter(s);position:absolute;left:0;top:-1px;width:23px;height:23px;
+  background:var(--vinho);color:#fff;border-radius:7px;font-size:12.5px;font-weight:800;
+  display:flex;align-items:center;justify-content:center}
+.tip{margin-top:18px;display:flex;gap:11px;align-items:flex-start;padding:12px 15px;border-radius:12px;
+  background:color-mix(in srgb,var(--gold) 14%,var(--card));border:1px solid color-mix(in srgb,var(--gold) 34%,var(--card))}
+.tip .i{font-size:17px;line-height:1.2}
+.tip p{margin:0;font-size:13.5px;color:var(--text)}
+.tip b{color:var(--gold)}
+
+/* ── Capa ── */
+.cover{background:linear-gradient(150deg,var(--vinho) 0%,var(--vinho-d) 100%);color:#fff;
+  border:none;padding:0}
+.cover .inner{padding:46px 34px 40px}
+.cover img{height:38px;width:auto;margin-bottom:26px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.25))}
+.cover .kick{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#F3C9C9;font-weight:800}
+.cover h1{margin:8px 0 10px;font-size:clamp(28px,6vw,44px);line-height:1.05;font-weight:800;text-wrap:balance}
+.cover p{margin:0;font-size:16px;color:#F6DADA;max-width:44ch}
+.cover .nine{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+.cover .nine span{font-size:12.5px;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.22);
+  padding:5px 11px;border-radius:20px}
+.cover .go{margin-top:30px;font-size:13px;color:#F3C9C9;display:flex;align-items:center;gap:8px}
+
+/* ── Encerramento ── */
+.end .sbody{padding:26px}
+.grid-tips{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px}
+@media(max-width:640px){.grid-tips{grid-template-columns:1fr}}
+.gt{display:flex;gap:11px;padding:13px 15px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.gt .e{font-size:20px;line-height:1.1}
+.gt b{display:block;font-size:14px;margin-bottom:2px}
+.gt span{font-size:13px;color:var(--muted)}
+
+/* ── Barra de navegação ── */
+.nav{position:sticky;bottom:0;background:color-mix(in srgb,var(--bg) 86%,transparent);
+  backdrop-filter:blur(8px);border-top:1px solid var(--border);padding:11px 16px;
+  display:flex;align-items:center;gap:12px;justify-content:space-between}
+.nav .side{display:flex;align-items:center;gap:8px}
+.brandmini{display:flex;align-items:center;gap:8px;font-weight:800;color:var(--vinho-l);font-size:13px}
+.brandmini img{height:18px;width:auto}
+.dots{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;flex:1;max-width:420px}
+.dots button{width:9px;height:9px;border-radius:50%;border:none;padding:0;cursor:pointer;
+  background:var(--border);transition:.18s}
+.dots button.on{background:var(--vinho);transform:scale(1.25)}
+.dots button:focus-visible{outline:2px solid var(--vinho-l);outline-offset:2px}
+.arrow{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:10px;
+  padding:9px 15px;font-size:13.5px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px}
+.arrow:hover{border-color:var(--vinho-l);color:var(--vinho-l)}
+.arrow:disabled{opacity:.4;cursor:default}
+.arrow.primary{background:var(--vinho);border-color:var(--vinho);color:#fff}
+.count{font-size:12px;color:var(--muted);min-width:42px;text-align:center}
+
+@media print{
+  .nav{display:none}.stage{display:block;padding:0}
+  .slide{display:block!important;page-break-after:always;box-shadow:none;border-radius:0;border:none;margin:0}
+  body{background:#fff}
+}
+</style>
+</head>
+<body>
+<div class="deck">
+  <div class="stage">
+
+    <!-- 0 · Capa -->
+    <section class="slide cover on" data-t="Capa">
+      <div class="inner">
+        <img src="logo-amore-white.png" alt="Amore" onerror="this.style.display='none'">
+        <div class="kick">Guia rápido da equipe</div>
+        <h1>Manual dos 9 Módulos</h1>
+        <p>Tudo o que você usa no dia a dia, explicado de um jeito simples: para que serve e como usar cada tela.</p>
+        <div class="nine">
+          <span>📋 Tarefas</span><span>✅ Operação Padrão</span><span>📥 Recebimento</span>
+          <span>🏷️ Etiquetas</span><span>📊 Relatório de Compras</span><span>⭐ Avaliações</span>
+          <span>🚚 Entregas</span><span>📝 Requisições</span><span>💳 Créditos</span>
+        </div>
+        <div class="go">Use as setas ◀ ▶ ou os botões abaixo para avançar</div>
+      </div>
+    </section>
+
+    <!-- 1 · Central de Tarefas -->
+    <section class="slide" data-t="Tarefas">
+      <div class="shead">
+        <div class="badge">📋</div>
+        <div><div class="kick">Módulo 1</div><h2>Central de Tarefas</h2></div>
+      </div>
+      <div class="sbody">
+        <p class="lead">É a sua <b>lista de afazeres do dia</b>. Mostra o que precisa ser feito, quem é o responsável e o prazo — para nada ficar esquecido.</p>
+        <div class="cols">
+          <div class="box serve"><h3><span class="dot"></span>Para que serve</h3>
+            <p>Organizar e acompanhar as tarefas da operação. Cada tarefa tem responsável, prazo e situação (a fazer, em andamento, concluída). Tarefas que atrasam podem virar cobrança automática.</p></div>
+          <div class="box"><h3><span class="dot"></span>Como usar</h3>
+            <ol class="steps">
+              <li>Abra <b>Central de Tarefas</b> no menu.</li>
+              <li>Veja as tarefas que estão <b>no seu nome</b>.</li>
+              <li>Ao terminar, marque como <b>concluída</b>.</li>
+              <li>Precisa de algo novo? Toque em <b>Nova tarefa</b> e defina responsável e prazo.</li>
+            </ol></div>
+        </div>
+        <div class="tip"><span class="i">💡</span><p><b>Dica:</b> comece o dia por aqui. É o painel que diz o que é prioridade agora.</p></div>
+      </div>
+    </section>
+
+    <!-- 2 · Operação Padrão -->
+    <section class="slide" data-t="Operação Padrão">
+      <div class="shead">
+        <div class="badge">✅</div>
+        <div><div class="kick">Módulo 2</div><h2>Operação Padrão</h2></div>
+      </div>
+      <div class="sbody">
+        <p class="lead">São os <b>checklists</b> da rotina: abertura, fechamento, limpeza, conferências. Garante que tudo seja feito do mesmo jeito, todo dia.</p>
+        <div class="cols">
+          <div class="box serve"><h3><span class="dot"></span>Para que serve</h3>
+            <p>Padronizar a operação. Cada item pode pedir uma resposta (feito/não feito), uma <b>foto</b> ou um valor. Itens fora do padrão viram <b>não conformidade</b> e geram uma tarefa para corrigir.</p></div>
+          <div class="box"><h3><span class="dot"></span>Como usar</h3>
+            <ol class="steps">
+              <li>Escolha o <b>checklist</b> do momento (ex.: abertura).</li>
+              <li>Responda item por item; anexe <b>foto</b> quando pedir.</li>
+              <li>Achou algo errado? Marque <b>não conforme</b> e descreva.</li>
+              <li>No fim, <b>assine/finalize</b> para registrar quem fez.</li>
+            </ol></div>
+        </div>
+        <div class="tip"><span class="i">📸</span><p><b>Atenção:</b> quando o item pede foto, ela comprova que a tarefa foi feita. Não pule.</p></div>
+      </div>
+    </section>
+
+    <!-- 3 · Recebimento Inteligente -->
+    <section class="slide" data-t="Recebimento">
+      <div class="shead">
+        <div class="badge">📥</div>
+        <div><div class="kick">Módulo 3</div><h2>Recebimento Inteligente</h2></div>
+      </div>
+      <div class="sbody">
+        <p class="lead">É onde você <b>confere a mercadoria que chega</b> do fornecedor: o que foi faturado, o que realmente veio e a diferença.</p>
+        <div class="cols">
+          <div class="box serve"><h3><span class="dot"></span>Para que serve</h3>
+            <p>Evitar receber a menos ou pagar por item que não chegou. Compara <b>Faturado × Recebido × Diferença</b> e exige o <b>anexo da nota fiscal</b>, deixando tudo rastreável no estoque.</p></div>
+          <div class="box"><h3><span class="dot"></span>Como usar</h3>
+            <ol class="steps">
+              <li>Abra o <b>pedido que chegou</b>.</li>
+              <li>Confira <b>item a item</b> a quantidade recebida.</li>
+              <li>Anexe a <b>nota fiscal</b> (foto ou arquivo).</li>
+              <li>Toque em <b>Confirmar recebimento</b>.</li>
+            </ol></div>
+        </div>
+        <div class="tip"><span class="i">📎</span><p><b>Regra:</b> sem a nota anexada o recebimento não fecha. Tenha o documento em mãos.</p></div>
+      </div>
+    </section>
+
+    <!-- 4 · Etiquetas & Leitura -->
+    <section class="slide" data-t="Etiquetas">
+      <div class="shead">
+        <div class="badge">🏷️</div>
+        <div><div class="kick">Módulo 4</div><h2>Etiquetas &amp; Leitura</h2></div>
+      </div>
+      <div class="sbody">
+        <p class="lead">Cria <b>etiquetas com QR Code</b> para os lotes e permite dar <b>baixa no estoque lendo pela câmera</b> — rápido e sem erro de digitação.</p>
+        <div class="cols">
+          <div class="box serve"><h3><span class="dot"></span>Para que serve</h3>
+            <p>Controlar o estoque por lote. Ao receber, gera a etiqueta para imprimir. Ao usar o produto, você <b>lê a etiqueta</b> e o sistema baixa a quantidade, respeitando o mais antigo primeiro (FIFO).</p></div>
+          <div class="box"><h3><span class="dot"></span>Como usar</h3>
+            <ol class="steps">
+              <li>No recebimento, <b>gere e imprima</b> a etiqueta do lote.</li>
+              <li>Para dar baixa, abra <b>Etiquetas &amp; Leitura</b>.</li>
+              <li>Aponte a <b>câmera</b> para o QR da etiqueta.</li>
+              <li>Informe <b>setor/colaborador</b> e confirme a saída.</li>
+            </ol></div>
+        </div>
+        <div class="tip"><span class="i">📷</span><p><b>Dica:</b> autorize o uso da câmera no celular na primeira leitura.</p></div>
+      </div>
+    </section>
+
+    <!-- 5 · Relatório de Compras -->
+    <section class="slide" data-t="Relatório de Compras">
+      <div class="shead">
+        <div class="badge">📊</div>
+        <div><div class="kick">Módulo 5</div><h2>Relatório de Compras</h2></div>
+      </div>
+      <div class="sbody">
+        <p class="lead">Mostra <b>como os preços variaram</b> nas últimas compras de cada produto — para comprar melhor e perceber quando algo subiu.</p>
+        <div class="cols">
+          <div class="box serve"><h3><span class="dot"></span>Para que serve</h3>
+            <p>Comparar as últimas compras por produto, destacar o que mais pesa (curva <b>ABC</b>) e emitir <b>alertas</b> de preço. O custo de frete aparece separado, para você ver o preço real.</p></div>
+          <div class="box"><h3><span class="dot"></span>Como usar</h3>
+            <ol class="steps">
+              <li>Abra <b>Relatório de Compras</b>.</li>
+              <li>Escolha a <b>loja/período</b> desejado.</li>
+              <li>Veja o <b>comparativo</b> preço a preço e os alertas.</li>
+              <li>Se preciso, <b>envie o resumo</b> ao responsável.</li>
+            </ol></div>
+        </div>
+        <div class="tip"><span class="i">📈</span><p><b>Leia assim:</b> seta para cima = ficou mais caro que a compra anterior. Vale investigar.</p></div>
+      </div>
+    </section>
+
+    <!-- 6 · Avaliações & NPS -->
+    <section class="slide" data-t="Avaliações">
+      <div class="shead">
+        <div class="badge">⭐</div>
+        <div><div class="kick">Módulo 6</div><h2>Avaliações &amp; NPS</h2></div>
+      </div>
+      <div class="sbody">
+        <p class="lead">Reúne o <b>que os clientes acharam</b> do atendimento. O cliente avalia por um <b>QR Code</b> e os elogios são direcionados ao Google.</p>
+        <div class="cols">
+          <div class="box serve"><h3><span class="dot"></span>Para que serve</h3>
+            <p>Medir a satisfação (NPS) e agir rápido no que precisa melhorar. Traz painel, <b>ranking</b> e visão por cozinha/salão, além de reunir elogios como avaliações no Google.</p></div>
+          <div class="box"><h3><span class="dot"></span>Como usar</h3>
+            <ol class="steps">
+              <li>Deixe o <b>QR de avaliação</b> visível ao cliente.</li>
+              <li>Abra <b>Avaliações &amp; NPS</b> para ver as respostas.</li>
+              <li>Acompanhe a <b>nota</b> e os comentários do dia.</li>
+              <li>Trate as críticas — vire uma <b>tarefa</b> quando precisar.</li>
+            </ol></div>
+        </div>
+        <div class="tip"><span class="i">🙌</span><p><b>Meta:</b> cliente satisfeito é convidado a avaliar no Google. Peça sempre.</p></div>
+      </div>
+    </section>
+
+    <!-- 7 · Agenda de Entregas -->
+    <section class="slide" data-t="Entregas">
+      <div class="shead">
+        <div class="badge">🚚</div>
+        <div><div class="kick">Módulo 7</div><h2>Agenda de Entregas</h2></div>
+      </div>
+      <div class="sbody">
+        <p class="lead">Organiza <b>quando cada fornecedor entrega</b>. Você vê a agenda do dia, o status de cada entrega e avisa quando o fornecedor chega.</p>
+        <div class="cols">
+          <div class="box serve"><h3><span class="dot"></span>Para que serve</h3>
+            <p>Não perder entrega e não acumular tudo no mesmo horário. Cada entrega tem <b>status</b> (agendada, a caminho, chegou) e pode disparar aviso por WhatsApp. Ao chegar, já leva para a conferência.</p></div>
+          <div class="box"><h3><span class="dot"></span>Como usar</h3>
+            <ol class="steps">
+              <li>Abra <b>Agenda de Entregas</b>.</li>
+              <li><b>Agende</b> a entrega a partir do pedido (data e hora).</li>
+              <li>Acompanhe os <b>cards</b> por status.</li>
+              <li>Quando chegar, toque em <b>“Fornecedor chegou”</b>.</li>
+            </ol></div>
+        </div>
+        <div class="tip"><span class="i">🔗</span><p><b>Integra:</b> ao marcar a chegada, o sistema já abre o Recebimento daquele pedido.</p></div>
+      </div>
+    </section>
+
+    <!-- 8 · Novas Requisições -->
+    <section class="slide" data-t="Requisições">
+      <div class="shead">
+        <div class="badge">📝</div>
+        <div><div class="kick">Módulo 8</div><h2>Novas Requisições</h2></div>
+      </div>
+      <div class="sbody">
+        <p class="lead">É onde você <b>pede o que está faltando</b>. A requisição é o primeiro passo da compra: a loja informa a necessidade.</p>
+        <div class="cols">
+          <div class="box serve"><h3><span class="dot"></span>Para que serve</h3>
+            <p>Registrar o que a loja precisa comprar, de forma organizada e por loja. A requisição segue para cotação e pedido, sem depender de recado solto no WhatsApp.</p></div>
+          <div class="box"><h3><span class="dot"></span>Como usar</h3>
+            <ol class="steps">
+              <li>Abra <b>Novas Requisições</b>.</li>
+              <li>Toque em <b>Nova requisição</b> e escolha a <b>loja</b>.</li>
+              <li>Adicione os <b>itens e as quantidades</b>.</li>
+              <li><b>Envie</b> — a requisição fica registrada e rastreável.</li>
+            </ol></div>
+        </div>
+        <div class="tip"><span class="i">⚖️</span><p><b>Dica:</b> peça em kg/unidade certos. Quantidade clara evita compra errada.</p></div>
+      </div>
+    </section>
+
+    <!-- 9 · Créditos & Prestação -->
+    <section class="slide" data-t="Créditos">
+      <div class="shead">
+        <div class="badge">💳</div>
+        <div><div class="kick">Módulo 9</div><h2>Créditos &amp; Prestação de Contas</h2></div>
+      </div>
+      <div class="sbody">
+        <p class="lead">Para <b>pedir um valor adiantado</b> (uma compra, uma despesa) e depois <b>prestar contas</b> do que foi gasto, com comprovante.</p>
+        <div class="cols">
+          <div class="box serve"><h3><span class="dot"></span>Para que serve</h3>
+            <p>Controlar dinheiro adiantado com transparência: solicitação → <b>aprovação</b> → uso → <b>prestação de contas</b> (crédito × despesa) → conciliação. Nada de valor sem comprovante.</p></div>
+          <div class="box"><h3><span class="dot"></span>Como usar</h3>
+            <ol class="steps">
+              <li>Abra <b>Créditos &amp; Prestação</b> e <b>solicite</b> o valor.</li>
+              <li>Aguarde a <b>aprovação</b> do responsável.</li>
+              <li>Use o crédito e guarde os <b>comprovantes</b>.</li>
+              <li>Toque em <b>Prestar contas</b> e anexe cada despesa.</li>
+            </ol></div>
+        </div>
+        <div class="tip"><span class="i">🧾</span><p><b>Regra de ouro:</b> toda despesa entra com comprovante. Sem nota, não concilia.</p></div>
+      </div>
+    </section>
+
+    <!-- 10 · Encerramento -->
+    <section class="slide end" data-t="Fim">
+      <div class="shead">
+        <div class="badge">💚</div>
+        <div><div class="kick">Para fechar</div><h2>Boas práticas do dia a dia</h2></div>
+      </div>
+      <div class="sbody">
+        <div class="grid-tips">
+          <div class="gt"><span class="e">🌅</span><div><b>Comece pela Central de Tarefas</b><span>Ela mostra a prioridade do dia.</span></div></div>
+          <div class="gt"><span class="e">📸</span><div><b>Foto e nota sempre</b><span>Comprovam o que foi feito e recebido.</span></div></div>
+          <div class="gt"><span class="e">📱</span><div><b>Funciona no celular</b><span>Leitura por câmera, fotos e assinaturas.</span></div></div>
+          <div class="gt"><span class="e">🔒</span><div><b>Seu acesso é focado</b><span>Só os 9 módulos que você usa. Sem confusão.</span></div></div>
+        </div>
+        <div class="tip"><span class="i">🤝</span><p><b>Dúvida?</b> Fale com o seu gestor. Este manual fica sempre disponível neste link para consultar quando precisar.</p></div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Navegação -->
+  <div class="nav">
+    <div class="side">
+      <button class="arrow" id="prev" aria-label="Anterior">◀ Voltar</button>
+    </div>
+    <div class="dots" id="dots" role="tablist" aria-label="Slides"></div>
+    <div class="side">
+      <span class="count" id="count">1 / 11</span>
+      <button class="arrow primary" id="next" aria-label="Próximo">Avançar ▶</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var dotsWrap = document.getElementById('dots');
+  var prev = document.getElementById('prev'), next = document.getElementById('next');
+  var count = document.getElementById('count');
+  var i = 0;
+  slides.forEach(function(s, idx){
+    var b = document.createElement('button');
+    b.setAttribute('role','tab');
+    b.title = s.getAttribute('data-t') || ('Slide '+(idx+1));
+    b.addEventListener('click', function(){ go(idx); });
+    dotsWrap.appendChild(b);
+  });
+  var dots = Array.prototype.slice.call(dotsWrap.children);
+  function go(n){
+    i = Math.max(0, Math.min(slides.length-1, n));
+    slides.forEach(function(s,idx){ s.classList.toggle('on', idx===i); });
+    dots.forEach(function(d,idx){ d.classList.toggle('on', idx===i); });
+    count.textContent = (i+1)+' / '+slides.length;
+    prev.disabled = (i===0);
+    next.textContent = (i===slides.length-1) ? 'Concluir ✓' : 'Avançar ▶';
+    try{ document.querySelector('.stage').scrollIntoView({block:'nearest'}); }catch(e){}
+  }
+  prev.addEventListener('click', function(){ go(i-1); });
+  next.addEventListener('click', function(){ if(i<slides.length-1) go(i+1); });
+  document.addEventListener('keydown', function(e){
+    if(e.key==='ArrowRight'||e.key==='PageDown'){ go(i+1); }
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){ go(i-1); }
+    else if(e.key==='Home'){ go(0); }
+    else if(e.key==='End'){ go(slides.length-1); }
+  });
+  // swipe no celular
+  var x0=null;
+  document.addEventListener('touchstart', function(e){ x0 = e.touches[0].clientX; }, {passive:true});
+  document.addEventListener('touchend', function(e){
+    if(x0===null) return; var dx = e.changedTouches[0].clientX - x0;
+    if(Math.abs(dx)>50){ go(dx<0 ? i+1 : i-1); } x0=null;
+  }, {passive:true});
+  go(0);
+})();
+</script>
+</body>
+</html>
