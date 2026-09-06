@@ -161,6 +161,7 @@ function renderPage(){
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <select id="quem" style="width:auto"><option value="">Validado por…</option><option>Wagner</option><option>Esdras</option></select>
           <button class="btn sec" onclick="salvar(false)">💾 Salvar alterações</button>
+          <button class="btn" style="background:#0369A1" onclick="reenviarAtualizada()">🔄 Salvar e reenviar (atualizada)</button>
           <button class="btn" onclick="validar()">✅ Validar e enviar p/ cotação</button>
         </div>
       </div>
@@ -251,6 +252,20 @@ async function validar(){
   }
   el('app').innerHTML='<div class="done"><div class="big">✅ '+num+' validada!</div><p>Validada por <b>'+esc(quem)+'</b> · '+ITENS.length+' itens.</p>'+acoes+'</div>';
   window.scrollTo({top:0,behavior:'smooth'});
+}
+// Salvar e REENVIAR informando que a requisição foi ATUALIZADA (fica editável)
+async function reenviarAtualizada(){
+  const ok = await salvar(true, REQ.responsavel_nome||'—');
+  if(!ok){ show('Não consegui salvar antes de reenviar.',false); return; }
+  const num='REQ-'+String(REQ.numero).padStart(4,'0');
+  const total=ITENS.reduce((s,it)=>s+nb(it.qtd)*nb(it.custo),0);
+  const linkEdit='https://painel.amorefood.com.br/requisicao-editar.html?id='+ID;
+  const msg='🔄 *Requisição ATUALIZADA* — '+(REQ.loja||'')+'\n'+num+' · '+esc(REQ.titulo||'')+'\n👤 Solicitante: '+esc(REQ.responsavel_nome||'—')+'\n✏️ Esta requisição foi *atualizada* (itens acrescentados/retirados/ajustados) e está sendo reenviada para aprovação.\n🧾 '+ITENS.length+' itens · 💰 estimado '+brl(total)+'\n\n👉 Abrir para revisar e *validar/aprovar* (segue editável):\n'+linkEdit;
+  const alvos=['5581994135602','5581982710008','5581992573535']; // Wagner + Esdras (2 números)
+  let okSend=0;
+  for(const f of alvos){ try{ const r=await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:f,message:msg})}); if(r&&r.ok)okSend++; }catch(e){} }
+  await timeline('envio','Reenviada ATUALIZADA ('+ITENS.length+' itens) — destinatários avisados de que foi atualizada',REQ.responsavel_nome||'—',null);
+  show(okSend>0?('✅ Atualizada e reenviada para aprovação (Wagner e Esdras). 📲'):('⚠️ Salvo/atualizado, mas o WhatsApp falhou (VPS). Avise manualmente.'),true);
 }
 load();
 </script>

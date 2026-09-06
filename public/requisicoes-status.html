@@ -228,6 +228,7 @@ function cardHtml(r){
     +'</div>'
     +stepperHtml(r.status)
     +'<div class="acts">'
+      +'<a class="lnk" href="requisicao-editar.html?id='+r.id+'" target="_blank" rel="noreferrer" style="color:var(--info)">✏️ Editar / reenviar</a>'
       +'<a class="lnk" href="requisicao.html?id='+r.id+'" target="_blank" rel="noreferrer">📄 Ver requisição</a>'
       +'<span class="toggle" onclick="tglEst(\''+r.id+'\')">💰 Estimativa</span>'
       +'<span class="toggle" onclick="tglTl(\''+r.id+'\')">🕘 Histórico</span>'
