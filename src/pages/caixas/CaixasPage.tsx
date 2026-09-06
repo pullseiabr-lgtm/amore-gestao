@@ -95,19 +95,26 @@ function CaixaDetalhe({ caixa, onVoltar, onMudou }: { caixa: Caixa; onVoltar: ()
         await sb.from('credito_movimentos').insert({ credito_id: cred.id, tipo: 'prestacao', valor: caixa.total, data: hojeISO(), obs: `Prestação de contas via caixa "${caixa.titulo}" (auditoria)`, created_by: user?.name || 'Painel' })
       }
       // 2) metadados de auditoria
-      const meta = { credito_id: cred?.id || null, credito_num: cred?.numero ?? null, fechado_por: user?.name || 'Painel', fechado_em: new Date().toISOString(), aprovado_por: null, aprovado_em: null }
+      const meta = { credito_id: cred?.id || null, credito_num: cred?.numero ?? null, credito_valor: cred?.valor_aprovado ?? null, caixa_total: caixa.total, fechado_por: user?.name || 'Painel', fechado_em: new Date().toISOString(), aprovado_por: null, aprovado_em: null }
       await sb.from('app_config').upsert({ chave: `caixa_aud_${caixa.id}`, valor: meta }, { onConflict: 'chave' })
       setAud(meta)
       // 3) status do caixa → aguardando aprovação
       await updateCaixa(caixa.id, { status: 'aguardando_aprovacao' })
       setStatusAud('aguardando_aprovacao')
-      // 4) dispara para Wagner e Aline
+      // 4) dispara para Wagner e Aline — pela VPS (Evolution), o mesmo caminho das requisições
       const aprovadores = await getAprovadoresCaixa()
       const link = `https://painel.amorefood.com.br/caixa.html?id=${caixa.id}`
       const msg = `🗄️ *Caixa para auditoria e aprovação* — ${caixa.loja}\n${caixa.titulo}\n💰 Total: ${fmtR$(caixa.total)} · ${itens.length} itens\n📎 Notas fiscais anexadas${cred ? `\n🔗 Encerra o crédito CRD-${cred.numero}` : ''}\n👤 Fechado por: ${user?.name || 'Painel'}\n\n👉 Abrir para conferir as notas e *aprovar / apontar divergência*:\n${link}`
-      for (const a of aprovadores) { try { await enviarWhatsApp(a.fone, msg, undefined, { tipo: 'compra', modulo: 'caixas', titulo: `Caixa ${caixa.titulo}`, setor: caixa.loja }) } catch { /* segue */ } }
+      let okSend = 0
+      for (const a of aprovadores) {
+        try {
+          const rr = await fetch('/api/evolution-send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: a.fone, message: msg }) })
+          if (rr.ok) okSend++
+        } catch { /* segue */ }
+      }
       setShowFechar(false)
       onMudou?.()
+      if (okSend === 0) alert('⚠ Caixa fechado, mas o aviso no WhatsApp falhou (VPS/Evolution). Abra a página de auditoria e envie o link a Wagner/Aline manualmente.')
     } catch (e) { console.error(e); alert('Erro ao fechar o caixa.') }
     setFechando(false)
   }
@@ -138,28 +145,46 @@ function CaixaDetalhe({ caixa, onVoltar, onMudou }: { caixa: Caixa; onVoltar: ()
           </label>
         </div>
         {/* ── Fechamento / Auditoria ── */}
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-          {statusAud === 'arquivado' && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button className="btn bp bsm" onClick={abrirFechar} style={{ background: '#166534', borderColor: '#166534' }}>🔒 Fechar caixa (auditoria)</button>
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>Fecha o caixa, deixa disponível para auditoria e envia para Wagner e Aline aprovarem.</span>
+        {(() => {
+          const emAuditoria = ['aguardando_aprovacao', 'aprovado', 'divergencia'].includes(statusAud)
+          // saldo do crédito: valor liberado − gasto no caixa. + = devolver ao caixa · − = reembolsar quem gastou
+          const cv = aud?.credito_valor, saldo = (cv != null) ? (Number(cv) - Number(caixa.total)) : null
+          const linkAud = `https://painel.amorefood.com.br/caixa.html?id=${caixa.id}`
+          return (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+              {!emAuditoria && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button className="btn bp bsm" onClick={abrirFechar} style={{ background: '#166534', borderColor: '#166534' }}>🔒 Fechar caixa (auditoria)</button>
+                  <a href={linkAud} target="_blank" rel="noreferrer"><button className="btn bo bsm">🔎 Ver caixa (auditoria)</button></a>
+                  <span style={{ fontSize: 11, color: 'var(--muted)' }}>Fecha o caixa, deixa disponível para auditoria e envia para Wagner e Aline aprovarem.</span>
+                </div>
+              )}
+              {statusAud === 'aguardando_aprovacao' && (
+                <div style={{ fontSize: 12.5 }}>
+                  <div style={{ color: '#B45309', fontWeight: 700 }}>🕓 Aguardando aprovação de Wagner ou Aline.</div>
+                  <div style={{ color: 'var(--muted)', margin: '3px 0 6px' }}>Fechado por {aud?.fechado_por || '—'}{aud?.credito_num ? ` · encerra crédito CRD-${aud.credito_num}` : ''}.</div>
+                  <a href={linkAud} target="_blank" rel="noreferrer"><button className="btn bp bsm" style={{ background: '#0369A1', borderColor: '#0369A1' }}>🔎 Ver / Aprovar caixa</button></a>
+                </div>
+              )}
+              {statusAud === 'aprovado' && (
+                <div style={{ fontSize: 12.5, color: '#166534', fontWeight: 700 }}>✅ Aprovado{aud?.aprovado_por ? ` por ${aud.aprovado_por}` : ''}{aud?.credito_num ? ` · crédito CRD-${aud.credito_num} encerrado` : ''}. <a href={linkAud} target="_blank" rel="noreferrer" style={{ color: '#0369A1' }}>ver</a></div>
+              )}
+              {statusAud === 'divergencia' && (
+                <div style={{ fontSize: 12.5, color: '#991B1B', fontWeight: 700 }}>⚠ Divergência{aud?.aprovado_por ? ` por ${aud.aprovado_por}` : ''}{aud?.motivo ? `: ${aud.motivo}` : ''}. Ajuste e feche novamente.
+                  <button className="btn bo bsm" style={{ marginLeft: 10 }} onClick={abrirFechar}>Reenviar</button></div>
+              )}
+              {saldo != null && (
+                <div style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 10, fontWeight: 800, fontSize: 13,
+                  color: saldo >= 0 ? '#166534' : '#991B1B', background: saldo >= 0 ? '#DCFCE7' : '#FEE2E2' }}>
+                  {saldo >= 0
+                    ? <>💰 Saldo a devolver ao caixa: {fmtR$(saldo)}</>
+                    : <>↩ Reembolsar {aud?.credito_num ? `(crédito CRD-${aud.credito_num})` : 'quem gastou'}: {fmtR$(Math.abs(saldo))}</>}
+                  <span style={{ fontWeight: 500, color: 'var(--muted)', fontSize: 11 }}>(crédito {fmtR$(cv)} − gasto {fmtR$(caixa.total)})</span>
+                </div>
+              )}
             </div>
-          )}
-          {statusAud === 'aguardando_aprovacao' && (
-            <div style={{ fontSize: 12.5 }}>
-              <div style={{ color: '#B45309', fontWeight: 700 }}>🕓 Aguardando aprovação de Wagner ou Aline.</div>
-              <div style={{ color: 'var(--muted)', marginTop: 3 }}>Fechado por {aud?.fechado_por || '—'}{aud?.credito_num ? ` · encerra crédito CRD-${aud.credito_num}` : ''}. </div>
-              <a href={`https://painel.amorefood.com.br/caixa.html?id=${caixa.id}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#0369A1', fontWeight: 700 }}>Abrir página de auditoria/aprovação →</a>
-            </div>
-          )}
-          {statusAud === 'aprovado' && (
-            <div style={{ fontSize: 12.5, color: '#166534', fontWeight: 700 }}>✅ Aprovado{aud?.aprovado_por ? ` por ${aud.aprovado_por}` : ''}{aud?.credito_num ? ` · crédito CRD-${aud.credito_num} encerrado` : ''}.</div>
-          )}
-          {statusAud === 'divergencia' && (
-            <div style={{ fontSize: 12.5, color: '#991B1B', fontWeight: 700 }}>⚠ Divergência apontada{aud?.aprovado_por ? ` por ${aud.aprovado_por}` : ''}{aud?.motivo ? `: ${aud.motivo}` : ''}. Ajuste e feche novamente.
-              <button className="btn bo bsm" style={{ marginLeft: 10 }} onClick={abrirFechar}>Reenviar</button></div>
-          )}
-        </div>
+          )
+        })()}
       </div>
 
       {showFechar && (

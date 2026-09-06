@@ -75,6 +75,7 @@ async function load(){
 function render(its){
   const flow=/flow/i.test(CX.loja||''); document.documentElement.style.setProperty('--v',flow?'#2E7D34':'#8B1212');
   const s=STA[CX.status]||STA.arquivado;
+  const saldo=(META.credito_valor!=null)?(Number(META.credito_valor)-Number(CX.total)):null;
   const podeAprovar = CX.status==='aguardando_aprovacao';
   const linhas = its.length ? its.map(i=>`<tr><td>${esc(i.descricao||'—')}${i.anexo_url?` <a href="${esc(i.anexo_url)}" target="_blank" rel="noreferrer">📎</a>`:''}</td><td style="color:var(--muted)">${esc(i.fornecedor||'—')}</td><td>${esc(i.categoria||'—')}</td><td class="n">${brl(i.valor)}</td></tr>`).join('')
     : '<tr><td colspan="4" class="empty">Sem itens detalhados (valor total no cabeçalho).</td></tr>';
@@ -91,6 +92,7 @@ function render(its){
       <div class="kv"><b style="color:var(--v)">${brl(CX.total)}</b><span>Total do caixa</span></div>
       <div class="kv"><b>${its.length}</b><span>Itens</span></div>
       ${META.credito_num?`<div class="kv"><b>CRD-${esc(META.credito_num)}</b><span>Crédito encerrado</span></div>`:''}
+      ${saldo!=null?`<div class="kv" style="border-color:${saldo>=0?'#86EFAC':'#FCA5A5'}"><b style="color:${saldo>=0?'#166534':'#991B1B'}">${brl(Math.abs(saldo))}</b><span>${saldo>=0?'💰 Saldo a devolver':'↩ Reembolso a pagar'}</span></div>`:''}
       ${META.aprovado_por?`<div class="kv"><b>${esc(META.aprovado_por)}</b><span>${CX.status==='aprovado'?'Aprovado por':'Analisado por'} · ${dt(META.aprovado_em)}</span></div>`:''}
     </div></div>
 
