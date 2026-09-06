@@ -64,7 +64,18 @@ select:focus,input:focus{outline:none;border-color:var(--v)}
 .ev .d{font-size:13px}
 .ev .w{font-size:11.5px;color:var(--muted);margin-top:1px}
 .empty{padding:26px 16px;text-align:center;color:var(--muted)}
-.toggle{font-size:12px;color:var(--v2);font-weight:700;cursor:pointer;user-select:none;padding:0 16px 12px;display:inline-block}
+.acts{display:flex;gap:16px;flex-wrap:wrap;align-items:center;padding:0 16px 12px}
+.toggle{font-size:12px;color:var(--v2);font-weight:700;cursor:pointer;user-select:none;display:inline-block}
+.lnk{font-size:12px;color:var(--info);font-weight:700;text-decoration:none}
+.lnk:hover,.toggle:hover{text-decoration:underline}
+.esth{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.esth .tot{font-size:17px;font-weight:800;color:var(--v)}
+.warnbox{background:var(--warnbg);color:var(--warn);border-radius:9px;padding:9px 11px;font-size:12.5px;margin-bottom:10px;font-weight:600}
+.etbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.etbl td{padding:5px 6px;border-bottom:1px dashed var(--border)}
+.etbl td.n{text-align:right;white-space:nowrap;font-weight:700}
+.etbl td.pc{text-align:right;color:var(--muted);white-space:nowrap}
+.bar{height:5px;border-radius:3px;background:var(--v);margin-top:3px}
 </style>
 </head>
 <body>
@@ -178,7 +189,7 @@ function cardHtml(r){
   const solic=esc(r.responsavel_nome||r.created_by||'—');
   const aprov=r.aprovador_nome?('· ✅ '+esc(r.aprovador_nome)+(r.aprovador_at?' em '+dt(r.aprovador_at):'')):'';
   return '<div class="rc" data-id="'+r.id+'">'
-    +'<div class="rc-h" onclick="toggle(this,\''+r.id+'\')">'
+    +'<div class="rc-h" onclick="tglTl(\''+r.id+'\')">'
       +'<div style="flex:1;min-width:0">'
         +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="num">'+num+'</span>'
           +'<span class="chip loja'+(flow?' flow':'')+'">'+esc(r.loja||'—')+'</span></div>'
@@ -188,11 +199,17 @@ function cardHtml(r){
       +'<div class="st"><span class="pill" style="color:'+p.c+';background:'+p.b+'">'+p.l+'</span></div>'
     +'</div>'
     +stepperHtml(r.status)
-    +'<span class="toggle" onclick="toggle(this.parentNode.querySelector(\'.rc-h\'),\''+r.id+'\')">🕘 Ver histórico</span>'
+    +'<div class="acts">'
+      +'<a class="lnk" href="requisicao.html?id='+r.id+'" target="_blank" rel="noreferrer">📄 Ver requisição</a>'
+      +'<span class="toggle" onclick="tglEst(\''+r.id+'\')">💰 Estimativa</span>'
+      +'<span class="toggle" onclick="tglTl(\''+r.id+'\')">🕘 Histórico</span>'
+    +'</div>'
+    +'<div class="tl" id="est-'+r.id+'"><h4>Análise da estimativa</h4><div class="estb">Carregando…</div></div>'
     +'<div class="tl" id="tl-'+r.id+'"><h4>Linha do tempo</h4><div class="evs">Carregando…</div></div>'
   +'</div>';
 }
-async function toggle(_h,id){
+const brl=n=>'R$ '+(Number(n)||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+async function tglTl(id){
   const box=el('tl-'+id); if(!box) return;
   const open=box.classList.toggle('show');
   if(open && !box.dataset.loaded){
@@ -203,6 +220,32 @@ async function toggle(_h,id){
       if(!evs||!evs.length){ wrap.innerHTML='<div class="ev"><div class="ic">•</div><div><div class="d">Sem eventos registrados ainda.</div></div></div>'; return; }
       wrap.innerHTML=evs.map(e=>'<div class="ev"><div class="ic">'+(EVIC[e.tipo]||'•')+'</div><div><div class="d">'+esc(e.descricao||e.tipo)+'</div><div class="w">'+(e.usuario?esc(e.usuario)+' · ':'')+dt(e.created_at)+'</div></div></div>').join('');
     }catch(err){ box.querySelector('.evs').innerHTML='<div class="ev"><div class="ic">⚠️</div><div class="d">Não consegui carregar o histórico.</div></div>'; }
+  }
+}
+async function tglEst(id){
+  const box=el('est-'+id); if(!box) return;
+  const open=box.classList.toggle('show');
+  if(open && !box.dataset.loaded){
+    box.dataset.loaded='1';
+    const wrap=box.querySelector('.estb');
+    try{
+      const its=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=eq.'+id+'&select=produto_nome,quantidade,unidade,preco_referencia',{headers:H})).json();
+      if(!its||!its.length){ wrap.innerHTML='<div class="ev"><div class="d">Sem itens.</div></div>'; return; }
+      const rows=its.map(i=>({p:i.produto_nome,q:Number(i.quantidade)||0,un:i.unidade||'',pu:Number(i.preco_referencia)||0,st:(Number(i.quantidade)||0)*(Number(i.preco_referencia)||0)}));
+      const total=rows.reduce((s,r)=>s+r.st,0);
+      const semPreco=rows.filter(r=>!r.pu).length;
+      rows.sort((a,b)=>b.st-a.st);
+      const topPct=total>0?Math.round(rows[0].st/total*100):0;
+      let avisos='';
+      if(topPct>=50) avisos+='⚠️ 1 item concentra '+topPct+'% do valor: <b>'+esc(rows[0].p)+'</b> ('+rows[0].q+' '+esc(rows[0].un)+'). Confira se a quantidade está certa.<br>';
+      if(semPreco>0) avisos+='⚠️ '+semPreco+' de '+rows.length+' itens estão <b>sem preço</b> — o real tende a ser maior que o estimado.';
+      const linhas=rows.slice(0,10).map(r=>{ const pc=total>0?r.st/total*100:0;
+        return '<tr><td>'+esc(r.p)+(r.pu?'':' <span style="color:var(--warn)">· sem preço</span>')+'<div class="bar" style="width:'+Math.max(2,pc).toFixed(0)+'%;opacity:'+(r.pu?1:.25)+'"></div></td>'
+          +'<td class="pc">'+r.q+' '+esc(r.un)+'</td><td class="n">'+brl(r.st)+'</td><td class="pc">'+pc.toFixed(0)+'%</td></tr>'; }).join('');
+      wrap.innerHTML='<div class="esth"><span class="tot">'+brl(total)+'</span><span style="color:var(--muted);font-size:12px">'+rows.length+' itens · '+(rows.length>10?'top 10 por valor':'todos')+'</span></div>'
+        +(avisos?'<div class="warnbox">'+avisos+'</div>':'')
+        +'<table class="etbl">'+linhas+'</table>';
+    }catch(err){ wrap.innerHTML='<div class="ev"><div class="ic">⚠️</div><div class="d">Não consegui calcular a estimativa.</div></div>'; }
   }
 }
 el('floja').addEventListener('change',render);
