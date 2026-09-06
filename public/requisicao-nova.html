@@ -206,7 +206,7 @@ async function checarConsumo(itens){
       if(arr.length<3) continue;                       // histórico insuficiente → não sinaliza
       const med=arr[Math.floor(arr.length/2)];          // mediana (robusta a erros pontuais)
       const q=nb(it.qtd);
-      if(med>0 && q>=med*5) flags.push({produto:it.produto,qtd:q,un:it.un,media:med});
+      if(med>0 && q>=med*3) flags.push({produto:it.produto,qtd:q,un:it.un,media:med});
     }
     return flags;
   }catch(e){ return []; }
