@@ -81,6 +81,7 @@ const STATUS: Record<string, { label: string; cor: string; bg: string }> = {
   aprovado:             { label: '🟢 Aprovado',              cor: '#166534', bg: '#DCFCE7' },
   disponibilizado:      { label: '💰 Crédito disponibilizado', cor: '#166534', bg: '#D1FAE5' },
   em_prestacao:         { label: '🧾 Em prestação de contas', cor: '#3730A3', bg: '#E0E7FF' },
+  em_analise:           { label: '🕓 Em análise (aprovação)', cor: '#9A3412', bg: '#FFEDD5' },
   prestacao_pendente:   { label: '🔴 Prestação pendente',    cor: '#991B1B', bg: '#FEE2E2' },
   divergencia:          { label: '⚠️ Divergência',           cor: '#9A3412', bg: '#FFEDD5' },
   aguardando_devolucao: { label: '🔄 Aguardando devolução',  cor: '#5B21B6', bg: '#EDE9FE' },
@@ -535,9 +536,19 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
       prestacao.reembolso = absSaldo
       await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: 'reembolso', valor: absSaldo, data: hoje(), obs: justificativa, created_by: user?.name || 'Painel' })
     }
-    await sb.from('creditos').update({ status: novoStatus, destino_saldo: dst, saldo, total_gasto: totalGasto, prestacao, updated_at: new Date().toISOString() }).eq('id', c.id)
+    // A prestação NÃO encerra na hora: vai para ANÁLISE e é enviada a Wagner/Aline para aprovar.
+    prestacao.status_final = novoStatus  // status que assume quando aprovada
+    await sb.from('creditos').update({ status: 'em_analise', destino_saldo: dst, saldo, total_gasto: totalGasto, prestacao, updated_at: new Date().toISOString() }).eq('id', c.id)
+    // dispara Wagner e Aline pela VPS (Evolution)
+    let aprovadores: { nome: string; fone: string }[] = [{ nome: 'Wagner', fone: '5581994135602' }, { nome: 'Aline', fone: '5581994573420' }]
+    try { const { data } = await sb.from('app_config').select('valor').eq('chave', 'credito_aprovadores').maybeSingle(); if (Array.isArray(data?.valor?.lista) && data.valor.lista.length) aprovadores = data.valor.lista } catch { /* fallback */ }
+    const link = `https://painel.amorefood.com.br/credito.html?id=${c.id}`
+    const destinoTxt = dst === 'devolucao' ? `Devolução ${fmtR$(absSaldo)}` : dst === 'remanescente' ? `Remanescente ${fmtR$(absSaldo)}` : dst === 'reembolso' ? `Reembolso ${fmtR$(absSaldo)}` : dst === 'complemento' ? `Complemento ${fmtR$(absSaldo)}` : 'Totalmente utilizado'
+    const msg = `🧾 *Prestação de contas para aprovar* — CRD-${c.numero}\n${c.solicitante_nome} · ${c.unidade}${c.setor ? ' · ' + c.setor : ''}\n💰 Crédito ${fmtR$(credito)} · Gasto ${fmtR$(totalGasto)} · Saldo ${fmtR$(saldo)}\n📌 ${destinoTxt}\n\n👉 Abrir para conferir e *aprovar / apontar divergência*:\n${link}`
+    let okSend = 0
+    for (const a of aprovadores) { try { const rr = await fetch('/api/evolution-send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: a.fone, message: msg }) }); if (rr.ok) okSend++ } catch { /* segue */ } }
     onChange(); onVoltar()
-    alert('Prestação de contas registrada ✅')
+    alert(okSend > 0 ? 'Prestação enviada para análise de Wagner e Aline 📲' : '⚠ Prestação registrada em análise, mas o WhatsApp falhou (VPS). Envie o link manualmente aos aprovadores.')
   }
 
   const confirmarDevolucao = async () => {
@@ -624,7 +635,7 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
             <div className="fg" style={{ marginBottom: 10 }}><label className="fl">Justificativa (obrigatória)</label><textarea className="inp" rows={2} value={justificativa} onChange={e => setJustificativa(e.target.value)} /></div>
           )}
           <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>Conciliação: Crédito {fmtR$(credito)} = Despesas {fmtR$(totalGasto)} {saldo >= 0 ? '+' : '−'} {fmtR$(Math.abs(saldo))} ({saldo >= 0 ? 'saldo' : 'excedente'}).</div>
-          <button className="btn bp bsm" onClick={encerrar}><FileCheck2 size={13} /> Registrar prestação de contas</button>
+          <button className="btn bp bsm" onClick={encerrar}><FileCheck2 size={13} /> Enviar prestação para aprovação</button>
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>⚠️ Nenhum crédito é encerrado sem prestação de contas conciliada.</div>
         </div>
       )}

@@ -43,7 +43,7 @@ const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fD=s=>{if(!s)return '—';const p=String(s).slice(0,10).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:s};
 const FIN={compras_semana:'🛒 Compras da semana',logistica:'🚚 Logística',servico:'🔧 Prestação de serviço',outras:'🧾 Outras despesas',reembolso:'🔄 Reembolso'};
-const STA={rascunho:['🟡 Rascunho','#92400E','#FEF3C7'],solicitado:['🔵 Solicitado','#1E40AF','#DBEAFE'],em_aprovacao:['🟠 Em aprovação','#9A3412','#FFEDD5'],aprovado:['🟢 Aprovado','#166534','#DCFCE7'],disponibilizado:['💰 Disponibilizado','#166534','#D1FAE5'],em_prestacao:['🧾 Em prestação','#3730A3','#E0E7FF'],prestacao_pendente:['🔴 Prestação pendente','#991B1B','#FEE2E2'],divergencia:['⚠️ Divergência','#9A3412','#FFEDD5'],aguardando_devolucao:['🔄 Aguardando devolução','#5B21B6','#EDE9FE'],remanescente:['🔵 Remanescente','#1E40AF','#DBEAFE'],encerrado:['✅ Encerrado','#065F46','#D1FAE5'],reprovado:['❌ Reprovado','#991B1B','#FEE2E2']};
+const STA={rascunho:['🟡 Rascunho','#92400E','#FEF3C7'],solicitado:['🔵 Solicitado','#1E40AF','#DBEAFE'],em_aprovacao:['🟠 Em aprovação','#9A3412','#FFEDD5'],aprovado:['🟢 Aprovado','#166534','#DCFCE7'],disponibilizado:['💰 Disponibilizado','#166534','#D1FAE5'],em_prestacao:['🧾 Em prestação','#3730A3','#E0E7FF'],em_analise:['🕓 Em análise (aprovação)','#9A3412','#FFEDD5'],prestacao_pendente:['🔴 Prestação pendente','#991B1B','#FEE2E2'],divergencia:['⚠️ Divergência','#9A3412','#FFEDD5'],aguardando_devolucao:['🔄 Aguardando devolução','#5B21B6','#EDE9FE'],remanescente:['🔵 Remanescente','#1E40AF','#DBEAFE'],encerrado:['✅ Encerrado','#065F46','#D1FAE5'],reprovado:['❌ Reprovado','#991B1B','#FEE2E2']};
 
 async function main(){
   const app=document.getElementById('app');
@@ -90,6 +90,23 @@ async function main(){
     '</div>';
   }
 
+  // Aprovação da PRESTAÇÃO de contas (status em_analise) — Wagner ou Aline
+  const podeAprovarPrest=c.status==='em_analise';
+  let prestHTML='';
+  if(podeAprovarPrest){
+    const destTxt2={devolucao:'💵 Devolução ao caixa',remanescente:'🔄 Remanescente',complemento:'➕ Complemento',reembolso:'🔴 Reembolso ao colaborador',zerado:'🟢 Totalmente utilizado'}[c.destino_saldo||p.destino]||'—';
+    prestHTML='<div class="box" style="border-color:var(--brand)">'+
+      '<b>🧾 Aprovação da prestação de contas</b>'+
+      '<div style="color:var(--muted);font-size:12px;margin:4px 0 8px">Confira as despesas e o saldo e aprove — ou aponte divergência.</div>'+
+      '<div style="font-size:13.5px;margin-bottom:10px">Crédito <b>'+brl(credito)+'</b> · Gasto <b>'+brl(gasto)+'</b> · '+(saldo>=0?'💰 Saldo a devolver':'↩ Reembolso a pagar')+' <b style="color:'+(saldo>=0?'var(--ok)':'var(--crit)')+'">'+brl(Math.abs(saldo))+'</b> · Destino: <b>'+destTxt2+'</b></div>'+
+      '<label style="font-size:12px;color:var(--muted)">Quem aprova<select id="prestQuem" style="width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);font:inherit;margin:4px 0 10px;box-sizing:border-box"><option value="">Selecione…</option><option>Wagner</option><option>Aline</option></select></label>'+
+      '<label style="font-size:12px;color:var(--muted)">Observação <span style="color:var(--crit)">(obrigatória em caso de divergência)</span><textarea id="prestObs" rows="2" placeholder="Descreva a divergência (o que está errado) ou uma observação da aprovação…" style="width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);font:inherit;margin:4px 0 10px;box-sizing:border-box;resize:vertical"></textarea></label>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button id="btnAprovPrest" style="border:none;border-radius:9px;padding:11px 18px;font-weight:700;font-size:14px;color:#fff;background:var(--ok);cursor:pointer">✅ Aprovar prestação</button>'+
+      '<button id="btnDivPrest" style="border:none;border-radius:9px;padding:11px 18px;font-weight:700;font-size:14px;color:#fff;background:var(--crit);cursor:pointer">⚠ Divergência</button></div>'+
+      '<div id="prestMsg" style="margin-top:10px;font-size:13px;font-weight:600"></div>'+
+    '</div>';
+  }
+
   app.innerHTML=
     '<header class="top"><div><div class="eyebrow">'+(isFlow?'Flow Costa Dourada':'Amore Food')+' · Crédito</div>'+
     '<h1>CRD-'+esc(c.numero)+'</h1><div class="sub">'+esc(c.solicitante_nome)+' · '+esc(c.unidade)+(c.setor?' · '+esc(c.setor):'')+'</div></div>'+
@@ -107,10 +124,12 @@ async function main(){
       '<div class="big"><div class="l">Crédito aprovado</div><div class="v" style="color:var(--ok)">'+(c.valor_aprovado!=null?brl(c.valor_aprovado):'—')+'</div></div>'+
       (gasto>0?'<div class="big"><div class="l">Saldo</div><div class="v" style="color:'+(saldo<0?'var(--crit)':'var(--ok)')+'">'+brl(saldo)+'</div></div>':'')+
     '</div>'+
-    valaHTML+
+    valaHTML+prestHTML+
     (c.observacao?'<div class="box">📝 '+esc(c.observacao)+'</div>':'')+
     (c.anexo_url?'<div class="box">📎 <a href="'+esc(c.anexo_url)+'" target="_blank" rel="noreferrer">Ver comprovante/orçamento anexado</a></div>':'')+
     (c.reprovado_motivo?'<div class="box" style="color:var(--crit)">❌ Reprovado: '+esc(c.reprovado_motivo)+'</div>':'')+
+    (p.divergencia_motivo?'<div class="box" style="color:var(--crit)">⚠ Divergência na prestação'+(p.divergencia_por?' ('+esc(p.divergencia_por)+')':'')+': '+esc(p.divergencia_motivo)+'</div>':'')+
+    (p.aprovado_prestacao_por?'<div class="box" style="color:var(--ok)">✅ Prestação aprovada por '+esc(p.aprovado_prestacao_por)+(p.aprovado_prestacao_obs?' — '+esc(p.aprovado_prestacao_obs):'')+'</div>':'')+
     despHTML+concHTML+
     '<div class="foot">Documento gerado pelo painel '+(isFlow?'Flow':'Amore')+' · módulo Crédito &amp; Prestação de Contas. Este link reflete o status em tempo real.</div>';
 
@@ -138,6 +157,30 @@ async function main(){
       const ok=await patch({status:'reprovado',reprovado_motivo:motivo});
       if(ok){ msg.style.color='var(--crit)'; msg.textContent='❌ Crédito reprovado.'; setTimeout(main,700); }
       else{ bA.disabled=false; bR.disabled=false; msg.style.color='var(--crit)'; msg.textContent='Falha. Tente de novo.'; }
+    };
+  }
+  // Wiring da aprovação da PRESTAÇÃO
+  if(podeAprovarPrest){
+    const patchP=async(body)=>{ const r=await fetch(SB+'/rest/v1/creditos?id=eq.'+encodeURIComponent(ID),{method:'PATCH',headers:Object.assign({},H,{'Content-Type':'application/json',Prefer:'return=minimal'}),body:JSON.stringify(Object.assign({updated_at:new Date().toISOString()},body))}); return r.ok; };
+    const pmsg=document.getElementById('prestMsg');
+    const bAp=document.getElementById('btnAprovPrest'), bDv=document.getElementById('btnDivPrest');
+    const quemVal=()=>(document.getElementById('prestQuem').value||'').trim();
+    const obsVal=()=>(document.getElementById('prestObs').value||'').trim();
+    bAp.onclick=async()=>{
+      const quem=quemVal(); if(!quem){ pmsg.style.color='var(--crit)'; pmsg.textContent='Selecione quem está aprovando.'; return; }
+      bAp.disabled=true;bDv.disabled=true;pmsg.style.color='var(--muted)';pmsg.textContent='Aprovando…';
+      const finalSt=(p.status_final)||'encerrado';
+      const ok=await patchP({status:finalSt,prestacao:Object.assign({},p,{aprovado_prestacao_por:quem,aprovado_prestacao_em:new Date().toISOString(),aprovado_prestacao_obs:obsVal()||null})});
+      if(ok){ pmsg.style.color='var(--ok)'; pmsg.textContent='✅ Prestação aprovada!'; setTimeout(main,700); }
+      else{ bAp.disabled=false;bDv.disabled=false;pmsg.style.color='var(--crit)';pmsg.textContent='Falha ao aprovar. Tente de novo.'; }
+    };
+    bDv.onclick=async()=>{
+      const quem=quemVal(); if(!quem){ pmsg.style.color='var(--crit)'; pmsg.textContent='Selecione quem está analisando.'; return; }
+      const motivo=obsVal(); if(!motivo){ pmsg.style.color='var(--crit)'; pmsg.textContent='Descreva a divergência no campo Observação.'; document.getElementById('prestObs').focus(); return; }
+      bAp.disabled=true;bDv.disabled=true;pmsg.style.color='var(--muted)';pmsg.textContent='Registrando…';
+      const ok=await patchP({status:'divergencia',prestacao:Object.assign({},p,{divergencia_por:quem,divergencia_motivo:motivo,divergencia_em:new Date().toISOString()})});
+      if(ok){ pmsg.style.color='var(--crit)'; pmsg.textContent='⚠ Divergência registrada.'; setTimeout(main,700); }
+      else{ bAp.disabled=false;bDv.disabled=false;pmsg.style.color='var(--crit)';pmsg.textContent='Falha. Tente de novo.'; }
     };
   }
 }
