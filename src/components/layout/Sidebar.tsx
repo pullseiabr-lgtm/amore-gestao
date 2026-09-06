@@ -297,6 +297,13 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
             </div>
           )}
 
+          {/* Gestão de Compras — item fixo e visível (abre a visão geral dos pedidos) */}
+          {(can('compras', 'view') || can('estoque', 'view') || can('requisicoes', 'view')) && (
+            <a href="/gestao-compras.html" target="_blank" rel="noreferrer" className="nav-item" style={{ textDecoration: 'none', color: 'inherit' }}>
+              <ClipboardCheck size={13} /> 📦 Gestão de Compras
+            </a>
+          )}
+
           {/* ── Grupo Compras & Estoque (dropdown) ── */}
           {(can('compras', 'view') || can('estoque', 'view')) && (
             <div>
@@ -336,13 +343,6 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
                       {m.label}
                     </div>
                   ))}
-                  <a
-                    href="/gestao-compras.html" target="_blank" rel="noreferrer"
-                    className="nav-item"
-                    style={{ paddingLeft: 28, fontSize: 12, borderLeft: '2px solid var(--bordo-l)', marginLeft: 16, borderRadius: '0 6px 6px 0', textDecoration: 'none', color: 'inherit' }}
-                  >
-                    <ClipboardCheck size={12} /> 📦 Gestão de Compras
-                  </a>
                   <div
                     className={`nav-item${activePage === 'requisicao-nova' ? ' active' : ''}`}
                     onClick={() => onNav('requisicao-nova', 'Nova Requisição de Compra')}
