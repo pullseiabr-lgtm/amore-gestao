@@ -142,6 +142,13 @@ async function carregarCatalogo(){
 }
 carregarCatalogo();
 
+// Trava do solicitante: se veio do painel logado (?solic=Nome), preenche e bloqueia
+// para a requisição cair sempre no "Minhas Requisições" da pessoa certa.
+(function(){
+  const _u=(new URLSearchParams(location.search).get('solic')||'').trim();
+  if(_u){ const f=el('solic'); if(f){ f.value=_u; f.readOnly=true; f.style.background='#f1ece9'; f.style.color='#6f656a'; f.style.cursor='not-allowed'; f.title='Preenchido automaticamente com o seu usuário'; } }
+})();
+
 const busca=el('busca'), results=el('results');
 busca.addEventListener('input',()=>{
   const q=norm(busca.value); if(q.length<2){results.classList.remove('show');return;}
