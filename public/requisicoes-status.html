@@ -28,6 +28,12 @@ select:focus,input:focus{outline:none;border-color:var(--v)}
 .btn{border:1px solid var(--v);background:var(--v);color:#fff;border-radius:10px;padding:9px 14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
 .btn.g{background:var(--card);color:var(--text);border-color:var(--border)}
 .count{color:var(--muted);font-size:12.5px;margin:12px 2px 6px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:14px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;box-shadow:var(--shadow)}
+.kpi .n{font-size:20px;font-weight:800;line-height:1.1}
+.kpi .l{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-top:2px}
+.kpi.v{border-left:3px solid var(--v)}.kpi.w{border-left:3px solid var(--warn)}.kpi.p{border-left:3px solid var(--purple)}
+.kpi.o{border-left:3px solid var(--ok)}.kpi.i{border-left:3px solid var(--info)}
 
 .rc{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
 .rc-h{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;cursor:pointer}
@@ -82,8 +88,8 @@ select:focus,input:focus{outline:none;border-color:var(--v)}
 <div class="wrap">
   <div class="top">
     <div class="brand"><img src="logo-amore-red.png" alt="Amore" onerror="this.style.display='none'"><b>Amore</b></div>
-    <div class="eyebrow">Compras · Acompanhamento</div>
-    <h1>Status das Requisições</h1>
+    <div class="eyebrow" id="eyebrow">Compras · Acompanhamento</div>
+    <h1 id="titulo">Status das Requisições</h1>
     <div class="controls">
       <select id="floja">
         <option value="">🏪 Todas as lojas</option>
@@ -92,6 +98,7 @@ select:focus,input:focus{outline:none;border-color:var(--v)}
       <input id="busca" placeholder="Buscar por nº, solicitante ou título…">
       <button class="btn g" id="reload">↻ Atualizar</button>
     </div>
+    <div class="kpis" id="kpis"></div>
     <div class="count" id="count">Carregando…</div>
   </div>
   <div id="lista"></div>
@@ -105,6 +112,10 @@ const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 const norm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
 function dt(s){ if(!s)return ''; const d=new Date(s); if(isNaN(d))return String(s).slice(0,16).replace('T',' ');
   return d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+// Contexto do usuário (vem do painel): dono vê tudo; colaborador vê só as suas.
+const Q=new URLSearchParams(location.search);
+const MODE=Q.get('mode')||'owner';
+const SOLIC=(Q.get('solic')||'').trim();
 
 // Etapas do ciclo e mapeamento do status → índice atingido
 const STEPS=[
@@ -159,15 +170,32 @@ async function carregar(){
   }catch(e){ el('count').textContent='Erro ao carregar.'; return; }
   render();
 }
+function renderKpis(list){
+  const c={total:list.length,aguard:0,cot:0,aprov:0,ped:0,concl:0,neg:0,valor:0};
+  list.forEach(r=>{ const s=r.status; c.valor+=Number(r.total_estimado)||0;
+    if(['rascunho','enviada','em_analise'].includes(s))c.aguard++;
+    else if(s==='em_cotacao')c.cot++;
+    else if(['aprovada','parcialmente_aprovada'].includes(s))c.aprov++;
+    else if(['compra_realizada','em_separacao','prestacao_pendente','em_auditoria'].includes(s))c.ped++;
+    else if(s==='concluida')c.concl++;
+    else if(['reprovada','cancelada'].includes(s))c.neg++;
+  });
+  const kpi=(cls,n,l)=>'<div class="kpi '+cls+'"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>';
+  el('kpis').innerHTML=kpi('v',c.total,'Total')+kpi('w',c.aguard,'Aguardando')+kpi('p',c.cot,'Em cotação')
+    +kpi('o',c.aprov,'Aprovadas')+kpi('i',c.ped,'Em pedido')+kpi('v',c.concl,'Concluídas')
+    +kpi('',brl(c.valor),'Estimado');
+}
 function render(){
   const fl=el('floja').value, q=norm(el('busca').value);
   const list=(DADOS||[]).filter(r=>{
+    if(MODE==='user' && SOLIC){ const who=norm((r.responsavel_nome||'')+' '+(r.created_by||'')); if(!who.includes(norm(SOLIC))) return false; }
     if(fl && (r.loja||'')!==fl) return false;
     if(q){ const hay=norm((r.titulo||'')+' '+(r.responsavel_nome||r.created_by||'')+' REQ-'+String(r.numero||'')); if(!hay.includes(q)) return false; }
     return true;
   });
+  renderKpis(list);
   el('count').textContent=list.length+' requisiç'+(list.length===1?'ão':'ões');
-  if(!list.length){ el('lista').innerHTML='<div class="rc"><div class="empty">Nenhuma requisição encontrada.</div></div>'; return; }
+  if(!list.length){ el('lista').innerHTML='<div class="rc"><div class="empty">'+((MODE==='user'&&SOLIC)?'Você ainda não tem requisições. Use <b>Nova Requisição</b> para criar a primeira.':'Nenhuma requisição encontrada.')+'</div></div>'; return; }
   el('lista').innerHTML=list.map(cardHtml).join('');
 }
 function stepperHtml(status){
@@ -247,6 +275,11 @@ async function tglEst(id){
         +'<table class="etbl">'+linhas+'</table>';
     }catch(err){ wrap.innerHTML='<div class="ev"><div class="ic">⚠️</div><div class="d">Não consegui calcular a estimativa.</div></div>'; }
   }
+}
+if(MODE==='user' && SOLIC){
+  el('titulo').textContent='Minhas Requisições';
+  el('eyebrow').textContent='Compras · '+SOLIC;
+  el('busca').placeholder='Buscar nas suas requisições…';
 }
 el('floja').addEventListener('change',render);
 el('busca').addEventListener('input',render);
