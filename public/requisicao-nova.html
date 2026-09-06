@@ -193,12 +193,39 @@ function render(){
   tb.innerHTML=html; el('total').textContent=brl(total);
 }
 
+// ── Consumo médio: compara cada item com o histórico de requisições e sinaliza
+// pedidos muito acima do normal (evita erro tipo 300 Kg no lugar de 300 g). ──
+async function checarConsumo(itens){
+  try{
+    const hist=await (await fetch(SB+'/rest/v1/requisicao_itens?select=produto_nome,quantidade&limit=8000',{headers:H})).json();
+    const by={};
+    (hist||[]).forEach(h=>{ const k=norm(h.produto_nome); const q=nb(h.quantidade); if(q>0){(by[k]=by[k]||[]).push(q);} });
+    const flags=[];
+    for(const it of itens){
+      const arr=(by[norm(it.produto)]||[]).slice().sort((a,b)=>a-b);
+      if(arr.length<3) continue;                       // histórico insuficiente → não sinaliza
+      const med=arr[Math.floor(arr.length/2)];          // mediana (robusta a erros pontuais)
+      const q=nb(it.qtd);
+      if(med>0 && q>=med*5) flags.push({produto:it.produto,qtd:q,un:it.un,media:med});
+    }
+    return flags;
+  }catch(e){ return []; }
+}
+
 async function gerar(){
   const loja=el('loja').value, nome=el('nome').value.trim(), solic=el('solic').value.trim();
   if(!nome){ show('Dê um nome à requisição.',false); return; }
   if(!solic){ show('Informe o solicitante.',false); return; }
   if(!ITENS.length){ show('Adicione ao menos 1 item.',false); return; }
-  const btn=el('gerar'); btn.disabled=true; btn.textContent='Gerando…'; show('',true); el('msg').className='msg';
+  const btn=el('gerar'); btn.disabled=true; btn.textContent='Verificando…'; show('',true); el('msg').className='msg';
+  // trava de consumo médio — pede confirmação em itens muito acima do normal
+  const flags=await checarConsumo(ITENS);
+  if(flags.length){
+    const linhas=flags.map(f=>'• '+f.produto+': pedindo '+f.qtd+' '+f.un+'  (costuma ser ~'+f.media+' '+f.un+')').join('\n');
+    const ok=confirm('⚠️ CONFIRA ANTES DE ENVIAR\n\nEstes itens estão bem acima do consumo médio:\n\n'+linhas+'\n\nVeja se a quantidade/unidade está certa (ex.: 300 g digitado como 300 Kg).\n\nEstá tudo certo e deseja enviar assim mesmo?');
+    if(!ok){ btn.disabled=false; btn.textContent='✅ Gerar requisição'; show('Revise as quantidades destacadas e gere novamente.',false); return; }
+  }
+  btn.textContent='Gerando…';
   const total=ITENS.reduce((s,it)=>s+nb(it.qtd)*nb(it.custo),0);
   const head={loja,titulo:nome,responsavel_nome:solic,prioridade:el('prio').value,prazo_entrega:el('entrega').value||null,data_necessidade:null,status:'enviada',observacoes:'Tipo: '+el('tipo').value,centro_custo:'Estimado '+brl(total),total_estimado:Math.round(total*100)/100,total_final:0,created_by:solic};
   try{
