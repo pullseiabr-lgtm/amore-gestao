@@ -477,7 +477,8 @@ export default function CaixasPage() {
               <thead><tr style={{ background: 'var(--bordo-bg)' }}>
                 <th style={{ textAlign: 'left', padding: '9px 14px' }}>Caixa</th><th style={{ textAlign: 'left', padding: '9px 14px' }}>Loja</th>
                 <th style={{ textAlign: 'left', padding: '9px 14px' }}>Período</th><th style={{ textAlign: 'center', padding: '9px 14px' }}>Itens</th>
-                <th style={{ textAlign: 'right', padding: '9px 14px' }}>Total</th><th></th>
+                <th style={{ textAlign: 'right', padding: '9px 14px' }}>Total</th>
+                <th style={{ textAlign: 'center', padding: '9px 14px' }}>Situação</th><th></th>
               </tr></thead>
               <tbody>{caixas.map(c => (
                 <tr key={c.id} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => setSel(c)}>
@@ -486,6 +487,9 @@ export default function CaixasPage() {
                   <td style={{ padding: '9px 14px', color: 'var(--muted)', fontSize: 12 }}>{fmtData(c.periodo_inicio)} — {fmtData(c.periodo_fim)}</td>
                   <td style={{ padding: '9px 14px', textAlign: 'center', color: 'var(--muted)' }}>{c.qtd_itens || '—'}</td>
                   <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 800 }}>{c.total > 0 ? fmtR$(c.total) : <span style={{ color: '#B45309', fontSize: 11 }}>a conferir</span>}</td>
+                  <td style={{ padding: '9px 14px', textAlign: 'center' }}>
+                    {(() => { const a = AUD[c.status] || AUD.arquivado; return <span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 20, color: a.cor, background: a.bg, whiteSpace: 'nowrap' }}>{a.label}</span> })()}
+                  </td>
                   <td style={{ padding: '9px 14px', textAlign: 'right' }}>
                     <button className="ib rd" onClick={e => { e.stopPropagation(); if (confirm('Excluir este caixa do arquivo?')) deleteCaixa(c.id).then(load) }}><Trash2 size={13} /></button>
                   </td>
