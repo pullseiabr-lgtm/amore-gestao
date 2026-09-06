@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Auditoria de Caixa — Amore</title>
+<style>
+:root{--v:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;
+  --ok:#15803D;--okbg:#DCFCE7;--warn:#B45309;--warnbg:#FEF3C7;--bad:#B91C1C;--badbg:#FEE2E2;--info:#0369A1;
+  --shadow:0 1px 2px rgba(80,20,25,.05),0 10px 30px -14px rgba(80,20,25,.16)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c;--okbg:#14351f;--warnbg:#3a2c10;--badbg:#3a1616}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;padding:16px;font-variant-numeric:tabular-nums}
+.wrap{max-width:820px;margin:0 auto}
+.top{border-bottom:2px solid var(--v);padding-bottom:14px;margin-bottom:14px}
+.brand{display:flex;align-items:center;gap:9px}.brand img{height:24px}.brand b{font-size:18px;font-weight:800;color:var(--v)}
+.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--v);font-weight:800;margin-top:8px}
+h1{font-size:clamp(19px,3.6vw,25px);margin-top:2px}
+.sub{color:var(--muted);font-size:13px;margin-top:4px}
+.badge{display:inline-block;font-size:11px;font-weight:800;padding:3px 11px;border-radius:20px;margin-top:8px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+.card .h{padding:11px 16px;border-bottom:1px solid var(--border);font-weight:700;font-size:13px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.pad{padding:14px 16px}
+.btn{border:none;border-radius:10px;padding:11px 16px;font:inherit;font-weight:800;font-size:13.5px;color:#fff;cursor:pointer}
+.btn.nf{background:var(--v)}.btn.ok{background:var(--ok)}.btn.bad{background:var(--bad)}.btn.g{background:#0369A1}
+.btn:disabled{opacity:.5}
+.row{display:flex;gap:14px;flex-wrap:wrap;font-size:13px}
+.kv{background:color-mix(in srgb,var(--v) 4%,var(--card));border:1px solid var(--border);border-radius:10px;padding:8px 12px}
+.kv b{display:block;font-size:15px}.kv span{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;color:var(--muted);font-size:10.5px;text-transform:uppercase;padding:8px 12px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--v) 4%,var(--card))}
+td{padding:7px 12px;border-bottom:1px solid var(--border)}
+td.n{text-align:right;font-weight:700;white-space:nowrap}
+.chip{font-size:10px;padding:2px 8px;border-radius:12px;font-weight:700}
+.msg{padding:11px 14px;border-radius:10px;margin:10px 0;font-size:13.5px;display:none}
+.msg.ok{background:var(--okbg);color:var(--ok);display:block}.msg.err{background:var(--badbg);color:var(--bad);display:block}
+.empty{padding:26px;text-align:center;color:var(--muted)}
+.aprv{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+select,textarea{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:10px;font:inherit;font-size:14px;background:var(--bg);color:var(--text)}
+.done{text-align:center;padding:40px 16px}.done .big{font-size:38px;font-weight:800;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="card"><div class="empty">Carregando caixa…</div></div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+const el=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const brl=n=>'R$ '+(Number(n)||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+const dmy=s=>{if(!s)return '';const p=String(s).slice(0,10).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:s;};
+const dt=s=>{if(!s)return '';const d=new Date(s);return isNaN(d)?'':d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});};
+const ID=(new URLSearchParams(location.search).get('id')||'').trim();
+let CX=null, META=null;
+const STA={
+  arquivado:{l:'📁 Salvo (não fechado)',c:'#6B7280',b:'#F3F4F6'},
+  aguardando_aprovacao:{l:'🕓 Aguardando aprovação',c:'#B45309',b:'#FEF3C7'},
+  aprovado:{l:'✅ Aprovado',c:'#166534',b:'#DCFCE7'},
+  divergencia:{l:'⚠ Divergência',c:'#991B1B',b:'#FEE2E2'},
+};
+
+async function load(){
+  if(!ID){ el('app').innerHTML='<div class="card"><div class="empty">Link inválido — falta o id do caixa.</div></div>'; return; }
+  const cx=await (await fetch(SB+'/rest/v1/caixas?id=eq.'+ID+'&select=*',{headers:H})).json();
+  CX=cx&&cx[0];
+  if(!CX){ el('app').innerHTML='<div class="card"><div class="empty">Caixa não encontrado.</div></div>'; return; }
+  const its=await (await fetch(SB+'/rest/v1/caixa_itens?caixa_id=eq.'+ID+'&select=descricao,fornecedor,categoria,valor,documento,anexo_url,data&order=valor.desc',{headers:H})).json();
+  const mc=await (await fetch(SB+'/rest/v1/app_config?chave=eq.caixa_aud_'+ID+'&select=valor',{headers:H})).json();
+  META=(mc&&mc[0]&&mc[0].valor)||{};
+  render(its||[]);
+}
+
+function render(its){
+  const flow=/flow/i.test(CX.loja||''); document.documentElement.style.setProperty('--v',flow?'#2E7D34':'#8B1212');
+  const s=STA[CX.status]||STA.arquivado;
+  const podeAprovar = CX.status==='aguardando_aprovacao';
+  const linhas = its.length ? its.map(i=>`<tr><td>${esc(i.descricao||'—')}${i.anexo_url?` <a href="${esc(i.anexo_url)}" target="_blank" rel="noreferrer">📎</a>`:''}</td><td style="color:var(--muted)">${esc(i.fornecedor||'—')}</td><td>${esc(i.categoria||'—')}</td><td class="n">${brl(i.valor)}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="empty">Sem itens detalhados (valor total no cabeçalho).</td></tr>';
+  el('app').innerHTML=`
+    <div class="top">
+      <div class="brand"><img src="logo-amore-red.png" alt="Amore" onerror="this.style.display='none'"><b>${flow?'Flow':'Amore'}</b></div>
+      <div class="eyebrow">Financeiro · Auditoria de Caixa</div>
+      <h1>${esc(CX.titulo||'Caixa')}</h1>
+      <div class="sub">${esc(CX.loja||'')} · ${dmy(CX.periodo_inicio)}${CX.periodo_fim&&CX.periodo_fim!==CX.periodo_inicio?(' — '+dmy(CX.periodo_fim)):''} · Fechado por ${esc(META.fechado_por||CX.created_by||'—')}</div>
+      <span class="badge" style="color:${s.c};background:${s.b}">${s.l}</span>
+    </div>
+
+    <div class="card"><div class="pad row">
+      <div class="kv"><b style="color:var(--v)">${brl(CX.total)}</b><span>Total do caixa</span></div>
+      <div class="kv"><b>${its.length}</b><span>Itens</span></div>
+      ${META.credito_num?`<div class="kv"><b>CRD-${esc(META.credito_num)}</b><span>Crédito encerrado</span></div>`:''}
+      ${META.aprovado_por?`<div class="kv"><b>${esc(META.aprovado_por)}</b><span>${CX.status==='aprovado'?'Aprovado por':'Analisado por'} · ${dt(META.aprovado_em)}</span></div>`:''}
+    </div></div>
+
+    <div class="card"><div class="pad">
+      ${CX.anexo_url?`<a href="${esc(CX.anexo_url)}" target="_blank" rel="noreferrer"><button class="btn nf">📎 Ver Notas Fiscais / Comprovantes</button></a>`:'<div style="color:var(--warn);font-weight:700">⚠ Sem nota anexada.</div>'}
+      ${CX.observacoes?`<div style="margin-top:10px;font-size:12.5px;color:var(--warn);background:var(--warnbg);padding:8px 10px;border-radius:8px">⚠ ${esc(CX.observacoes)}</div>`:''}
+    </div></div>
+
+    <div class="card">
+      <div class="h">Despesas do caixa <span style="color:var(--muted)">${its.length} itens</span></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Descrição</th><th>Fornecedor</th><th>Categoria</th><th style="text-align:right">Valor</th></tr></thead><tbody>${linhas}</tbody></table></div>
+    </div>
+
+    ${podeAprovar?`
+    <div class="card"><div class="pad">
+      <div style="font-weight:700;margin-bottom:10px">Auditoria — conferiu as notas e o total?</div>
+      <div class="aprv" style="margin-bottom:10px">
+        <select id="quem" style="max-width:200px"><option value="">Quem está aprovando…</option><option>Wagner</option><option>Aline</option></select>
+      </div>
+      <div class="aprv">
+        <button class="btn ok" onclick="aprovar()">✅ Aprovar caixa</button>
+        <button class="btn bad" onclick="divergencia()">⚠ Apontar divergência</button>
+      </div>
+      <div class="msg" id="msg"></div>
+    </div></div>`:''}
+  `;
+}
+
+async function salvarMeta(extra){
+  const merged=Object.assign({},META||{},extra);
+  await fetch(SB+'/rest/v1/app_config?on_conflict=chave',{method:'POST',headers:Object.assign({},H,{Prefer:'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({chave:'caixa_aud_'+ID,valor:merged})});
+  META=merged;
+}
+function show(m,ok){ const e=el('msg'); if(!e)return; e.textContent=m; e.className='msg '+(ok?'ok':'err'); }
+
+async function aprovar(){
+  const quem=el('quem').value; if(!quem){ show('Selecione quem está aprovando (Wagner ou Aline).',false); return; }
+  if(!confirm('Aprovar o caixa "'+(CX.titulo||'')+'" ('+brl(CX.total)+')? Isso conclui a auditoria.'))return;
+  try{
+    await fetch(SB+'/rest/v1/caixas?id=eq.'+ID,{method:'PATCH',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify({status:'aprovado'})});
+    await salvarMeta({aprovado_por:quem,aprovado_em:new Date().toISOString(),motivo:null});
+    el('app').innerHTML='<div class="done"><div class="big" style="color:var(--ok)">✅ Caixa aprovado!</div><p>Auditoria concluída por <b>'+esc(quem)+'</b>.</p></div>';
+  }catch(e){ show('Erro ao aprovar.',false); }
+}
+async function divergencia(){
+  const quem=el('quem').value; if(!quem){ show('Selecione quem está analisando (Wagner ou Aline).',false); return; }
+  const motivo=(prompt('Qual a divergência? (será registrada)')||'').trim(); if(!motivo)return;
+  try{
+    await fetch(SB+'/rest/v1/caixas?id=eq.'+ID,{method:'PATCH',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify({status:'divergencia'})});
+    await salvarMeta({aprovado_por:quem,aprovado_em:new Date().toISOString(),motivo});
+    el('app').innerHTML='<div class="done"><div class="big" style="color:var(--bad)">⚠ Divergência registrada</div><p>Apontada por <b>'+esc(quem)+'</b>: '+esc(motivo)+'</p><p style="color:var(--muted);margin-top:6px">O responsável deve ajustar o caixa e reenviar.</p></div>';
+  }catch(e){ show('Erro ao registrar.',false); }
+}
+load();
+</script>
+</body>
+</html>

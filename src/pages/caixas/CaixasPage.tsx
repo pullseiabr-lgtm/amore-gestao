@@ -4,7 +4,29 @@ import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { fetchCaixas, fetchCaixaItens, fetchTodosCaixaItens, deleteCaixa, insertCaixa, insertCaixaItens, lancarCaixaFinanceiro, fetchProfiles, uploadAnexo, updateCaixa } from '../../lib/db'
 import { enviarWhatsApp, getZapiCfg, soDigitos } from '../../lib/notify'
+import { supabase } from '../../lib/supabase'
 import type { Caixa, CaixaItem } from '../../types/database'
+
+const sb = supabase as any
+const hojeISO = () => new Date().toISOString().slice(0, 10)
+
+// Aprovadores do caixa (auditoria) = mesmos do crédito (app_config), fallback Wagner + Aline
+async function getAprovadoresCaixa(): Promise<{ nome: string; fone: string }[]> {
+  try {
+    const { data } = await sb.from('app_config').select('valor').eq('chave', 'credito_aprovadores').maybeSingle()
+    const lista = data?.valor?.lista
+    if (Array.isArray(lista) && lista.length) return lista
+  } catch { /* usa fallback */ }
+  return [{ nome: 'Wagner', fone: '5581994135602' }, { nome: 'Aline', fone: '5581994573420' }]
+}
+
+// Estado de auditoria do caixa (usa o campo status)
+const AUD: Record<string, { label: string; cor: string; bg: string }> = {
+  arquivado:             { label: '📁 Salvo (não fechado)',       cor: '#6B7280', bg: '#F3F4F6' },
+  aguardando_aprovacao:  { label: '🕓 Aguardando aprovação',      cor: '#B45309', bg: '#FEF3C7' },
+  aprovado:              { label: '✅ Aprovado (auditoria)',       cor: '#166534', bg: '#DCFCE7' },
+  divergencia:           { label: '⚠ Divergência',                cor: '#991B1B', bg: '#FEE2E2' },
+}
 
 const CATEGORIAS = ['Hortifruti', 'Supermercado', 'Bebidas', 'Embalagens/Descartaveis', 'Combustivel', 'Pedagio', 'Temperos', 'Folhagens', 'Outros']
 const LOJAS = ['Amore CD', 'Amore Paiva', 'Flow CD']
@@ -24,12 +46,21 @@ function Bar({ pct, cor }: { pct: number; cor: string }) {
 }
 
 // ── Detalhe de um caixa ──────────────────────────────────────
-function CaixaDetalhe({ caixa, onVoltar }: { caixa: Caixa; onVoltar: () => void }) {
+function CaixaDetalhe({ caixa, onVoltar, onMudou }: { caixa: Caixa; onVoltar: () => void; onMudou?: () => void }) {
+  const { user } = useAuth()
   const [itens, setItens] = useState<CaixaItem[]>([])
   const [loading, setLoading] = useState(true)
   const [anexoUrl, setAnexoUrl] = useState<string | null>(caixa.anexo_url)
   const [subindo, setSubindo] = useState(false)
+  // auditoria
+  const [statusAud, setStatusAud] = useState<string>(caixa.status || 'arquivado')
+  const [aud, setAud] = useState<any>(null)
+  const [showFechar, setShowFechar] = useState(false)
+  const [creds, setCreds] = useState<any[]>([])
+  const [credSel, setCredSel] = useState('')
+  const [fechando, setFechando] = useState(false)
   useEffect(() => { fetchCaixaItens(caixa.id).then(setItens).finally(() => setLoading(false)) }, [caixa.id])
+  useEffect(() => { sb.from('app_config').select('valor').eq('chave', `caixa_aud_${caixa.id}`).maybeSingle().then((r: any) => setAud(r?.data?.valor || null)) }, [caixa.id])
 
   const anexarNota = async (file: File | null) => {
     if (!file) return
@@ -42,11 +73,55 @@ function CaixaDetalhe({ caixa, onVoltar }: { caixa: Caixa; onVoltar: () => void 
     setSubindo(false)
   }
 
+  const abrirFechar = async () => {
+    if (!anexoUrl) { alert('📎 Anexe a Nota Fiscal / comprovantes antes de fechar. A auditoria exige o documento das despesas.'); return }
+    setShowFechar(true); setCredSel('')
+    try {
+      const { data } = await sb.from('creditos').select('id,numero,solicitante_nome,valor_aprovado,status')
+        .in('status', ['aprovado', 'disponibilizado', 'em_prestacao', 'prestacao_pendente', 'divergencia', 'aguardando_devolucao'])
+        .order('numero', { ascending: false })
+      setCreds(data || [])
+    } catch { setCreds([]) }
+  }
+
+  const fecharCaixa = async () => {
+    if (!anexoUrl) { alert('Anexe a NF antes de fechar.'); return }
+    setFechando(true)
+    try {
+      const cred = creds.find(c => c.id === credSel)
+      // 1) encerra o ciclo do crédito vinculado (se escolhido)
+      if (cred) {
+        await sb.from('creditos').update({ status: 'encerrado', updated_at: new Date().toISOString() }).eq('id', cred.id)
+        await sb.from('credito_movimentos').insert({ credito_id: cred.id, tipo: 'prestacao', valor: caixa.total, data: hojeISO(), obs: `Prestação de contas via caixa "${caixa.titulo}" (auditoria)`, created_by: user?.name || 'Painel' })
+      }
+      // 2) metadados de auditoria
+      const meta = { credito_id: cred?.id || null, credito_num: cred?.numero ?? null, fechado_por: user?.name || 'Painel', fechado_em: new Date().toISOString(), aprovado_por: null, aprovado_em: null }
+      await sb.from('app_config').upsert({ chave: `caixa_aud_${caixa.id}`, valor: meta }, { onConflict: 'chave' })
+      setAud(meta)
+      // 3) status do caixa → aguardando aprovação
+      await updateCaixa(caixa.id, { status: 'aguardando_aprovacao' })
+      setStatusAud('aguardando_aprovacao')
+      // 4) dispara para Wagner e Aline
+      const aprovadores = await getAprovadoresCaixa()
+      const link = `https://painel.amorefood.com.br/caixa.html?id=${caixa.id}`
+      const msg = `🗄️ *Caixa para auditoria e aprovação* — ${caixa.loja}\n${caixa.titulo}\n💰 Total: ${fmtR$(caixa.total)} · ${itens.length} itens\n📎 Notas fiscais anexadas${cred ? `\n🔗 Encerra o crédito CRD-${cred.numero}` : ''}\n👤 Fechado por: ${user?.name || 'Painel'}\n\n👉 Abrir para conferir as notas e *aprovar / apontar divergência*:\n${link}`
+      for (const a of aprovadores) { try { await enviarWhatsApp(a.fone, msg, undefined, { tipo: 'compra', modulo: 'caixas', titulo: `Caixa ${caixa.titulo}`, setor: caixa.loja }) } catch { /* segue */ } }
+      setShowFechar(false)
+      onMudou?.()
+    } catch (e) { console.error(e); alert('Erro ao fechar o caixa.') }
+    setFechando(false)
+  }
+
+  const a = AUD[statusAud] || AUD.arquivado
+
   return (
     <div>
       <button className="btn bo bsm" onClick={onVoltar} style={{ marginBottom: 14 }}><ChevronLeft size={12} /> Caixas</button>
       <div className="card" style={{ padding: 20, marginBottom: 16 }}>
-        <h2 style={{ margin: '0 0 6px', fontSize: 18 }}>{caixa.titulo}</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <h2 style={{ margin: '0 0 6px', fontSize: 18 }}>{caixa.titulo}</h2>
+          <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, color: a.cor, background: a.bg, whiteSpace: 'nowrap' }}>{a.label}</span>
+        </div>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: 'var(--muted)' }}>
           <span><Store size={12} /> {caixa.loja}</span>
           <span><Calendar size={12} /> {fmtData(caixa.periodo_inicio)} — {fmtData(caixa.periodo_fim)}</span>
@@ -62,7 +137,54 @@ function CaixaDetalhe({ caixa, onVoltar }: { caixa: Caixa; onVoltar: () => void 
             <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }} disabled={subindo} onChange={e => anexarNota(e.target.files?.[0] || null)} />
           </label>
         </div>
+        {/* ── Fechamento / Auditoria ── */}
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+          {statusAud === 'arquivado' && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button className="btn bp bsm" onClick={abrirFechar} style={{ background: '#166534', borderColor: '#166534' }}>🔒 Fechar caixa (auditoria)</button>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>Fecha o caixa, deixa disponível para auditoria e envia para Wagner e Aline aprovarem.</span>
+            </div>
+          )}
+          {statusAud === 'aguardando_aprovacao' && (
+            <div style={{ fontSize: 12.5 }}>
+              <div style={{ color: '#B45309', fontWeight: 700 }}>🕓 Aguardando aprovação de Wagner ou Aline.</div>
+              <div style={{ color: 'var(--muted)', marginTop: 3 }}>Fechado por {aud?.fechado_por || '—'}{aud?.credito_num ? ` · encerra crédito CRD-${aud.credito_num}` : ''}. </div>
+              <a href={`https://painel.amorefood.com.br/caixa.html?id=${caixa.id}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#0369A1', fontWeight: 700 }}>Abrir página de auditoria/aprovação →</a>
+            </div>
+          )}
+          {statusAud === 'aprovado' && (
+            <div style={{ fontSize: 12.5, color: '#166534', fontWeight: 700 }}>✅ Aprovado{aud?.aprovado_por ? ` por ${aud.aprovado_por}` : ''}{aud?.credito_num ? ` · crédito CRD-${aud.credito_num} encerrado` : ''}.</div>
+          )}
+          {statusAud === 'divergencia' && (
+            <div style={{ fontSize: 12.5, color: '#991B1B', fontWeight: 700 }}>⚠ Divergência apontada{aud?.aprovado_por ? ` por ${aud.aprovado_por}` : ''}{aud?.motivo ? `: ${aud.motivo}` : ''}. Ajuste e feche novamente.
+              <button className="btn bo bsm" style={{ marginLeft: 10 }} onClick={abrirFechar}>Reenviar</button></div>
+          )}
+        </div>
       </div>
+
+      {showFechar && (
+        <div className="ov open" onClick={e => e.target === e.currentTarget && setShowFechar(false)}>
+          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <div className="mhd"><span className="mtt">🔒 Fechar caixa para auditoria</span><button className="mx" onClick={() => setShowFechar(false)}>✕</button></div>
+            <div className="mbd">
+              <div style={{ fontSize: 13, marginBottom: 10 }}><b>{caixa.titulo}</b> · {caixa.loja} · <b style={{ color: 'var(--bordo)' }}>{fmtR$(caixa.total)}</b> · {itens.length} itens</div>
+              <div style={{ fontSize: 12.5, background: '#DCFCE7', color: '#166534', padding: '8px 10px', borderRadius: 8, marginBottom: 12 }}>📎 Notas fiscais anexadas — pronto para auditoria.</div>
+              <div className="fg" style={{ marginBottom: 12 }}>
+                <label className="fl">Prestar contas de um crédito? <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(opcional — encerra o ciclo do crédito)</span></label>
+                <select className="sel" value={credSel} onChange={e => setCredSel(e.target.value)}>
+                  <option value="">— Não vincular a crédito —</option>
+                  {creds.map(c => <option key={c.id} value={c.id}>CRD-{c.numero} · {c.solicitante_nome || '—'} · {fmtR$(c.valor_aprovado)}</option>)}
+                </select>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Ao confirmar: o caixa fica <b>aguardando aprovação</b>, disponível para auditoria com as notas, e <b>Wagner e Aline</b> recebem no WhatsApp para analisar e aprovar.</div>
+            </div>
+            <div className="mft" style={{ justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn bo bsm" onClick={() => setShowFechar(false)}>Cancelar</button>
+              <button className="btn bp bsm" onClick={fecharCaixa} disabled={fechando} style={{ background: '#166534', borderColor: '#166534' }}>{fechando ? <><Loader size={12} className="spin" /> Fechando…</> : <>🔒 Fechar e enviar para aprovação</>}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 13 }}>Itens ({itens.length})</div>
@@ -290,7 +412,7 @@ export default function CaixasPage() {
     if (ok) setTimeout(() => { setShowWhats(false); setWaStatus('') }, 1500)
   }
 
-  if (sel) return <CaixaDetalhe caixa={sel} onVoltar={() => setSel(null)} />
+  if (sel) return <CaixaDetalhe caixa={sel} onVoltar={() => setSel(null)} onMudou={load} />
 
   return (
     <div>
