@@ -86,6 +86,9 @@ async function load(){
   document.getElementById('tabela').innerHTML='<div class="msg">Carregando pedidos…</div>';
   let rows=[];
   try{ rows=await (await fetch(SB+'/rest/v1/app_config?select=chave,valor&chave=like.pedido_*&limit=2000',{headers:H})).json(); }catch(e){}
+  // Ignora chaves pedido_* que são CONFIGURAÇÃO, não pedido de compra (sem loja/fornecedor/itens).
+  const NAO_PEDIDO=/^pedido_(confirmacao_destinatarios|contatos|por_loja|config|destinatarios)\b/;
+  rows=(rows||[]).filter(r=>{ if(NAO_PEDIDO.test(r.chave)) return false; const v=r.valor||{}; return Array.isArray(v.itens)||v.fornecedor||v.loja||Number(v.total)>0; });
   PED=(rows||[]).map(r=>{const v=r.valor||{};const itens=(v.itens||[]).filter(i=>!/^desconto$|^frete|^adicional/i.test(i.produto||''));
     const c=cicloDe(v);
     return {chave:r.chave, fornecedor:v.fornecedor||'—', loja:v.loja||'—', data:v.janela_entrega||v.data||null, em:v.em||null, numero:v.numero||'',
