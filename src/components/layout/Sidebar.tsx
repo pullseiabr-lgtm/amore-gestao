@@ -37,6 +37,7 @@ const MENU_TOP: NavItem[] = [
   { id: 'avaliacoes',  label: '⭐ Avaliações & NPS',  icon: <span style={{ fontSize: 14, lineHeight: 1 }}>⭐</span> },
   { id: 'raspadinha',  label: '🎟️ Raspadinha Digital', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🎟️</span> },
   { id: 'clientes',    label: '💚 Clientes Amore (CRM)', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>💚</span> },
+  { id: 'site-leads',  label: '🌐 Site — Leads & Reclame Aqui', perm: 'clientes', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🌐</span> },
   { id: 'campanhas',   label: '📣 Campanhas', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>📣</span> },
   { id: 'pesquisa-aura', label: '✨ Pesquisa Vamos Farmar Aura', perm: 'campanhas', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>✨</span> },
   { id: 'agente-controle', label: '🤖 Controle do Agente', icon: <span style={{ fontSize: 14, lineHeight: 1 }}>🤖</span> },

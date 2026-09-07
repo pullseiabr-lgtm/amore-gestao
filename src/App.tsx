@@ -25,6 +25,7 @@ import UsersPage from './pages/users/UsersPage'
 import SettingsPage from './pages/settings/SettingsPage'
 import EstoquePage from './pages/estoque/EstoquePage'
 import FornecedoresPage from './pages/fornecedores/FornecedoresPage'
+import SiteLeadsPage from './pages/site-leads/SiteLeadsPage'
 import RequisoesPage from './pages/requisicoes/RequisoesPage'
 import CotacaoPage from './pages/cotacao/CotacaoPage'
 import PedidosPage from './pages/pedidos/PedidosPage'
@@ -102,6 +103,7 @@ export type PageId =
   | 'boletos'
   | 'estoque'
   | 'fornecedores'
+  | 'site-leads'
   | 'financeiro'
   | 'marketing'
   | 'mkt-contatos'
@@ -172,6 +174,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   boletos: 'Central de Boletos',
   estoque: 'Estoque',
   fornecedores: 'Fornecedores',
+  'site-leads': 'Site — Leads & Reclame Aqui',
   financeiro: 'Financeiro',
   marketing: 'Marketing',
   'mkt-contatos': 'Central de Consentimento',
@@ -279,6 +282,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'boletos': return <BoletosPage />
     case 'estoque': return <EstoquePage />
     case 'fornecedores': return <FornecedoresPage />
+    case 'site-leads': return <SiteLeadsPage />
     case 'financeiro': return <FinanceiroPage />
     case 'creditos': return <CreditosPage />
     case 'marketing': return <MarketingPage />
@@ -345,6 +349,7 @@ const PAGE_PERM: Partial<Record<PageId, string>> = {
   'requisicao-inteligente': 'requisicoes', 'analise-semanal': 'requisicoes',
   'pipeline-suprimentos': 'requisicoes', 'dashboard-suprimentos': 'requisicoes',
   'boletos': 'financeiro', 'pesquisa-aura': 'campanhas', 'produtos-categorias': 'produtos',
+  'site-leads': 'clientes',
 }
 function permForPage(p: PageId): string { return PAGE_PERM[p] ?? p }
 // Ordem de fallback: primeira página que o usuário PODE ver (colaborador cai em Central de Tarefas).
