@@ -347,19 +347,26 @@ export const TEMPLATE_BY_ID = Object.fromEntries(PERMISSION_TEMPLATES.map(t => [
 
 const _email = (u: Profile | null) => (u?.email || '').trim().toLowerCase()
 
-/** DONOS = acesso irrestrito a TODO o painel. Só Esdras e Esdras Santana.
- *  (Rodrigo Admin = Esdras). Wagner/Aline NÃO são donos — são restritos. */
+/** DONOS = acesso irrestrito a TODO o painel: Esdras, Esdras Santana e Rodrigo Admin. */
 export const OWNER_EMAILS: string[] = [
   'comercial.gf7@gmail.com',   // Esdras Santana
   's7showmusic@gmail.com',     // Esdras
   'admin@amore.com.br',        // Rodrigo Admin (= Esdras)
 ]
 
-/** Dono = acesso irrestrito. Baseado NO E-MAIL (não no papel), pois há
- *  super_admins que agora devem ser restritos (ex.: Wagner). */
+/** super_admins do banco que, mesmo assim, ficam RESTRITOS (não são donos).
+ *  Wagner é super_admin no banco mas deve ver só os módulos de colaborador. */
+export const LIMITED_SUPERADMINS: string[] = [
+  'lwsantana@icloud.com',      // Wagner
+]
+
+/** Dono = acesso irrestrito. Regra ROBUSTA: qualquer super_admin OU e-mail de dono,
+ *  MENOS quem estiver na lista de restritos (Wagner). Assim nenhum dono perde acesso
+ *  por diferença de e-mail, e o Wagner continua restrito. */
 export function isOwner(user: Profile | null): boolean {
   if (!user) return false
-  return OWNER_EMAILS.includes(_email(user))
+  if (LIMITED_SUPERADMINS.includes(_email(user))) return false
+  return user.role === 'super_admin' || OWNER_EMAILS.includes(_email(user))
 }
 
 /** Quem PODE APROVAR requisição de compra: donos + Wagner + Aline. Ninguém mais. */
