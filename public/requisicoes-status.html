@@ -116,6 +116,7 @@ function dt(s){ if(!s)return ''; const d=new Date(s); if(isNaN(d))return String(
 const Q=new URLSearchParams(location.search);
 const MODE=Q.get('mode')||'owner';
 const SOLIC=(Q.get('solic')||'').trim();
+const LOJA=(Q.get('loja')||'').trim();   // quando setado, mostra SÓ as requisições dessa loja
 
 // Etapas do ciclo e mapeamento do status → índice atingido
 const STEPS=[
@@ -188,6 +189,7 @@ function renderKpis(list){
 function render(){
   const fl=el('floja').value, q=norm(el('busca').value);
   const list=(DADOS||[]).filter(r=>{
+    if(LOJA && (r.loja||'')!==LOJA) return false;   // trava por loja (usuário vê só a sua)
     if(MODE==='user' && SOLIC){ const who=norm((r.responsavel_nome||'')+' '+(r.created_by||'')); if(!who.includes(norm(SOLIC))) return false; }
     if(fl && (r.loja||'')!==fl) return false;
     if(q){ const hay=norm((r.titulo||'')+' '+(r.responsavel_nome||r.created_by||'')+' REQ-'+String(r.numero||'')); if(!hay.includes(q)) return false; }

@@ -6,6 +6,7 @@ import {
   ShoppingCart, BarChart2, Lock, Layers, Receipt,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { canApproveReq } from '../../lib/permissions'
 import { useLoja } from '../../contexts/LojaContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import {
@@ -1707,8 +1708,8 @@ function DashboardView({ reqs }: { reqs: Requisicao[] }) {
 
 // ── ListaView ─────────────────────────────────────────────────
 
-function ListaView({ reqs, loja, lojas, onNova, onDetalhe, onEditar, onDelete, onAprovar, loading }: {
-  reqs: Requisicao[]; loja: string; lojas: string[]
+function ListaView({ reqs, loja, lojas, podeAprovar, onNova, onDetalhe, onEditar, onDelete, onAprovar, loading }: {
+  reqs: Requisicao[]; loja: string; lojas: string[]; podeAprovar: boolean
   onNova: ()=>void; onDetalhe: (r:Requisicao)=>void; onEditar: (r:Requisicao)=>void
   onDelete: (id:string)=>void; onAprovar: (r:Requisicao)=>void; loading: boolean
 }) {
@@ -1779,7 +1780,7 @@ function ListaView({ reqs, loja, lojas, onNova, onDetalhe, onEditar, onDelete, o
             const hl = pendAprov(r)
             const baseBg = hl ? '#FFFBEB' : 'transparent'
             return (
-            <tr key={r.id} onClick={()=> hl ? onAprovar(r) : onDetalhe(r)} style={{ borderBottom:'1px solid var(--border)', cursor:'pointer', background:baseBg, boxShadow: hl?'inset 3px 0 0 #F59E0B':'none' }}
+            <tr key={r.id} onClick={()=> (hl && podeAprovar) ? onAprovar(r) : onDetalhe(r)} style={{ borderBottom:'1px solid var(--border)', cursor:'pointer', background:baseBg, boxShadow: hl?'inset 3px 0 0 #F59E0B':'none' }}
               onMouseEnter={e=>e.currentTarget.style.background='var(--bg2)'}
               onMouseLeave={e=>e.currentTarget.style.background=baseBg}>
               <td style={{ padding:'8px 9px', fontWeight:800, color:'var(--bordo)', whiteSpace:'nowrap' }}>REQ-{String(r.numero).padStart(4,'0')}</td>
@@ -1792,7 +1793,7 @@ function ListaView({ reqs, loja, lojas, onNova, onDetalhe, onEditar, onDelete, o
               <td style={{ padding:'8px 9px', color:'var(--muted)', whiteSpace:'nowrap' }}>{fmtDt(r.created_at)}</td>
               <td style={{ padding:'8px 9px' }} onClick={e=>e.stopPropagation()}>
                 <div className="ab" style={{ gap:3 }}>
-                  {(r.status==='enviada'||r.status==='em_analise')&&(
+                  {podeAprovar&&(r.status==='enviada'||r.status==='em_analise')&&(
                     <button className="btn" onClick={()=>onAprovar(r)} title="Abrir a mesma tela do disparo para aprovar"
                       style={{ background:'#15803D', padding:'4px 10px', fontSize:11, whiteSpace:'nowrap' }}>
                       <CheckCircle2 size={11}/> Aprovação de Requisição
@@ -1815,6 +1816,7 @@ function ListaView({ reqs, loja, lojas, onNova, onDetalhe, onEditar, onDelete, o
 
 export default function RequisoesPage() {
   const { user } = useAuth()
+  const podeAprovar = canApproveReq(user)
   const { loja } = useLoja()
   const { theme } = useTheme()
   const { toast, ToastEl } = useToast()
@@ -1889,7 +1891,7 @@ export default function RequisoesPage() {
         </div>
       )}
 
-      {view==='lista'&&tab==='lista'&&<ListaView reqs={reqs} loja={loja} lojas={theme.stores||[]} onNova={()=>{setSel(null);setView('form')}} onDetalhe={r=>{setSel(r);setView('detalhe')}} onEditar={r=>{setSel(r);setView('form')}} onDelete={handleDelete} onAprovar={handleAbrirAprovacao} loading={loading} />}
+      {view==='lista'&&tab==='lista'&&<ListaView reqs={reqs} loja={loja} lojas={theme.stores||[]} podeAprovar={podeAprovar} onNova={()=>{setSel(null);setView('form')}} onDetalhe={r=>{setSel(r);setView('detalhe')}} onEditar={r=>{setSel(r);setView('form')}} onDelete={handleDelete} onAprovar={handleAbrirAprovacao} loading={loading} />}
       {view==='lista'&&tab==='dashboard'&&<DashboardView reqs={reqs} />}
       {view==='form'&&<FormularioView req={sel} loja={loja} userName={userName} produtos={prods} onSalvo={handleSalvo} onVoltar={()=>{setView('lista');setSel(null)}} />}
       {view==='detalhe'&&sel&&<DetalheView req={sel} loja={loja} userName={userName} produtos={prods} creditos={creds} onEditar={()=>{setSel(sel);setView('form')}} onVoltar={()=>{setView('lista');setSel(null)}} onAtualizar={handleAtualizar} toast={toast} />}

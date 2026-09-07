@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { useAuth } from './AuthContext'
+import { canSeeAllStores } from '../lib/permissions'
 
 interface LojaContextValue {
   /** Loja ativa selecionada — usa profile.loja para usuários sem permissão multi-loja */
@@ -22,7 +23,8 @@ const LojaContext = createContext<LojaContextValue>({
 export function LojaProvider({ stores, children }: { stores: string[]; children: React.ReactNode }) {
   const { user } = useAuth()
 
-  const multiLoja = user?.role === 'super_admin' || user?.role === 'admin'
+  // Vê todas as lojas: donos (Esdras) + Wagner + Aline + Eduarda. Os demais ficam na sua loja.
+  const multiLoja = canSeeAllStores(user)
 
   // Admin começa com 'Todas as Lojas'; demais usuários ficam na loja do perfil
   const profileLoja = user?.loja && !['Todas', 'Todas as Lojas', ''].includes(user.loja)

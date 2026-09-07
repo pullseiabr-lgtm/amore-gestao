@@ -14,6 +14,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionsMap> = {
     pdv:                  { view: true, create: true, edit: true, delete: true, export: true },
     compras:              { view: true, create: true, edit: true, delete: true, export: true },
     requisicoes:          { view: true, create: true, edit: true, delete: true, export: true },
+    creditos:             { view: true, create: true, edit: true, delete: true, export: true },
     'req-automaticas':    { view: true, create: true, edit: true, delete: true, export: true },
     estoque:              { view: true, create: true, edit: true, delete: true, export: true },
     fornecedores:         { view: true, create: true, edit: true, delete: true, export: true },
@@ -45,6 +46,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionsMap> = {
     pdv:                  { view: true, create: true, edit: true, delete: true, export: true },
     compras:              { view: true, create: true, edit: true, delete: true, export: true },
     requisicoes:          { view: true, create: true, edit: true, delete: true, export: true },
+    creditos:             { view: true, create: true, edit: true, delete: true, export: true },
     'req-automaticas':    { view: true, create: true, edit: true, delete: true, export: true },
     estoque:              { view: true, create: true, edit: true, delete: true, export: true },
     fornecedores:         { view: true, create: true, edit: true, delete: true, export: true },
@@ -343,31 +345,49 @@ export const TEMPLATE_BY_ID = Object.fromEntries(PERMISSION_TEMPLATES.map(t => [
 // operacionais abaixo — veem no menu e conseguem operar apenas eles.
 // ─────────────────────────────────────────────────────────────
 
-/** E-mails que mantêm acesso total mesmo sem papel super_admin.
- *  Preencha aqui SÓ se um dos donos não estiver como super_admin. */
+const _email = (u: Profile | null) => (u?.email || '').trim().toLowerCase()
+
+/** DONOS = acesso irrestrito a TODO o painel. Só Esdras e Esdras Santana.
+ *  (Rodrigo Admin = Esdras). Wagner/Aline NÃO são donos — são restritos. */
 export const OWNER_EMAILS: string[] = [
-  // 'esdras@amorefood.com.br',
-  // 'esdrassantana@amorefood.com.br',
+  'comercial.gf7@gmail.com',   // Esdras Santana
+  's7showmusic@gmail.com',     // Esdras
+  'admin@amore.com.br',        // Rodrigo Admin (= Esdras)
 ]
 
-/** Dono = acesso irrestrito (Esdras e Esdras Santana). */
+/** Dono = acesso irrestrito. Baseado NO E-MAIL (não no papel), pois há
+ *  super_admins que agora devem ser restritos (ex.: Wagner). */
 export function isOwner(user: Profile | null): boolean {
   if (!user) return false
-  if (user.role === 'super_admin') return true
-  return OWNER_EMAILS.includes((user.email || '').trim().toLowerCase())
+  return OWNER_EMAILS.includes(_email(user))
 }
 
-/** Os 9 módulos liberados para os demais logins (na ordem do menu). */
+/** Quem PODE APROVAR requisição de compra: donos + Wagner + Aline. Ninguém mais. */
+export const APPROVER_EMAILS: string[] = [
+  'lwsantana@icloud.com',          // Wagner
+  'aline.s.claudino@icloud.com',   // Aline
+]
+export function canApproveReq(user: Profile | null): boolean {
+  return isOwner(user) || APPROVER_EMAILS.includes(_email(user))
+}
+
+/** Quem vê TODAS as lojas: donos + Wagner + Aline + Eduarda. Os demais só a sua. */
+export const ALL_STORES_EMAILS: string[] = [
+  'lwsantana@icloud.com',          // Wagner
+  'aline.s.claudino@icloud.com',   // Aline
+  'dudarocha4683@gmail.com',       // Maria Eduarda
+]
+export function canSeeAllStores(user: Profile | null): boolean {
+  return isOwner(user) || ALL_STORES_EMAILS.includes(_email(user))
+}
+
+/** Módulos liberados para os logins restritos (todos, na ordem do menu):
+ *  Requisição de Compra, Central de Tarefas, Status das Requisições, Créditos & Prestação.
+ *  A APROVAÇÃO da requisição é liberada à parte (só aprovadores). */
 export const COLAB_MODULES: string[] = [
+  'requisicoes',      // Requisição de Compra + Status das Requisições
   'tarefas',          // Central de Tarefas
-  'checklists',       // Operação Padrão
-  'recebimento',      // Recebimento Inteligente
-  'etiquetas',        // Etiquetas & Leitura
-  'relatorios-precos',// Relatório de Compras
-  'avaliacoes',       // Avaliações & NPS
-  'entregas',         // Agenda de Entregas
-  'requisicoes',      // Novas Requisições
-  'creditos',         // Créditos & Prestação de Contas
+  'creditos',         // Solicitação de Crédito & Prestação de Contas
 ]
 
 // Colaborador pode ver e operar (criar/editar/exportar); apagar fica com o dono.

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, ClipboardCheck, ListChecks, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap, Activity, Bot, Calendar, Bell, CheckCircle2 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { canApproveReq } from '../../lib/permissions'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLoja } from '../../contexts/LojaContext'
 
@@ -106,16 +107,10 @@ const MENU_BOTTOM: NavItem[] = [
 // demais logins (todos, menos Esdras e Esdras Santana). Ícones em destaque
 // para ficar intuitivo. Os ids batem com as rotas em App.tsx.
 const COLAB_MENU: NavItem[] = [
+  { id: 'requisicao-nova',   label: 'Requisição de Compra',      icon: <ClipboardList size={15} />, perm: 'requisicoes' },
   { id: 'tarefas',           label: 'Central de Tarefas',        icon: <ClipboardList size={15} /> },
-  { id: 'checklists',        label: 'Operação Padrão',           icon: <ClipboardCheck size={15} /> },
-  { id: 'recebimento',       label: 'Recebimento Inteligente',   icon: <span style={{ fontSize: 15, lineHeight: 1 }}>📥</span> },
-  { id: 'etiquetas',         label: 'Etiquetas & Leitura',       icon: <Tag size={15} /> },
-  { id: 'relatorios-precos', label: 'Relatório de Compras',      icon: <BarChart2 size={15} /> },
-  { id: 'avaliacoes',        label: 'Avaliações & NPS',          icon: <span style={{ fontSize: 15, lineHeight: 1 }}>⭐</span> },
-  { id: 'entregas',          label: 'Agenda de Entregas',        icon: <span style={{ fontSize: 15, lineHeight: 1 }}>🚚</span> },
-  { id: 'requisicao-nova',   label: 'Nova Requisição',           icon: <ClipboardList size={15} />, perm: 'requisicoes' },
   { id: 'requisicoes-status',label: 'Status das Requisições',    icon: <Activity size={15} />, perm: 'requisicoes' },
-  { id: 'creditos',          label: 'Créditos & Prestação',      icon: <DollarSign size={15} /> },
+  { id: 'creditos',          label: '💳 Créditos & Prestação de Contas', icon: <DollarSign size={15} /> },
 ]
 
 const ADMIN_MENU: NavItem[] = [
@@ -188,7 +183,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
         <nav className="sb-nav">
           {!isOwner ? (
           <>
-            {/* ── Menu do Colaborador: só os 9 módulos operacionais ── */}
+            {/* ── Menu do Colaborador: Requisição, Tarefas, Status, Créditos ── */}
             <div className="sb-sec">Minha Operação</div>
             {COLAB_MENU.filter(m => can(m.perm ?? m.id, 'view')).map(m => (
               <div
@@ -201,6 +196,15 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
                 {m.badge && <span className="nav-badge">{m.badge}</span>}
               </div>
             ))}
+            {/* Aprovação da Requisição — SÓ para aprovadores (Wagner/Aline) */}
+            {canApproveReq(user) && (
+              <div
+                className={`nav-item${activePage === 'requisicoes' ? ' active' : ''}`}
+                onClick={() => onNav('requisicoes', 'Aprovação de Requisição')}
+              >
+                <CheckCircle2 size={15} /> ✅ Aprovação de Requisição
+              </div>
+            )}
             {/* Ajuda — abre o manual dos 9 módulos (não é um módulo, é consulta) */}
             <div className="sb-sec" style={{ marginTop: 8 }}>Ajuda</div>
             <a
