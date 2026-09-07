@@ -14,24 +14,29 @@ body{font-family:'Poppins',system-ui,-apple-system,Segoe UI,sans-serif;backgroun
 .top .tag{font-size:11.5px;background:rgba(255,255,255,.18);padding:4px 10px;border-radius:20px;font-weight:600}
 .top .loja{margin-left:auto;font-size:12.5px;background:rgba(255,255,255,.14);padding:5px 12px;border-radius:20px;font-weight:600}
 .wrap{display:flex;height:calc(100vh - 52px)}
-.sb{width:250px;flex:none;background:var(--bordo-x);color:#fff;padding:14px 10px;overflow:auto}
+.sb{width:255px;flex:none;background:var(--bordo-x);color:#fff;padding:14px 10px;overflow:auto}
 .sb .u{display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,.06);border-radius:10px;margin-bottom:12px}
 .sb .u .av{width:34px;height:34px;border-radius:50%;background:var(--v);display:grid;place-items:center;font-weight:700}
 .sb .u small{display:block;color:rgba(255,255,255,.6);font-size:11px}
 .sec{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.5);margin:12px 8px 6px;font-weight:700}
-.it{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:9px;font-size:14px;font-weight:500;cursor:pointer;color:#fff}
+.it{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:9px;font-size:14px;font-weight:500;cursor:pointer;color:#fff;border:0;background:transparent;width:100%;text-align:left;font-family:inherit}
 .it:hover{background:rgba(255,255,255,.08)}
 .it.on{background:#fff;color:var(--bordo);font-weight:700}
 .it .ic{font-size:16px;width:20px;text-align:center}
-.x{opacity:.4;text-decoration:line-through}
+.it.block{opacity:.45;cursor:not-allowed}
+.it.block .ic{filter:grayscale(1)}
 .main{flex:1;min-width:0;display:flex;flex-direction:column}
-.mh{padding:12px 18px;border-bottom:1px solid var(--linha);background:#fff}
+.mh{padding:11px 18px;border-bottom:1px solid var(--linha);background:#fff}
 .mh h1{font-size:16px;color:var(--bordo)}
 .mh p{font-size:12.5px;color:var(--muted);margin-top:2px}
 .note{margin:12px 18px 0;padding:10px 14px;background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;border-radius:10px;font-size:12.5px;font-weight:600}
-.frame{flex:1;margin:12px 18px 18px;border:1px solid var(--linha);border-radius:12px;overflow:hidden;background:#fff}
+.frame{flex:1;margin:12px 18px 18px;border:1px solid var(--linha);border-radius:12px;overflow:hidden;background:#fff;position:relative}
 .frame iframe{width:100%;height:100%;border:0}
-@media(max-width:760px){.sb{width:60px;padding:12px 6px}.sb .u,.sb .sec,.it span:not(.ic){display:none}.it{justify-content:center}}
+.ph{position:absolute;inset:0;display:none;place-items:center;text-align:center;padding:30px;color:var(--muted)}
+.ph.show{display:grid}
+.ph .big{font-size:40px;margin-bottom:10px}
+.ph b{color:var(--bordo)}
+@media(max-width:760px){.sb{width:58px;padding:12px 5px}.sb .u,.sb .sec,.it span:not(.ic){display:none}.it{justify-content:center}}
 </style>
 </head>
 <body>
@@ -44,27 +49,53 @@ body{font-family:'Poppins',system-ui,-apple-system,Segoe UI,sans-serif;backgroun
   <aside class="sb">
     <div class="u"><div class="av">C</div><div>Carlos Wellington<small>Usuário · Amore Paiva</small></div></div>
     <div class="sec">Minha Operação</div>
-    <div class="it"><span class="ic">📝</span><span>Requisição de Compra</span></div>
-    <div class="it"><span class="ic">🗒️</span><span>Central de Tarefas</span></div>
-    <div class="it on"><span class="ic">📊</span><span>Status das Requisições</span></div>
-    <div class="it"><span class="ic">💳</span><span>Créditos &amp; Prestação de Contas</span></div>
+    <button class="it" data-t="req"><span class="ic">📝</span><span>Requisição de Compra</span></button>
+    <button class="it" data-t="tarefas"><span class="ic">🗒️</span><span>Central de Tarefas</span></button>
+    <button class="it on" data-t="status"><span class="ic">📊</span><span>Status das Requisições</span></button>
+    <button class="it" data-t="credito"><span class="ic">💳</span><span>Créditos &amp; Prestação de Contas</span></button>
     <div class="sec">Ajuda</div>
-    <div class="it"><span class="ic">📘</span><span>Manual / Ajuda</span></div>
-    <div class="sec">Não aparece p/ ele</div>
-    <div class="it x"><span class="ic">✅</span><span>Aprovação de Requisição</span></div>
-    <div class="it x"><span class="ic">🏬</span><span>Outras lojas</span></div>
-    <div class="it x"><span class="ic">⚙️</span><span>Demais módulos do painel</span></div>
+    <button class="it" data-t="manual"><span class="ic">📘</span><span>Manual / Ajuda</span></button>
+    <div class="sec">Sem acesso (bloqueado)</div>
+    <button class="it block" data-block="1"><span class="ic">✅</span><span>Aprovação de Requisição</span></button>
+    <button class="it block" data-block="1"><span class="ic">🏬</span><span>Outras lojas</span></button>
+    <button class="it block" data-block="1"><span class="ic">⚙️</span><span>Demais módulos</span></button>
   </aside>
   <main class="main">
     <div class="mh">
-      <h1>📊 Status das Requisições</h1>
-      <p>Como o Carlos enxerga: somente as requisições da <b>unidade Amore Paiva</b> (a loja dele).</p>
+      <h1 id="mhTit">📊 Status das Requisições</h1>
+      <p id="mhSub">Como o Carlos enxerga: somente a unidade <b>Amore Paiva</b> (a loja dele).</p>
     </div>
     <div class="note">🔒 Demo só para visualização. O Carlos vê apenas <b>Amore Paiva</b>, não tem o botão <b>Aprovação</b> e não acessa os demais módulos. Wagner, Aline e Eduarda veriam todas as lojas.</div>
     <div class="frame">
-      <iframe src="/requisicoes-status.html?mode=owner&loja=Amore%20Paiva" title="Status das Requisições — Amore Paiva"></iframe>
+      <iframe id="fr" src="/requisicoes-status.html?mode=owner&loja=Amore%20Paiva" title="tela"></iframe>
+      <div class="ph" id="ph"><div><div class="big">💳</div><div style="font-size:15px"><b>Créditos & Prestação de Contas</b></div><div style="margin-top:8px;max-width:44ch">Essa tela abre <b>dentro do painel</b> (é um módulo do sistema). O Carlos tem acesso a ela — aqui na demo mostramos só o acesso do menu.</div></div></div>
     </div>
   </main>
 </div>
+<script>
+(function(){
+  var CARLOS='Carlos Wellington', LOJA='Amore Paiva';
+  var TELAS={
+    req:    {tit:'📝 Requisição de Compra', sub:'Carlos cria uma requisição — solicitante já travado no nome dele.', src:'/requisicao-nova.html?solic='+encodeURIComponent(CARLOS)},
+    tarefas:{tit:'🗒️ Central de Tarefas',   sub:'Tarefas da unidade Amore Paiva.', src:'/tarefas.html?loja='+encodeURIComponent(LOJA)},
+    status: {tit:'📊 Status das Requisições', sub:'Somente as requisições da unidade Amore Paiva (a loja dele).', src:'/requisicoes-status.html?mode=owner&loja='+encodeURIComponent(LOJA)},
+    manual: {tit:'📘 Manual / Ajuda',        sub:'Guia dos módulos que ele pode usar.', src:'/manual-modulos.html'},
+    credito:{tit:'💳 Créditos & Prestação',  sub:'Solicitação de crédito e prestação de contas.', ph:true}
+  };
+  var fr=document.getElementById('fr'), ph=document.getElementById('ph');
+  var mhT=document.getElementById('mhTit'), mhS=document.getElementById('mhSub');
+  document.querySelectorAll('.it').forEach(function(b){
+    b.addEventListener('click',function(){
+      if(b.dataset.block){ alert('🔒 Sem acesso — esse item não aparece para o Carlos (usuário de loja).'); return; }
+      var t=TELAS[b.dataset.t]; if(!t) return;
+      document.querySelectorAll('.it').forEach(function(x){x.classList.remove('on')});
+      b.classList.add('on');
+      mhT.textContent=t.tit; mhS.innerHTML=t.sub;
+      if(t.ph){ ph.classList.add('show'); fr.style.visibility='hidden'; }
+      else{ ph.classList.remove('show'); fr.style.visibility='visible'; fr.src=t.src; }
+    });
+  });
+})();
+</script>
 </body>
 </html>
