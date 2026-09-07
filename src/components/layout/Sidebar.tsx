@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, ClipboardCheck, ListChecks, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap, Activity, Bot, Calendar, Bell } from 'lucide-react'
+import { LayoutDashboard, FileText, Trophy, Megaphone, TrendingUp, ShoppingCart, DollarSign, ChefHat, Coffee, Users, Settings, LogOut, Home, Package, ChevronDown, ChevronRight, Building2, ClipboardList, ClipboardCheck, ListChecks, UtensilsCrossed, Tag, BarChart2, AlertTriangle, Monitor, Zap, Activity, Bot, Calendar, Bell, CheckCircle2 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useLoja } from '../../contexts/LojaContext'
@@ -303,6 +303,17 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
             <a href="/gestao-compras.html" target="_blank" rel="noreferrer" className="nav-item" style={{ textDecoration: 'none', color: 'inherit' }}>
               <ClipboardCheck size={13} /> 📦 Gestão de Compras
             </a>
+          )}
+
+          {/* Aprovação & Análise de Requisição — item fixo e visível (Wagner/Esdras) */}
+          {can('requisicoes', 'view') && (
+            <div
+              className={`nav-item${activePage === 'requisicoes' ? ' active' : ''}`}
+              onClick={() => onNav('requisicoes', 'Aprovação & Análise de Requisição')}
+              style={{ cursor: 'pointer' }}
+            >
+              <CheckCircle2 size={13} /> ✅ Aprovação &amp; Análise de Requisição
+            </div>
           )}
 
           {/* ── Grupo Compras & Estoque (dropdown) ── */}
