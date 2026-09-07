@@ -142,7 +142,7 @@ function renderPage(){
     <div class="top"><div class="eyebrow">Painel ${flow?'Flow':'Amore'} · Validar Requisição</div>
       <h1>${num} — ${esc(REQ.titulo||'Requisição')}</h1>
       <div class="sub">${esc(REQ.loja||'')} · Solicitante: <b>${esc(REQ.responsavel_nome||REQ.created_by||'—')}</b> · ${dmy(REQ.created_at)}</div>
-      ${jaAprovada?'<span class="badge" style="background:#DCFCE7;color:#15803D">✅ Já validada</span>':'<span class="badge">Aguardando validação de Wagner/Esdras</span>'}
+      ${jaAprovada?'<span class="badge" style="background:#DCFCE7;color:#15803D">✅ Já validada</span>':'<span class="badge">Aguardando validação de Wagner, Esdras ou Aline</span>'}
     </div>
     <div class="card"><div class="grid">
       <div><label>Prioridade</label><select id="prio">${['baixa','media','alta','urgente'].map(p=>`<option value="${p}" ${REQ.prioridade===p?'selected':''}>${p[0].toUpperCase()+p.slice(1)}</option>`).join('')}</select></div>
@@ -159,7 +159,7 @@ function renderPage(){
       <div class="foot">
         <div style="font-size:13px;color:var(--muted)">Itens: <b id="cont">0</b> · estimado <b id="tot">R$ 0,00</b></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <select id="quem" style="width:auto"><option value="">Validado por…</option><option>Wagner</option><option>Esdras</option></select>
+          <select id="quem" style="width:auto"><option value="">Validado por…</option><option>Wagner</option><option>Esdras</option><option>Aline</option></select>
           <button class="btn sec" onclick="salvar(false)">💾 Salvar alterações</button>
           <button class="btn" style="background:#0369A1" onclick="reenviarAtualizada()">🔄 Salvar e reenviar (atualizada)</button>
           <button class="btn" onclick="validar()">✅ Validar e enviar p/ cotação</button>
@@ -226,7 +226,7 @@ async function salvar(silent,porArg){
 }
 
 async function validar(){
-  const quem=el('quem').value; if(!quem){ show('Selecione quem está validando (Wagner ou Esdras).',false); return; }
+  const quem=el('quem').value; if(!quem){ show('Selecione quem está validando (Wagner, Esdras ou Aline).',false); return; }
   if(!confirm('Validar a requisição '+('REQ-'+String(REQ.numero).padStart(4,'0'))+' e enviar para o Esdras gerar a cotação?'))return;
   const ok=await salvar(true,quem); if(!ok){ show('Não consegui salvar antes de validar.',false); return; }
   const num='REQ-'+String(REQ.numero).padStart(4,'0');
