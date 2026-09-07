@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo — Visão do Wagner (aprovador · todas as lojas)</title>
+<meta name="robots" content="noindex,nofollow">
+<style>
+:root{--bordo:#800000;--bordo-d:#5C0000;--bordo-x:#3D0000;--v:#AD2121;--creme:#FBF6F2;--linha:#ECDFD8;--tinta:#25140F;--muted:#7C6A62}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Poppins',system-ui,-apple-system,Segoe UI,sans-serif;background:var(--creme);color:var(--tinta);height:100vh;overflow:hidden}
+.top{height:52px;background:linear-gradient(120deg,var(--bordo),var(--v));color:#fff;display:flex;align-items:center;gap:12px;padding:0 16px}
+.top b{font-weight:700}
+.top .tag{font-size:11.5px;background:rgba(255,255,255,.18);padding:4px 10px;border-radius:20px;font-weight:600}
+.top .loja{margin-left:auto;font-size:12.5px;background:rgba(255,255,255,.14);padding:5px 12px;border-radius:20px;font-weight:600}
+.wrap{display:flex;height:calc(100vh - 52px)}
+.sb{width:265px;flex:none;background:var(--bordo-x);color:#fff;padding:14px 10px;overflow:auto}
+.sb .u{display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,.06);border-radius:10px;margin-bottom:12px}
+.sb .u .av{width:34px;height:34px;border-radius:50%;background:var(--v);display:grid;place-items:center;font-weight:700}
+.sb .u small{display:block;color:rgba(255,255,255,.6);font-size:11px}
+.sec{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.5);margin:12px 8px 6px;font-weight:700}
+.it{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:9px;font-size:14px;font-weight:500;cursor:pointer;color:#fff;border:0;background:transparent;width:100%;text-align:left;font-family:inherit}
+.it:hover{background:rgba(255,255,255,.08)}
+.it.on{background:#fff;color:var(--bordo);font-weight:700}
+.it.aprov{background:rgba(21,128,61,.25);border:1px solid rgba(134,239,172,.5)}
+.it.aprov.on{background:#15803D;color:#fff;border-color:#15803D}
+.it .ic{font-size:16px;width:20px;text-align:center}
+.it.block{opacity:.45;cursor:not-allowed}
+.it.block .ic{filter:grayscale(1)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.mh{padding:11px 18px;border-bottom:1px solid var(--linha);background:#fff}
+.mh h1{font-size:16px;color:var(--bordo)}
+.mh p{font-size:12.5px;color:var(--muted);margin-top:2px}
+.note{margin:12px 18px 0;padding:10px 14px;background:#DCFCE7;border:1px solid #86EFAC;color:#166534;border-radius:10px;font-size:12.5px;font-weight:600}
+.frame{flex:1;margin:12px 18px 18px;border:1px solid var(--linha);border-radius:12px;overflow:hidden;background:#fff;position:relative}
+.frame iframe{width:100%;height:100%;border:0}
+.ph{position:absolute;inset:0;display:none;place-items:center;text-align:center;padding:30px;color:var(--muted)}
+.ph.show{display:grid}
+.ph .big{font-size:40px;margin-bottom:10px}
+.ph b{color:var(--bordo)}
+@media(max-width:760px){.sb{width:58px;padding:12px 5px}.sb .u,.sb .sec,.it span:not(.ic){display:none}.it{justify-content:center}}
+</style>
+</head>
+<body>
+<div class="top">
+  <b>Painel Amore</b>
+  <span class="tag">DEMO · visão de aprovador</span>
+  <span class="loja">🏬 Todas as lojas</span>
+</div>
+<div class="wrap">
+  <aside class="sb">
+    <div class="u"><div class="av">W</div><div>Wagner Santana<small>Aprovador · todas as lojas</small></div></div>
+    <div class="sec">Minha Operação</div>
+    <button class="it" data-t="req"><span class="ic">📝</span><span>Requisição de Compra</span></button>
+    <button class="it" data-t="tarefas"><span class="ic">🗒️</span><span>Central de Tarefas</span></button>
+    <button class="it on" data-t="status"><span class="ic">📊</span><span>Status das Requisições</span></button>
+    <button class="it" data-t="credito"><span class="ic">💳</span><span>Créditos &amp; Prestação de Contas</span></button>
+    <div class="sec">Aprovação</div>
+    <button class="it aprov" data-t="aprovar"><span class="ic">✅</span><span>Aprovação de Requisição</span></button>
+    <div class="sec">Ajuda</div>
+    <button class="it" data-t="manual"><span class="ic">📘</span><span>Manual / Ajuda</span></button>
+    <div class="sec">Sem acesso (bloqueado)</div>
+    <button class="it block" data-block="1"><span class="ic">⚙️</span><span>Demais módulos do painel</span></button>
+  </aside>
+  <main class="main">
+    <div class="mh">
+      <h1 id="mhTit">📊 Status das Requisições</h1>
+      <p id="mhSub">Wagner vê as requisições de <b>todas as lojas</b>.</p>
+    </div>
+    <div class="note">✅ Wagner é <b>aprovador</b>: vê <b>todas as lojas</b> e pode <b>aprovar requisições</b>. Não tem acesso aos demais módulos do painel (esses só os donos).</div>
+    <div class="frame">
+      <iframe id="fr" src="/requisicoes-status.html?mode=owner" title="tela"></iframe>
+      <div class="ph" id="ph"><div><div class="big" id="phIc">📦</div><div style="font-size:15px"><b id="phTit">Módulo do painel</b></div><div id="phTxt" style="margin-top:8px;max-width:50ch;line-height:1.5"></div><button id="phBtn" style="margin-top:16px;padding:11px 20px;border:0;border-radius:10px;background:var(--bordo);color:#fff;font-weight:700;font-size:14px;cursor:pointer">▶ Abrir a tela completa</button></div></div>
+    </div>
+  </main>
+</div>
+<script>
+(function(){
+  var WAGNER='Wagner';
+  var TELAS={
+    req:    {tit:'📝 Requisição de Compra', sub:'Wagner também pode criar requisições.', src:'/requisicao-nova.html?solic='+encodeURIComponent(WAGNER)},
+    status: {tit:'📊 Status das Requisições', sub:'Requisições de <b>todas as lojas</b> (Amore Paiva, Amore CD, Flow CD).', src:'/requisicoes-status.html?mode=owner'},
+    manual: {tit:'📘 Manual / Ajuda',        sub:'Guia dos módulos.', src:'/manual-modulos.html'},
+    tarefas:{tit:'🗒️ Central de Tarefas',   sub:'Módulo completo: Kanban, Painel e + Nova Tarefa (todas as lojas).', ph:true, ic:'🗒️',
+             phTit:'Central de Tarefas (módulo completo)', phTxt:'A tela real tem <b>Kanban</b>, <b>Painel</b> e o botão <b>+ Nova Tarefa</b>. Wagner vê todas as lojas.', open:'/?page=tarefas'},
+    credito:{tit:'💳 Créditos & Prestação',  sub:'Módulo completo: solicitação e prestação de contas.', ph:true, ic:'💳',
+             phTit:'Créditos & Prestação de Contas (módulo completo)', phTxt:'A tela real tem a <b>solicitação de crédito</b>, a <b>aprovação</b> e a <b>prestação de contas</b>.', open:'/?page=creditos'},
+    aprovar:{tit:'✅ Aprovação de Requisição', sub:'Aqui o Wagner aprova as requisições de compra.', ph:true, ic:'✅',
+             phTit:'Aprovação de Requisição', phTxt:'Wagner abre a requisição (na <b>mesma tela do disparo</b>): revisa os produtos, <b>altera ou exclui item</b> se precisar e <b>aprova</b>. Ao aprovar, segue para a <b>cotação</b> (feita pelo Esdras). As pendentes ficam <b>destacadas no topo</b>.', open:'/?page=requisicoes'}
+  };
+  var fr=document.getElementById('fr'), ph=document.getElementById('ph');
+  var mhT=document.getElementById('mhTit'), mhS=document.getElementById('mhSub');
+  var phIc=document.getElementById('phIc'), phTit=document.getElementById('phTit'), phTxt=document.getElementById('phTxt'), phBtn=document.getElementById('phBtn');
+  document.querySelectorAll('.it').forEach(function(b){
+    b.addEventListener('click',function(){
+      if(b.dataset.block){ alert('🔒 Sem acesso — esse item só aparece para os donos (Esdras).'); return; }
+      var t=TELAS[b.dataset.t]; if(!t) return;
+      document.querySelectorAll('.it').forEach(function(x){x.classList.remove('on')});
+      b.classList.add('on');
+      mhT.textContent=t.tit; mhS.innerHTML=t.sub;
+      if(t.ph){
+        ph.classList.add('show'); fr.style.visibility='hidden';
+        phIc.textContent=t.ic||'📦'; phTit.textContent=t.phTit||''; phTxt.innerHTML=t.phTxt||'';
+        phBtn.onclick=function(){ window.open(t.open,'_blank','noopener'); };
+      }
+      else{ ph.classList.remove('show'); fr.style.visibility='visible'; fr.src=t.src; }
+    });
+  });
+})();
+</script>
+</body>
+</html>
