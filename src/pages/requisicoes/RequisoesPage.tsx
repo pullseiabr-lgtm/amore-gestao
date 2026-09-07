@@ -1779,7 +1779,7 @@ function ListaView({ reqs, loja, lojas, onNova, onDetalhe, onEditar, onDelete, o
             const hl = pendAprov(r)
             const baseBg = hl ? '#FFFBEB' : 'transparent'
             return (
-            <tr key={r.id} onClick={()=>onDetalhe(r)} style={{ borderBottom:'1px solid var(--border)', cursor:'pointer', background:baseBg, boxShadow: hl?'inset 3px 0 0 #F59E0B':'none' }}
+            <tr key={r.id} onClick={()=> hl ? onAprovar(r) : onDetalhe(r)} style={{ borderBottom:'1px solid var(--border)', cursor:'pointer', background:baseBg, boxShadow: hl?'inset 3px 0 0 #F59E0B':'none' }}
               onMouseEnter={e=>e.currentTarget.style.background='var(--bg2)'}
               onMouseLeave={e=>e.currentTarget.style.background=baseBg}>
               <td style={{ padding:'8px 9px', fontWeight:800, color:'var(--bordo)', whiteSpace:'nowrap' }}>REQ-{String(r.numero).padStart(4,'0')}</td>
