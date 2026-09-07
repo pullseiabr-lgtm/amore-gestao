@@ -1717,13 +1717,20 @@ function ListaView({ reqs, loja, lojas, onNova, onDetalhe, onEditar, onDelete, o
   const [fPr, setFPr] = useState<ReqPrioridade|''>('')
   const [fLj, setFLj] = useState(loja==='Todas as Lojas'?'':loja)
 
+  const pendAprov = (r:Requisicao)=> r.status==='enviada'||r.status==='em_analise'
   const fil = reqs.filter(r=>{
     if (fSt && r.status!==fSt) return false
     if (fPr && r.prioridade!==fPr) return false
     if (fLj && r.loja!==fLj) return false
     if (srch) { const q=srch.toLowerCase(); return r.titulo.toLowerCase().includes(q)||r.responsavel_nome.toLowerCase().includes(q)||String(r.numero).includes(q) }
     return true
+  }).sort((a,b)=>{
+    // pendentes de análise/aprovação SEMPRE em destaque no topo
+    const pa=pendAprov(a)?0:1, pb=pendAprov(b)?0:1
+    if (pa!==pb) return pa-pb
+    return (b.created_at||'').localeCompare(a.created_at||'')
   })
+  const nPend = fil.filter(pendAprov).length
 
   return (
     <div>
@@ -1749,6 +1756,14 @@ function ListaView({ reqs, loja, lojas, onNova, onDetalhe, onEditar, onDelete, o
 
       {loading&&<div style={{ padding:28, textAlign:'center' }}><Loader size={22} className="spin" /></div>}
 
+      {!loading&&nPend>0&&(
+        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', marginBottom:12, borderRadius:10,
+          background:'#FEF3C7', border:'1px solid #FCD34D', color:'#92400E', fontWeight:700, fontSize:13 }}>
+          <span style={{ fontSize:16 }}>⏳</span>
+          {nPend} requisição(ões) aguardando <b>análise e aprovação</b> — destacadas no topo. Clique em <b>“✅ Aprovação &amp; Análise”</b> para revisar e aprovar.
+        </div>
+      )}
+
       {!loading&&fil.length===0&&<div style={{ padding:36, textAlign:'center', color:'var(--muted)' }}>
         <ShoppingCart size={36} style={{ opacity:.2, display:'block', margin:'0 auto 9px' }} />
         <div style={{ fontSize:14, fontWeight:600, marginBottom:5 }}>Nenhuma requisição encontrada</div>
@@ -1760,10 +1775,13 @@ function ListaView({ reqs, loja, lojas, onNova, onDetalhe, onEditar, onDelete, o
           <thead><tr style={{ background:'var(--bg2)' }}>
             {['Nº','Título','Unidade','Setor','Responsável','Prioridade','Status','Data',''].map(h=><th key={h} style={{ padding:'7px 9px', textAlign:'left', fontWeight:700, fontSize:10, color:'var(--muted)', borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>)}
           </tr></thead>
-          <tbody>{fil.map(r=>(
-            <tr key={r.id} onClick={()=>onDetalhe(r)} style={{ borderBottom:'1px solid var(--border)', cursor:'pointer' }}
+          <tbody>{fil.map(r=>{
+            const hl = pendAprov(r)
+            const baseBg = hl ? '#FFFBEB' : 'transparent'
+            return (
+            <tr key={r.id} onClick={()=>onDetalhe(r)} style={{ borderBottom:'1px solid var(--border)', cursor:'pointer', background:baseBg, boxShadow: hl?'inset 3px 0 0 #F59E0B':'none' }}
               onMouseEnter={e=>e.currentTarget.style.background='var(--bg2)'}
-              onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+              onMouseLeave={e=>e.currentTarget.style.background=baseBg}>
               <td style={{ padding:'8px 9px', fontWeight:800, color:'var(--bordo)', whiteSpace:'nowrap' }}>REQ-{String(r.numero).padStart(4,'0')}</td>
               <td style={{ padding:'8px 9px', fontWeight:600, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.titulo}</td>
               <td style={{ padding:'8px 9px', color:'var(--muted)', whiteSpace:'nowrap' }}>{r.loja}</td>
@@ -1785,7 +1803,7 @@ function ListaView({ reqs, loja, lojas, onNova, onDetalhe, onEditar, onDelete, o
                 </div>
               </td>
             </tr>
-          ))}</tbody>
+          )})}</tbody>
         </table>
         <div style={{ padding:'6px 0', fontSize:11, color:'var(--muted)' }}>{fil.length} requisição(ões)</div>
       </div>}
