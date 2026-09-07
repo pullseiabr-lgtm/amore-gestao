@@ -539,9 +539,10 @@ function FormularioView({ req, loja, userName, produtos, onSalvo, onVoltar }: {
 
 // ── DetalheView ───────────────────────────────────────────────
 
-function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVoltar, onAtualizar, toast }: {
+function DetalheView({ req, loja, userName, produtos, creditos, abrirAprovacao, onEditar, onVoltar, onAtualizar, toast }: {
   req: Requisicao; loja: string; userName: string
   produtos: EstoqueProduto[]; creditos: FinCredito[]
+  abrirAprovacao?: boolean
   onEditar: ()=>void; onVoltar: ()=>void
   onAtualizar: (r: Requisicao) => void
   toast: (m: string) => void
@@ -553,6 +554,10 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   const [mAprov, setMAprov] = useState(false)
   const [mCred, setMCred] = useState(false)
   const [credVinc, setCredVinc] = useState<FinCredito|null>(null)
+  // Veio da lista pelo botão "Aprovação & Análise": já abre a aba e o quadro de aprovação.
+  useEffect(()=>{
+    if (abrirAprovacao && (req.status==='enviada'||req.status==='em_analise')) { setSubTab('aprovacao'); setMAprov(true) }
+  }, [abrirAprovacao, req.id])
   // Cotação
   const [cotacoes, setCotacoes] = useState<RequisicaoCotacao[]>([])
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
@@ -1775,9 +1780,9 @@ function ListaView({ reqs, loja, lojas, onNova, onDetalhe, onEditar, onDelete, o
               <td style={{ padding:'8px 9px' }} onClick={e=>e.stopPropagation()}>
                 <div className="ab" style={{ gap:3 }}>
                   {(r.status==='enviada'||r.status==='em_analise')&&(
-                    <button className="btn" onClick={()=>onAprovar(r)} title="Aprovar tudo"
+                    <button className="btn" onClick={()=>onAprovar(r)} title="Abrir análise e aprovação da requisição"
                       style={{ background:'#15803D', padding:'4px 10px', fontSize:11, whiteSpace:'nowrap' }}>
-                      <CheckCircle2 size={11}/> Aprovar
+                      <CheckCircle2 size={11}/> Aprovação &amp; Análise
                     </button>
                   )}
                   <button className="ib" onClick={()=>onEditar(r)}><Edit3 size={11}/></button>
@@ -1804,6 +1809,7 @@ export default function RequisoesPage() {
 
   const [tab, setTab] = useState<'lista'|'dashboard'>('lista')
   const [view, setView] = useState<'lista'|'form'|'detalhe'>('lista')
+  const [abrirAprov, setAbrirAprov] = useState(false)
   const [reqs, setReqs] = useState<Requisicao[]>([])
   const [sel, setSel] = useState<Requisicao|null>(null)
   const [prods, setProds] = useState<EstoqueProduto[]>([])
@@ -1850,17 +1856,9 @@ export default function RequisoesPage() {
 
   const handleAtualizar = (u: Requisicao) => { setReqs(p=>p.map(r=>r.id===u.id?u:r)); setSel(u) }
 
-  // Aprovação rápida direto da lista (Wagner/Esdras): aprova todos os itens em 1 clique.
-  const handleAprovarRapido = async (r: Requisicao) => {
-    if (!(r.status==='enviada'||r.status==='em_analise')) return
-    if (!confirm(`Aprovar a requisição REQ-${String(r.numero).padStart(4,'0')} — "${r.titulo}"?\n\nTodos os itens serão aprovados e ela segue para cotação/pedido.`)) return
-    try {
-      const u = await updateRequisicao(r.id, { status:'aprovada', aprovador_nome:userName, aprovador_at:new Date().toISOString() })
-      await insertReqTimeline({ requisicao_id:r.id, tipo:'aprovacao', descricao:`Aprovada por ${userName} (aprovação rápida na lista)`, usuario:userName, dados:null })
-      setReqs(p=>p.map(x=>x.id===r.id?u:x))
-      toast(`REQ-${String(r.numero).padStart(4,'0')} aprovada!`)
-    } catch (e) { toast('Erro ao aprovar. Tente novamente.') }
-  }
+  // Botão "Aprovação & Análise" na lista (Wagner/Esdras): abre a requisição já
+  // na análise/aprovação, onde dá para revisar, excluir/bloquear item e aprovar.
+  const handleAbrirAprovacao = (r: Requisicao) => { setSel(r); setAbrirAprov(true); setView('detalhe') }
 
   return (
     <div style={{ padding:'20px 20px 40px' }}>
@@ -1878,10 +1876,10 @@ export default function RequisoesPage() {
         </div>
       )}
 
-      {view==='lista'&&tab==='lista'&&<ListaView reqs={reqs} loja={loja} lojas={theme.stores||[]} onNova={()=>{setSel(null);setView('form')}} onDetalhe={r=>{setSel(r);setView('detalhe')}} onEditar={r=>{setSel(r);setView('form')}} onDelete={handleDelete} onAprovar={handleAprovarRapido} loading={loading} />}
+      {view==='lista'&&tab==='lista'&&<ListaView reqs={reqs} loja={loja} lojas={theme.stores||[]} onNova={()=>{setSel(null);setView('form')}} onDetalhe={r=>{setSel(r);setAbrirAprov(false);setView('detalhe')}} onEditar={r=>{setSel(r);setView('form')}} onDelete={handleDelete} onAprovar={handleAbrirAprovacao} loading={loading} />}
       {view==='lista'&&tab==='dashboard'&&<DashboardView reqs={reqs} />}
       {view==='form'&&<FormularioView req={sel} loja={loja} userName={userName} produtos={prods} onSalvo={handleSalvo} onVoltar={()=>{setView('lista');setSel(null)}} />}
-      {view==='detalhe'&&sel&&<DetalheView req={sel} loja={loja} userName={userName} produtos={prods} creditos={creds} onEditar={()=>{setSel(sel);setView('form')}} onVoltar={()=>{setView('lista');setSel(null)}} onAtualizar={handleAtualizar} toast={toast} />}
+      {view==='detalhe'&&sel&&<DetalheView req={sel} loja={loja} userName={userName} produtos={prods} creditos={creds} abrirAprovacao={abrirAprov} onEditar={()=>{setSel(sel);setView('form')}} onVoltar={()=>{setView('lista');setSel(null);setAbrirAprov(false)}} onAtualizar={handleAtualizar} toast={toast} />}
     </div>
   )
 }
