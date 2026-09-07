@@ -201,6 +201,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const can = (module: string, action: keyof PermissionsMap[string] = 'view'): boolean => {
     if (!user) return false
+    if (owner) return true   // DONO (Esdras/Esdras Santana/Rodrigo) = acesso TOTAL a todos os módulos
     const mod = effectivePermissions[module]
     return mod ? Boolean(mod[action]) : false
   }

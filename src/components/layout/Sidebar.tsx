@@ -130,8 +130,9 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
   const { theme } = useTheme()
   const { loja } = useLoja()
   const isFlow = /flow/i.test(loja || '')
-  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
-  const isSuperAdmin = user?.role === 'super_admin'
+  // Dono sempre conta como admin/super_admin (garante o menu Administração: Usuários, White Label)
+  const isAdmin = isOwner || user?.role === 'admin' || user?.role === 'super_admin'
+  const isSuperAdmin = isOwner || user?.role === 'super_admin'
 
   const isGestaoGroup = (p: string) => ['painel-gestao', 'custos', 'compras-consumo', 'gestao-perdas', 'central-alertas'].includes(p)
   // Abre o dropdown automaticamente se a página ativa for do grupo Produtos
