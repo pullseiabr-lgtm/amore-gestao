@@ -305,14 +305,14 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
             </a>
           )}
 
-          {/* Aprovação & Análise de Requisição — item fixo e visível (Wagner/Esdras) */}
+          {/* Aprovação de Requisição — item fixo e visível (Wagner/Esdras) */}
           {can('requisicoes', 'view') && (
             <div
               className={`nav-item${activePage === 'requisicoes' ? ' active' : ''}`}
-              onClick={() => onNav('requisicoes', 'Aprovação & Análise de Requisição')}
+              onClick={() => onNav('requisicoes', 'Aprovação de Requisição')}
               style={{ cursor: 'pointer' }}
             >
-              <CheckCircle2 size={13} /> ✅ Aprovação &amp; Análise de Requisição
+              <CheckCircle2 size={13} /> ✅ Aprovação de Requisição
             </div>
           )}
 

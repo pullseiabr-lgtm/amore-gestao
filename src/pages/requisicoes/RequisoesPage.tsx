@@ -1760,7 +1760,7 @@ function ListaView({ reqs, loja, lojas, onNova, onDetalhe, onEditar, onDelete, o
         <div style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', marginBottom:12, borderRadius:10,
           background:'#FEF3C7', border:'1px solid #FCD34D', color:'#92400E', fontWeight:700, fontSize:13 }}>
           <span style={{ fontSize:16 }}>⏳</span>
-          {nPend} requisição(ões) aguardando <b>análise e aprovação</b> — destacadas no topo. Clique em <b>“✅ Aprovação &amp; Análise”</b> para revisar e aprovar.
+          {nPend} requisição(ões) aguardando <b>aprovação</b> — destacadas no topo. Clique em <b>“✅ Aprovação de Requisição”</b> para abrir a mesma tela do disparo, revisar e aprovar.
         </div>
       )}
 
@@ -1793,9 +1793,9 @@ function ListaView({ reqs, loja, lojas, onNova, onDetalhe, onEditar, onDelete, o
               <td style={{ padding:'8px 9px' }} onClick={e=>e.stopPropagation()}>
                 <div className="ab" style={{ gap:3 }}>
                   {(r.status==='enviada'||r.status==='em_analise')&&(
-                    <button className="btn" onClick={()=>onAprovar(r)} title="Abrir análise e aprovação da requisição"
+                    <button className="btn" onClick={()=>onAprovar(r)} title="Abrir a mesma tela do disparo para aprovar"
                       style={{ background:'#15803D', padding:'4px 10px', fontSize:11, whiteSpace:'nowrap' }}>
-                      <CheckCircle2 size={11}/> Aprovação &amp; Análise
+                      <CheckCircle2 size={11}/> Aprovação de Requisição
                     </button>
                   )}
                   <button className="ib" onClick={()=>onEditar(r)}><Edit3 size={11}/></button>
