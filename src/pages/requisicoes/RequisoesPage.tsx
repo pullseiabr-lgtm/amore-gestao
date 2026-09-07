@@ -539,10 +539,9 @@ function FormularioView({ req, loja, userName, produtos, onSalvo, onVoltar }: {
 
 // ── DetalheView ───────────────────────────────────────────────
 
-function DetalheView({ req, loja, userName, produtos, creditos, abrirAprovacao, onEditar, onVoltar, onAtualizar, toast }: {
+function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVoltar, onAtualizar, toast }: {
   req: Requisicao; loja: string; userName: string
   produtos: EstoqueProduto[]; creditos: FinCredito[]
-  abrirAprovacao?: boolean
   onEditar: ()=>void; onVoltar: ()=>void
   onAtualizar: (r: Requisicao) => void
   toast: (m: string) => void
@@ -554,10 +553,6 @@ function DetalheView({ req, loja, userName, produtos, creditos, abrirAprovacao, 
   const [mAprov, setMAprov] = useState(false)
   const [mCred, setMCred] = useState(false)
   const [credVinc, setCredVinc] = useState<FinCredito|null>(null)
-  // Veio da lista pelo botão "Aprovação & Análise": já abre a aba e o quadro de aprovação.
-  useEffect(()=>{
-    if (abrirAprovacao && (req.status==='enviada'||req.status==='em_analise')) { setSubTab('aprovacao'); setMAprov(true) }
-  }, [abrirAprovacao, req.id])
   // Cotação
   const [cotacoes, setCotacoes] = useState<RequisicaoCotacao[]>([])
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
@@ -1809,7 +1804,6 @@ export default function RequisoesPage() {
 
   const [tab, setTab] = useState<'lista'|'dashboard'>('lista')
   const [view, setView] = useState<'lista'|'form'|'detalhe'>('lista')
-  const [abrirAprov, setAbrirAprov] = useState(false)
   const [reqs, setReqs] = useState<Requisicao[]>([])
   const [sel, setSel] = useState<Requisicao|null>(null)
   const [prods, setProds] = useState<EstoqueProduto[]>([])
@@ -1856,9 +1850,10 @@ export default function RequisoesPage() {
 
   const handleAtualizar = (u: Requisicao) => { setReqs(p=>p.map(r=>r.id===u.id?u:r)); setSel(u) }
 
-  // Botão "Aprovação & Análise" na lista (Wagner/Esdras): abre a requisição já
-  // na análise/aprovação, onde dá para revisar, excluir/bloquear item e aprovar.
-  const handleAbrirAprovacao = (r: Requisicao) => { setSel(r); setAbrirAprov(true); setView('detalhe') }
+  // Botão "Aprovação & Análise" na lista (Wagner/Esdras): abre A MESMA tela do
+  // link que é disparado para aprovação (requisicao-editar.html) — editar, excluir
+  // item e validar/aprovar — para ficar 100% fiel ao fluxo do WhatsApp.
+  const handleAbrirAprovacao = (r: Requisicao) => { window.open(`/requisicao-editar.html?id=${r.id}`, '_blank', 'noopener') }
 
   return (
     <div style={{ padding:'20px 20px 40px' }}>
@@ -1876,10 +1871,10 @@ export default function RequisoesPage() {
         </div>
       )}
 
-      {view==='lista'&&tab==='lista'&&<ListaView reqs={reqs} loja={loja} lojas={theme.stores||[]} onNova={()=>{setSel(null);setView('form')}} onDetalhe={r=>{setSel(r);setAbrirAprov(false);setView('detalhe')}} onEditar={r=>{setSel(r);setView('form')}} onDelete={handleDelete} onAprovar={handleAbrirAprovacao} loading={loading} />}
+      {view==='lista'&&tab==='lista'&&<ListaView reqs={reqs} loja={loja} lojas={theme.stores||[]} onNova={()=>{setSel(null);setView('form')}} onDetalhe={r=>{setSel(r);setView('detalhe')}} onEditar={r=>{setSel(r);setView('form')}} onDelete={handleDelete} onAprovar={handleAbrirAprovacao} loading={loading} />}
       {view==='lista'&&tab==='dashboard'&&<DashboardView reqs={reqs} />}
       {view==='form'&&<FormularioView req={sel} loja={loja} userName={userName} produtos={prods} onSalvo={handleSalvo} onVoltar={()=>{setView('lista');setSel(null)}} />}
-      {view==='detalhe'&&sel&&<DetalheView req={sel} loja={loja} userName={userName} produtos={prods} creditos={creds} abrirAprovacao={abrirAprov} onEditar={()=>{setSel(sel);setView('form')}} onVoltar={()=>{setView('lista');setSel(null);setAbrirAprov(false)}} onAtualizar={handleAtualizar} toast={toast} />}
+      {view==='detalhe'&&sel&&<DetalheView req={sel} loja={loja} userName={userName} produtos={prods} creditos={creds} onEditar={()=>{setSel(sel);setView('form')}} onVoltar={()=>{setView('lista');setSel(null)}} onAtualizar={handleAtualizar} toast={toast} />}
     </div>
   )
 }
