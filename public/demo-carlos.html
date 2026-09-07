@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo — Visão do Carlos (Amore Paiva)</title>
+<meta name="robots" content="noindex,nofollow">
+<style>
+:root{--bordo:#800000;--bordo-d:#5C0000;--bordo-x:#3D0000;--v:#AD2121;--creme:#FBF6F2;--linha:#ECDFD8;--tinta:#25140F;--muted:#7C6A62}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Poppins',system-ui,-apple-system,Segoe UI,sans-serif;background:var(--creme);color:var(--tinta);height:100vh;overflow:hidden}
+.top{height:52px;background:linear-gradient(120deg,var(--bordo),var(--v));color:#fff;display:flex;align-items:center;gap:12px;padding:0 16px}
+.top b{font-weight:700}
+.top .tag{font-size:11.5px;background:rgba(255,255,255,.18);padding:4px 10px;border-radius:20px;font-weight:600}
+.top .loja{margin-left:auto;font-size:12.5px;background:rgba(255,255,255,.14);padding:5px 12px;border-radius:20px;font-weight:600}
+.wrap{display:flex;height:calc(100vh - 52px)}
+.sb{width:250px;flex:none;background:var(--bordo-x);color:#fff;padding:14px 10px;overflow:auto}
+.sb .u{display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,.06);border-radius:10px;margin-bottom:12px}
+.sb .u .av{width:34px;height:34px;border-radius:50%;background:var(--v);display:grid;place-items:center;font-weight:700}
+.sb .u small{display:block;color:rgba(255,255,255,.6);font-size:11px}
+.sec{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.5);margin:12px 8px 6px;font-weight:700}
+.it{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:9px;font-size:14px;font-weight:500;cursor:pointer;color:#fff}
+.it:hover{background:rgba(255,255,255,.08)}
+.it.on{background:#fff;color:var(--bordo);font-weight:700}
+.it .ic{font-size:16px;width:20px;text-align:center}
+.x{opacity:.4;text-decoration:line-through}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.mh{padding:12px 18px;border-bottom:1px solid var(--linha);background:#fff}
+.mh h1{font-size:16px;color:var(--bordo)}
+.mh p{font-size:12.5px;color:var(--muted);margin-top:2px}
+.note{margin:12px 18px 0;padding:10px 14px;background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;border-radius:10px;font-size:12.5px;font-weight:600}
+.frame{flex:1;margin:12px 18px 18px;border:1px solid var(--linha);border-radius:12px;overflow:hidden;background:#fff}
+.frame iframe{width:100%;height:100%;border:0}
+@media(max-width:760px){.sb{width:60px;padding:12px 6px}.sb .u,.sb .sec,.it span:not(.ic){display:none}.it{justify-content:center}}
+</style>
+</head>
+<body>
+<div class="top">
+  <b>Painel Amore</b>
+  <span class="tag">DEMO · visão de um usuário de loja</span>
+  <span class="loja">🏬 Amore Paiva</span>
+</div>
+<div class="wrap">
+  <aside class="sb">
+    <div class="u"><div class="av">C</div><div>Carlos Wellington<small>Usuário · Amore Paiva</small></div></div>
+    <div class="sec">Minha Operação</div>
+    <div class="it"><span class="ic">📝</span><span>Requisição de Compra</span></div>
+    <div class="it"><span class="ic">🗒️</span><span>Central de Tarefas</span></div>
+    <div class="it on"><span class="ic">📊</span><span>Status das Requisições</span></div>
+    <div class="it"><span class="ic">💳</span><span>Créditos &amp; Prestação de Contas</span></div>
+    <div class="sec">Ajuda</div>
+    <div class="it"><span class="ic">📘</span><span>Manual / Ajuda</span></div>
+    <div class="sec">Não aparece p/ ele</div>
+    <div class="it x"><span class="ic">✅</span><span>Aprovação de Requisição</span></div>
+    <div class="it x"><span class="ic">🏬</span><span>Outras lojas</span></div>
+    <div class="it x"><span class="ic">⚙️</span><span>Demais módulos do painel</span></div>
+  </aside>
+  <main class="main">
+    <div class="mh">
+      <h1>📊 Status das Requisições</h1>
+      <p>Como o Carlos enxerga: somente as requisições da <b>unidade Amore Paiva</b> (a loja dele).</p>
+    </div>
+    <div class="note">🔒 Demo só para visualização. O Carlos vê apenas <b>Amore Paiva</b>, não tem o botão <b>Aprovação</b> e não acessa os demais módulos. Wagner, Aline e Eduarda veriam todas as lojas.</div>
+    <div class="frame">
+      <iframe src="/requisicoes-status.html?mode=owner&loja=Amore%20Paiva" title="Status das Requisições — Amore Paiva"></iframe>
+    </div>
+  </main>
+</div>
+</body>
+</html>
