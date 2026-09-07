@@ -68,7 +68,7 @@ body{font-family:'Poppins',system-ui,-apple-system,Segoe UI,sans-serif;backgroun
     <div class="note">🔒 Demo só para visualização. O Carlos vê apenas <b>Amore Paiva</b>, não tem o botão <b>Aprovação</b> e não acessa os demais módulos. Wagner, Aline e Eduarda veriam todas as lojas.</div>
     <div class="frame">
       <iframe id="fr" src="/requisicoes-status.html?mode=owner&loja=Amore%20Paiva" title="tela"></iframe>
-      <div class="ph" id="ph"><div><div class="big">💳</div><div style="font-size:15px"><b>Créditos & Prestação de Contas</b></div><div style="margin-top:8px;max-width:44ch">Essa tela abre <b>dentro do painel</b> (é um módulo do sistema). O Carlos tem acesso a ela — aqui na demo mostramos só o acesso do menu.</div></div></div>
+      <div class="ph" id="ph"><div><div class="big" id="phIc">💳</div><div style="font-size:15px"><b id="phTit">Módulo do painel</b></div><div id="phTxt" style="margin-top:8px;max-width:48ch;line-height:1.5"></div><button id="phBtn" style="margin-top:16px;padding:11px 20px;border:0;border-radius:10px;background:var(--bordo);color:#fff;font-weight:700;font-size:14px;cursor:pointer">▶ Abrir a tela completa</button></div></div>
     </div>
   </main>
 </div>
@@ -77,13 +77,17 @@ body{font-family:'Poppins',system-ui,-apple-system,Segoe UI,sans-serif;backgroun
   var CARLOS='Carlos Wellington', LOJA='Amore Paiva';
   var TELAS={
     req:    {tit:'📝 Requisição de Compra', sub:'Carlos cria uma requisição — solicitante já travado no nome dele.', src:'/requisicao-nova.html?solic='+encodeURIComponent(CARLOS)},
-    tarefas:{tit:'🗒️ Central de Tarefas',   sub:'Tarefas da unidade Amore Paiva.', src:'/tarefas.html?loja='+encodeURIComponent(LOJA)},
     status: {tit:'📊 Status das Requisições', sub:'Somente as requisições da unidade Amore Paiva (a loja dele).', src:'/requisicoes-status.html?mode=owner&loja='+encodeURIComponent(LOJA)},
     manual: {tit:'📘 Manual / Ajuda',        sub:'Guia dos módulos que ele pode usar.', src:'/manual-modulos.html'},
-    credito:{tit:'💳 Créditos & Prestação',  sub:'Solicitação de crédito e prestação de contas.', ph:true}
+    // módulos React completos — abrem a tela real do painel (com todos os recursos)
+    tarefas:{tit:'🗒️ Central de Tarefas',   sub:'Módulo completo: Kanban, Painel e + Nova Tarefa.', ph:true, ic:'🗒️',
+             phTit:'Central de Tarefas (módulo completo)', phTxt:'A tela real tem <b>Kanban</b>, <b>Painel</b> e o botão <b>+ Nova Tarefa</b>. O Carlos tem acesso total a ela — filtrada na loja dele.', open:'/?page=tarefas'},
+    credito:{tit:'💳 Créditos & Prestação',  sub:'Módulo completo: solicitação de crédito e prestação de contas.', ph:true, ic:'💳',
+             phTit:'Créditos & Prestação de Contas (módulo completo)', phTxt:'A tela real tem a <b>solicitação de crédito</b>, o acompanhamento da <b>aprovação</b> e a <b>prestação de contas</b>. O Carlos tem acesso a ela.', open:'/?page=creditos'}
   };
   var fr=document.getElementById('fr'), ph=document.getElementById('ph');
   var mhT=document.getElementById('mhTit'), mhS=document.getElementById('mhSub');
+  var phIc=document.getElementById('phIc'), phTit=document.getElementById('phTit'), phTxt=document.getElementById('phTxt'), phBtn=document.getElementById('phBtn');
   document.querySelectorAll('.it').forEach(function(b){
     b.addEventListener('click',function(){
       if(b.dataset.block){ alert('🔒 Sem acesso — esse item não aparece para o Carlos (usuário de loja).'); return; }
@@ -91,7 +95,11 @@ body{font-family:'Poppins',system-ui,-apple-system,Segoe UI,sans-serif;backgroun
       document.querySelectorAll('.it').forEach(function(x){x.classList.remove('on')});
       b.classList.add('on');
       mhT.textContent=t.tit; mhS.innerHTML=t.sub;
-      if(t.ph){ ph.classList.add('show'); fr.style.visibility='hidden'; }
+      if(t.ph){
+        ph.classList.add('show'); fr.style.visibility='hidden';
+        phIc.textContent=t.ic||'📦'; phTit.textContent=t.phTit||''; phTxt.innerHTML=t.phTxt||'';
+        phBtn.onclick=function(){ window.open(t.open,'_blank','noopener'); };
+      }
       else{ ph.classList.remove('show'); fr.style.visibility='visible'; fr.src=t.src; }
     });
   });
