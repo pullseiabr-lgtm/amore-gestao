@@ -86,6 +86,7 @@
     </span>
     <button class="btn btn-save" onclick="salvar()">💾 Salvar / dar baixa</button>
     <button class="btn" style="background:#0369A1;color:#fff;font-weight:800" onclick="gerarPedidos()" title="Cria o pedido de compra dos itens marcados (🛒) e envia para o menu Pedidos, onde você confere e clica em Enviar">🧾 Gerar Pedido de Compra</button>
+    <button class="btn" style="background:#7C3AED;color:#fff;font-weight:800" onclick="gerarCotacao()" title="Cria uma cotação com os itens marcados (🛒) e envia para o módulo Cotação, para pedir preço aos fornecedores">📋 Gerar Cotação</button>
     <button class="btn" style="background:#15803D;color:#fff" onclick="confirmarTodas()">✅ Confirmar todas</button>
     <button class="btn btn-pdf" onclick="gerarPDF()">📄 Gerar PDF</button>
     <button class="btn btn-fire" onclick="disparar()">📲 Disparar faltantes</button>
@@ -346,6 +347,28 @@ async function gerarPedidos(){
   }
   ROWS.forEach(r=>{if(r.pedir)r.pedir=false;});render();
   show(`✅ ${ok} pedido(s) de compra gerado(s)${fail?(' · '+fail+' falha(s)'):''}. Abra o menu "Pedidos de Compra" para conferir e clicar em Enviar.`,ok>0);
+}
+// GERAR COTAÇÃO a partir dos itens marcados (🛒) — cria uma requisição status 'em_cotacao'
+// com os itens, que aparece no módulo Cotação para enviar aos fornecedores e receber preços.
+// Mesmo padrão do "Gerar Pedido", sem mexer no que já existe.
+async function gerarCotacao(){
+  const sel=ROWS.filter(r=>r.pedir);
+  if(!sel.length){show('Marque os itens (🛒) que precisam de cotação e clique em "Gerar Cotação".',false);return;}
+  if(!confirm(`Gerar uma COTAÇÃO pela ${nomeLoja(LOJA)} com ${sel.length} item(ns) marcado(s)?\n\nEla vai para o módulo "Cotação Inteligente", onde você envia aos fornecedores para receber os preços.`))return;
+  try{
+    const hj=new Date();
+    const titulo='Cotação — '+nomeLoja(LOJA)+' — '+String(hj.getDate()).padStart(2,'0')+'/'+String(hj.getMonth()+1).padStart(2,'0');
+    const reqBody={loja:LOJA,titulo,setor:null,responsavel_nome:'Gestão da Lista',prioridade:'media',data_necessidade:null,prazo_entrega:null,centro_custo:null,total_estimado:0,total_final:0,observacoes:'Gerada a partir da Gestão da Lista de Compras',status:'em_cotacao',aprovador_nome:null,aprovador_at:null,obs_aprovacao:null,credito_id:null,created_by:'Gestão da Lista'};
+    const rr=await fetch(SB+'/rest/v1/requisicoes',{method:'POST',headers:{...H,Prefer:'return=representation'},body:JSON.stringify(reqBody)});
+    if(!rr.ok){show('Falha ao criar a cotação ('+rr.status+').',false);return;}
+    const req=((await rr.json())||[])[0]||{}; const rid=req.id;
+    if(!rid){show('Cotação criada, mas não retornou o id.',false);return;}
+    const itens=sel.map(r=>({requisicao_id:rid,produto_nome:r.produto,categoria:r.categoria||null,quantidade:nb(r.qtd)||1,unidade:r.un||'Unidade(s)',preco_referencia:nb(r.vUnit)||null,preco_cotado:null,preco_final:null,fornecedor_nome:null,status:'pendente',observacoes:null,bloqueado:false,motivo_bloqueio:null,quantidade_aprovada:null}));
+    await fetch(SB+'/rest/v1/requisicao_itens',{method:'POST',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify(itens)});
+    try{await fetch(SB+'/rest/v1/req_timeline',{method:'POST',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({requisicao_id:rid,tipo:'criacao',descricao:'Cotação criada pela Gestão da Lista de Compras ('+sel.length+' itens)',usuario:'Gestão da Lista',dados:null})});}catch(e){}
+    ROWS.forEach(r=>{if(r.pedir)r.pedir=false;});render();
+    show('✅ Cotação criada (REQ-'+String(req.numero||'').padStart(4,'0')+') com '+sel.length+' item(ns). Abra o módulo "Cotação Inteligente" para enviar aos fornecedores.',true);
+  }catch(e){show('Falha ao gerar a cotação: '+e.message,false);}
 }
 async function disparar(){
   const alvos=ROWS.filter(r=>eff(r)!=='ok'&&r.forn.trim()&&(r.wpp||'').replace(/\D/g,'').length>=10);
