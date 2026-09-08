@@ -93,7 +93,7 @@ export default function PedidosPage() {
       sb.from('fornecedores').select('nome,loja,whatsapp,telefone'),
       sb.from('profiles').select('name,permissions_override'),
     ])
-    const fm: Record<string, string> = {}; (fs || []).forEach((f: any) => { const k = f.loja + '|' + (f.nome || '').toLowerCase(); if (!fm[k]) fm[k] = (f.whatsapp || f.telefone || '').replace(/\D/g, '') })
+    const fm: Record<string, string> = {}; (fs || []).forEach((f: any) => { const k = f.loja + '|' + (f.nome || '').toLowerCase(); const fone = (f.whatsapp || f.telefone || f.contato_telefone || '').replace(/\D/g, ''); if (fone && (!fm[k] || fm[k].length < 10)) fm[k] = fone })
     setFornMap(fm)
     const pm: Record<string, string> = {}; (ps || []).forEach((p: any) => { const perf = p.permissions_override?.__perfil__ || {}; if (p.name) pm[p.name.toLowerCase()] = String(perf.whatsapp || perf.telefone || '').replace(/\D/g, '') })
     setProfMap(pm)
