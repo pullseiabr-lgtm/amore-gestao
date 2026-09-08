@@ -129,7 +129,10 @@ export default function PedidosPage() {
       const msgF = `Olá, ${pedSel.fornecedor}! 👋 Aqui é da *${nomeLoja}*.\n\nSegue nosso *pedido de compra*:\n${itensTxt}${entrega ? `\n📅 Entrega: *${entrega}*` : ''}${receb ? `\n🕗 Recebimento: *${receb}*` : ''}${pedSel.pagamento ? `\n💳 Pagamento: ${pedSel.pagamento}` : ''}${obs ? `\n📝 Obs: ${obs}` : ''}\n\nDetalhes e confirmação no link:\n${l}\n\nObrigado! 💚`
       const msgR = `📦 *Pedido a receber — ${nomeLoja}*\nFornecedor: ${pedSel.fornecedor} · ${fmtR$(pedSel.total || 0)}\n\nConfira na chegada (link com a lista organizada):\n${l}\n— Compras`
       let ok = 0, alvos = 0
+      // Fornecedor primeiro; depois um intervalo antes do recebedor — dois envios no mesmo
+      // instante fazem a instância do WhatsApp derrubar o 1º (por isso só chegava ao recebedor).
       if (ff.length >= 10) { alvos++; if (await enviarWhatsApp(ff, msgF)) ok++ }
+      if (ff.length >= 10 && fr.length >= 10) { await new Promise(r => setTimeout(r, 3500)) }
       if (fr.length >= 10) { alvos++; if (await enviarWhatsApp(fr, msgR)) ok++ }
       toast(`Link enviado para ${ok} de ${alvos} destino(s). ✅`)
       setMEnviar(false)
