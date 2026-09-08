@@ -372,7 +372,11 @@ async function gerarCotacao(){
     await fetch(SB+'/rest/v1/requisicao_itens',{method:'POST',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify(itens)});
     try{await fetch(SB+'/rest/v1/req_timeline',{method:'POST',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({requisicao_id:rid,tipo:'criacao',descricao:'Cotação criada pela Gestão da Lista de Compras ('+sel.length+' itens)',usuario:'Gestão da Lista',dados:null})});}catch(e){}
     ROWS.forEach(r=>{if(r.pedir)r.pedir=false;});render();
-    show('✅ Cotação criada (REQ-'+String(req.numero||'').padStart(4,'0')+') com '+sel.length+' item(ns). Abra o módulo "Cotação Inteligente" para enviar aos fornecedores.',true);
+    var numTxt='REQ-'+String(req.numero||'').padStart(4,'0');
+    var abrir="try{window.top.location.href='/?page=cotacao&req="+rid+"'}catch(_){window.open('/?page=cotacao&req="+rid+"','_blank')}";
+    var mEl=el('msg'); mEl.className='msg ok';
+    mEl.innerHTML='✅ Cotação criada ('+numTxt+') com '+sel.length+' item(ns). '+
+      '<button onclick="'+abrir+'" style="margin-left:8px;padding:7px 14px;border:0;border-radius:8px;background:#7C3AED;color:#fff;font-weight:800;cursor:pointer">▶ Escolher fornecedores e enviar a cotação</button>';
   }catch(e){show('Falha ao gerar a cotação: '+e.message,false);}
 }
 async function disparar(){
