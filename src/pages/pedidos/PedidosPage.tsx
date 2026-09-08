@@ -104,7 +104,9 @@ export default function PedidosPage() {
   // preenche o responsável de recebimento da loja automaticamente ao abrir/trocar a loja no formulário
   useEffect(() => { if (mNovo && !fReceb.trim() && recebLoja[fLoja]?.nome) setFReceb(recebLoja[fLoja].nome) }, [mNovo, fLoja, recebLoja]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filtrados = pedidos.filter(p => loja === 'Todas as Lojas' || !loja || p.loja === loja)
+  const filtrados = pedidos
+    .filter(p => loja === 'Todas as Lojas' || !loja || p.loja === loja)
+    .sort((a, b) => String((b as any).em || b.data || '').localeCompare(String((a as any).em || a.data || '')))  // mais novo primeiro
   const link = (p: Pedido) => `${siteOrigin()}/pedido.html?p=${encodeURIComponent(p.chave.replace(/^pedido_/, ''))}`
 
   const abrirEnviar = (p: Pedido) => {

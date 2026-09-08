@@ -351,7 +351,12 @@ async function gerarPedidos(){
     try{const r=await fetch(SB+'/rest/v1/app_config',{method:'POST',headers:{...H,Prefer:'resolution=merge-duplicates'},body:JSON.stringify({chave,valor})});if(r.ok)ok++;else fail++;}catch(e){fail++;}
   }
   ROWS.forEach(r=>{if(r.pedir)r.pedir=false;});render();
-  show(`✅ ${ok} pedido(s) de compra gerado(s)${fail?(' · '+fail+' falha(s)'):''}. Abra o menu "Pedidos de Compra" para conferir e clicar em Enviar.`,ok>0);
+  if(ok>0){
+    var abrirP="try{window.top.location.href='/?page=pedidos'}catch(_){window.open('/?page=pedidos','_blank')}";
+    var pEl=el('msg'); pEl.className='msg ok';
+    pEl.innerHTML='✅ '+ok+' pedido(s) de compra gerado(s)'+(fail?(' · '+fail+' falha(s)'):'')+'. '+
+      '<button onclick="'+abrirP+'" style="margin-left:8px;padding:7px 14px;border:0;border-radius:8px;background:#0369A1;color:#fff;font-weight:800;cursor:pointer">▶ Abrir Pedidos de Compra (conferir e enviar)</button>';
+  } else { show('Não consegui gerar o pedido'+(fail?(' ('+fail+' falha(s))'):'')+'.',false); }
 }
 // GERAR COTAÇÃO a partir dos itens marcados (🛒) — cria uma requisição status 'em_cotacao'
 // com os itens, que aparece no módulo Cotação para enviar aos fornecedores e receber preços.
