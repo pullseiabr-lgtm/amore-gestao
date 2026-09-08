@@ -92,6 +92,7 @@
     <button class="btn btn-fire" onclick="disparar()">📲 Disparar faltantes</button>
     <button class="btn" style="background:#6b1212;color:#fff" onclick="fecharRequisicao()">🔒 Fechar requisição</button>
     <button class="btn" style="background:#fff;color:#374151;border:1px solid #cbd5e1" onclick="verPedidos()">🧾 Pedidos da semana</button>
+    <button class="btn" style="background:#fff;color:#374151;border:1px solid #cbd5e1" onclick="verCotacoes()">📋 Cotações</button>
     <button class="btn" style="background:#fff;color:#374151;border:1px solid #cbd5e1" onclick="verBaixadas()">📁 Requisições baixadas</button>
   </div>
   <div class="card" id="mainCard"><table><thead><tr>
@@ -101,6 +102,7 @@
   </tr></thead><tbody id="tb"><tr><td colspan="13" style="padding:20px;text-align:center;color:#6b7280">Carregando…</td></tr></tbody></table></div>
   <div class="card" id="baixadasBox" style="display:none;margin-top:12px"></div>
   <div class="card" id="pedidosBox" style="display:none;margin-top:12px"></div>
+  <div class="card" id="cotacoesBox" style="display:none;margin-top:12px"></div>
   <div class="msg" id="msg"></div><div class="prog" id="prog"></div><div class="foot" id="foot"></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -135,7 +137,7 @@ try{const pp=localStorage.getItem('gestao_periodo');if(pp&&el('periodo')){el('pe
 async function load(){
   const suf=SUF[LOJA];let ped=[],ov={},solItens=[];
   REQNUM=null;REQID='';REQIDS=[];REQINFO='';VIEW='gestao';
-  { const mc=el('mainCard'),bb=el('baixadasBox'),pb=el('pedidosBox'); if(mc)mc.style.display=''; if(bb)bb.style.display='none'; if(pb)pb.style.display='none'; }
+  { const mc=el('mainCard'),bb=el('baixadasBox'),pb=el('pedidosBox'),cb=el('cotacoesBox'); if(mc)mc.style.display=''; if(bb)bb.style.display='none'; if(pb)pb.style.display='none'; if(cb)cb.style.display='none'; }
   // FONTE = TODAS as requisições ABERTAS da loja (status≠concluida) consolidadas — a semana inteira,
   // não só a mais recente. Itens repetidos entre requisições são somados.
   try{
@@ -283,9 +285,9 @@ async function fecharRequisicao(){
   }catch(e){show('Falha ao fechar a requisição.',false);}
 }
 function verPedidos(){
-  const mc=el('mainCard'),bb=el('baixadasBox'),pb=el('pedidosBox');
+  const mc=el('mainCard'),bb=el('baixadasBox'),pb=el('pedidosBox'),cb=el('cotacoesBox');
   VIEW=VIEW==='pedidos'?'gestao':'pedidos';
-  bb.style.display='none';
+  bb.style.display='none'; if(cb)cb.style.display='none';
   if(VIEW==='gestao'){pb.style.display='none';mc.style.display='';return;}
   const stTag=r=>r.recebido?'<span class="st ok">✓ recebido</span>':'<span class="st wr">🟠 em aberto</span>';
   const linhas=PEDLIST.map((p,i)=>{
@@ -297,7 +299,7 @@ function verPedidos(){
       <td class="q" style="text-align:center">${p.nItens}</td>
       <td style="font-weight:700;color:var(--v)">${brl(p.total)}</td>
       <td>${stTag(p)}</td>
-      <td><a href="${p.link}" target="_blank" style="color:var(--v);font-weight:700">abrir</a></td>
+      <td style="white-space:nowrap"><a href="${p.link}" target="_blank" style="color:var(--v);font-weight:700">abrir</a> · <button class="btn" style="padding:4px 10px;background:#0369A1;color:#fff;font-weight:700;border:0" onclick="enviarPedidoDaLista('${p.chave}')">📲 Enviar</button></td>
       <td><button class="btn" style="padding:4px 9px;background:#fff;color:#374151;border:1px solid #cbd5e1" onclick="var d=document.getElementById('pdit${i}');d.style.display=d.style.display==='none'?'':'none'">itens ▾</button></td>
     </tr>
     <tr id="pdit${i}" style="display:none"><td colspan="7" style="background:#f6faf5;font-size:11.5px">${its||'<span class=q>sem itens</span>'}</td></tr>`;
@@ -308,13 +310,26 @@ function verPedidos(){
   mc.style.display='none';pb.style.display='';el('foot').textContent=LOJA+' · '+PEDLIST.length+' pedido(s) '+(PERLABEL||'');
 }
 async function verBaixadas(){
-  const mc=el('mainCard'),bb=el('baixadasBox'),pb=el('pedidosBox'); if(pb)pb.style.display='none';
+  const mc=el('mainCard'),bb=el('baixadasBox'),pb=el('pedidosBox'),cb=el('cotacoesBox'); if(pb)pb.style.display='none'; if(cb)cb.style.display='none';
   VIEW=VIEW==='baixadas'?'gestao':'baixadas';
   if(VIEW==='gestao'){bb.style.display='none';mc.style.display='';return;}
   let rows=[];try{rows=await (await fetch(SB+'/rest/v1/requisicoes?loja=eq.'+encodeURIComponent(LOJA)+'&status=eq.concluida&order=numero.desc&select=id,numero,responsavel_nome,created_at,updated_at',{headers:H})).json();}catch(e){}
   const body=(rows||[]).map(q=>`<tr><td style="font-weight:700;color:var(--v)">REQ-${String(q.numero).padStart(4,'0')}</td><td>${esc(q.responsavel_nome||'—')}</td><td class="q">${dmy(q.created_at)}</td><td class="q">${dmy(q.updated_at)}</td><td><a href="requisicao.html?id=${q.id}" target="_blank" style="color:var(--v);font-weight:700">ver</a></td><td><button class="btn" style="padding:4px 10px;background:#fff;color:#374151;border:1px solid #cbd5e1" onclick="reabrir('${q.id}')">↩︎ Reabrir</button></td></tr>`).join('')||'<tr><td colspan="6" style="padding:16px;text-align:center;color:#6b7280">Nenhuma requisição baixada nesta loja.</td></tr>';
   bb.innerHTML=`<table style="min-width:0"><thead><tr><th>Requisição</th><th>Solicitante</th><th>Criada</th><th>Baixada</th><th>Ver</th><th></th></tr></thead><tbody>${body}</tbody></table>`;
   mc.style.display='none';bb.style.display='';el('foot').textContent=LOJA+' · '+(rows||[]).length+' requisição(ões) baixada(s)';
+}
+async function verCotacoes(){
+  const mc=el('mainCard'),bb=el('baixadasBox'),pb=el('pedidosBox'),cb=el('cotacoesBox');
+  if(bb)bb.style.display='none'; if(pb)pb.style.display='none';
+  VIEW=VIEW==='cotacoes'?'gestao':'cotacoes';
+  if(VIEW==='gestao'){cb.style.display='none';mc.style.display='';return;}
+  let rows=[];try{rows=await (await fetch(SB+'/rest/v1/requisicoes?loja=eq.'+encodeURIComponent(LOJA)+'&status=eq.em_cotacao&order=numero.desc&select=id,numero,titulo,responsavel_nome,created_at&limit=50',{headers:H})).json();}catch(e){}
+  let im={};
+  try{ if(rows&&rows.length){ const idIn='('+rows.map(r=>r.id).join(',')+')'; const its=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=in.'+idIn+'&select=requisicao_id&limit=5000',{headers:H})).json(); (its||[]).forEach(i=>{im[i.requisicao_id]=(im[i.requisicao_id]||0)+1;}); } }catch(e){}
+  const body=(rows||[]).map(q=>{const abrir="try{window.top.location.href='/?page=cotacao&req="+q.id+"'}catch(_){window.open('/?page=cotacao&req="+q.id+"','_blank')}";
+    return `<tr><td style="font-weight:700;color:var(--v)">REQ-${String(q.numero).padStart(4,'0')}</td><td>${esc(q.titulo||'Cotação')}</td><td class="q" style="text-align:center">${im[q.id]||0}</td><td class="q">${dmy(q.created_at)}</td><td><button class="btn" style="padding:5px 12px;background:#7C3AED;color:#fff;font-weight:700;border:0" onclick="${abrir}">▶ Enviar aos fornecedores</button></td></tr>`;}).join('')||'<tr><td colspan="5" style="padding:16px;text-align:center;color:#6b7280">Nenhuma cotação em aberto nesta loja. Marque itens 🛒 e clique em "📋 Gerar Cotação".</td></tr>';
+  cb.innerHTML=`<div style="padding:10px 12px;border-bottom:1px solid var(--border);font-size:12.5px"><b>📋 Cotações em aberto</b> · ${LOJA} — clique em <b>Enviar aos fornecedores</b> para escolher os fornecedores e disparar o portal de preços</div><table style="min-width:0"><thead><tr><th>Cotação</th><th>Título</th><th>Itens</th><th>Criada</th><th>Ação</th></tr></thead><tbody>${body}</tbody></table>`;
+  mc.style.display='none';cb.style.display='';el('foot').textContent=LOJA+' · '+(rows||[]).length+' cotação(ões) em aberto';
 }
 async function reabrir(id){ if(!confirm('Reabrir esta requisição? Ela volta para a gestão ativa.'))return; try{await fetch(SB+'/rest/v1/requisicoes?id=eq.'+id,{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({status:'enviada'})});}catch(e){} VIEW='gestao'; load(); }
 function gerarPDF(){
@@ -350,13 +365,15 @@ async function gerarPedidos(){
     const valor={fornecedor:gr.forn,loja:LOJA,data:new Date().toISOString().slice(0,10),pagamento:'à vista',cliente:null,recebimento_responsavel:receb,itens,total,cancelados:[],em:new Date().toISOString(),created_by:'Gestão da Lista de Compras',origem:'requisicao'};
     try{const r=await fetch(SB+'/rest/v1/app_config',{method:'POST',headers:{...H,Prefer:'resolution=merge-duplicates'},body:JSON.stringify({chave,valor})});if(r.ok)ok++;else fail++;}catch(e){fail++;}
   }
-  ROWS.forEach(r=>{if(r.pedir)r.pedir=false;});render();
+  ROWS.forEach(r=>{if(r.pedir)r.pedir=false;});
   if(ok>0){
+    await load();                       // atualiza consolidação + lista de pedidos
+    if(VIEW!=='pedidos') verPedidos();  // abre já a aba "Pedidos da semana" com os recém-gerados
     var abrirP="try{window.top.location.href='/?page=pedidos'}catch(_){window.open('/?page=pedidos','_blank')}";
     var pEl=el('msg'); pEl.className='msg ok';
-    pEl.innerHTML='✅ '+ok+' pedido(s) de compra gerado(s)'+(fail?(' · '+fail+' falha(s)'):'')+'. '+
-      '<button onclick="'+abrirP+'" style="margin-left:8px;padding:7px 14px;border:0;border-radius:8px;background:#0369A1;color:#fff;font-weight:800;cursor:pointer">▶ Abrir Pedidos de Compra (conferir e enviar)</button>';
-  } else { show('Não consegui gerar o pedido'+(fail?(' ('+fail+' falha(s))'):'')+'.',false); }
+    pEl.innerHTML='✅ '+ok+' pedido(s) gerado(s)'+(fail?(' · '+fail+' falha(s)'):'')+'. Veja abaixo em "Pedidos da semana" e clique em 📲 Enviar. '+
+      '<button onclick="'+abrirP+'" style="margin-left:8px;padding:6px 12px;border:0;border-radius:8px;background:#0369A1;color:#fff;font-weight:700;cursor:pointer">▶ Módulo Pedidos</button>';
+  } else { render(); show('Não consegui gerar o pedido'+(fail?(' ('+fail+' falha(s))'):'')+'.',false); }
 }
 // GERAR COTAÇÃO a partir dos itens marcados (🛒) — cria uma requisição status 'em_cotacao'
 // com os itens, que aparece no módulo Cotação para enviar aos fornecedores e receber preços.
@@ -377,12 +394,37 @@ async function gerarCotacao(){
     await fetch(SB+'/rest/v1/requisicao_itens',{method:'POST',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify(itens)});
     try{await fetch(SB+'/rest/v1/req_timeline',{method:'POST',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({requisicao_id:rid,tipo:'criacao',descricao:'Cotação criada pela Gestão da Lista de Compras ('+sel.length+' itens)',usuario:'Gestão da Lista',dados:null})});}catch(e){}
     ROWS.forEach(r=>{if(r.pedir)r.pedir=false;});render();
+    if(VIEW!=='cotacoes') verCotacoes();   // abre já a aba "Cotações" com a recém-criada
     var numTxt='REQ-'+String(req.numero||'').padStart(4,'0');
     var abrir="try{window.top.location.href='/?page=cotacao&req="+rid+"'}catch(_){window.open('/?page=cotacao&req="+rid+"','_blank')}";
     var mEl=el('msg'); mEl.className='msg ok';
-    mEl.innerHTML='✅ Cotação criada ('+numTxt+') com '+sel.length+' item(ns). '+
-      '<button onclick="'+abrir+'" style="margin-left:8px;padding:7px 14px;border:0;border-radius:8px;background:#7C3AED;color:#fff;font-weight:800;cursor:pointer">▶ Escolher fornecedores e enviar a cotação</button>';
+    mEl.innerHTML='✅ Cotação criada ('+numTxt+') com '+sel.length+' item(ns). Veja abaixo em "Cotações". '+
+      '<button onclick="'+abrir+'" style="margin-left:8px;padding:7px 14px;border:0;border-radius:8px;background:#7C3AED;color:#fff;font-weight:800;cursor:pointer">▶ Escolher fornecedores e enviar</button>';
   }catch(e){show('Falha ao gerar a cotação: '+e.message,false);}
+}
+// Enviar um pedido específico (da aba "Pedidos da semana") ao fornecedor + recebedor,
+// sem sair da Gestão. Resolve o WhatsApp do fornecedor no cadastro (whatsapp>telefone>contato_telefone).
+async function enviarPedidoDaLista(chave){
+  const p=(PEDLIST||[]).find(x=>x.chave===chave); if(!p){show('Pedido não encontrado.',false);return;}
+  let ff='';
+  try{
+    const fs=await (await fetch(SB+'/rest/v1/fornecedores?nome=ilike.'+encodeURIComponent('%'+(p.forn||'')+'%')+'&select=nome,whatsapp,telefone,contato_telefone,loja&limit=15',{headers:H})).json();
+    const pick=(fs||[]).find(x=>lojaMatch(x.loja,LOJA))||(fs||[])[0]||{};
+    ff=((pick.whatsapp||pick.telefone||pick.contato_telefone||'')+'').replace(/\D/g,'');
+  }catch(e){}
+  if(!ff||ff.length<10){ ff=((prompt('WhatsApp do fornecedor "'+p.forn+'" (com DDD):')||'')+'').replace(/\D/g,''); }
+  if(!ff||ff.length<10){ show('Sem WhatsApp do fornecedor — não enviei.',false); return; }
+  let receb='';
+  try{ const rl=((await (await fetch(SB+'/rest/v1/app_config?chave=eq.recebimento_por_loja&select=valor',{headers:H})).json())[0]||{}).valor||{}; receb=(((rl[LOJA]||{}).whatsapp||'')+'').replace(/\D/g,''); }catch(e){}
+  const link='https://painel.amorefood.com.br/pedido.html?p='+String(chave).replace(/^pedido_/,'');
+  const itensTxt=(p.itens||[]).filter(it=>!/^desconto$|^frete|^adicional/i.test(it.produto||'')).map(it=>'• '+(it.qtd||'')+' '+(it.un||'')+' — *'+it.produto+'*').join('\n');
+  const msgF='Olá, '+p.forn+'! 👋 Aqui é da *'+nomeLoja(LOJA)+'*.\n\nSegue nosso *pedido de compra*:\n'+itensTxt+'\n💳 Pagamento: à vista\n\nDetalhes e confirmação no link:\n'+link+'\n\nObrigado! 💚';
+  const msgR='📦 *Pedido a receber — '+nomeLoja(LOJA)+'*\nFornecedor: '+p.forn+' · '+brl(p.total)+'\n\nConfira na chegada (lista organizada):\n'+link+'\n— Compras';
+  if(!confirm('Enviar o pedido de *'+p.forn+'* ('+brl(p.total)+') ao fornecedor'+(receb&&receb.length>=10?' e ao recebedor':'')+'?'))return;
+  const snd=async(fone,msg)=>{try{const r=await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:(fone.length<=11?'55'+fone:fone),message:msg})});return r.ok;}catch(e){return false;}};
+  let okc=0,alv=0; alv++; if(await snd(ff,msgF))okc++;
+  if(receb&&receb.length>=10){ await sleep(3500); alv++; if(await snd(receb,msgR))okc++; }
+  show('✅ Pedido de '+p.forn+' enviado ('+okc+'/'+alv+' destino(s)).',okc>0);
 }
 async function disparar(){
   const alvos=ROWS.filter(r=>eff(r)!=='ok'&&r.forn.trim()&&(r.wpp||'').replace(/\D/g,'').length>=10);
