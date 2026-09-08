@@ -248,7 +248,7 @@ function render(){
       <td class="q"><input value="${esc(r.qtd)}" onchange="ov(${gi},'qtd',this.value)" style="width:44px"> <input value="${esc(r.un)}" onchange="ov(${gi},'un',this.value)" placeholder="un" style="width:64px"></td>
       <td class="q"><input value="${esc(r.qComprada)}" onchange="ov(${gi},'qComprada',this.value)" placeholder="0" style="width:52px" title="Quantidade já comprada"></td>
       <td class="q" style="font-weight:800;color:${f>0?'#DC2626':'#15803D'}">${nb(r.qComprada)>0||r.manual!=null?f:''}</td>
-      <td style="white-space:nowrap"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px"><input type="checkbox" ${eff(r)==='ok'?'checked':''} onchange="setComprado(${gi},this.checked)" title="Confirmar compra / dar baixa">${badge(eff(r))}</label>${conf}${r.manual!=null?' <span class="q">(man.)</span>':''}</td>
+      <td style="white-space:nowrap"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px"><input type="checkbox" ${eff(r)==='ok'?'checked':''} onchange="checkComprado(${gi},this.checked)" title="Confirmar compra / dar baixa (salva sozinho)">${badge(eff(r))}</label>${conf}${r.manual!=null?' <span class="q">(man.)</span>':''}</td>
       <td>${inp(gi,'vUnit',r.vUnit,'0,00','pri')}</td>
       <td>${inp(gi,'vTotal',r.vTotal,'0,00','val')}</td>
       <td>${inp(gi,'forn',r.forn,'fornecedor','cin')}${eff(r)==='no'?inp(gi,'wpp',r.wpp,'WhatsApp','wpp'):''}</td>
@@ -264,7 +264,9 @@ function render(){
   el('foot').textContent=`${REQINFO?REQINFO+' · ':''}${LOJA} · ${ROWS.length} solicitados · ${nNo} faltando · ${NPED} pedido(s) ${PERLABEL||''} · total comprado ${brl(TOTALPED)} · ${prontos.size} fornecedor(es) p/ disparo`;
 }
 function ov(i,k,v){ROWS[i][k]=v; if(k==='vUnit'||k==='qComprada'){ const r=ROWS[i]; const t=nb(r.vUnit)*nb(r.qComprada); r.vTotal=t?String(t.toFixed(2)).replace('.',','):''; render(); } }
-function setComprado(i,checked){const r=ROWS[i];if(checked){r.manual=true;if(r.qComprada===''||nb(r.qComprada)<nb(r.qtd))r.qComprada=r.qtd;const t=nb(r.vUnit)*nb(r.qComprada);if(t)r.vTotal=String(t.toFixed(2)).replace('.',',');}else{r.manual=undefined;}render();}
+function setComprado(i,checked){const r=ROWS[i];if(checked){r.manual=true;if(r.qComprada===''||nb(r.qComprada)<nb(r.qtd))r.qComprada=r.qtd;const t=nb(r.vUnit)*nb(r.qComprada);if(t)r.vTotal=String(t.toFixed(2)).replace('.',',');}else{r.manual=false;}render();}
+// Checkbox de comprado agora SALVA sozinho (antes so marcava na tela e voltava pra aberto ao recarregar)
+async function checkComprado(i,checked){setComprado(i,checked);const ok=await salvar(true);render();show(ok?(checked?'✅ Baixado e salvo':'↩︎ Marcado como NÃO comprado e salvo'):'Falha ao salvar.',ok);}
 // Baixa por item (marca comprado e salva na hora) — ou desfaz se já estava baixado
 async function baixarItem(i){const r=ROWS[i];const jaOk=eff(r)==='ok';setComprado(i,!jaOk);const ok=await salvar(true);render();show(ok?(jaOk?'↺ Baixa desfeita: '+esc(ROWS[i].produto):'📥 Item baixado: '+esc(ROWS[i].produto)):'Falha ao salvar.',ok);}
 // Exclui item da lista (reversível) — grava excluido no override e salva na hora
