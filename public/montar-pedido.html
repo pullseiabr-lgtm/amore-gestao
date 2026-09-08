@@ -262,7 +262,7 @@ async function salvar(silent){const map={};for(const r of ROWS){const o={};if(r.
   try{let ex=await fetch(SB+'/rest/v1/app_config?chave=eq.'+chave+'&select=chave',{headers:H}).then(r=>r.json());const body={valor:{map,updated_at:new Date().toISOString()}};let r;
     if(ex&&ex.length)r=await fetch(SB+'/rest/v1/app_config?chave=eq.'+chave,{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify(body)});
     else r=await fetch(SB+'/rest/v1/app_config',{method:'POST',headers:{...H,Prefer:'resolution=merge-duplicates'},body:JSON.stringify({chave,...body})});
-    if(r.ok){ if(!silent){ setF('no'); show('✅ Salvo e baixado. Mostrando o que ainda falta comprar.',true); } } else if(!silent){ show('Falha ao salvar ('+r.status+').',false); } return r.ok; }catch(e){ if(!silent)show('Falha ao salvar.',false); return false; }
+    if(r.ok){ if(!silent){ setF(''); show('✅ Baixa salva (item a item). Aqui você vê tudo: ✅ = já comprado · ❌ = falta comprar. Use os filtros acima se quiser separar.',true); } } else if(!silent){ show('Falha ao salvar ('+r.status+').',false); } return r.ok; }catch(e){ if(!silent)show('Falha ao salvar.',false); return false; }
 }
 async function confirmarTodas(){
   const alvo=ROWS.filter(r=>eff(r)!=='no').length;
