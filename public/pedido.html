@@ -102,7 +102,7 @@ async function run(){
   const rows=(d.itens||[]).map((i,n)=>'<tr><td class="num">'+(n+1)+'</td><td class="prod">'+esc(i.produto)+'</td><td class="num">'+qf(i.qtd)+' <span class="un">'+esc(i.un||'')+'</span></td><td class="num">'+brl(i.preco)+'</td><td class="num">'+brl(i.subtotal!=null?i.subtotal:(i.preco*i.qtd))+'</td></tr>').join('');
   const total=d.total!=null?d.total:(d.itens||[]).reduce((s,i)=>s+(i.subtotal!=null?i.subtotal:i.preco*i.qtd),0);
   document.getElementById('app').innerHTML=
-   '<header class="top"><div>'+(flow?'<div style="margin-bottom:6px">'+LOGO_FLOW+'</div>':'')+'<div class="eyebrow">'+MARCA+' · Pedido de Compra</div><h1>'+esc(d.fornecedor||'Fornecedor')+'</h1><div class="sub">'+esc(d.loja||'')+' · '+fD(d.data)+(d.pagamento?' · '+esc(d.pagamento):'')+'</div></div><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></header>'
+   '<header class="top"><div>'+(flow?'<div style="margin-bottom:6px">'+LOGO_FLOW+'</div>':'')+'<div class="eyebrow">'+MARCA+' · Pedido de Compra</div><h1>'+esc(d.fornecedor||'Fornecedor')+'</h1><div class="sub">'+esc(d.loja||'')+' · '+fD(d.data)+(d.pagamento?' · '+esc(d.pagamento):'')+'</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="editarPedido()">✏️ Editar</button><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></div></header>'
    +'<div class="meta">'
      +(d.cliente?'<div><div class="l">Cliente</div><div class="v">'+esc(d.cliente)+'</div></div>':'')
      +'<div><div class="l">Itens</div><div class="v">'+(d.itens||[]).length+'</div></div>'
@@ -118,6 +118,61 @@ async function run(){
    +'<div class="foot">Pedido gerado pelo Painel Amore. Confira quantidades, validade e estado no recebimento. Qualquer divergência, sinalizar ao comprador.</div>';
   window.__ped={chave:chave,d:d};
   document.title='Pedido '+(d.fornecedor||'')+' — '+(d.loja||'');
+}
+// ===== EDIÇÃO DO PEDIDO (ajustar itens direto no link) =====
+function numBR(s){ if(typeof s==='number')return s; s=String(s==null?'':s).trim(); if(!s)return 0; if(s.indexOf(',')>=0)s=s.replace(/\./g,'').replace(',','.'); var n=Number(s.replace(/[^0-9.\-]/g,'')); return isNaN(n)?0:n; }
+function totalPed(d){ return (d.itens||[]).reduce(function(s,i){ return s+(i.subtotal!=null?Number(i.subtotal):(Number(i.preco)||0)*(Number(i.qtd)||0)); },0); }
+function linhaEdit(i,idx){
+  return '<tr>'
+   +'<td class="num">'+(idx+1)+'</td>'
+   +'<td><input class="ei" data-k="produto" data-i="'+idx+'" value="'+esc(i.produto)+'" style="width:100%;min-width:180px"></td>'
+   +'<td class="num" style="white-space:nowrap"><input class="ei" data-k="qtd" data-i="'+idx+'" value="'+esc(i.qtd)+'" inputmode="decimal" style="width:58px;text-align:right"> <input class="ei" data-k="un" data-i="'+idx+'" value="'+esc(i.un||'')+'" placeholder="un" style="width:64px"></td>'
+   +'<td class="num"><input class="ei" data-k="preco" data-i="'+idx+'" value="'+String(i.preco==null?'':i.preco).replace('.',',')+'" inputmode="decimal" style="width:84px;text-align:right"></td>'
+   +'<td class="num sub" data-sub="'+idx+'">'+brl(i.subtotal!=null?i.subtotal:(Number(i.preco)||0)*(Number(i.qtd)||0))+'</td>'
+   +'<td class="num"><button class="btn" onclick="removeItem('+idx+')" title="Remover item" style="padding:6px 10px;color:#b91c1c">🗑</button></td>'
+   +'</tr>';
+}
+function editarPedido(){
+  var p=window.__ped; if(!p)return; var d=p.d;
+  var rows=(d.itens||[]).map(linhaEdit).join('');
+  document.getElementById('app').innerHTML=
+    '<header class="top"><div><div class="eyebrow">✏️ Editando pedido</div><h1>'+esc(d.fornecedor||'Fornecedor')+'</h1><div class="sub">'+esc(d.loja||'')+' · '+fD(d.data)+'</div></div></header>'
+   +'<div class="tw"><table><thead><tr><th class="num">#</th><th>Produto</th><th class="num">Qtd / un</th><th class="num">Valor unit.</th><th class="num">Subtotal</th><th class="num"></th></tr></thead>'
+   +'<tbody id="etb">'+rows+'</tbody>'
+   +'<tfoot><tr><td colspan="4" class="num tl">VALOR TOTAL</td><td class="num tl" id="etot">'+brl(totalPed(d))+'</td><td></td></tr></tfoot></table></div>'
+   +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">'
+   +'<button class="btn" onclick="addItem()" style="background:#0369A1;color:#fff;border:0">➕ Adicionar item</button>'
+   +'<button class="btn" id="bsave" onclick="salvarPedido()" style="background:var(--vinho);color:#fff;border:0">💾 Salvar alterações</button>'
+   +'<button class="btn" onclick="run()">↩︎ Cancelar</button>'
+   +'</div>'
+   +'<div id="emsg" style="margin-top:10px;font-size:13px"></div>';
+  bindEdits();
+}
+function bindEdits(){
+  document.querySelectorAll('#etb .ei').forEach(function(inp){
+    inp.oninput=function(){
+      var i=Number(inp.getAttribute('data-i')), k=inp.getAttribute('data-k'), d=window.__ped.d, it=d.itens[i];
+      if(k==='qtd')it.qtd=numBR(inp.value); else if(k==='preco')it.preco=numBR(inp.value); else it[k]=inp.value;
+      if(k==='qtd'||k==='preco'){ it.subtotal=Math.round((Number(it.preco)||0)*(Number(it.qtd)||0)*100)/100;
+        var sc=document.querySelector('#etb .sub[data-sub="'+i+'"]'); if(sc)sc.textContent=brl(it.subtotal); }
+      var et=document.getElementById('etot'); if(et)et.textContent=brl(totalPed(d));
+    };
+  });
+}
+function addItem(){ var d=window.__ped.d; (d.itens=d.itens||[]).push({produto:'',qtd:1,un:'un',preco:0,subtotal:0}); editarPedido(); }
+function removeItem(i){ var d=window.__ped.d; if(!confirm('Remover este item do pedido?'))return; d.itens.splice(i,1); editarPedido(); }
+async function salvarPedido(){
+  var p=window.__ped; if(!p)return; var d=p.d;
+  d.itens=(d.itens||[]).filter(function(it){ return (String(it.produto||'').trim())!==''; });
+  d.itens.forEach(function(it){ it.qtd=Number(it.qtd)||0; it.preco=Number(it.preco)||0; it.subtotal=Math.round(it.preco*it.qtd*100)/100; });
+  d.total=Math.round(totalPed(d)*100)/100;
+  var b=document.getElementById('bsave'); if(b){b.disabled=true;b.textContent='Salvando…';}
+  try{
+    var r=await fetch(SB+'/rest/v1/app_config?chave=eq.'+encodeURIComponent(p.chave),{method:'PATCH',headers:Object.assign({},H,{'Content-Type':'application/json',Prefer:'return=minimal'}),body:JSON.stringify({valor:d})});
+    var em=document.getElementById('emsg');
+    if(r.ok){ if(em){em.style.color='#15803d';em.textContent='✅ Alterações salvas.';} setTimeout(run,700); }
+    else { if(b){b.disabled=false;b.textContent='💾 Salvar alterações';} if(em){em.style.color='#b91c1c';em.textContent='Falha ao salvar ('+r.status+').';} }
+  }catch(e){ if(b){b.disabled=false;b.textContent='💾 Salvar alterações';} var em2=document.getElementById('emsg'); if(em2){em2.style.color='#b91c1c';em2.textContent='Falha ao salvar.';} }
 }
 run().catch(function(){document.getElementById('app').innerHTML='<div class="msg">Erro ao carregar o pedido.</div>';});
 </script>
