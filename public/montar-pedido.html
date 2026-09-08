@@ -207,7 +207,7 @@ function compute(){ROWS=SOLIC.map(si=>{const m=matchOne(si.produto);const o=OVER
   diasPed:diasAtras(b.dataPedido),
   link:(b.chave?('pedido.html?p='+String(b.chave).replace(/^pedido_/,'')):''),
   recebido:!!b.recebido, comprador:b.comprador||'',
-  excluido:(o.excluido===true)
+  excluido:(o.excluido===true), _hadExcl:(o.excluido===true)
 };});}
 function eff(r){
   if(r.manual===false)return 'no';
@@ -272,11 +272,18 @@ async function baixarItem(i){const r=ROWS[i];const jaOk=eff(r)==='ok';setComprad
 // Exclui item da lista (reversível) — grava excluido no override e salva na hora
 async function excluirItem(i){const r=ROWS[i];if(!confirm('Excluir este item da lista?\n\n• '+r.produto+'\n\nEle sai da contagem, mas pode ser restaurado depois no KPI "🗑 Excluídos".'))return;r.excluido=true;const ok=await salvar(true);render();show(ok?'🗑 Item excluído (pode restaurar em "🗑 Excluídos"): '+esc(r.produto):'Falha ao salvar.',ok);}
 async function restaurarItem(i){const r=ROWS[i];r.excluido=false;const ok=await salvar(true);render();show(ok?'↩︎ Item restaurado: '+esc(r.produto):'Falha ao salvar.',ok);}
-async function salvar(silent){const map={};for(const r of ROWS){const o={};if(r.produto!==r._op)o.produto=r.produto;if(String(r.qtd)!==String(r._oq))o.qtd=r.qtd;if(r.un!==r._ou)o.un=r.un;if(r.qComprada!==''&&String(r.qComprada)!==String(r.m.qsum||''))o.qComprada=r.qComprada;if((r.forn||'')!=='')o.forn=r.forn;if(r.wpp)o.whatsapp=r.wpp;if((r.vUnit||'')!=='')o.vUnit=r.vUnit;if((r.vTotal||'')!=='')o.vTotal=r.vTotal;if((r.entrega||'')!=='')o.entrega=r.entrega;if((r.dataPed||'')!=='')o.dataPed=r.dataPed;if(typeof r.manual==='boolean')o.comprado=r.manual;if(r.excluido)o.excluido=true;if(Object.keys(o).length)map[r._key||norm(r.produto)]=o;}
+async function salvar(silent){
+  // deltas desta lista (o que o usuário mudou nesta tela)
+  const local={};for(const r of ROWS){const o={};if(r.produto!==r._op)o.produto=r.produto;if(String(r.qtd)!==String(r._oq))o.qtd=r.qtd;if(r.un!==r._ou)o.un=r.un;if(r.qComprada!==''&&String(r.qComprada)!==String(r.m.qsum||''))o.qComprada=r.qComprada;if((r.forn||'')!=='')o.forn=r.forn;if(r.wpp)o.whatsapp=r.wpp;if((r.vUnit||'')!=='')o.vUnit=r.vUnit;if((r.vTotal||'')!=='')o.vTotal=r.vTotal;if((r.entrega||'')!=='')o.entrega=r.entrega;if((r.dataPed||'')!=='')o.dataPed=r.dataPed;if(typeof r.manual==='boolean')o.comprado=r.manual;if(r.excluido)o.excluido=true;else if(r._hadExcl)o.excluido=false;if(Object.keys(o).length)local[r._key||norm(r.produto)]=o;}
   const chave=OVKEY||('compras_overrides_'+SUF[LOJA]);
-  try{let ex=await fetch(SB+'/rest/v1/app_config?chave=eq.'+chave+'&select=chave',{headers:H}).then(r=>r.json());const body={valor:{map,updated_at:new Date().toISOString()}};let r;
-    if(ex&&ex.length)r=await fetch(SB+'/rest/v1/app_config?chave=eq.'+chave,{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify(body)});
-    else r=await fetch(SB+'/rest/v1/app_config',{method:'POST',headers:{...H,Prefer:'resolution=merge-duplicates'},body:JSON.stringify({chave,...body})});
+  try{
+    // MESCLA com o que já está gravado no banco (evita sobrescrever baixas feitas em outra aba/sessão) —
+    // relê o mapa atual imediatamente antes de gravar e aplica só os deltas desta tela por cima.
+    let stored={};
+    try{const ex=await fetch(SB+'/rest/v1/app_config?chave=eq.'+chave+'&select=valor',{headers:H}).then(r=>r.json());stored=(ex&&ex[0]&&ex[0].valor&&ex[0].valor.map)||{};}catch(e){}
+    const map=Object.assign({},stored,local);
+    const body={valor:{map,updated_at:new Date().toISOString()}};
+    const r=await fetch(SB+'/rest/v1/app_config',{method:'POST',headers:{...H,Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({chave,...body})});
     if(r.ok){ if(!silent){ setF(''); show('✅ Baixa salva (item a item). Aqui você vê tudo: ✅ = já comprado · ❌ = falta comprar. Use os filtros acima se quiser separar.',true); } } else if(!silent){ show('Falha ao salvar ('+r.status+').',false); } return r.ok; }catch(e){ if(!silent)show('Falha ao salvar.',false); return false; }
 }
 async function confirmarTodas(){
