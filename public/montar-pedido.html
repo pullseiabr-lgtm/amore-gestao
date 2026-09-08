@@ -96,9 +96,9 @@
   </div>
   <div class="card" id="mainCard"><table><thead><tr>
     <th style="width:30px" title="Marcar para gerar o pedido de compra">🛒</th>
-    <th>Produto solicitado</th><th>Qtd solic.</th><th>Comprado</th><th>Falta</th><th>Status ✔</th><th>Valor unit.</th><th>Valor total</th><th>Fornecedor</th>
+    <th>Produto solicitado</th><th title="Requisição de compra de origem e o dia em que foi gerada">Requisição · Dia</th><th>Qtd solic.</th><th>Comprado</th><th>Falta</th><th>Status ✔</th><th>Valor unit.</th><th>Valor total</th><th>Fornecedor</th>
     <th>Entrega</th><th>Data pedido</th><th>Pedido</th>
-  </tr></thead><tbody id="tb"><tr><td colspan="12" style="padding:20px;text-align:center;color:#6b7280">Carregando…</td></tr></tbody></table></div>
+  </tr></thead><tbody id="tb"><tr><td colspan="13" style="padding:20px;text-align:center;color:#6b7280">Carregando…</td></tr></tbody></table></div>
   <div class="card" id="baixadasBox" style="display:none;margin-top:12px"></div>
   <div class="card" id="pedidosBox" style="display:none;margin-top:12px"></div>
   <div class="msg" id="msg"></div><div class="prog" id="prog"></div><div class="foot" id="foot"></div>
@@ -145,14 +145,18 @@ async function load(){
       REQDATE=String(rs[0].created_at||'').slice(0,10); // a mais antiga aberta = início da semana de compras
       const nums=rs.map(r=>'REQ-'+String(r.numero).padStart(4,'0'));
       REQINFO=(rs.length>1?rs.length+' requisições abertas: ':'')+nums.join(', ')+(rs.length===1&&rs[0].responsavel_nome?' · '+rs[0].responsavel_nome:'');
+      const reqMap={}; rs.forEach(r=>{reqMap[r.id]={num:r.numero,dt:String(r.created_at||'').slice(0,10)};});
       const idIn='('+rs.map(r=>r.id).join(',')+')';
-      const its=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=in.'+idIn+'&select=produto_nome,categoria,quantidade,unidade&limit=5000',{headers:H})).json();
-      // consolida por nome de produto (soma quantidades quando repetido)
+      const its=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=in.'+idIn+'&select=produto_nome,categoria,quantidade,unidade,requisicao_id&limit=5000',{headers:H})).json();
+      // consolida por nome de produto (soma quantidades quando repetido) + guarda de qual requisição veio
       const acc={};
       for(const i of (its||[])){const k=norm(i.produto_nome);if(!k)continue;
-        if(!acc[k]){acc[k]={produto:i.produto_nome,qtd:Number(i.quantidade)||0,un:i.unidade,categoria:i.categoria};}
+        if(!acc[k]){acc[k]={produto:i.produto_nome,qtd:Number(i.quantidade)||0,un:i.unidade,categoria:i.categoria,reqs:{}};}
         else{acc[k].qtd+=Number(i.quantidade)||0; if(!acc[k].categoria&&i.categoria)acc[k].categoria=i.categoria; if(!acc[k].un&&i.unidade)acc[k].un=i.unidade;}
+        const rm=reqMap[i.requisicao_id]; if(rm)acc[k].reqs[rm.num]=rm.dt;
       }
+      // rastreabilidade: nº da requisição de compra + dia em que foi gerada
+      Object.values(acc).forEach(a=>{const nums=Object.keys(a.reqs).sort((x,y)=>Number(x)-Number(y));a.reqNum=nums.map(n=>'REQ-'+String(n).padStart(4,'0')).join(', ');a.reqDia=nums.map(n=>dmy(a.reqs[n])).join(', ');});
       solItens=Object.values(acc);
     }
   }catch(e){}
@@ -228,13 +232,14 @@ function render(){
   let cur='',html='';
   const inp=(gi,k,val,ph,cls)=>`<input class="${cls||''}" value="${esc(val)}" onchange="ov(${gi},'${k}',this.value)" placeholder="${ph||''}">`;
   for(const r of list){const gi=ROWS.indexOf(r);
-    if((r.categoria||'')!==cur){cur=r.categoria||'';html+=`<tr class="cat"><td colspan="12">${esc(cur||'—')}</td></tr>`;}
+    if((r.categoria||'')!==cur){cur=r.categoria||'';html+=`<tr class="cat"><td colspan="13">${esc(cur||'—')}</td></tr>`;}
     const conf=r.recebido?' <span class="st ok" style="font-size:9px;padding:1px 6px">✓ conf.</span>':'';
     const oldTag=(r.diasPed!=null&&r.diasPed>7)?`<span title="pedido com ${r.diasPed} dias — pode ser antigo" style="color:#B45309">⏳</span> `:'';
     const f=falta(r);
     html+=`<tr>
       <td style="text-align:center"><input type="checkbox" ${r.pedir?'checked':''} onchange="ov(${gi},'pedir',this.checked)" title="Marcar para gerar pedido de compra" style="width:17px;height:17px;cursor:pointer"></td>
       <td><input value="${esc(r.produto)}" onchange="ov(${gi},'produto',this.value)" placeholder="produto" style="width:100%"></td>
+      <td style="white-space:nowrap;font-size:11px">${r.reqNum?`<b style="color:var(--v)">${esc(r.reqNum)}</b><div style="color:#6b7280">🗓️ ${esc(r.reqDia||'')}</div>`:'<span style="color:#9ca3af">—</span>'}</td>
       <td class="q"><input value="${esc(r.qtd)}" onchange="ov(${gi},'qtd',this.value)" style="width:44px"> <input value="${esc(r.un)}" onchange="ov(${gi},'un',this.value)" placeholder="un" style="width:64px"></td>
       <td class="q"><input value="${esc(r.qComprada)}" onchange="ov(${gi},'qComprada',this.value)" placeholder="0" style="width:52px" title="Quantidade já comprada"></td>
       <td class="q" style="font-weight:800;color:${f>0?'#DC2626':'#15803D'}">${nb(r.qComprada)>0||r.manual!=null?f:''}</td>
@@ -246,7 +251,7 @@ function render(){
       <td>${oldTag}${inp(gi,'dataPed',r.dataPed,'dd/mm/aaaa','pri')}</td>
       <td>${r.link?`<a href="${r.link}" target="_blank" style="color:var(--v);font-weight:700">ver</a>`:''}</td>
     </tr>`;}
-  el('tb').innerHTML=html||'<tr><td colspan="12" style="padding:20px;text-align:center;color:#6b7280">Nenhum item neste filtro.</td></tr>';
+  el('tb').innerHTML=html||'<tr><td colspan="13" style="padding:20px;text-align:center;color:#6b7280">Nenhum item neste filtro.</td></tr>';
   const prontos=new Set(ROWS.filter(r=>eff(r)!=='ok'&&(r.wpp||'').replace(/\D/g,'').length>=10&&r.forn.trim()).map(r=>r.forn.trim().toLowerCase()));
   el('foot').textContent=`${REQINFO?REQINFO+' · ':''}${LOJA} · ${ROWS.length} solicitados · ${nNo} faltando · ${NPED} pedido(s) ${PERLABEL||''} · total comprado ${brl(TOTALPED)} · ${prontos.size} fornecedor(es) p/ disparo`;
 }
@@ -319,8 +324,8 @@ function gerarPDF(){
     doc.setFontSize(9);doc.setTextColor(120);doc.text('Gerado em '+new Date().toLocaleString('pt-BR')+'  ·  Total comprado no período: '+brl(TOTALPED),40,50);
     const stTxt=s=>s==='ok'?'Comprado':s==='wr'?'Verificar':'Faltando';
     const list=ROWS.filter(r=>!FILTRO||eff(r)===FILTRO);
-    const body=list.map(r=>[r.produto||'',((r.qtd||'')+' '+(r.un||'')).trim(),stTxt(eff(r)),r.forn||'',r.vTotal?('R$ '+r.vTotal):'',r.dataPed||'']);
-    doc.autoTable({head:[['Produto','Qtd','Status','Fornecedor','Valor total','Data pedido']],body,startY:64,styles:{fontSize:8,cellPadding:3,overflow:'linebreak'},headStyles:{fillColor:[46,125,52],textColor:255},columnStyles:{0:{cellWidth:200}},didParseCell:d=>{if(d.section==='body'&&d.column.index===2){const t=d.cell.raw;if(t==='Faltando')d.cell.styles.textColor=[220,38,38];else if(t==='Comprado')d.cell.styles.textColor=[21,128,61];else if(t==='Verificar')d.cell.styles.textColor=[180,83,9];}}});
+    const body=list.map(r=>[r.produto||'',((r.reqNum||'')+(r.reqDia?(' · '+r.reqDia):'')).trim(),((r.qtd||'')+' '+(r.un||'')).trim(),stTxt(eff(r)),r.forn||'',r.vTotal?('R$ '+r.vTotal):'',r.dataPed||'']);
+    doc.autoTable({head:[['Produto','Requisição · Dia','Qtd','Status','Fornecedor','Valor total','Data pedido']],body,startY:64,styles:{fontSize:8,cellPadding:3,overflow:'linebreak'},headStyles:{fillColor:[46,125,52],textColor:255},columnStyles:{0:{cellWidth:170},1:{cellWidth:105}},didParseCell:d=>{if(d.section==='body'&&d.column.index===3){const t=d.cell.raw;if(t==='Faltando')d.cell.styles.textColor=[220,38,38];else if(t==='Comprado')d.cell.styles.textColor=[21,128,61];else if(t==='Verificar')d.cell.styles.textColor=[180,83,9];}}});
     doc.save('lista-compras-'+SUF[LOJA]+'-'+new Date().toISOString().slice(0,10)+'.pdf');
     show('✅ PDF gerado (veja os downloads).',true);
   }catch(e){show('Erro no PDF: '+e.message,false);}
