@@ -14,6 +14,7 @@ import {
   fetchRequisicaoItens, updateRequisicaoItem,
   fetchReqTimeline, insertReqTimeline, salvarRequisicaoComItens, logReqAuditoria,
   fetchRequisicaoVersoes, fetchReqAuditoria,
+  insertPedidoCompra, insertPedidoCompraItens, gerarNumeroPC, fetchPedidosCompraDaRequisicao, updatePedidoCompra,
   fetchEstoqueProdutos, darEntradaEstoquePorNome,
   fetchFinCreditos, insertFinCredito,
   fetchRequisicaoCotacoes, insertRequisicaoCotacao, updateRequisicaoCotacao, deleteRequisicaoCotacao,
@@ -22,6 +23,8 @@ import {
 } from '../../lib/db'
 import { enviarWhatsApp, perfisDoSetor, soDigitos } from '../../lib/notify'
 import { siteOrigin } from '../../lib/site'
+import ReconciliacaoView from './ReconciliacaoView'
+import PedidoSemanaView from './PedidoSemanaView'
 import type {
   Requisicao, RequisicaoItem, ReqStatus, ReqPrioridade,
   EstoqueProduto, FinCredito, FinFormaPagamento, ReqTimeline,
@@ -51,6 +54,13 @@ const diasAteValidade = (d?: string) => {
   return Math.floor(ms / 86400000)
 }
 const corValidade = (dias: number | null) => dias == null ? undefined : dias < 15 ? '#B91C1C' : dias < 60 ? '#B45309' : '#15803D'
+// Rótulo resumido da situação de cotação a partir do status da requisição (coluna da lista)
+const cotacaoLabel = (s: ReqStatus): React.ReactNode => {
+  if (s === 'aguardando_cotacao' || s === 'em_cotacao') return 'Aberta'
+  if (s === 'cotacao_recebida') return 'Recebida'
+  if (['aprovada','parcialmente_aprovada','compra_realizada','em_separacao','recebimento_parcial','recebimento_concluido','baixa_realizada','concluida'].includes(s)) return 'Aprovada'
+  return <span style={{ color:'var(--muted)' }}>—</span>
+}
 
 // ── Configs ───────────────────────────────────────────────────
 
@@ -912,9 +922,28 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   }
 
   const handleCompra = async () => {
-    const u = await updateRequisicao(req.id, { status:'compra_realizada' })
-    await tEntry('compra',`Compra realizada por ${userName}`)
-    onAtualizar(u); toast('Compra realizada!'); load()
+    // Gera o Pedido de Compra RELACIONAL vinculado à requisição (registro central).
+    const aprovados = itens.filter(i => !i.bloqueado && i.status !== 'cancelado')
+    const totalPed = aprovados.reduce((s,i)=> s + (i.quantidade_aprovada ?? i.quantidade) * (i.preco_final ?? i.preco_cotado ?? i.preco_referencia ?? 0), 0)
+    const fornVenc = cotacoes.find(c=>c.status==='aprovada')?.fornecedor_nome || aprovados.find(i=>i.fornecedor_nome)?.fornecedor_nome || null
+    let numero: string | null = null
+    try {
+      numero = await gerarNumeroPC(loja)
+      const pc = await insertPedidoCompra({
+        numero, requisicao_id: req.id, loja, fornecedor: fornVenc, status:'aberto', origem:'requisicao',
+        total: totalPed, recebido_total:0, baixa_feita:false, app_config_chave:null,
+        observacoes:`Gerado da REQ-${String(req.numero).padStart(4,'0')}`, criado_por:userName,
+      })
+      await insertPedidoCompraItens(aprovados.map(i=>({
+        pedido_id: pc.id, requisicao_item_id: i.id, produto_nome: i.produto_nome, unidade: i.unidade,
+        qtd_pedida: (i.quantidade_aprovada ?? i.quantidade), qtd_recebida:0,
+        preco: (i.preco_final ?? i.preco_cotado ?? i.preco_referencia ?? null),
+      })))
+    } catch { /* pedido relacional é complementar ao fluxo */ }
+    const u = await updateRequisicao(req.id, { status:'compra_realizada', pedido_numero: numero, pedido_status: 'emitido', pedido_gerado_em: new Date().toISOString() })
+    await tEntry('compra',`Compra realizada por ${userName}${numero?` — Pedido ${numero}`:''}`)
+    await logReqAuditoria([{ requisicao_id:req.id, entidade:'pedido', entidade_id:null, campo:'pedido_gerado', valor_anterior:null, valor_novo:numero||'(sem número)', acao:'vinculo', usuario:userName }])
+    onAtualizar(u); toast(numero?`Compra realizada! Pedido ${numero}`:'Compra realizada!'); load()
   }
 
   const handleSeparacao = async () => {
@@ -955,9 +984,14 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
     const avisoFalta   = naoCadastrados.length ? `\n[ESTOQUE: não cadastrados (movimentação registrada, sem saldo): ${naoCadastrados.join(', ')}]` : ''
 
     const u = await updateRequisicao(req.id, {
-      status:'concluida',
+      status:'concluida', pedido_status:'entregue',
       observacoes: (req.observacoes||'') + `\n[ENTREGUE: por ${confRecebNome} em ${new Date(confRecebHorario).toLocaleString('pt-BR')}${confRecebObs ? ' | ' + confRecebObs : ''}]${avisoEstoque}${avisoFalta}`
     })
+    // Marca o(s) pedido(s) relacional(is) vinculado(s) como recebidos + baixa dada.
+    try {
+      const peds = await fetchPedidosCompraDaRequisicao(req.id)
+      for (const p of peds) await updatePedidoCompra(p.id, { status:'recebido', recebido_total: p.total, baixa_feita: entraram > 0 })
+    } catch { /* vínculo de pedido é complementar */ }
     await tEntry('finalizacao',`Entrega confirmada por ${confRecebNome}${entraram > 0 ? ` — ${entraram} item(ns) deram entrada no estoque` : ''}`)
     onAtualizar(u)
     toast(entraram > 0 ? `Entrega confirmada! ${entraram} item(ns) no estoque.` : 'Entrega confirmada!')
@@ -1787,6 +1821,7 @@ function ListaView({ reqs, loja, lojas, podeAprovar, onNova, onDetalhe, onEditar
   const [fResp, setFResp] = useState('')
   const [dtIni, setDtIni] = useState('')
   const [dtFim, setDtFim] = useState('')
+  const [fPed, setFPed] = useState<''|'com'|'sem'>('')
 
   const setores = Array.from(new Set(reqs.map(r=>r.setor).filter(Boolean))) as string[]
   const responsaveis = Array.from(new Set(reqs.map(r=>r.responsavel_nome).filter(Boolean))) as string[]
@@ -1801,6 +1836,8 @@ function ListaView({ reqs, loja, lojas, podeAprovar, onNova, onDetalhe, onEditar
     const dia = (r.created_at||'').slice(0,10)
     if (dtIni && dia < dtIni) return false
     if (dtFim && dia > dtFim) return false
+    if (fPed==='com' && !r.pedido_numero) return false
+    if (fPed==='sem' && r.pedido_numero) return false
     if (srch) { const q=srch.toLowerCase(); return r.titulo.toLowerCase().includes(q)||r.responsavel_nome.toLowerCase().includes(q)||String(r.numero).includes(q)||`req-${String(r.numero).padStart(4,'0')}`.includes(q) }
     return true
   }).sort((a,b)=>{
@@ -1840,7 +1877,12 @@ function ListaView({ reqs, loja, lojas, podeAprovar, onNova, onDetalhe, onEditar
         </select>
         <input className="form-input" type="date" title="Data inicial" style={{ width:140 }} value={dtIni} onChange={e=>setDtIni(e.target.value)} />
         <input className="form-input" type="date" title="Data final" style={{ width:140 }} value={dtFim} onChange={e=>setDtFim(e.target.value)} />
-        {(fSt||fPr||fSetor||fResp||dtIni||dtFim||srch)&&<button className="ib" title="Limpar filtros" onClick={()=>{setSrch('');setFSt('');setFPr('');setFSetor('');setFResp('');setDtIni('');setDtFim('')}}><X size={13}/> Limpar</button>}
+        <select className="form-input" style={{ width:130 }} value={fPed} onChange={e=>setFPed(e.target.value as ''|'com'|'sem')}>
+          <option value="">Compra (todas)</option>
+          <option value="com">Com pedido</option>
+          <option value="sem">Sem pedido</option>
+        </select>
+        {(fSt||fPr||fSetor||fResp||dtIni||dtFim||fPed||srch)&&<button className="ib" title="Limpar filtros" onClick={()=>{setSrch('');setFSt('');setFPr('');setFSetor('');setFResp('');setDtIni('');setDtFim('');setFPed('')}}><X size={13}/> Limpar</button>}
         <button className="btn" onClick={onNova} style={{ marginLeft:'auto', flexShrink:0 }}><Plus size={13}/> Nova Requisição</button>
       </div>
 
@@ -1863,7 +1905,7 @@ function ListaView({ reqs, loja, lojas, podeAprovar, onNova, onDetalhe, onEditar
       {!loading&&fil.length>0&&<div style={{ overflowX:'auto' }}>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
           <thead><tr style={{ background:'var(--bg2)' }}>
-            {['Nº','Título','Unidade','Setor','Responsável','Prioridade','Status','Data',''].map(h=><th key={h} style={{ padding:'7px 9px', textAlign:'left', fontWeight:700, fontSize:10, color:'var(--muted)', borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>)}
+            {['Nº','Título','Unidade','Setor','Responsável','Prioridade','Status','Cotação','Compra','Data',''].map(h=><th key={h} style={{ padding:'7px 9px', textAlign:'left', fontWeight:700, fontSize:10, color:'var(--muted)', borderBottom:'2px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>)}
           </tr></thead>
           <tbody>{fil.map(r=>{
             const hl = pendAprov(r)
@@ -1879,6 +1921,8 @@ function ListaView({ reqs, loja, lojas, podeAprovar, onNova, onDetalhe, onEditar
               <td style={{ padding:'8px 9px', color:'var(--muted)', whiteSpace:'nowrap' }}>{r.responsavel_nome}</td>
               <td style={{ padding:'8px 9px' }}><PrioBadge prio={r.prioridade} /></td>
               <td style={{ padding:'8px 9px' }}><StatusBadge status={r.status} /></td>
+              <td style={{ padding:'8px 9px', fontSize:11, whiteSpace:'nowrap' }}>{cotacaoLabel(r.status)}</td>
+              <td style={{ padding:'8px 9px', fontSize:11, whiteSpace:'nowrap' }}>{r.pedido_numero ? <span style={{ fontWeight:700, color:'#0891B2' }}>{r.pedido_numero}</span> : (['compra_realizada','recebimento_parcial','recebimento_concluido','baixa_realizada','concluida'].includes(r.status) ? 'Realizada' : <span style={{ color:'var(--muted)' }}>—</span>)}</td>
               <td style={{ padding:'8px 9px', color:'var(--muted)', whiteSpace:'nowrap' }}>{fmtDt(r.created_at)}</td>
               <td style={{ padding:'8px 9px' }} onClick={e=>e.stopPropagation()}>
                 <div className="ab" style={{ gap:3 }}>
@@ -1911,7 +1955,7 @@ export default function RequisoesPage() {
   const { toast, ToastEl } = useToast()
   const userName = user?.name ?? user?.email ?? 'Usuário'
 
-  const [tab, setTab] = useState<'lista'|'dashboard'>('lista')
+  const [tab, setTab] = useState<'lista'|'dashboard'|'reconciliacao'|'semana'>('lista')
   const [view, setView] = useState<'lista'|'form'|'detalhe'>('lista')
   const [reqs, setReqs] = useState<Requisicao[]>([])
   const [sel, setSel] = useState<Requisicao|null>(null)
@@ -1978,8 +2022,8 @@ export default function RequisoesPage() {
 
       {view==='lista'&&(
         <div style={{ display:'flex', gap:5, marginBottom:18 }}>
-          {[{ id:'lista', l:'📋 Requisições' },{ id:'dashboard', l:'📊 Dashboard' }].map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id as 'lista'|'dashboard')}
+          {[{ id:'lista', l:'📋 Requisições' },{ id:'dashboard', l:'📊 Dashboard' },{ id:'semana', l:'📦 Pedido da Semana' },{ id:'reconciliacao', l:'🩺 Reconciliação' }].map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id as 'lista'|'dashboard'|'reconciliacao'|'semana')}
               style={{ padding:'7px 17px', fontSize:13, fontWeight:700, borderRadius:9, border:tab===t.id?'1px solid var(--bordo)':'1px solid var(--border)', background:tab===t.id?'var(--bordo)':'transparent', color:tab===t.id?'white':'var(--muted)', cursor:'pointer' }}>
               {t.l}
             </button>
@@ -1990,6 +2034,8 @@ export default function RequisoesPage() {
 
       {view==='lista'&&tab==='lista'&&<ListaView reqs={reqs} loja={loja} lojas={theme.stores||[]} podeAprovar={podeAprovar} onNova={()=>{setSel(null);setView('form')}} onDetalhe={r=>{setSel(r);setView('detalhe')}} onEditar={r=>{setSel(r);setView('form')}} onDelete={handleDelete} onAprovar={handleAbrirAprovacao} loading={loading} />}
       {view==='lista'&&tab==='dashboard'&&<DashboardView reqs={reqs} />}
+      {view==='lista'&&tab==='semana'&&<PedidoSemanaView reqs={reqs} loja={loja} />}
+      {view==='lista'&&tab==='reconciliacao'&&<ReconciliacaoView reqs={reqs} loja={loja} userName={userName} onAbrir={r=>{setSel(r);setView('detalhe')}} />}
       {view==='form'&&<FormularioView req={sel} loja={loja} userName={userName} produtos={prods} onSalvo={handleSalvo} onVoltar={()=>{setView('lista');setSel(null)}} />}
       {view==='detalhe'&&sel&&<DetalheView req={sel} loja={loja} userName={userName} produtos={prods} creditos={creds} onEditar={()=>{setSel(sel);setView('form')}} onVoltar={()=>{setView('lista');setSel(null)}} onAtualizar={handleAtualizar} toast={toast} />}
     </div>

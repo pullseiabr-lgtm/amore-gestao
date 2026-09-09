@@ -5,7 +5,7 @@ import { useLoja } from '../../contexts/LojaContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../hooks/useToast'
-import { fetchFornecedores, fetchProdutos, insertProduto } from '../../lib/db'
+import { fetchFornecedores, fetchProdutos, insertProduto, insertPedidoCompra, insertPedidoCompraItens } from '../../lib/db'
 import { enviarWhatsApp } from '../../lib/notify'
 import { siteOrigin } from '../../lib/site'
 import { UNIDADES } from '../../lib/catalogo'
@@ -203,6 +203,19 @@ export default function PedidosPage() {
       const chave = `pedido_${slugify(fForn)}_${slugify(fLoja)}_${Date.now().toString(36).slice(-6)}`
       const valor = { fornecedor: fForn.trim(), loja: fLoja, data: fData, pagamento: fPagto || null, cliente: fCliente || null, recebimento_responsavel: fReceb || null, itens, total, cancelados: [], em: new Date().toISOString(), created_by: user?.name || 'Painel' }
       await sb.from('app_config').upsert({ chave, valor }, { onConflict: 'chave' })
+      // Registro central relacional (ponte via app_config_chave). Pedido do form
+      // manual nasce sem requisição → origem 'avulso' (sinalizado na reconciliação).
+      try {
+        const pc = await insertPedidoCompra({
+          numero: null, requisicao_id: null, loja: fLoja, fornecedor: fForn.trim(),
+          status: 'aberto', origem: 'avulso', total, recebido_total: 0, baixa_feita: false,
+          app_config_chave: chave, observacoes: null, criado_por: user?.name || 'Painel',
+        })
+        await insertPedidoCompraItens(itens.map(it => ({
+          pedido_id: pc.id, requisicao_item_id: null, produto_nome: it.produto,
+          unidade: it.un || 'Unidade(s)', qtd_pedida: it.qtd, qtd_recebida: 0, preco: it.preco || null,
+        })))
+      } catch { /* registro relacional é complementar; o blob já garante o pedido */ }
       toast(cadastrados ? `Pedido gerado. ✅ ${cadastrados} produto(s) novo(s) cadastrado(s).` : 'Pedido gerado. ✅')
       setMNovo(false); resetForm(); await load()
     } catch (e) { toast('Não foi possível gerar o pedido.', 'error') }

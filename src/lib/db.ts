@@ -1226,6 +1226,16 @@ export async function fetchPedidosCompraDaRequisicao(requisicaoId: string): Prom
   return estoqueFetch('pedidos_compra', `requisicao_id=eq.${requisicaoId}&order=created_at.asc`)
 }
 
+/** Pedidos LEGADOS (blobs em app_config, chave pedido_*) — usados na reconciliação. */
+export async function fetchPedidosLegado(): Promise<{ chave: string; valor: Record<string, unknown> }[]> {
+  try {
+    const rows = await sdkCall<{ chave: string; valor: Record<string, unknown> }[]>(
+      db.from('app_config').select('chave,valor').like('chave', 'pedido_%')
+    )
+    return (rows || []).filter(r => r && typeof r.valor === 'object')
+  } catch { return [] }
+}
+
 export async function insertPedidoCompra(p: Omit<PedidoCompra, 'id' | 'created_at' | 'updated_at'>): Promise<PedidoCompra> {
   return estoquePost('pedidos_compra', p)
 }
