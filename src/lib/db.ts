@@ -1,7 +1,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { supabase } from './supabase'
 import type { NFeParsed } from './nfe'
-import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueProdutoLog, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, ChecklistModelo, ChecklistExecucao, PautaReuniao, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig, Boleto, Notificacao, Caixa, CaixaItem } from '../types/database'
+import type { Pendencia, Colaborador, Profile, TenantSettings, SalaoMesa, SalaoAtendimento, SalaoAvaliacao, SalaoAvaliacaoEquipe, SalaoChecklistItem, EstoqueProduto, EstoqueProdutoLog, EstoqueMovimentacao, EstoqueContagem, EstoqueContagemItem, Fornecedor, ComprasLista, ComprasListaItem, Requisicao, RequisicaoItem, RequisicaoCotacao, RequisicaoCotacaoItem, ReqTimeline, RequisicaoAutomatica, PedidoCompra, PedidoCompraItem, RequisicaoVersao, ReqAuditoria, CozinhaChecklist, CozinhaProducao, CozinhaDesperdicio, CozinhaFicha, CozinhaSolicitacao, MarketPriceHistory, FornecedorScore, MarketAlert, MarketTendencia, ComprasPesquisaMercado, ChecklistModelo, ChecklistExecucao, PautaReuniao, Tarefa, TarefaChecklist, TarefaComentario, TarefaHistorico, EnxovalItem, EnxovalMovimentacao, PlanejamentoEvento, PlanejamentoMeta, AtaReuniao, AtaAcao, ListaPadrao, ListaPadraoItem, ListaHistoricoPreco, ActivityLog, AlertasConfig, AprovacaoConfig, Boleto, Notificacao, Caixa, CaixaItem } from '../types/database'
 
 const db = supabase as any
 
@@ -1209,6 +1209,188 @@ export async function fetchReqTimeline(requisicaoId: string): Promise<ReqTimelin
 
 export async function insertReqTimeline(entry: Omit<ReqTimeline, 'id' | 'created_at'>): Promise<ReqTimeline> {
   return estoquePost('req_timeline', entry)
+}
+
+// ── Registro central: Pedidos de compra relacionais ─────────────────────────
+// Loja canônica dos pedidos, vinculados à requisição (requisicao_id). Convivem
+// com o blob legado app_config (pedido_*) via app_config_chave durante a transição.
+
+export async function fetchPedidosCompra(loja?: string): Promise<PedidoCompra[]> {
+  const q = loja && loja !== 'Todas as Lojas'
+    ? `loja=eq.${encodeURIComponent(loja)}&order=created_at.desc`
+    : 'order=created_at.desc'
+  return estoqueFetch('pedidos_compra', q)
+}
+
+export async function fetchPedidosCompraDaRequisicao(requisicaoId: string): Promise<PedidoCompra[]> {
+  return estoqueFetch('pedidos_compra', `requisicao_id=eq.${requisicaoId}&order=created_at.asc`)
+}
+
+export async function insertPedidoCompra(p: Omit<PedidoCompra, 'id' | 'created_at' | 'updated_at'>): Promise<PedidoCompra> {
+  return estoquePost('pedidos_compra', p)
+}
+
+export async function updatePedidoCompra(id: string, p: Partial<PedidoCompra>): Promise<PedidoCompra> {
+  return estoquePatch('pedidos_compra', id, { ...p, updated_at: new Date().toISOString() })
+}
+
+export async function fetchPedidoCompraItens(pedidoId: string): Promise<PedidoCompraItem[]> {
+  return estoqueFetch('pedido_compra_itens', `pedido_id=eq.${pedidoId}&order=created_at.asc`)
+}
+
+export async function insertPedidoCompraItens(itens: Omit<PedidoCompraItem, 'id' | 'created_at'>[]): Promise<PedidoCompraItem[]> {
+  if (!itens.length) return []
+  return restUpsert('pedido_compra_itens', itens)
+}
+
+export async function updatePedidoCompraItem(id: string, item: Partial<PedidoCompraItem>): Promise<PedidoCompraItem> {
+  return estoquePatch('pedido_compra_itens', id, item)
+}
+
+/** Numeração PC-<sig>-<ano>-###### compartilhada com o Ciclo de Compras (app_config: ciclo_pc_seq). */
+export async function gerarNumeroPC(loja: string): Promise<string> {
+  const ano = new Date().getFullYear()
+  const sig = /flow/i.test(loja || '') ? 'FL' : 'AM'
+  const seqMap = (await fetchAppConfig<Record<string, number>>('ciclo_pc_seq')) || {}
+  const prox = (Number(seqMap[String(ano)]) || 0) + 1
+  seqMap[String(ano)] = prox
+  await saveAppConfig('ciclo_pc_seq', seqMap)
+  return `PC-${sig}-${ano}-${String(prox).padStart(6, '0')}`
+}
+
+// ── Registro central: Versões (snapshots V1→V2→V3) ──────────────────────────
+
+export async function fetchRequisicaoVersoes(requisicaoId: string): Promise<RequisicaoVersao[]> {
+  return estoqueFetch('requisicao_versoes', `requisicao_id=eq.${requisicaoId}&order=versao.asc`)
+}
+
+/** Grava a foto atual (req + itens + cotações) ANTES de aplicar uma mudança. */
+export async function snapshotRequisicao(requisicaoId: string, motivo: string, usuario: string): Promise<RequisicaoVersao | null> {
+  try {
+    const reqArr = await estoqueFetch('requisicoes', `id=eq.${requisicaoId}`)
+    const req = reqArr[0]
+    if (!req) return null
+    const [itens, cotacoes, versoes] = await Promise.all([
+      fetchRequisicaoItens(requisicaoId).catch(() => [] as RequisicaoItem[]),
+      fetchRequisicaoCotacoes(requisicaoId).catch(() => [] as RequisicaoCotacao[]),
+      fetchRequisicaoVersoes(requisicaoId).catch(() => [] as RequisicaoVersao[]),
+    ])
+    const proxima = versoes.reduce((m, v) => Math.max(m, v.versao), 0) + 1
+    return await estoquePost('requisicao_versoes', {
+      requisicao_id: requisicaoId, versao: proxima,
+      snapshot: { req, itens, cotacoes }, motivo, usuario,
+    })
+  } catch { return null }
+}
+
+// ── Registro central: Auditoria campo a campo ───────────────────────────────
+
+export async function logReqAuditoria(entries: Omit<ReqAuditoria, 'id' | 'created_at'>[]): Promise<void> {
+  if (!entries.length) return
+  sdkCall<null>(db.from('req_auditoria').insert(entries)).catch(() => {}) // fire-and-forget
+}
+
+export async function fetchReqAuditoria(requisicaoId: string): Promise<ReqAuditoria[]> {
+  return estoqueFetch('req_auditoria', `requisicao_id=eq.${requisicaoId}&order=created_at.desc`)
+}
+
+// ── Salvar requisição preservando o tratamento (substitui o wipe+reinsert) ───
+// Na edição: (1) tira snapshot da versão anterior; (2) reconcilia itens por id —
+// atualiza só os campos editáveis dos existentes (mantém status/preços/aprovação/
+// bloqueio), insere os novos e faz soft-cancel dos removidos; (3) registra o diff
+// em req_auditoria. NUNCA apaga itens nem zera o tratamento.
+
+function itemPayloadReq(reqId: string, i: Partial<RequisicaoItem>): Omit<RequisicaoItem, 'id' | 'created_at'> {
+  return {
+    requisicao_id: reqId, produto_nome: i.produto_nome!, categoria: i.categoria ?? null,
+    quantidade: i.quantidade ?? 1, unidade: i.unidade || 'Unidade', preco_referencia: i.preco_referencia ?? null,
+    preco_cotado: null, preco_final: null, fornecedor_nome: i.fornecedor_nome ?? null,
+    status: 'pendente', observacoes: i.observacoes ?? null, bloqueado: false, motivo_bloqueio: null, quantidade_aprovada: null,
+  }
+}
+
+export async function salvarRequisicaoComItens(
+  reqId: string | null,
+  form: Partial<Requisicao>,
+  itens: Partial<RequisicaoItem>[],
+  usuario: string,
+): Promise<Requisicao> {
+  if (!reqId) {
+    // ── Criação ──
+    const nova = await insertRequisicao({
+      loja: form.loja!, titulo: form.titulo!, setor: form.setor ?? null,
+      responsavel_nome: form.responsavel_nome || usuario, prioridade: form.prioridade || 'media',
+      data_necessidade: form.data_necessidade ?? null, prazo_entrega: form.prazo_entrega ?? null,
+      centro_custo: form.centro_custo ?? null, total_estimado: form.total_estimado || 0, total_final: 0,
+      observacoes: form.observacoes ?? null, status: form.status || 'rascunho',
+      aprovador_nome: null, aprovador_at: null, obs_aprovacao: null, credito_id: null, created_by: usuario,
+    } as Omit<Requisicao, 'id' | 'numero' | 'created_at' | 'updated_at'>)
+    const criados = await Promise.all(itens.map(i => insertRequisicaoItem(itemPayloadReq(nova.id, i))))
+    await logReqAuditoria([{
+      requisicao_id: nova.id, entidade: 'requisicao', entidade_id: nova.id, campo: '(requisição)',
+      valor_anterior: null, valor_novo: `Requisição criada com ${criados.length} item(ns)`, acao: 'criacao', usuario,
+    }])
+    return nova
+  }
+
+  // ── Edição ── snapshot antes de qualquer mudança
+  await snapshotRequisicao(reqId, 'Edição da requisição', usuario)
+  const [antigos, antigaReqArr] = await Promise.all([
+    fetchRequisicaoItens(reqId),
+    estoqueFetch('requisicoes', `id=eq.${reqId}`),
+  ])
+  const antigaReq = (antigaReqArr[0] || {}) as Requisicao
+
+  const req = await updateRequisicao(reqId, {
+    titulo: form.titulo, setor: form.setor ?? null, responsavel_nome: form.responsavel_nome,
+    prioridade: form.prioridade, data_necessidade: form.data_necessidade ?? null,
+    prazo_entrega: form.prazo_entrega ?? null, centro_custo: form.centro_custo ?? null,
+    observacoes: form.observacoes ?? null, total_estimado: form.total_estimado, status: form.status,
+  })
+
+  const aud: Omit<ReqAuditoria, 'id' | 'created_at'>[] = []
+  const CAMPOS_REQ: (keyof Requisicao)[] = ['titulo', 'setor', 'responsavel_nome', 'prioridade', 'data_necessidade', 'prazo_entrega', 'centro_custo', 'observacoes', 'status']
+  for (const c of CAMPOS_REQ) {
+    const a = (antigaReq as unknown as Record<string, unknown>)[c as string]
+    const b = (req as unknown as Record<string, unknown>)[c as string]
+    if (String(a ?? '') !== String(b ?? '')) {
+      aud.push({ requisicao_id: reqId, entidade: 'requisicao', entidade_id: reqId, campo: String(c), valor_anterior: a == null ? null : String(a), valor_novo: b == null ? null : String(b), acao: 'alteracao', usuario })
+    }
+  }
+
+  const idsNovos = new Set(itens.filter(i => i.id).map(i => i.id))
+  for (const i of itens) {
+    if (i.id) {
+      const ant = antigos.find(o => o.id === i.id)
+      await updateRequisicaoItem(i.id, {
+        produto_nome: i.produto_nome, categoria: i.categoria ?? null, quantidade: i.quantidade,
+        unidade: i.unidade, preco_referencia: i.preco_referencia ?? null,
+        fornecedor_nome: i.fornecedor_nome ?? null, observacoes: i.observacoes ?? null,
+      })
+      if (ant) {
+        for (const c of ['produto_nome', 'quantidade', 'unidade', 'preco_referencia', 'fornecedor_nome', 'categoria'] as (keyof RequisicaoItem)[]) {
+          const a = (ant as unknown as Record<string, unknown>)[c as string]
+          const b = (i as unknown as Record<string, unknown>)[c as string]
+          if (b !== undefined && String(a ?? '') !== String(b ?? '')) {
+            aud.push({ requisicao_id: reqId, entidade: 'item', entidade_id: i.id, campo: `${ant.produto_nome}: ${String(c)}`, valor_anterior: a == null ? null : String(a), valor_novo: b == null ? null : String(b), acao: 'alteracao', usuario })
+          }
+        }
+      }
+    } else {
+      const novo = await insertRequisicaoItem(itemPayloadReq(reqId, i))
+      aud.push({ requisicao_id: reqId, entidade: 'item', entidade_id: novo.id, campo: novo.produto_nome, valor_anterior: null, valor_novo: `${novo.quantidade} ${novo.unidade}`, acao: 'criacao', usuario })
+    }
+  }
+  // Itens removidos → soft-cancel (nunca apaga)
+  for (const o of antigos) {
+    if (!idsNovos.has(o.id) && o.status !== 'cancelado') {
+      await updateRequisicaoItem(o.id, { status: 'cancelado' })
+      aud.push({ requisicao_id: reqId, entidade: 'item', entidade_id: o.id, campo: o.produto_nome, valor_anterior: `${o.quantidade} ${o.unidade}`, valor_novo: 'removido (cancelado)', acao: 'remocao', usuario })
+    }
+  }
+
+  await logReqAuditoria(aud)
+  return req
 }
 
 // ── ESTOQUE — Perdas ────────────────────────────────────────────────────────

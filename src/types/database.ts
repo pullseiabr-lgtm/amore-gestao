@@ -204,9 +204,11 @@ export interface Pendencia {
 // ── Requisições de Compra ────────────────────────────────────
 
 export type ReqStatus =
-  | 'rascunho' | 'enviada' | 'em_analise' | 'em_cotacao'
+  | 'rascunho' | 'enviada' | 'em_analise'
+  | 'aguardando_cotacao' | 'em_cotacao' | 'cotacao_recebida'
   | 'parcialmente_aprovada' | 'aprovada' | 'reprovada'
   | 'em_separacao' | 'compra_realizada' | 'prestacao_pendente' | 'em_auditoria'
+  | 'recebimento_parcial' | 'recebimento_concluido' | 'baixa_realizada'
   | 'concluida' | 'cancelada'
 
 export type ReqItemStatus = 'pendente' | 'cotado' | 'aprovado' | 'cancelado'
@@ -400,6 +402,70 @@ export interface RequisicaoCotacaoItem {
   preco_unitario: number | null
   disponivel: boolean
   observacoes: string | null
+  created_at: string
+}
+
+// ── Registro central: Pedidos relacionais, Versões e Auditoria ──
+
+export type PedidoCompraOrigem = 'requisicao' | 'avulso'
+
+export interface PedidoCompra {
+  id: string
+  numero: string | null
+  requisicao_id: string | null
+  loja: string
+  fornecedor: string | null
+  status: string
+  origem: PedidoCompraOrigem
+  total: number
+  recebido_total: number
+  baixa_feita: boolean
+  app_config_chave: string | null
+  observacoes: string | null
+  criado_por: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PedidoCompraItem {
+  id: string
+  pedido_id: string
+  requisicao_item_id: string | null
+  produto_nome: string
+  unidade: string
+  qtd_pedida: number
+  qtd_recebida: number
+  preco: number | null
+  created_at: string
+}
+
+export interface RequisicaoVersao {
+  id: string
+  requisicao_id: string
+  versao: number
+  snapshot: {
+    req?: Record<string, unknown>
+    itens?: Record<string, unknown>[]
+    cotacoes?: Record<string, unknown>[]
+  }
+  motivo: string | null
+  usuario: string | null
+  created_at: string
+}
+
+export type ReqAuditoriaAcao = 'criacao' | 'alteracao' | 'remocao' | 'vinculo'
+export type ReqAuditoriaEntidade = 'requisicao' | 'item' | 'cotacao' | 'pedido'
+
+export interface ReqAuditoria {
+  id: string
+  requisicao_id: string
+  entidade: ReqAuditoriaEntidade
+  entidade_id: string | null
+  campo: string
+  valor_anterior: string | null
+  valor_novo: string | null
+  acao: ReqAuditoriaAcao
+  usuario: string | null
   created_at: string
 }
 

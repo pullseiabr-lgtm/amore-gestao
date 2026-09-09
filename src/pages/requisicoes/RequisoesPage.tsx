@@ -10,9 +10,10 @@ import { canApproveReq } from '../../lib/permissions'
 import { useLoja } from '../../contexts/LojaContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import {
-  fetchRequisicoes, insertRequisicao, updateRequisicao, deleteRequisicao,
-  fetchRequisicaoItens, insertRequisicaoItem, updateRequisicaoItem, deleteRequisicaoItem,
-  fetchReqTimeline, insertReqTimeline,
+  fetchRequisicoes, updateRequisicao,
+  fetchRequisicaoItens, updateRequisicaoItem,
+  fetchReqTimeline, insertReqTimeline, salvarRequisicaoComItens, logReqAuditoria,
+  fetchRequisicaoVersoes, fetchReqAuditoria,
   fetchEstoqueProdutos, darEntradaEstoquePorNome,
   fetchFinCreditos, insertFinCredito,
   fetchRequisicaoCotacoes, insertRequisicaoCotacao, updateRequisicaoCotacao, deleteRequisicaoCotacao,
@@ -25,6 +26,7 @@ import type {
   Requisicao, RequisicaoItem, ReqStatus, ReqPrioridade,
   EstoqueProduto, FinCredito, FinFormaPagamento, ReqTimeline,
   RequisicaoCotacao, RequisicaoCotacaoItem, Fornecedor,
+  RequisicaoVersao, ReqAuditoria,
 } from '../../types/database'
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -56,7 +58,9 @@ const CFG_STATUS: Record<ReqStatus, { label: string; color: string; bg: string; 
   rascunho:              { label:'Rascunho',           color:'#64748b', bg:'#F1F5F9', icon:<FileText size={11} /> },
   enviada:               { label:'Aguard. Aprovação',  color:'#B45309', bg:'#FEF3C7', icon:<Send size={11} /> },
   em_analise:            { label:'Em Análise',         color:'#0369A1', bg:'#E0F2FE', icon:<Clock size={11} /> },
+  aguardando_cotacao:    { label:'Aguard. Cotação',    color:'#7C3AED', bg:'#EDE9FE', icon:<ShoppingCart size={11} /> },
   em_cotacao:            { label:'Em Cotação',         color:'#7C3AED', bg:'#EDE9FE', icon:<ShoppingCart size={11} /> },
+  cotacao_recebida:      { label:'Cotação Recebida',   color:'#7C3AED', bg:'#EDE9FE', icon:<ShoppingCart size={11} /> },
   parcialmente_aprovada: { label:'Aprov. Parcial',     color:'#CA8A04', bg:'#FEF9C3', icon:<CheckCircle2 size={11} /> },
   aprovada:              { label:'Aprovada',           color:'#15803D', bg:'#DCFCE7', icon:<Check size={11} /> },
   reprovada:             { label:'Reprovada',          color:'#DC2626', bg:'#FEE2E2', icon:<XCircle size={11} /> },
@@ -64,6 +68,9 @@ const CFG_STATUS: Record<ReqStatus, { label: string; color: string; bg: string; 
   compra_realizada:      { label:'Compra Realizada',   color:'#0891B2', bg:'#CFFAFE', icon:<ShoppingCart size={11} /> },
   prestacao_pendente:    { label:'Prestação Pendente', color:'#EA580C', bg:'#FFEDD5', icon:<Receipt size={11} /> },
   em_auditoria:          { label:'Em Auditoria',       color:'#6D28D9', bg:'#EDE9FE', icon:<AlertTriangle size={11} /> },
+  recebimento_parcial:   { label:'Receb. Parcial',     color:'#D97706', bg:'#FEF3C7', icon:<Package size={11} /> },
+  recebimento_concluido: { label:'Receb. Concluído',   color:'#0891B2', bg:'#CFFAFE', icon:<Package size={11} /> },
+  baixa_realizada:       { label:'Baixa Realizada',    color:'#0891B2', bg:'#CFFAFE', icon:<CheckCircle2 size={11} /> },
   concluida:             { label:'Finalizada',         color:'#166534', bg:'#DCFCE7', icon:<CheckCircle2 size={11} /> },
   cancelada:             { label:'Cancelada',          color:'#6B7280', bg:'#F3F4F6', icon:<X size={11} /> },
 }
@@ -550,7 +557,9 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   const [itens, setItens] = useState<RequisicaoItem[]>([])
   const [tl, setTl] = useState<ReqTimeline[]>([])
   const [loading, setLoading] = useState(true)
-  const [subTab, setSubTab] = useState<'produtos'|'cotacao'|'aprovacao'|'financeiro'|'timeline'>('produtos')
+  const [subTab, setSubTab] = useState<'produtos'|'cotacao'|'aprovacao'|'financeiro'|'timeline'|'versoes'>('produtos')
+  const [versoes, setVersoes] = useState<RequisicaoVersao[]>([])
+  const [auditoria, setAuditoria] = useState<ReqAuditoria[]>([])
   const [mAprov, setMAprov] = useState(false)
   const [mCred, setMCred] = useState(false)
   const [credVinc, setCredVinc] = useState<FinCredito|null>(null)
@@ -579,8 +588,11 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [is, t, cot] = await Promise.all([fetchRequisicaoItens(req.id), fetchReqTimeline(req.id), fetchRequisicaoCotacoes(req.id).catch(()=>[])])
-    setItens(is); setTl(t); setCotacoes(cot)
+    const [is, t, cot, vs, au] = await Promise.all([
+      fetchRequisicaoItens(req.id), fetchReqTimeline(req.id), fetchRequisicaoCotacoes(req.id).catch(()=>[]),
+      fetchRequisicaoVersoes(req.id).catch(()=>[] as RequisicaoVersao[]), fetchReqAuditoria(req.id).catch(()=>[] as ReqAuditoria[]),
+    ])
+    setItens(is); setTl(t); setCotacoes(cot); setVersoes(vs); setAuditoria(au)
     // preços por item de cada cotação (Fase 2)
     try {
       const pares = await Promise.all(cot.map(async c => [c.id, await fetchCotacaoItens(c.id).catch(()=>[] as RequisicaoCotacaoItem[])] as const))
@@ -1021,7 +1033,7 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   const canFinal   = s==='compra_realizada'||s==='prestacao_pendente'||s==='em_auditoria'
   const canCancel  = !['concluida','cancelada','compra_realizada'].includes(s)
 
-  const TABS = [{ id:'produtos', l:'🛒 Produtos' },{ id:'cotacao', l:`💰 Cotação${cotacoes.length?` (${cotacoes.length})`:''}` },{ id:'aprovacao', l:'✅ Aprovação' },{ id:'financeiro', l:'💳 Financeiro' },{ id:'timeline', l:'📅 Histórico' }] as const
+  const TABS = [{ id:'produtos', l:'🛒 Produtos' },{ id:'cotacao', l:`💰 Cotação${cotacoes.length?` (${cotacoes.length})`:''}` },{ id:'aprovacao', l:'✅ Aprovação' },{ id:'financeiro', l:'💳 Financeiro' },{ id:'timeline', l:'📅 Histórico' },{ id:'versoes', l:`🗂️ Versões${versoes.length?` (${versoes.length+1})`:''}` }] as const
 
   return (
     <div>
@@ -1566,6 +1578,60 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
             </div>}
           </div>
         </div>}
+
+        {/* VERSÕES & AUDITORIA */}
+        {subTab==='versoes'&&<div>
+          <div style={{ fontSize:12, color:'var(--muted)', marginBottom:12, background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:8, padding:'8px 12px' }}>
+            🔒 Cada edição relevante gera uma <strong>versão</strong> (foto completa da requisição) e registra o que mudou. Nada é apagado ou sobrescrito.
+          </div>
+
+          {/* Linha de versões V1 → V2 → V3 */}
+          <div style={{ marginBottom:18 }}>
+            <div style={{ fontSize:12, fontWeight:800, marginBottom:8 }}>Versões</div>
+            {versoes.length===0&&<div style={{ fontSize:12, color:'var(--muted)' }}>Sem versões anteriores — esta é a <strong>versão atual (V{1})</strong>. A primeira edição criará a V1 do histórico.</div>}
+            {versoes.length>0&&<div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+              {versoes.map(v=>{
+                const nItens = Array.isArray(v.snapshot?.itens) ? v.snapshot.itens.length : 0
+                return (
+                  <div key={v.id} style={{ border:'1px solid var(--border)', borderRadius:8, padding:'7px 11px', background:'var(--bg2)', minWidth:150 }}>
+                    <div style={{ fontSize:13, fontWeight:800, color:'var(--bordo)' }}>V{v.versao}</div>
+                    <div style={{ fontSize:10, color:'var(--muted)' }}>{fmtTs(v.created_at)}</div>
+                    <div style={{ fontSize:10, color:'var(--muted)' }}>por {v.usuario||'—'} · {nItens} item(ns)</div>
+                    {v.motivo&&<div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>{v.motivo}</div>}
+                  </div>
+                )
+              })}
+              <div style={{ border:'1px dashed var(--bordo)', borderRadius:8, padding:'7px 11px', background:'var(--card)', minWidth:150 }}>
+                <div style={{ fontSize:13, fontWeight:800, color:'#15803D' }}>V{versoes.length+1} · atual</div>
+                <div style={{ fontSize:10, color:'var(--muted)' }}>{fmtTs(req.updated_at)}</div>
+                <div style={{ fontSize:10, color:'var(--muted)' }}>{itens.length} item(ns)</div>
+              </div>
+            </div>}
+          </div>
+
+          {/* Log de auditoria campo a campo */}
+          <div>
+            <div style={{ fontSize:12, fontWeight:800, marginBottom:8 }}>Auditoria (quem · o quê · antes → depois)</div>
+            {auditoria.length===0&&<div style={{ fontSize:12, color:'var(--muted)' }}>Nenhuma alteração registrada ainda.</div>}
+            {auditoria.length>0&&<div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+                <thead><tr style={{ background:'var(--bg2)' }}>
+                  {['Data/Hora','Usuário','Campo','Antes','Depois','Ação'].map(h=><th key={h} style={{ padding:'5px 8px', textAlign:'left', fontWeight:700, fontSize:10, color:'var(--muted)', borderBottom:'1px solid var(--border)', whiteSpace:'nowrap' }}>{h}</th>)}
+                </tr></thead>
+                <tbody>{auditoria.map(a=>(
+                  <tr key={a.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                    <td style={{ padding:'5px 8px', whiteSpace:'nowrap', color:'var(--muted)' }}>{fmtTs(a.created_at)}</td>
+                    <td style={{ padding:'5px 8px', whiteSpace:'nowrap' }}>{a.usuario||'—'}</td>
+                    <td style={{ padding:'5px 8px', fontWeight:600 }}>{a.campo}</td>
+                    <td style={{ padding:'5px 8px', color:'#B91C1C' }}>{a.valor_anterior??'—'}</td>
+                    <td style={{ padding:'5px 8px', color:'#15803D' }}>{a.valor_novo??'—'}</td>
+                    <td style={{ padding:'5px 8px' }}><span style={{ fontSize:9, fontWeight:700, padding:'1px 6px', borderRadius:10, background:'var(--bg2)', color:'var(--muted)', textTransform:'uppercase' }}>{a.acao}</span></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>}
+          </div>
+        </div>}
       </>}
 
       {mAprov&&<ModalAprovacao req={req} itens={itens} userName={userName} onSalvo={handleAprov} onFechar={()=>setMAprov(false)} />}
@@ -1717,13 +1783,25 @@ function ListaView({ reqs, loja, lojas, podeAprovar, onNova, onDetalhe, onEditar
   const [fSt, setFSt] = useState<ReqStatus|''>('')
   const [fPr, setFPr] = useState<ReqPrioridade|''>('')
   const [fLj, setFLj] = useState(loja==='Todas as Lojas'?'':loja)
+  const [fSetor, setFSetor] = useState('')
+  const [fResp, setFResp] = useState('')
+  const [dtIni, setDtIni] = useState('')
+  const [dtFim, setDtFim] = useState('')
+
+  const setores = Array.from(new Set(reqs.map(r=>r.setor).filter(Boolean))) as string[]
+  const responsaveis = Array.from(new Set(reqs.map(r=>r.responsavel_nome).filter(Boolean))) as string[]
 
   const pendAprov = (r:Requisicao)=> r.status==='enviada'||r.status==='em_analise'
   const fil = reqs.filter(r=>{
     if (fSt && r.status!==fSt) return false
     if (fPr && r.prioridade!==fPr) return false
     if (fLj && r.loja!==fLj) return false
-    if (srch) { const q=srch.toLowerCase(); return r.titulo.toLowerCase().includes(q)||r.responsavel_nome.toLowerCase().includes(q)||String(r.numero).includes(q) }
+    if (fSetor && r.setor!==fSetor) return false
+    if (fResp && r.responsavel_nome!==fResp) return false
+    const dia = (r.created_at||'').slice(0,10)
+    if (dtIni && dia < dtIni) return false
+    if (dtFim && dia > dtFim) return false
+    if (srch) { const q=srch.toLowerCase(); return r.titulo.toLowerCase().includes(q)||r.responsavel_nome.toLowerCase().includes(q)||String(r.numero).includes(q)||`req-${String(r.numero).padStart(4,'0')}`.includes(q) }
     return true
   }).sort((a,b)=>{
     // pendentes de análise/aprovação SEMPRE em destaque no topo
@@ -1752,6 +1830,17 @@ function ListaView({ reqs, loja, lojas, podeAprovar, onNova, onDetalhe, onEditar
           <option value="">Todas as lojas</option>
           {lojas.map(l=><option key={l}>{l}</option>)}
         </select>}
+        <select className="form-input" style={{ width:130 }} value={fSetor} onChange={e=>setFSetor(e.target.value)}>
+          <option value="">Todos os setores</option>
+          {setores.map(s=><option key={s}>{s}</option>)}
+        </select>
+        <select className="form-input" style={{ width:150 }} value={fResp} onChange={e=>setFResp(e.target.value)}>
+          <option value="">Todos responsáveis</option>
+          {responsaveis.map(s=><option key={s}>{s}</option>)}
+        </select>
+        <input className="form-input" type="date" title="Data inicial" style={{ width:140 }} value={dtIni} onChange={e=>setDtIni(e.target.value)} />
+        <input className="form-input" type="date" title="Data final" style={{ width:140 }} value={dtFim} onChange={e=>setDtFim(e.target.value)} />
+        {(fSt||fPr||fSetor||fResp||dtIni||dtFim||srch)&&<button className="ib" title="Limpar filtros" onClick={()=>{setSrch('');setFSt('');setFPr('');setFSetor('');setFResp('');setDtIni('');setDtFim('')}}><X size={13}/> Limpar</button>}
         <button className="btn" onClick={onNova} style={{ marginLeft:'auto', flexShrink:0 }}><Plus size={13}/> Nova Requisição</button>
       </div>
 
@@ -1846,26 +1935,34 @@ export default function RequisoesPage() {
   useEffect(() => { loadAll() }, [loadAll])
 
   const handleSalvo = async (formData: Partial<Requisicao>, itens: Partial<RequisicaoItem>[], submit: boolean) => {
-    let req: Requisicao
-    if (sel?.id) {
-      req = await updateRequisicao(sel.id, { ...formData, status:submit?'enviada':(formData.status||'rascunho') })
-      const old = await fetchRequisicaoItens(req.id)
-      for (const o of old) await deleteRequisicaoItem(o.id)
-    } else {
-      req = await insertRequisicao({ loja:formData.loja!, titulo:formData.titulo!, setor:formData.setor||null, responsavel_nome:formData.responsavel_nome||userName, prioridade:formData.prioridade||'media', data_necessidade:formData.data_necessidade||null, prazo_entrega:formData.prazo_entrega||null, centro_custo:formData.centro_custo||null, total_estimado:formData.total_estimado||0, total_final:0, observacoes:formData.observacoes||null, status:submit?'enviada':'rascunho', aprovador_nome:null, aprovador_at:null, obs_aprovacao:null, credito_id:null, created_by:userName })
+    const editando = !!sel?.id
+    // Salva preservando o tratamento: na edição tira snapshot da versão anterior,
+    // reconcilia itens por id (nunca apaga/recria) e registra o diff na auditoria.
+    const req = await salvarRequisicaoComItens(
+      sel?.id ?? null,
+      { ...formData, status: submit ? 'enviada' : (formData.status || 'rascunho') },
+      itens,
+      userName,
+    )
+    if (!editando) {
       await insertReqTimeline({ requisicao_id:req.id, tipo:'criacao', descricao:`Requisição criada por ${userName}`, usuario:userName, dados:null })
-    }
-    for (const item of itens) {
-      await insertRequisicaoItem({ requisicao_id:req.id, produto_nome:item.produto_nome!, categoria:item.categoria||null, quantidade:item.quantidade!, unidade:item.unidade||'Unidade', preco_referencia:item.preco_referencia||null, preco_cotado:null, preco_final:null, fornecedor_nome:item.fornecedor_nome||null, status:'pendente', observacoes:item.observacoes||null, bloqueado:false, motivo_bloqueio:null, quantidade_aprovada:null })
+    } else {
+      await insertReqTimeline({ requisicao_id:req.id, tipo:'ajuste', descricao:`Requisição editada por ${userName} (nova versão salva)`, usuario:userName, dados:null })
     }
     if (submit) await insertReqTimeline({ requisicao_id:req.id, tipo:'envio', descricao:`Enviada para aprovação por ${userName}`, usuario:userName, dados:null })
-    setReqs(p=>sel?.id?p.map(r=>r.id===req.id?req:r):[req,...p])
-    toast(submit?'Enviada para aprovação!':'Rascunho salvo!'); setView('lista'); setSel(null)
+    setReqs(p=>editando?p.map(r=>r.id===req.id?req:r):[req,...p])
+    toast(submit?'Enviada para aprovação!':(editando?'Alterações salvas (histórico preservado).':'Rascunho salvo!')); setView('lista'); setSel(null)
   }
 
+  // Regra de segurança (ponto #8): requisição NUNCA é apagada — vira "Cancelada"
+  // e permanece no histórico, com timeline e auditoria.
   const handleDelete = async (id: string) => {
-    if (!confirm('Excluir esta requisição?')) return
-    await deleteRequisicao(id); setReqs(p=>p.filter(r=>r.id!==id)); toast('Excluída.')
+    if (!confirm('Cancelar esta requisição? Ela permanecerá no histórico como "Cancelada".')) return
+    const alvo = reqs.find(r=>r.id===id)
+    const u = await updateRequisicao(id, { status:'cancelada' })
+    await insertReqTimeline({ requisicao_id:id, tipo:'reprovacao', descricao:`Requisição cancelada por ${userName}`, usuario:userName, dados:null })
+    await logReqAuditoria([{ requisicao_id:id, entidade:'requisicao', entidade_id:id, campo:'status', valor_anterior:alvo?.status??null, valor_novo:'cancelada', acao:'alteracao', usuario:userName }])
+    setReqs(p=>p.map(r=>r.id===id?u:r)); toast('Requisição cancelada (mantida no histórico).')
   }
 
   const handleAtualizar = (u: Requisicao) => { setReqs(p=>p.map(r=>r.id===u.id?u:r)); setSel(u) }

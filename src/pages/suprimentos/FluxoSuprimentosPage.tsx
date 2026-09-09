@@ -25,10 +25,10 @@ type EtapaId = 'solicitacao' | 'cotacao' | 'aprovacao' | 'pedido' | 'recebimento
 
 const ETAPAS: { id: EtapaId; label: string; cor: string; bg: string; status: ReqStatus[] }[] = [
   { id: 'solicitacao', label: '1 · Solicitação',        cor: '#64748b', bg: '#f1f5f9', status: ['rascunho'] },
-  { id: 'cotacao',     label: '2 · Cotação',            cor: '#7c3aed', bg: '#ede9fe', status: ['em_cotacao', 'em_analise'] },
+  { id: 'cotacao',     label: '2 · Cotação',            cor: '#7c3aed', bg: '#ede9fe', status: ['aguardando_cotacao', 'em_cotacao', 'cotacao_recebida', 'em_analise'] },
   { id: 'aprovacao',   label: '3 · Aprovação',          cor: '#ca8a04', bg: '#fef9c3', status: ['enviada', 'parcialmente_aprovada', 'aprovada', 'reprovada'] },
   { id: 'pedido',      label: '4 · Pedido / Compra',    cor: '#0891b2', bg: '#cffafe', status: ['em_separacao', 'compra_realizada'] },
-  { id: 'recebimento', label: '5 · Recebim. / Fiscal',  cor: '#ea580c', bg: '#ffedd5', status: ['prestacao_pendente', 'em_auditoria'] },
+  { id: 'recebimento', label: '5 · Recebim. / Fiscal',  cor: '#ea580c', bg: '#ffedd5', status: ['prestacao_pendente', 'em_auditoria', 'recebimento_parcial', 'recebimento_concluido', 'baixa_realizada'] },
   { id: 'finalizado',  label: '6 · Finalizado',         cor: '#16a34a', bg: '#dcfce7', status: ['concluida'] },
 ]
 
@@ -100,10 +100,12 @@ function nivelAprovadoPor(r: Requisicao, n: NivelAprovacao): string | null | und
 }
 
 const STATUS_LABEL: Record<ReqStatus, string> = {
-  rascunho: 'Rascunho', enviada: 'Aguard. aprovação', em_analise: 'Em análise', em_cotacao: 'Em cotação',
+  rascunho: 'Rascunho', enviada: 'Aguard. aprovação', em_analise: 'Em análise',
+  aguardando_cotacao: 'Aguard. cotação', em_cotacao: 'Em cotação', cotacao_recebida: 'Cotação recebida',
   parcialmente_aprovada: 'Aprov. parcial', aprovada: 'Aprovada', reprovada: 'Reprovada',
   em_separacao: 'Em separação', compra_realizada: 'Compra realizada', prestacao_pendente: 'Prestação pendente',
-  em_auditoria: 'Em auditoria', concluida: 'Finalizada', cancelada: 'Cancelada',
+  em_auditoria: 'Em auditoria', recebimento_parcial: 'Receb. parcial', recebimento_concluido: 'Receb. concluído',
+  baixa_realizada: 'Baixa realizada', concluida: 'Finalizada', cancelada: 'Cancelada',
 }
 
 const PRIO: Record<ReqPrioridade, { label: string; cor: string }> = {
