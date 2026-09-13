@@ -58,6 +58,13 @@ function matchProduto(nome: string, list: any[]) {
   return bestScore >= 2 ? best : null
 }
 const qtdEstoque = (it: any) => (Number(it.quantidade) || 0) * (Number(it.conteudo) || 1)
+// casa o nome de um item recebido (NF) com o nome de um item do pedido (>=2 tokens, ou 1 token único)
+function casaNome(a: string, b: string) {
+  const ta = tok(a); if (!ta.length) return false
+  const tb = ' ' + norm(b) + ' '
+  let score = 0; for (const t of ta) if (tb.includes(' ' + t) || tb.includes(t + ' ')) score++
+  return score >= 2 || (ta.length === 1 && score === 1)
+}
 
 export default function RecebimentoPage() {
   const { toast } = useToast()
@@ -82,6 +89,14 @@ export default function RecebimentoPage() {
   // desvios por item: { [idx]: { tipo, descricao, foto_url, qtd_esperada, qtd_recebida, uploading } }
   const [desvios, setDesvios] = useState<Record<number, any>>({})
   const [desvioOpen, setDesvioOpen] = useState<Set<number>>(new Set())
+  // vínculo opcional com um pedido de compra → baixa relacional (qtd_recebida) p/ o ciclo da requisição
+  const [pedidosAbertos, setPedidosAbertos] = useState<any[]>([])
+  const [pedidoSel, setPedidoSel] = useState('')
+  const loadPedidosAbertos = useCallback(async (lj: string) => {
+    const { data } = await sb.from('pedidos_compra').select('id,numero,fornecedor,total,requisicao_id,created_at').eq('loja', lj).eq('baixa_feita', false).order('created_at', { ascending: false }).limit(80)
+    setPedidosAbertos(data || [])
+  }, [])
+  useEffect(() => { loadPedidosAbertos(loja); setPedidoSel('') }, [loja, loadPedidosAbertos])
 
   const loadRecs = useCallback(async () => { const { data } = await sb.from('recebimentos').select('*').order('created_at', { ascending: false }).limit(20); setRecs(data || []) }, [])
   useEffect(() => { loadRecs() }, [loadRecs])
@@ -111,6 +126,14 @@ export default function RecebimentoPage() {
       const its = (d.itens || []).map((x: any) => ({ ...x, conteudo: x.conteudo || 1, recebido: x.quantidade ?? '' }))
       setCab({ fornecedor: '', cnpj: '', numero_nota: '', serie: '', data_emissao: '', valor_total: '', forma_pagamento: '', ...(d.cabecalho || {}) })
       setItens(its)
+      // tenta pré-vincular a um pedido aberto pelo fornecedor lido na nota (se houver 1 candidato claro)
+      try {
+        const fornOCR = norm((d.cabecalho || {}).fornecedor || '')
+        if (fornOCR && !pedidoSel) {
+          const cand = pedidosAbertos.filter(p => { const pf = norm(p.fornecedor || ''); return pf && (pf.includes(fornOCR) || fornOCR.includes(pf)) })
+          if (cand.length === 1) setPedidoSel(cand[0].id)
+        }
+      } catch { /* ignore */ }
       const prods = await fetchProdutos(loja); setProdEstoque(prods)
       setEstoqueRows(its.map((it: any) => {
         const m = matchProduto(it.produto, prods)
@@ -163,6 +186,36 @@ export default function RecebimentoPage() {
   const nDesvios = Object.values(desvios).filter((d: any) => d?.tipo).length
   const nDiverg = itens.filter(it => { const d = difItem(it); return d.has && !d.ok }).length
 
+  // Dá baixa relacional: soma o "recebido" da nota nos itens do pedido (por nome), atualiza qtd_recebida
+  // + recalcula recebido_total/status do pedido. Retorna quantos itens do pedido foram baixados.
+  const baixarNoPedido = async (pedidoId: string): Promise<number> => {
+    try {
+      const { data: pit } = await sb.from('pedido_compra_itens').select('id,produto_nome,qtd_pedida,qtd_recebida').eq('pedido_id', pedidoId)
+      if (!pit?.length) return 0
+      const recs = itens.filter(it => Number(it.recebido) > 0).map(it => ({ nome: it.produto, q: Number(it.recebido) }))
+      const usados = new Set<number>()
+      let baixados = 0
+      for (const pi of pit) {
+        const idx = recs.findIndex((r, k) => !usados.has(k) && casaNome(r.nome, pi.produto_nome))
+        if (idx < 0) continue
+        usados.add(idx)
+        const nova = (Number(pi.qtd_recebida) || 0) + recs[idx].q
+        await sb.from('pedido_compra_itens').update({ qtd_recebida: nova }).eq('id', pi.id)
+        baixados++
+      }
+      const { data: pit2 } = await sb.from('pedido_compra_itens').select('qtd_pedida,qtd_recebida').eq('pedido_id', pedidoId)
+      const totPed = (pit2 || []).reduce((s: number, x: any) => s + (Number(x.qtd_pedida) || 0), 0)
+      const totRec = (pit2 || []).reduce((s: number, x: any) => s + (Number(x.qtd_recebida) || 0), 0)
+      const done = totPed > 0 && totRec >= totPed
+      // recebido_total é MONETÁRIO no restante do sistema (ver RequisoesPage): só gravamos quando concluído (= total do pedido); parcial mexe só no status
+      const pedTotal = (pedidosAbertos.find(p => p.id === pedidoId) || {}).total
+      const patch: any = { status: done ? 'recebido' : 'recebido_parcial', baixa_feita: done }
+      if (done && pedTotal != null) patch.recebido_total = pedTotal
+      await sb.from('pedidos_compra').update(patch).eq('id', pedidoId)
+      return baixados
+    } catch { return 0 }
+  }
+
   const confirmar = async () => {
     if (!itens.length) { toast('Nenhum item para confirmar.', 'error'); return }
     if (!anexo?.url) { toast('Anexe o documento fiscal (NF/recibo) — é obrigatório para dar entrada.', 'error'); return }
@@ -188,11 +241,14 @@ export default function RecebimentoPage() {
         p_estoque, p_conferente, p_observacao: obsGeral || null, p_ocorrencias,
       })
       if (error || !data?.ok) { toast('Erro ao confirmar: ' + (error?.message || 'tente novamente'), 'error'); setBusy(''); return }
+      // Baixa relacional no pedido vinculado (Recebido por item → ciclo da requisição). Complementar: não bloqueia o recebimento.
+      let baixaMsg = ''
+      if (pedidoSel) { const n = await baixarNoPedido(pedidoSel); if (n > 0) baixaMsg = ` · ${n} item(ns) baixado(s) no pedido` }
       if (data.status === 'pendente_aprovacao')
-        toast(`Recebimento registrado com ${data.retidos} item(ns) retido(s) por divergência — aguardando aprovação. ⏳`)
+        toast(`Recebimento registrado com ${data.retidos} item(ns) retido(s) por divergência — aguardando aprovação. ⏳${baixaMsg}`)
       else
-        toast(`Recebimento confirmado! Despesa nº ${data.prestacao} · ABC atualizada${data.estoque ? ` · ${data.estoque} no estoque 📦` : ''} ✅`)
-      setFile(null); setAnexo(null); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral(''); setAssinatura(''); loadRecs()
+        toast(`Recebimento confirmado! Despesa nº ${data.prestacao} · ABC atualizada${data.estoque ? ` · ${data.estoque} no estoque 📦` : ''}${baixaMsg} ✅`)
+      setFile(null); setAnexo(null); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral(''); setAssinatura(''); setPedidoSel(''); loadRecs(); loadPedidosAbertos(loja)
     } catch (e: any) { toast('Falha ao confirmar: ' + (e?.message || ''), 'error') }
     setBusy('')
   }
@@ -246,6 +302,15 @@ export default function RecebimentoPage() {
           {[['fornecedor', 'Fornecedor'], ['cnpj', 'CNPJ'], ['numero_nota', 'Nº da nota'], ['serie', 'Série'], ['data_emissao', 'Data emissão'], ['valor_total', 'Valor total'], ['forma_pagamento', 'Forma pgto']].map(([k, l]) => (
             <div key={k}><label style={{ fontSize: 11, color: '#9ca3af' }}>{l}</label><input style={inp} value={cab[k] ?? ''} onChange={e => setCab({ ...cab, [k]: e.target.value })} /></div>
           ))}
+        </div>
+
+        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: pedidoSel ? '#F0FDF4' : '#faf8f5', border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 12px' }}>
+          <label style={{ fontSize: 12.5, fontWeight: 700, color: '#6B1212', display: 'flex', alignItems: 'center', gap: 6 }}>🔗 Vincular ao pedido</label>
+          <select value={pedidoSel} onChange={e => setPedidoSel(e.target.value)} style={{ ...inp, width: 'auto', minWidth: 280 }}>
+            <option value="">— não vincular (só entrada no estoque) —</option>
+            {pedidosAbertos.map(p => <option key={p.id} value={p.id}>{(p.numero || 'PED')} · {p.fornecedor || '—'} · {fmt(p.total)}</option>)}
+          </select>
+          <span style={{ fontSize: 11, color: '#9ca3af' }}>Ao confirmar, dá baixa no pedido (coluna “Recebido” por item no ciclo da requisição).</span>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '16px 0 8px' }}>
