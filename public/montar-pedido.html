@@ -442,6 +442,12 @@ async function gerarPedidos(){
     const valor={fornecedor:gr.forn,loja:LOJA,data:new Date().toISOString().slice(0,10),pagamento:'à vista',cliente:null,recebimento_responsavel:receb,itens,total,cancelados:[],em:new Date().toISOString(),created_by:'Gestão da Lista de Compras',origem:'requisicao'};
     try{const r=await fetch(SB+'/rest/v1/app_config',{method:'POST',headers:{...H,Prefer:'resolution=merge-duplicates'},body:JSON.stringify({chave,valor})});if(r.ok)ok++;else fail++;}catch(e){fail++;}
   }
+  // Atualiza o STATUS das requisições cujos itens entraram no pedido → "compra_realizada"
+  // (só a partir de estados pré-compra; não rebaixa recebimento/concluída).
+  const reqNums=[...new Set(sel.flatMap(r=>String(r.reqNum||'').match(/\d+/g)||[]).map(n=>parseInt(n,10)).filter(Boolean))];
+  if(ok>0 && reqNums.length){
+    try{ await fetch(SB+'/rest/v1/requisicoes?loja=eq.'+encodeURIComponent(LOJA)+'&numero=in.('+reqNums.join(',')+')&status=in.(enviada,em_analise,aguardando_cotacao,em_cotacao,cotacao_recebida,parcialmente_aprovada,aprovada,em_separacao)',{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({status:'compra_realizada'})}); }catch(e){}
+  }
   ROWS.forEach(r=>{if(r.pedir)r.pedir=false;});
   if(ok>0){
     await load();                       // atualiza consolidação + lista de pedidos
