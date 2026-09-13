@@ -13,6 +13,7 @@
 header.top{border-bottom:2px solid var(--vinho);padding-bottom:14px;margin-bottom:14px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
 h1{font-size:22px;margin:6px 0 4px}.sub{color:var(--muted);font-size:13px}
+.pcbadge{display:inline-block;vertical-align:middle;margin-left:8px;font-size:12px;font-weight:800;letter-spacing:.02em;color:var(--vinho);background:color-mix(in srgb,var(--vinho) 10%,var(--card));border:1px solid color-mix(in srgb,var(--vinho) 30%,var(--border));border-radius:8px;padding:2px 9px}
 .btn{border:1px solid var(--vinho);background:var(--vinho);color:#fff;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer}
 .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0 18px}
 .meta div{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 12px}
@@ -99,11 +100,15 @@ async function run(){
   const d=row.valor;
   const flow=/flow/i.test(d.loja||''); const MARCA=flow?'Flow':'Amore';
   if(flow){ document.documentElement.style.setProperty('--vinho','#2E7D34'); document.title='Pedido de Compra — Flow'; }
+  const numPed=d.numero_pedido||'';
+  const reqNum=(d.requisicao_numero!=null)?('REQ-'+String(d.requisicao_numero).padStart(4,'0')):'';
   const rows=(d.itens||[]).map((i,n)=>'<tr><td class="num">'+(n+1)+'</td><td class="prod">'+esc(i.produto)+'</td><td class="num">'+qf(i.qtd)+' <span class="un">'+esc(i.un||'')+'</span></td><td class="num">'+brl(i.preco)+'</td><td class="num">'+brl(i.subtotal!=null?i.subtotal:(i.preco*i.qtd))+'</td></tr>').join('');
   const total=d.total!=null?d.total:(d.itens||[]).reduce((s,i)=>s+(i.subtotal!=null?i.subtotal:i.preco*i.qtd),0);
   document.getElementById('app').innerHTML=
-   '<header class="top"><div>'+(flow?'<div style="margin-bottom:6px">'+LOGO_FLOW+'</div>':'')+'<div class="eyebrow">'+MARCA+' · Pedido de Compra</div><h1>'+esc(d.fornecedor||'Fornecedor')+'</h1><div class="sub">'+esc(d.loja||'')+' · '+fD(d.data)+(d.pagamento?' · '+esc(d.pagamento):'')+'</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="editarPedido()">✏️ Editar</button><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></div></header>'
+   '<header class="top"><div>'+(flow?'<div style="margin-bottom:6px">'+LOGO_FLOW+'</div>':'')+'<div class="eyebrow">'+MARCA+' · Pedido de Compra'+(numPed?' · Nº '+esc(numPed):'')+'</div><h1>'+esc(d.fornecedor||'Fornecedor')+(numPed?' <span class="pcbadge">'+esc(numPed)+'</span>':'')+'</h1><div class="sub">'+esc(d.loja||'')+' · '+fD(d.data)+(d.pagamento?' · '+esc(d.pagamento):'')+(reqNum?' · Origem: '+esc(reqNum):'')+'</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="editarPedido()">✏️ Editar</button><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></div></header>'
    +'<div class="meta">'
+     +(numPed?'<div><div class="l">Nº do Pedido</div><div class="v" style="color:var(--vinho)">'+esc(numPed)+'</div></div>':'')
+     +(reqNum?'<div><div class="l">Requisição de origem</div><div class="v">'+esc(reqNum)+'</div></div>':'')
      +(d.cliente?'<div><div class="l">Cliente</div><div class="v">'+esc(d.cliente)+'</div></div>':'')
      +'<div><div class="l">Itens</div><div class="v">'+(d.itens||[]).length+'</div></div>'
      +((d.janela_entrega||d.data)?'<div><div class="l">Entrega</div><div class="v">'+fD(d.janela_entrega||d.data)+'</div></div>':'')
@@ -117,7 +122,7 @@ async function run(){
    +recebimentoHTML(d)
    +'<div class="foot">Pedido gerado pelo Painel Amore. Confira quantidades, validade e estado no recebimento. Qualquer divergência, sinalizar ao comprador.</div>';
   window.__ped={chave:chave,d:d};
-  document.title='Pedido '+(d.fornecedor||'')+' — '+(d.loja||'');
+  document.title=(numPed?numPed+' · ':'')+'Pedido '+(d.fornecedor||'')+' — '+(d.loja||'');
 }
 // ===== EDIÇÃO DO PEDIDO (ajustar itens direto no link) =====
 function numBR(s){ if(typeof s==='number')return s; s=String(s==null?'':s).trim(); if(!s)return 0; if(s.indexOf(',')>=0)s=s.replace(/\./g,'').replace(',','.'); var n=Number(s.replace(/[^0-9.\-]/g,'')); return isNaN(n)?0:n; }
