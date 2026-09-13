@@ -132,7 +132,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));const rnd=(a,b)=>a+Math.floor(M
 const nomeLoja=l=>({'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'})[l]||l;
 function show(m,ok){const e=el('msg');e.textContent=m;e.className='msg '+(ok?'ok':'err');}
 function lojaMatch(pedLoja,sel){pedLoja=pedLoja||'';if(sel==='Flow CD')return /flow/i.test(pedLoja);if(sel==='Amore CD')return pedLoja==='Amore CD'||/amore costa dourada/i.test(pedLoja);if(sel==='Amore Paiva')return pedLoja==='Amore Paiva';return false;}
-let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],RECEBIDOS=[],ESTQ={},TOTALPED=0,FILTRO='',ROWS=[],REQNUM=null,REQID='',REQIDS=[],REQINFO='',REQDATE='',OVKEY='',VIEW='gestao',PERLABEL='',NPED=0,PEDLIST=[],SHOWEXCL=false,FREQ='',FFORN='',FPROD='';
+let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],RECEBIDOS=[],ESTQ={},REL={},TOTALPED=0,FILTRO='',ROWS=[],REQNUM=null,REQID='',REQIDS=[],REQINFO='',REQDATE='',OVKEY='',VIEW='gestao',PERLABEL='',NPED=0,PEDLIST=[],SHOWEXCL=false,FREQ='',FFORN='',FPROD='';
 // chave semanal (ISO week) — baixas valem por semana e renovam sozinhas na semana seguinte
 function isoWeek(d){d=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=d.getUTCDay()||7;d.setUTCDate(d.getUTCDate()+4-day);const y0=new Date(Date.UTC(d.getUTCFullYear(),0,1));const wk=Math.ceil(((d-y0)/864e5+1)/7);return d.getUTCFullYear()+'w'+String(wk).padStart(2,'0');}
 
@@ -160,13 +160,23 @@ async function load(){
       // consolida por nome de produto (soma quantidades quando repetido) + guarda de qual requisição veio
       const acc={};
       for(const i of (its||[])){const k=norm(i.produto_nome);if(!k)continue;
-        if(!acc[k]){acc[k]={produto:i.produto_nome,qtd:Number(i.quantidade)||0,un:i.unidade,categoria:i.categoria,reqs:{},reqItemId:i.id,reqIdPrimary:i.requisicao_id};}
-        else{acc[k].qtd+=Number(i.quantidade)||0; if(!acc[k].categoria&&i.categoria)acc[k].categoria=i.categoria; if(!acc[k].un&&i.unidade)acc[k].un=i.unidade;}
+        if(!acc[k]){acc[k]={produto:i.produto_nome,qtd:Number(i.quantidade)||0,un:i.unidade,categoria:i.categoria,reqs:{},reqItemId:i.id,reqIdPrimary:i.requisicao_id,itemIds:[i.id]};}
+        else{acc[k].qtd+=Number(i.quantidade)||0; acc[k].itemIds.push(i.id); if(!acc[k].categoria&&i.categoria)acc[k].categoria=i.categoria; if(!acc[k].un&&i.unidade)acc[k].un=i.unidade;}
         const rm=reqMap[i.requisicao_id]; if(rm)acc[k].reqs[rm.num]=rm.dt;
       }
       // rastreabilidade: nº da requisição de compra + dia em que foi gerada
       Object.values(acc).forEach(a=>{const nums=Object.keys(a.reqs).sort((x,y)=>Number(x)-Number(y));a.reqNum=nums.map(n=>'REQ-'+String(n).padStart(4,'0')).join(', ');a.reqDia=nums.map(n=>dmy(a.reqs[n])).join(', ');});
       solItens=Object.values(acc);
+      // COMPRADO/RECEBIDO PRECISO (relacional): soma qtd_pedida/qtd_recebida dos pedido_compra_itens
+      // ligados aos itens destas requisições (por requisicao_item_id). É a fonte autoritativa do "já comprado".
+      REL={};
+      try{
+        const allIds=[]; solItens.forEach(s=>{(s.itemIds||[]).forEach(id=>allIds.push(id));});
+        if(allIds.length){
+          const pci=await (await fetch(SB+'/rest/v1/pedido_compra_itens?requisicao_item_id=in.('+allIds.join(',')+')&select=requisicao_item_id,qtd_pedida,qtd_recebida&limit=8000',{headers:H})).json();
+          for(const it of (pci||[])){const id=it.requisicao_item_id;if(!id)continue;if(!REL[id])REL[id]={c:0,r:0};REL[id].c+=Number(it.qtd_pedida)||0;REL[id].r+=Number(it.qtd_recebida)||0;}
+        }
+      }catch(e){}
     }
   }catch(e){}
   // fallback: solicitação antiga (app_config) se a loja ainda não tiver requisição
@@ -228,10 +238,14 @@ function entregaStatus(r){const qc=nb(r.qComprada),qr=nb(r.qRecebida);if(qc<=0)r
 // "falta estoque" por produto: nível atual ≤ mínimo no estoque da loja
 function faltaEstoque(r){const e=ESTQ[norm(r.produto)];return !!e&&e.a<=e.m;}
 function faltaEstTag(r){const e=ESTQ[norm(r.produto)];if(!e||e.a>e.m)return '';return ` <span class="st no" style="font-size:9px;padding:1px 6px" title="Estoque atual ${e.a} ≤ mínimo ${e.m} — repor">🔴 falta estoque</span>`;}
-function compute(){ROWS=SOLIC.map(si=>{const m=matchOne(si.produto);const o=OVER[norm(si.produto)]||{};const b=m.best||{};const rec=somaRecebida(si.produto);return {...si,m,_recAuto:rec,qRecebida:(o.qRecebida!=null?o.qRecebida:(rec>0?rec:'')),
+function compute(){ROWS=SOLIC.map(si=>{const m=matchOne(si.produto);const o=OVER[norm(si.produto)]||{};const b=m.best||{};const rec=somaRecebida(si.produto);
+  // relacional (autoritativo): se o item da requisição já tem pedido_compra_item, ele está COMPRADO
+  let relC=0,relR=0;(si.itemIds||[]).forEach(id=>{const x=REL[id];if(x){relC+=x.c;relR+=x.r;}});
+  const recEf=(relR>0?relR:rec);
+  return {...si,m,_relC:relC,_recAuto:recEf,qRecebida:(o.qRecebida!=null?o.qRecebida:(recEf>0?recEf:'')),
   _key:norm(si.produto),_op:si.produto,_oq:si.qtd,_ou:si.un,
   produto:(o.produto!=null?o.produto:si.produto),qtd:(o.qtd!=null?o.qtd:si.qtd),un:(o.un!=null?o.un:si.un),
-  qComprada:(o.qComprada!=null?o.qComprada:(m.qsum?m.qsum:'')),
+  qComprada:(o.qComprada!=null?o.qComprada:(relC>0?relC:(m.qsum?m.qsum:''))),
   manual:(typeof o.comprado==='boolean'?o.comprado:undefined),
   forn:(o.forn!=null?o.forn:(m.forns&&m.forns.length?m.forns.join(', '):'')),
   wpp:o.whatsapp||'',
@@ -328,7 +342,7 @@ async function excluirItem(i){const r=ROWS[i];if(!confirm('Excluir este item da 
 async function restaurarItem(i){const r=ROWS[i];r.excluido=false;const ok=await salvar(true);render();show(ok?'↩︎ Item restaurado: '+esc(r.produto):'Falha ao salvar.',ok);}
 async function salvar(silent){
   // deltas desta lista (o que o usuário mudou nesta tela)
-  const local={};for(const r of ROWS){const o={};if(r.produto!==r._op)o.produto=r.produto;if(String(r.qtd)!==String(r._oq))o.qtd=r.qtd;if(r.un!==r._ou)o.un=r.un;if(r.qComprada!==''&&String(r.qComprada)!==String(r.m.qsum||''))o.qComprada=r.qComprada;if(String(r.qRecebida==null?'':r.qRecebida)!==String(r._recAuto>0?r._recAuto:''))o.qRecebida=r.qRecebida;if((r.forn||'')!=='')o.forn=r.forn;if(r.wpp)o.whatsapp=r.wpp;if((r.vUnit||'')!=='')o.vUnit=r.vUnit;if((r.vTotal||'')!=='')o.vTotal=r.vTotal;if((r.entrega||'')!=='')o.entrega=r.entrega;if((r.dataPed||'')!=='')o.dataPed=r.dataPed;if(typeof r.manual==='boolean')o.comprado=r.manual;if(r.excluido)o.excluido=true;else if(r._hadExcl)o.excluido=false;if(Object.keys(o).length)local[r._key||norm(r.produto)]=o;}
+  const local={};for(const r of ROWS){const o={};if(r.produto!==r._op)o.produto=r.produto;if(String(r.qtd)!==String(r._oq))o.qtd=r.qtd;if(r.un!==r._ou)o.un=r.un;if(r.qComprada!==''&&String(r.qComprada)!==String(r._relC>0?r._relC:(r.m.qsum||'')))o.qComprada=r.qComprada;if(String(r.qRecebida==null?'':r.qRecebida)!==String(r._recAuto>0?r._recAuto:''))o.qRecebida=r.qRecebida;if((r.forn||'')!=='')o.forn=r.forn;if(r.wpp)o.whatsapp=r.wpp;if((r.vUnit||'')!=='')o.vUnit=r.vUnit;if((r.vTotal||'')!=='')o.vTotal=r.vTotal;if((r.entrega||'')!=='')o.entrega=r.entrega;if((r.dataPed||'')!=='')o.dataPed=r.dataPed;if(typeof r.manual==='boolean')o.comprado=r.manual;if(r.excluido)o.excluido=true;else if(r._hadExcl)o.excluido=false;if(Object.keys(o).length)local[r._key||norm(r.produto)]=o;}
   const chave=OVKEY||('compras_overrides_'+SUF[LOJA]);
   try{
     // MESCLA com o que já está gravado no banco (evita sobrescrever baixas feitas em outra aba/sessão) —
