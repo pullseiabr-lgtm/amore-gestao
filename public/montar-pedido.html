@@ -97,9 +97,9 @@
   </div>
   <div class="card" id="mainCard"><table><thead><tr>
     <th style="width:30px" title="Marcar para gerar o pedido de compra">🛒</th>
-    <th>Produto solicitado</th><th title="Requisição de compra de origem e o dia em que foi gerada">Requisição · Dia</th><th>Qtd solic.</th><th>Comprado</th><th>Falta</th><th>Status ✔</th><th>Valor unit.</th><th>Valor total</th><th>Fornecedor</th>
+    <th>Produto solicitado</th><th title="Requisição de compra de origem e o dia em que foi gerada">Requisição · Dia</th><th>Qtd solic.</th><th>Comprado</th><th title="Solicitado − Comprado (ainda falta comprar)">Falta comprar</th><th title="Quantidade já recebida/conferida — vem do Recebimento (entrou no estoque)">Entregue</th><th title="Comprado que ainda não chegou (Comprado − Entregue)">Pendente entrega</th><th>Status ✔</th><th>Valor unit.</th><th>Valor total</th><th>Fornecedor</th>
     <th>Entrega</th><th>Data pedido</th><th>Pedido</th><th style="width:150px">Ações</th>
-  </tr></thead><tbody id="tb"><tr><td colspan="14" style="padding:20px;text-align:center;color:#6b7280">Carregando…</td></tr></tbody></table></div>
+  </tr></thead><tbody id="tb"><tr><td colspan="16" style="padding:20px;text-align:center;color:#6b7280">Carregando…</td></tr></tbody></table></div>
   <div class="card" id="baixadasBox" style="display:none;margin-top:12px"></div>
   <div class="card" id="pedidosBox" style="display:none;margin-top:12px"></div>
   <div class="card" id="cotacoesBox" style="display:none;margin-top:12px"></div>
@@ -125,7 +125,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));const rnd=(a,b)=>a+Math.floor(M
 const nomeLoja=l=>({'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'})[l]||l;
 function show(m,ok){const e=el('msg');e.textContent=m;e.className='msg '+(ok?'ok':'err');}
 function lojaMatch(pedLoja,sel){pedLoja=pedLoja||'';if(sel==='Flow CD')return /flow/i.test(pedLoja);if(sel==='Amore CD')return pedLoja==='Amore CD'||/amore costa dourada/i.test(pedLoja);if(sel==='Amore Paiva')return pedLoja==='Amore Paiva';return false;}
-let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],TOTALPED=0,FILTRO='',ROWS=[],REQNUM=null,REQID='',REQIDS=[],REQINFO='',REQDATE='',OVKEY='',VIEW='gestao',PERLABEL='',NPED=0,PEDLIST=[],SHOWEXCL=false;
+let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],RECEBIDOS=[],TOTALPED=0,FILTRO='',ROWS=[],REQNUM=null,REQID='',REQIDS=[],REQINFO='',REQDATE='',OVKEY='',VIEW='gestao',PERLABEL='',NPED=0,PEDLIST=[],SHOWEXCL=false;
 // chave semanal (ISO week) — baixas valem por semana e renovam sozinhas na semana seguinte
 function isoWeek(d){d=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=d.getUTCDay()||7;d.setUTCDate(d.getUTCDate()+4-day);const y0=new Date(Date.UTC(d.getUTCFullYear(),0,1));const wk=Math.ceil(((d-y0)/864e5+1)/7);return d.getUTCFullYear()+'w'+String(wk).padStart(2,'0');}
 
@@ -190,10 +190,29 @@ async function load(){
   COMPRADOS=[];for(const r of doL)for(const it of (r.valor.itens||[])){if(/^desconto$|^frete|^adicional/i.test(it.produto||''))continue;COMPRADOS.push({fornecedor:r.valor.fornecedor,produto:it.produto,qtd:it.qtd,un:it.un,subtotal:Number(it.subtotal)||0,preco:Number(it.preco)||0,entrega:r.valor.janela_entrega||r.valor.data||'',dataPedido:r.valor.em||r.valor.data||'',comprador:r.valor.created_by||'',chave:r.chave,recebido:!!r.valor.recebimento,norm:norm(it.produto)});}
   // lista de pedidos do período (para a aba "Pedidos da semana")
   PEDLIST=doL.map(r=>({chave:r.chave,forn:r.valor.fornecedor||'—',em:pedData(r),total:Number(r.valor.total)||0,nItens:(r.valor.itens||[]).filter(it=>!/^desconto$|^frete|^adicional/i.test(it.produto||'')).length,recebido:!!r.valor.recebimento,itens:(r.valor.itens||[]),link:'pedido.html?p='+String(r.chave).replace(/^pedido_/,'')})).sort((a,b)=>a.em<b.em?1:-1);
+  // ENTREGUE (recebimento real) — soma as ENTRADAS no estoque (estoque_movimentacoes tipo=entrada) da loja
+  // no período. É o que fisicamente chegou e foi conferido (o Recebimento gera essas entradas). Assim
+  // "Comprado" ≠ "Entregue": a tela mostra o que já chegou e o que ainda falta chegar.
+  RECEBIDOS=[];
+  try{
+    const mv=await (await fetch(SB+'/rest/v1/estoque_movimentacoes?loja=eq.'+encodeURIComponent(LOJA)+'&tipo=eq.entrada&select=produto_nome,quantidade,unidade,created_at&order=created_at.desc&limit=3000',{headers:H})).json();
+    for(const m of (mv||[])){
+      const rd=String(m.created_at||'').slice(0,10);
+      if(rd<CORTE||rd>CORTEFIM)continue;
+      const nome=m.produto_nome||''; const q=nb(m.quantidade);
+      if(!nome||q<=0)continue;
+      RECEBIDOS.push({produto:nome,qtd:q,un:m.unidade||'',data:rd,norm:norm(nome)});
+    }
+  }catch(e){}
   compute();render();
 }
 function matchOne(prod){const st=toks(prod);if(!st.length)return{status:'no'};const main=st.slice().sort((a,b)=>b.length-a.length)[0];let best=null,bs=0,qsum=0,vsum=0,forns=new Set();for(const c of COMPRADOS){if(!c.norm.includes(main))continue;let sc=0;for(const t of st)if(c.norm.includes(t))sc++;if(sc>0){qsum+=Number(c.qtd)||0;vsum+=c.subtotal;forns.add(c.fornecedor);}if(sc>bs){bs=sc;best=c;}}if(!best)return{status:'no'};return{status:bs>=st.length?'ok':'wr',best,qsum,vsum,forns:[...forns]};}
-function compute(){ROWS=SOLIC.map(si=>{const m=matchOne(si.produto);const o=OVER[norm(si.produto)]||{};const b=m.best||{};return {...si,m,
+// soma a quantidade já RECEBIDA (entregue) que casa com o produto — mesmo matching fuzzy do "Comprado"
+function somaRecebida(prod){const st=toks(prod);if(!st.length)return 0;const main=st.slice().sort((a,b)=>b.length-a.length)[0];let q=0;for(const c of RECEBIDOS){if(!c.norm.includes(main))continue;let sc=0;for(const t of st)if(c.norm.includes(t))sc++;if(sc>0)q+=Number(c.qtd)||0;}return q;}
+function pendEntrega(r){const p=nb(r.qComprada)-nb(r.qRecebida);return p>0?p:0;}
+// status de ENTREGA (independente do status de compra): sem compra · a caminho · parcial · entregue
+function entregaStatus(r){const qc=nb(r.qComprada),qr=nb(r.qRecebida);if(qc<=0)return 'none';if(qr<=0)return 'aguard';if(qr<qc)return 'parcial';return 'entregue';}
+function compute(){ROWS=SOLIC.map(si=>{const m=matchOne(si.produto);const o=OVER[norm(si.produto)]||{};const b=m.best||{};const rec=somaRecebida(si.produto);return {...si,m,_recAuto:rec,qRecebida:(o.qRecebida!=null?o.qRecebida:(rec>0?rec:'')),
   _key:norm(si.produto),_op:si.produto,_oq:si.qtd,_ou:si.un,
   produto:(o.produto!=null?o.produto:si.produto),qtd:(o.qtd!=null?o.qtd:si.qtd),un:(o.un!=null?o.un:si.un),
   qComprada:(o.qComprada!=null?o.qComprada:(m.qsum?m.qsum:'')),
@@ -225,7 +244,11 @@ function render(){
   const VIS=ROWS.filter(r=>!r.excluido);
   const nExcl=ROWS.length-VIS.length;
   const nOk=VIS.filter(r=>eff(r)==='ok').length,nWr=VIS.filter(r=>eff(r)==='parcial').length,nNo=VIS.filter(r=>eff(r)==='no').length;
-  el('kpis').innerHTML=`<div class="kpi"><div class="n">${VIS.length}</div><div class="l">Solicitados</div></div><div class="kpi ok"><div class="n">${nOk}</div><div class="l">Comprados</div></div><div class="kpi wr"><div class="n">${nWr}</div><div class="l">🟠 Parcial</div></div><div class="kpi no"><div class="n">${nNo}</div><div class="l">Faltando</div></div><div class="kpi tt"><div class="n">${brl(TOTALPED)}</div><div class="l">Comprado · ${NPED} pedido(s)</div></div>${nExcl?`<div class="kpi" style="cursor:pointer" onclick="SHOWEXCL=!SHOWEXCL;render()" title="Clique para ${SHOWEXCL?'ocultar':'mostrar'} os itens excluídos"><div class="n">${nExcl}</div><div class="l">🗑 Excluídos ${SHOWEXCL?'▲':'▼'}</div></div>`:''}`;
+  // entrega (recebimento real) — independente da compra
+  const nEnt=VIS.filter(r=>entregaStatus(r)==='entregue').length;
+  const nParEnt=VIS.filter(r=>entregaStatus(r)==='parcial').length;
+  const nPendEnt=VIS.filter(r=>entregaStatus(r)==='aguard').length;
+  el('kpis').innerHTML=`<div class="kpi"><div class="n">${VIS.length}</div><div class="l">Solicitados</div></div><div class="kpi ok"><div class="n">${nOk}</div><div class="l">Comprados</div></div><div class="kpi wr"><div class="n">${nWr}</div><div class="l">🟠 Parcial compra</div></div><div class="kpi no"><div class="n">${nNo}</div><div class="l">Faltando</div></div><div class="kpi" style="border-color:#99f6e4"><div class="n" style="color:#0f766e">${nEnt}</div><div class="l">📦 Entregues</div></div><div class="kpi" style="border-color:#fde68a"><div class="n" style="color:#B45309">${nParEnt+nPendEnt}</div><div class="l">⏳ Pendente entrega</div></div><div class="kpi tt"><div class="n">${brl(TOTALPED)}</div><div class="l">Comprado · ${NPED} pedido(s)</div></div>${nExcl?`<div class="kpi" style="cursor:pointer" onclick="SHOWEXCL=!SHOWEXCL;render()" title="Clique para ${SHOWEXCL?'ocultar':'mostrar'} os itens excluídos"><div class="n">${nExcl}</div><div class="l">🗑 Excluídos ${SHOWEXCL?'▲':'▼'}</div></div>`:''}`;
   const falt=VIS.filter(r=>eff(r)==='no');
   el('alert').style.display=falt.length?'block':'none';
   el('alert').innerHTML=`<b>⚠️ Faltando comprar: ${falt.length} item(ns)</b><div class="items">${falt.map(r=>`${esc(r.produto)} <span style="opacity:.7">(${esc(r.qtd)} ${esc(r.un)})</span>`).join(' · ')}</div>`;
@@ -237,7 +260,7 @@ function render(){
   let cur='',html='';
   const inp=(gi,k,val,ph,cls)=>`<input class="${cls||''}" value="${esc(val)}" onchange="ov(${gi},'${k}',this.value)" placeholder="${ph||''}">`;
   for(const r of list){const gi=ROWS.indexOf(r);
-    if((r.categoria||'')!==cur){cur=r.categoria||'';html+=`<tr class="cat"><td colspan="14">${esc(cur||'—')}</td></tr>`;}
+    if((r.categoria||'')!==cur){cur=r.categoria||'';html+=`<tr class="cat"><td colspan="16">${esc(cur||'—')}</td></tr>`;}
     const conf=r.recebido?' <span class="st ok" style="font-size:9px;padding:1px 6px">✓ conf.</span>':'';
     const oldTag=(r.diasPed!=null&&r.diasPed>7)?`<span title="pedido com ${r.diasPed} dias — pode ser antigo" style="color:#B45309">⏳</span> `:'';
     const f=falta(r);
@@ -248,6 +271,8 @@ function render(){
       <td class="q"><input value="${esc(r.qtd)}" onchange="ov(${gi},'qtd',this.value)" style="width:44px"> <input value="${esc(r.un)}" onchange="ov(${gi},'un',this.value)" placeholder="un" style="width:64px"></td>
       <td class="q"><input value="${esc(r.qComprada)}" onchange="ov(${gi},'qComprada',this.value)" placeholder="0" style="width:52px" title="Quantidade já comprada"></td>
       <td class="q" style="font-weight:800;color:${f>0?'#DC2626':'#15803D'}">${nb(r.qComprada)>0||r.manual!=null?f:''}</td>
+      <td class="q" style="white-space:nowrap"><input value="${esc(r.qRecebida)}" onchange="ov(${gi},'qRecebida',this.value)" placeholder="0" style="width:52px;font-weight:700;color:#0f766e" title="Quantidade entregue/recebida — preenche sozinho pelas entradas do estoque; ajuste à mão se o recebimento não passou pelo Recebimento Inteligente">${r._recAuto>0&&(r.qRecebida===''||String(r.qRecebida)===String(r._recAuto))?' <span class="q" style="font-size:9px" title="veio automático do estoque">auto</span>':(nb(r.qRecebida)>0?' <span class="q" style="font-size:9px;color:#0f766e" title="ajustado manualmente">✍</span>':'')}${entregaStatus(r)==='entregue'?' <span class="st ok" style="font-size:9px;padding:1px 6px">📦</span>':entregaStatus(r)==='parcial'?' <span class="st wr" style="font-size:9px;padding:1px 6px">🟡</span>':''}</td>
+      <td class="q" style="font-weight:800;color:${pendEntrega(r)>0?'#B45309':'#15803D'}" title="Comprado que ainda não chegou">${nb(r.qComprada)>0?(pendEntrega(r)>0?pendEntrega(r):'✓'):''}</td>
       <td style="white-space:nowrap"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px"><input type="checkbox" ${eff(r)==='ok'?'checked':''} onchange="checkComprado(${gi},this.checked)" title="Confirmar compra / dar baixa (salva sozinho)">${badge(eff(r))}</label>${conf}${r.manual!=null?' <span class="q">(man.)</span>':''}</td>
       <td>${inp(gi,'vUnit',r.vUnit,'0,00','pri')}</td>
       <td>${inp(gi,'vTotal',r.vTotal,'0,00','val')}</td>
@@ -259,11 +284,11 @@ function render(){
         ? `<button class="btn" onclick="restaurarItem(${gi})" style="padding:4px 9px;font-size:11px;background:#fff;color:#374151;border:1px solid #cbd5e1">↩︎ Restaurar</button>`
         : `<button class="btn" onclick="baixarItem(${gi})" title="${eff(r)==='ok'?'Desfazer baixa deste item':'Dar baixa neste item (marca como comprado e salva na hora)'}" style="padding:4px 9px;font-size:11px;font-weight:700;background:${eff(r)==='ok'?'#fff':'#16a34a'};color:${eff(r)==='ok'?'#16a34a':'#fff'};border:1px solid #16a34a">${eff(r)==='ok'?'↺ Desfazer':'📥 Baixar'}</button> <button class="btn" onclick="excluirItem(${gi})" title="Excluir este item da lista" style="padding:4px 9px;font-size:11px;font-weight:700;background:#fff;color:#dc2626;border:1px solid #fca5a5">🗑</button>`}</td>
     </tr>`;}
-  el('tb').innerHTML=html||'<tr><td colspan="14" style="padding:20px;text-align:center;color:#6b7280">Nenhum item neste filtro.</td></tr>';
+  el('tb').innerHTML=html||'<tr><td colspan="16" style="padding:20px;text-align:center;color:#6b7280">Nenhum item neste filtro.</td></tr>';
   const prontos=new Set(ROWS.filter(r=>eff(r)!=='ok'&&(r.wpp||'').replace(/\D/g,'').length>=10&&r.forn.trim()).map(r=>r.forn.trim().toLowerCase()));
   el('foot').textContent=`${REQINFO?REQINFO+' · ':''}${LOJA} · ${ROWS.length} solicitados · ${nNo} faltando · ${NPED} pedido(s) ${PERLABEL||''} · total comprado ${brl(TOTALPED)} · ${prontos.size} fornecedor(es) p/ disparo`;
 }
-function ov(i,k,v){ROWS[i][k]=v; if(k==='vUnit'||k==='qComprada'){ const r=ROWS[i]; const t=nb(r.vUnit)*nb(r.qComprada); r.vTotal=t?String(t.toFixed(2)).replace('.',','):''; render(); } }
+function ov(i,k,v){ROWS[i][k]=v; if(k==='vUnit'||k==='qComprada'){ const r=ROWS[i]; const t=nb(r.vUnit)*nb(r.qComprada); r.vTotal=t?String(t.toFixed(2)).replace('.',','):''; render(); } else if(k==='qRecebida'){ render(); } }
 function setComprado(i,checked){const r=ROWS[i];if(checked){r.manual=true;if(r.qComprada===''||nb(r.qComprada)<nb(r.qtd))r.qComprada=r.qtd;const t=nb(r.vUnit)*nb(r.qComprada);if(t)r.vTotal=String(t.toFixed(2)).replace('.',',');}else{r.manual=false;}render();}
 // Checkbox de comprado agora SALVA sozinho (antes so marcava na tela e voltava pra aberto ao recarregar)
 async function checkComprado(i,checked){setComprado(i,checked);const ok=await salvar(true);render();show(ok?(checked?'✅ Baixado e salvo':'↩︎ Marcado como NÃO comprado e salvo'):'Falha ao salvar.',ok);}
@@ -274,7 +299,7 @@ async function excluirItem(i){const r=ROWS[i];if(!confirm('Excluir este item da 
 async function restaurarItem(i){const r=ROWS[i];r.excluido=false;const ok=await salvar(true);render();show(ok?'↩︎ Item restaurado: '+esc(r.produto):'Falha ao salvar.',ok);}
 async function salvar(silent){
   // deltas desta lista (o que o usuário mudou nesta tela)
-  const local={};for(const r of ROWS){const o={};if(r.produto!==r._op)o.produto=r.produto;if(String(r.qtd)!==String(r._oq))o.qtd=r.qtd;if(r.un!==r._ou)o.un=r.un;if(r.qComprada!==''&&String(r.qComprada)!==String(r.m.qsum||''))o.qComprada=r.qComprada;if((r.forn||'')!=='')o.forn=r.forn;if(r.wpp)o.whatsapp=r.wpp;if((r.vUnit||'')!=='')o.vUnit=r.vUnit;if((r.vTotal||'')!=='')o.vTotal=r.vTotal;if((r.entrega||'')!=='')o.entrega=r.entrega;if((r.dataPed||'')!=='')o.dataPed=r.dataPed;if(typeof r.manual==='boolean')o.comprado=r.manual;if(r.excluido)o.excluido=true;else if(r._hadExcl)o.excluido=false;if(Object.keys(o).length)local[r._key||norm(r.produto)]=o;}
+  const local={};for(const r of ROWS){const o={};if(r.produto!==r._op)o.produto=r.produto;if(String(r.qtd)!==String(r._oq))o.qtd=r.qtd;if(r.un!==r._ou)o.un=r.un;if(r.qComprada!==''&&String(r.qComprada)!==String(r.m.qsum||''))o.qComprada=r.qComprada;if(String(r.qRecebida==null?'':r.qRecebida)!==String(r._recAuto>0?r._recAuto:''))o.qRecebida=r.qRecebida;if((r.forn||'')!=='')o.forn=r.forn;if(r.wpp)o.whatsapp=r.wpp;if((r.vUnit||'')!=='')o.vUnit=r.vUnit;if((r.vTotal||'')!=='')o.vTotal=r.vTotal;if((r.entrega||'')!=='')o.entrega=r.entrega;if((r.dataPed||'')!=='')o.dataPed=r.dataPed;if(typeof r.manual==='boolean')o.comprado=r.manual;if(r.excluido)o.excluido=true;else if(r._hadExcl)o.excluido=false;if(Object.keys(o).length)local[r._key||norm(r.produto)]=o;}
   const chave=OVKEY||('compras_overrides_'+SUF[LOJA]);
   try{
     // MESCLA com o que já está gravado no banco (evita sobrescrever baixas feitas em outra aba/sessão) —
