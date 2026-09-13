@@ -19,7 +19,7 @@ const LOJAS_FALLBACK = ['Amore CD', 'Amore Paiva', 'Flow CD']
 const DRAFT_KEY = 'pedido_rascunho_v1'
 
 interface PedidoItem { produto: string; qtd: number; un?: string; preco: number; subtotal?: number }
-interface Pedido { chave: string; fornecedor: string; loja: string; data?: string; total?: number; pagamento?: string; cliente?: string; recebimento_responsavel?: string; itens?: PedidoItem[]; cancelados?: string[]; recebimento?: { status: string; por?: string; obs?: string; em?: string } }
+interface Pedido { chave: string; fornecedor: string; loja: string; data?: string; total?: number; pagamento?: string; cliente?: string; recebimento_responsavel?: string; itens?: PedidoItem[]; cancelados?: string[]; recebimento?: { status: string; por?: string; obs?: string; em?: string }; numero_pedido?: string; requisicao_numero?: number; requisicao_id?: string }
 interface Linha { produto: string; qtd: string; un: string; preco: string; reqItemId?: string; qtdOrig?: number; produtoOrig?: string }
 const linhaVazia = (): Linha => ({ produto: '', qtd: '1', un: 'Unidade(s)', preco: '' })
 // vínculo com a requisição de origem (o Pedido nasce da Requisição — cotação NÃO é obrigatória)
@@ -242,10 +242,17 @@ export default function PedidosPage() {
       }
       const total = Math.round(itens.reduce((s, i) => s + i.subtotal, 0) * 100) / 100
       const chave = `pedido_${slugify(fForn)}_${slugify(fLoja)}_${Date.now().toString(36).slice(-6)}`
+      // ID próprio do pedido: PED-#### sequencial (maior número existente + 1). Escala pequena (1 comprador) → sem corrida relevante.
+      let numPed = ''
+      try {
+        const { data: nums } = await sb.from('pedidos_compra').select('numero').not('numero', 'is', null)
+        let max = 0; for (const r of (nums || [])) { const n = parseInt(String(r.numero).replace(/\D/g, ''), 10); if (!isNaN(n) && n > max) max = n }
+        numPed = 'PED-' + String(max + 1).padStart(4, '0')
+      } catch { numPed = 'PED-' + Date.now().toString().slice(-4) }
       const valor = {
         fornecedor: fForn.trim(), loja: fLoja, data: fData, pagamento: fPagto || null, cliente: fCliente || null,
         recebimento_responsavel: fReceb || null, itens, total, cancelados: [], em: new Date().toISOString(), created_by: user?.name || 'Painel',
-        obs: fObs || null,
+        obs: fObs || null, numero_pedido: numPed,
         // rastreabilidade: pedido nasce da requisição (quando informada)
         ...(reqVinc ? { requisicao_id: reqVinc.id, requisicao_numero: reqVinc.numero, solicitante: reqVinc.solicitante, centro_custo: fCentroCusto || null, origem: 'requisicao' } : { origem: 'avulso' }),
       }
@@ -254,7 +261,7 @@ export default function PedidosPage() {
       // o pedido nasce vinculado (origem 'requisicao'); sem ela, segue 'avulso'.
       try {
         const pc = await insertPedidoCompra({
-          numero: null, requisicao_id: reqVinc?.id ?? null, loja: fLoja, fornecedor: fForn.trim(),
+          numero: numPed, requisicao_id: reqVinc?.id ?? null, loja: fLoja, fornecedor: fForn.trim(),
           status: 'aberto', origem: reqVinc ? 'requisicao' : 'avulso', total, recebido_total: 0, baixa_feita: false,
           app_config_chave: chave, observacoes: fObs || null, criado_por: user?.name || 'Painel',
         })
@@ -277,12 +284,12 @@ export default function PedidosPage() {
           const nItensReq = linhasValidas.filter(l => l.reqItemId).length
           const nAvulsos = linhasValidas.filter(l => !l.reqItemId).length
           if (audits.length) await logReqAuditoria(audits)
-          await insertReqTimeline({ requisicao_id: reqVinc.id, tipo: 'pedido', descricao: `Pedido de compra gerado para ${fForn.trim()} (${itens.length} item(ns))${audits.length ? ` · ${audits.length} ajuste(s) no pedido` : ''}${nAvulsos ? ` · ${nAvulsos} item(ns) fora da requisição` : ''}`, usuario: uname, dados: { pedido_chave: chave, pedido_id: pc.id, fornecedor: fForn.trim(), total, itens_da_requisicao: nItensReq } as any })
+          await insertReqTimeline({ requisicao_id: reqVinc.id, tipo: 'pedido', descricao: `Pedido ${numPed} gerado para ${fForn.trim()} (${itens.length} item(ns))${audits.length ? ` · ${audits.length} ajuste(s) no pedido` : ''}${nAvulsos ? ` · ${nAvulsos} item(ns) fora da requisição` : ''}`, usuario: uname, dados: { pedido_numero: numPed, pedido_chave: chave, pedido_id: pc.id, fornecedor: fForn.trim(), total, itens_da_requisicao: nItensReq } as any })
           // marca na requisição que o pedido foi gerado (traço do ciclo) — NÃO mexe nos itens/quantidades
-          await updateRequisicao(reqVinc.id, { pedido_numero: chave, pedido_gerado_em: new Date().toISOString(), pedido_status: 'emitido' } as any).catch(() => {})
+          await updateRequisicao(reqVinc.id, { pedido_numero: numPed, pedido_gerado_em: new Date().toISOString(), pedido_status: 'emitido' } as any).catch(() => {})
         }
       } catch { /* registro relacional é complementar; o blob já garante o pedido */ }
-      toast(cadastrados ? `Pedido gerado. ✅ ${cadastrados} produto(s) novo(s) cadastrado(s).` : (reqVinc ? `Pedido gerado e vinculado à ${fmtReq(reqVinc.numero)}. ✅` : 'Pedido gerado. ✅'))
+      toast(cadastrados ? `Pedido ${numPed} gerado. ✅ ${cadastrados} produto(s) novo(s) cadastrado(s).` : (reqVinc ? `Pedido ${numPed} gerado e vinculado à ${fmtReq(reqVinc.numero)}. ✅` : `Pedido ${numPed} gerado. ✅`))
       setMNovo(false); resetForm(); await load()
     } catch (e) { toast('Não foi possível gerar o pedido.', 'error') }
     finally { setSalvando(false) }
@@ -313,9 +320,12 @@ export default function PedidosPage() {
               <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
                 <div style={{ width: 40, height: 40, borderRadius: 10, background: '#F3F4F6', color: '#8B1212', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Package size={19} /></div>
                 <div style={{ flex: 1, minWidth: 180 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14.5 }}>{p.fornecedor || 'Fornecedor'}</div>
+                  <div style={{ fontWeight: 700, fontSize: 14.5, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {p.numero_pedido && <span style={{ fontSize: 11, fontWeight: 800, color: '#8B1212', background: '#F3F4F6', border: '1px solid var(--border)', borderRadius: 6, padding: '1px 7px' }}>{p.numero_pedido}</span>}
+                    {p.fornecedor || 'Fornecedor'}
+                  </div>
                   <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                    {p.loja} · {fmtD(p.data)} · {(p.itens || []).length} itens{p.recebimento_responsavel ? ` · recebe ${p.recebimento_responsavel}` : ''}{p.cancelados && p.cancelados.length ? ` · ⚠ ${p.cancelados.length} cancelado(s)` : ''}
+                    {p.loja} · {fmtD(p.data)} · {(p.itens || []).length} itens{p.requisicao_numero ? ` · da REQ-${String(p.requisicao_numero).padStart(4, '0')}` : ''}{p.recebimento_responsavel ? ` · recebe ${p.recebimento_responsavel}` : ''}{p.cancelados && p.cancelados.length ? ` · ⚠ ${p.cancelados.length} cancelado(s)` : ''}
                   </div>
                 </div>
                 {p.recebimento

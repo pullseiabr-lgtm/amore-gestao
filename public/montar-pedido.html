@@ -95,6 +95,13 @@
     <button class="btn" style="background:#fff;color:#374151;border:1px solid #cbd5e1" onclick="verCotacoes()">📋 Cotações</button>
     <button class="btn" style="background:#fff;color:#374151;border:1px solid #cbd5e1" onclick="verBaixadas()">📁 Requisições baixadas</button>
   </div>
+  <div class="bar" style="gap:8px">
+    <input id="fReq" oninput="setBusca()" placeholder="🔎 Nº Requisição (REQ-0125 ou 125)" style="border:1px solid var(--border);border-radius:10px;padding:9px 12px;font:inherit;font-size:12.5px;min-width:220px">
+    <input id="fForn" oninput="setBusca()" placeholder="🏢 Fornecedor" style="border:1px solid var(--border);border-radius:10px;padding:9px 12px;font:inherit;font-size:12.5px;min-width:150px">
+    <input id="fProd" oninput="setBusca()" placeholder="📦 Produto" style="border:1px solid var(--border);border-radius:10px;padding:9px 12px;font:inherit;font-size:12.5px;min-width:150px">
+    <button class="btn" style="background:#fff;color:#374151;border:1px solid #cbd5e1" onclick="limparBusca()">✕ Limpar filtros</button>
+    <span id="filtroInfo" style="font-size:12px;color:var(--muted)"></span>
+  </div>
   <div class="card" id="mainCard"><table><thead><tr>
     <th style="width:30px" title="Marcar para gerar o pedido de compra">🛒</th>
     <th>Produto solicitado</th><th title="Requisição de compra de origem e o dia em que foi gerada">Requisição · Dia</th><th>Qtd solic.</th><th>Comprado</th><th title="Solicitado − Comprado (ainda falta comprar)">Falta comprar</th><th title="Quantidade já recebida/conferida — vem do Recebimento (entrou no estoque)">Entregue</th><th title="Comprado que ainda não chegou (Comprado − Entregue)">Pendente entrega</th><th>Status ✔</th><th>Valor unit.</th><th>Valor total</th><th>Fornecedor</th>
@@ -125,7 +132,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));const rnd=(a,b)=>a+Math.floor(M
 const nomeLoja=l=>({'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'})[l]||l;
 function show(m,ok){const e=el('msg');e.textContent=m;e.className='msg '+(ok?'ok':'err');}
 function lojaMatch(pedLoja,sel){pedLoja=pedLoja||'';if(sel==='Flow CD')return /flow/i.test(pedLoja);if(sel==='Amore CD')return pedLoja==='Amore CD'||/amore costa dourada/i.test(pedLoja);if(sel==='Amore Paiva')return pedLoja==='Amore Paiva';return false;}
-let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],RECEBIDOS=[],TOTALPED=0,FILTRO='',ROWS=[],REQNUM=null,REQID='',REQIDS=[],REQINFO='',REQDATE='',OVKEY='',VIEW='gestao',PERLABEL='',NPED=0,PEDLIST=[],SHOWEXCL=false;
+let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],RECEBIDOS=[],TOTALPED=0,FILTRO='',ROWS=[],REQNUM=null,REQID='',REQIDS=[],REQINFO='',REQDATE='',OVKEY='',VIEW='gestao',PERLABEL='',NPED=0,PEDLIST=[],SHOWEXCL=false,FREQ='',FFORN='',FPROD='';
 // chave semanal (ISO week) — baixas valem por semana e renovam sozinhas na semana seguinte
 function isoWeek(d){d=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=d.getUTCDay()||7;d.setUTCDate(d.getUTCDate()+4-day);const y0=new Date(Date.UTC(d.getUTCFullYear(),0,1));const wk=Math.ceil(((d-y0)/864e5+1)/7);return d.getUTCFullYear()+'w'+String(wk).padStart(2,'0');}
 
@@ -239,6 +246,15 @@ function falta(r){const f=nb(r.qtd)-nb(r.qComprada);return f>0?f:0;}
 function compEm(r){return r.compradoEm!=null?r.compradoEm:(r.m.forns?r.m.forns.join(', '):'');}
 function valorC(r){return r.valor!=null&&r.valor!==''?nb(r.valor):(r.m.vsum||0);}
 function setF(f){FILTRO=f;[...document.querySelectorAll('#seg button')].forEach(b=>b.classList.toggle('on',b.dataset.f===f));render();}
+function setBusca(){FREQ=(el('fReq')&&el('fReq').value||'').trim();FFORN=(el('fForn')&&el('fForn').value||'').trim();FPROD=(el('fProd')&&el('fProd').value||'').trim();render();}
+function limparBusca(){FREQ='';FFORN='';FPROD='';if(el('fReq'))el('fReq').value='';if(el('fForn'))el('fForn').value='';if(el('fProd'))el('fProd').value='';render();}
+// aplica os filtros de texto (Requisição/Fornecedor/Produto) a uma linha
+function passaBusca(r){
+  if(FREQ){const q=FREQ.toLowerCase(),qd=FREQ.replace(/\D/g,'');const rn=String(r.reqNum||'');if(!(rn.toLowerCase().includes(q)||(qd&&rn.replace(/\D/g,'').includes(qd))))return false;}
+  if(FFORN&&!norm(r.forn||'').includes(norm(FFORN)))return false;
+  if(FPROD&&!norm(r.produto||'').includes(norm(FPROD)))return false;
+  return true;
+}
 function render(){
   const sub=document.querySelector('.hdr .sub'); if(sub) sub.textContent=(REQINFO?'Requisição ativa: '+REQINFO:'Sem requisição para esta loja')+' × '+NPED+' pedido(s) '+(PERLABEL||'')+' — o que já comprou e o que falta';
   const VIS=ROWS.filter(r=>!r.excluido);
@@ -252,7 +268,8 @@ function render(){
   const falt=VIS.filter(r=>eff(r)==='no');
   el('alert').style.display=falt.length?'block':'none';
   el('alert').innerHTML=`<b>⚠️ Faltando comprar: ${falt.length} item(ns)</b><div class="items">${falt.map(r=>`${esc(r.produto)} <span style="opacity:.7">(${esc(r.qtd)} ${esc(r.un)})</span>`).join(' · ')}</div>`;
-  const list=ROWS.filter(r=>(SHOWEXCL?true:!r.excluido)&&(!FILTRO||eff(r)===FILTRO));
+  const list=ROWS.filter(r=>(SHOWEXCL?true:!r.excluido)&&(!FILTRO||eff(r)===FILTRO)&&passaBusca(r));
+  {const temF=FREQ||FFORN||FPROD;const fi=el('filtroInfo');if(fi){fi.textContent=temF?`🔎 ${list.length} item(ns) no filtro${FREQ?' · Req: '+FREQ:''}${FFORN?' · Forn: '+FFORN:''}${FPROD?' · Prod: '+FPROD:''}`:'';}}
   // agrupa por categoria (uma categoria = um bloco só), mantendo a ordem de 1ª aparição
   const catOrder=[]; ROWS.forEach(r=>{const c=r.categoria||'—'; if(!catOrder.includes(c))catOrder.push(c);});
   list.sort((a,b)=>(catOrder.indexOf(a.categoria||'—')-catOrder.indexOf(b.categoria||'—')));
@@ -383,7 +400,7 @@ function gerarPDF(){
     doc.setFontSize(14);doc.setTextColor(46,125,52);doc.text('Lista de Compras — '+nomeLoja(LOJA),40,36);
     doc.setFontSize(9);doc.setTextColor(120);doc.text('Gerado em '+new Date().toLocaleString('pt-BR')+'  ·  Total comprado no período: '+brl(TOTALPED),40,50);
     const stTxt=s=>s==='ok'?'Comprado':s==='wr'?'Verificar':'Faltando';
-    const list=ROWS.filter(r=>!FILTRO||eff(r)===FILTRO);
+    const list=ROWS.filter(r=>(!FILTRO||eff(r)===FILTRO)&&passaBusca(r));
     const body=list.map(r=>[r.produto||'',((r.reqNum||'')+(r.reqDia?(' · '+r.reqDia):'')).trim(),((r.qtd||'')+' '+(r.un||'')).trim(),stTxt(eff(r)),r.forn||'',r.vTotal?('R$ '+r.vTotal):'',r.dataPed||'']);
     doc.autoTable({head:[['Produto','Requisição · Dia','Qtd','Status','Fornecedor','Valor total','Data pedido']],body,startY:64,styles:{fontSize:8,cellPadding:3,overflow:'linebreak'},headStyles:{fillColor:[46,125,52],textColor:255},columnStyles:{0:{cellWidth:170},1:{cellWidth:105}},didParseCell:d=>{if(d.section==='body'&&d.column.index===3){const t=d.cell.raw;if(t==='Faltando')d.cell.styles.textColor=[220,38,38];else if(t==='Comprado')d.cell.styles.textColor=[21,128,61];else if(t==='Verificar')d.cell.styles.textColor=[180,83,9];}}});
     doc.save('lista-compras-'+SUF[LOJA]+'-'+new Date().toISOString().slice(0,10)+'.pdf');
