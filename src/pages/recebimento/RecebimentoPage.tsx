@@ -231,6 +231,12 @@ export default function RecebimentoPage() {
       const patch: any = { status: done ? 'recebido' : 'recebido_parcial', baixa_feita: done }
       if (done && pedTotal != null) patch.recebido_total = pedTotal
       await sb.from('pedidos_compra').update(patch).eq('id', pedidoSel)
+      // avança o STATUS da requisição de origem (se houver): recebimento parcial/concluído + histórico
+      const ped = pedidosAbertos.find(p => p.id === pedidoSel) || {}
+      if (ped.requisicao_id) {
+        await sb.from('requisicoes').update({ status: done ? 'recebimento_concluido' : 'recebimento_parcial' }).eq('id', ped.requisicao_id)
+        try { await sb.from('req_timeline').insert({ requisicao_id: ped.requisicao_id, tipo: 'recebimento', descricao: `Recebimento ${done ? 'concluído' : 'parcial'} do pedido ${ped.numero || ''} (${baixados} item(ns))`, usuario: conferente || user?.name || 'Recebimento', dados: null }) } catch { /* ignore */ }
+      }
       return baixados
     } catch { return 0 }
   }

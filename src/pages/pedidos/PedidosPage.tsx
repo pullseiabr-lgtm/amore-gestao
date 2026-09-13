@@ -285,8 +285,10 @@ export default function PedidosPage() {
           const nAvulsos = linhasValidas.filter(l => !l.reqItemId).length
           if (audits.length) await logReqAuditoria(audits)
           await insertReqTimeline({ requisicao_id: reqVinc.id, tipo: 'pedido', descricao: `Pedido ${numPed} gerado para ${fForn.trim()} (${itens.length} item(ns))${audits.length ? ` · ${audits.length} ajuste(s) no pedido` : ''}${nAvulsos ? ` · ${nAvulsos} item(ns) fora da requisição` : ''}`, usuario: uname, dados: { pedido_numero: numPed, pedido_chave: chave, pedido_id: pc.id, fornecedor: fForn.trim(), total, itens_da_requisicao: nItensReq } as any })
-          // marca na requisição que o pedido foi gerado (traço do ciclo) — NÃO mexe nos itens/quantidades
-          await updateRequisicao(reqVinc.id, { pedido_numero: numPed, pedido_gerado_em: new Date().toISOString(), pedido_status: 'emitido' } as any).catch(() => {})
+          // marca na requisição que o pedido foi gerado (traço do ciclo) — NÃO mexe nos itens/quantidades.
+          // Avança o STATUS principal para "compra_realizada" (a menos que já esteja em recebimento/fechada).
+          const jaAvancada = ['recebimento_parcial', 'recebimento_concluido', 'baixa_realizada', 'concluida', 'cancelada'].includes(reqVinc.status)
+          await updateRequisicao(reqVinc.id, { pedido_numero: numPed, pedido_gerado_em: new Date().toISOString(), pedido_status: 'emitido', ...(jaAvancada ? {} : { status: 'compra_realizada' }) } as any).catch(() => {})
         }
       } catch { /* registro relacional é complementar; o blob já garante o pedido */ }
       toast(cadastrados ? `Pedido ${numPed} gerado. ✅ ${cadastrados} produto(s) novo(s) cadastrado(s).` : (reqVinc ? `Pedido ${numPed} gerado e vinculado à ${fmtReq(reqVinc.numero)}. ✅` : `Pedido ${numPed} gerado. ✅`))
