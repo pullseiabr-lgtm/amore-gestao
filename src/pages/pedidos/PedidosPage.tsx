@@ -339,6 +339,7 @@ export default function PedidosPage() {
                 <a href={link(p)} target="_blank" rel="noreferrer" className="btn" style={{ padding: '8px 14px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }}>
                   <ExternalLink size={15} /> Abrir
                 </a>
+                {p.requisicao_id && <a href={`${siteOrigin()}/ciclo-requisicao.html?id=${p.requisicao_id}`} target="_blank" rel="noreferrer" className="btn" style={{ padding: '8px 14px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }} title="Ver o ciclo completo da requisição de origem">🔗 Ciclo</a>}
                 {podeCriar && <button onClick={() => abrirEnviar(p)} className="btn" style={{ padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <Send size={15} /> Enviar
                 </button>}

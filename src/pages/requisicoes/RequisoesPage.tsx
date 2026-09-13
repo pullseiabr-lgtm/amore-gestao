@@ -3,7 +3,7 @@ import {
   Plus, Search, Trash2, ChevronLeft, Loader, Check, X,
   DollarSign, FileText, Clock, AlertTriangle, CheckCircle2, XCircle,
   Edit3, Download, RefreshCw, Package, Send,
-  ShoppingCart, BarChart2, Lock, Layers, Receipt,
+  ShoppingCart, BarChart2, Lock, Layers, Receipt, ExternalLink,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { canApproveReq } from '../../lib/permissions'
@@ -1084,6 +1084,7 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
           <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>{req.loja} · {req.setor||'—'} · {req.responsavel_nome} · {fmtDt(req.created_at)}{req.prazo_entrega ? ` · Prazo entrega: ${fmtDt(req.prazo_entrega)}` : ''}</div>
         </div>
         <div className="ab" style={{ flexWrap:'wrap', justifyContent:'flex-end', gap:5 }}>
+          <a className="btn" style={{ background:'#15803D', padding:'5px 11px', fontSize:12, textDecoration:'none', display:'inline-flex', alignItems:'center', gap:5 }} href={`${siteOrigin()}/ciclo-requisicao.html?id=${req.id}`} target="_blank" rel="noreferrer" title="Ver o ciclo completo: Requisição → Cotação → Pedido → Recebimento → Estoque, status por produto"><ExternalLink size={12}/> Ver ciclo</a>
           <button className="btn" style={{ background:'#25D366', padding:'5px 11px', fontSize:12 }} onClick={abrirModalLink} title="Enviar a requisição por WhatsApp (link no layout do painel)"><Send size={12}/> WhatsApp</button>
           {canEnviar&&<button className="btn" style={{ background:'#B45309', padding:'5px 11px', fontSize:12 }} onClick={handleEnviar}><Send size={12}/> Enviar</button>}
           {canAprovar&&<button className="btn" style={{ padding:'5px 11px', fontSize:12 }} onClick={()=>setMAprov(true)}><CheckCircle2 size={12}/> Analisar</button>}
@@ -1932,6 +1933,7 @@ function ListaView({ reqs, loja, lojas, podeAprovar, onNova, onDetalhe, onEditar
                       <CheckCircle2 size={11}/> Aprovação de Requisição
                     </button>
                   )}
+                  <a className="ib" href={`${siteOrigin()}/ciclo-requisicao.html?id=${r.id}`} target="_blank" rel="noreferrer" title="Ver ciclo da requisição (status por produto, pedido, recebimento, estoque)" style={{ display:'inline-flex', alignItems:'center', textDecoration:'none' }}><ExternalLink size={11}/></a>
                   <button className="ib" onClick={()=>onEditar(r)}><Edit3 size={11}/></button>
                   <button className="ib rd" onClick={()=>onDelete(r.id)}><Trash2 size={11}/></button>
                 </div>
