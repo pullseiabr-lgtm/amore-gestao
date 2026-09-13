@@ -92,11 +92,33 @@ export default function RecebimentoPage() {
   // vínculo opcional com um pedido de compra → baixa relacional (qtd_recebida) p/ o ciclo da requisição
   const [pedidosAbertos, setPedidosAbertos] = useState<any[]>([])
   const [pedidoSel, setPedidoSel] = useState('')
+  const [pedidoItens, setPedidoItens] = useState<any[]>([])  // conferência de vínculo (pedido × nota)
   const loadPedidosAbertos = useCallback(async (lj: string) => {
     const { data } = await sb.from('pedidos_compra').select('id,numero,fornecedor,total,requisicao_id,created_at').eq('loja', lj).eq('baixa_feita', false).order('created_at', { ascending: false }).limit(80)
     setPedidosAbertos(data || [])
   }, [])
-  useEffect(() => { loadPedidosAbertos(loja); setPedidoSel('') }, [loja, loadPedidosAbertos])
+  useEffect(() => { loadPedidosAbertos(loja); setPedidoSel(''); setPedidoItens([]) }, [loja, loadPedidosAbertos])
+  // Ao escolher um pedido: carrega os itens (Pedido/Já recebido/Falta) e pré-preenche "receber agora"
+  // com o recebido da nota que casa por nome (limitado ao que falta). Suporta RECEBIMENTO PARCIAL.
+  useEffect(() => {
+    if (!pedidoSel) { setPedidoItens([]); return }
+    let vivo = true
+    ;(async () => {
+      const { data } = await sb.from('pedido_compra_itens').select('id,produto_nome,unidade,qtd_pedida,qtd_recebida').eq('pedido_id', pedidoSel).order('produto_nome')
+      if (!vivo) return
+      const usados = new Set<number>()
+      const pit = (data || []).map((pi: any) => {
+        const falta = Math.max(0, (Number(pi.qtd_pedida) || 0) - (Number(pi.qtd_recebida) || 0))
+        const idx = itens.findIndex((it, k) => !usados.has(k) && Number(it.recebido) > 0 && casaNome(it.produto, pi.produto_nome))
+        let sugerido = 0
+        if (idx >= 0) { usados.add(idx); const rec = Number(itens[idx].recebido) || 0; sugerido = falta > 0 ? Math.min(rec, falta) : rec }
+        return { ...pi, falta, receber: sugerido > 0 ? String(sugerido) : '' }
+      })
+      setPedidoItens(pit)
+    })()
+    return () => { vivo = false }
+  }, [pedidoSel])  // eslint-disable-line react-hooks/exhaustive-deps
+  const setReceber = (id: string, v: string) => setPedidoItens(a => a.map(p => p.id === id ? { ...p, receber: v } : p))
 
   const loadRecs = useCallback(async () => { const { data } = await sb.from('recebimentos').select('*').order('created_at', { ascending: false }).limit(20); setRecs(data || []) }, [])
   useEffect(() => { loadRecs() }, [loadRecs])
@@ -186,32 +208,29 @@ export default function RecebimentoPage() {
   const nDesvios = Object.values(desvios).filter((d: any) => d?.tipo).length
   const nDiverg = itens.filter(it => { const d = difItem(it); return d.has && !d.ok }).length
 
-  // Dá baixa relacional: soma o "recebido" da nota nos itens do pedido (por nome), atualiza qtd_recebida
-  // + recalcula recebido_total/status do pedido. Retorna quantos itens do pedido foram baixados.
-  const baixarNoPedido = async (pedidoId: string): Promise<number> => {
+  // Baixa relacional pela CONFERÊNCIA confirmada (pedidoItens.receber): acumula em qtd_recebida
+  // (RECEBIMENTO PARCIAL suportado) e recalcula status/baixa do pedido. Retorna nº de itens baixados.
+  const baixarNoPedido = async (): Promise<number> => {
+    if (!pedidoSel) return 0
     try {
-      const { data: pit } = await sb.from('pedido_compra_itens').select('id,produto_nome,qtd_pedida,qtd_recebida').eq('pedido_id', pedidoId)
-      if (!pit?.length) return 0
-      const recs = itens.filter(it => Number(it.recebido) > 0).map(it => ({ nome: it.produto, q: Number(it.recebido) }))
-      const usados = new Set<number>()
       let baixados = 0
-      for (const pi of pit) {
-        const idx = recs.findIndex((r, k) => !usados.has(k) && casaNome(r.nome, pi.produto_nome))
-        if (idx < 0) continue
-        usados.add(idx)
-        const nova = (Number(pi.qtd_recebida) || 0) + recs[idx].q
+      for (const pi of pedidoItens) {
+        const add = Number(pi.receber) || 0
+        if (add <= 0) continue
+        const nova = (Number(pi.qtd_recebida) || 0) + add
         await sb.from('pedido_compra_itens').update({ qtd_recebida: nova }).eq('id', pi.id)
         baixados++
       }
-      const { data: pit2 } = await sb.from('pedido_compra_itens').select('qtd_pedida,qtd_recebida').eq('pedido_id', pedidoId)
+      if (!baixados) return 0
+      const { data: pit2 } = await sb.from('pedido_compra_itens').select('qtd_pedida,qtd_recebida').eq('pedido_id', pedidoSel)
       const totPed = (pit2 || []).reduce((s: number, x: any) => s + (Number(x.qtd_pedida) || 0), 0)
       const totRec = (pit2 || []).reduce((s: number, x: any) => s + (Number(x.qtd_recebida) || 0), 0)
       const done = totPed > 0 && totRec >= totPed
       // recebido_total é MONETÁRIO no restante do sistema (ver RequisoesPage): só gravamos quando concluído (= total do pedido); parcial mexe só no status
-      const pedTotal = (pedidosAbertos.find(p => p.id === pedidoId) || {}).total
+      const pedTotal = (pedidosAbertos.find(p => p.id === pedidoSel) || {}).total
       const patch: any = { status: done ? 'recebido' : 'recebido_parcial', baixa_feita: done }
       if (done && pedTotal != null) patch.recebido_total = pedTotal
-      await sb.from('pedidos_compra').update(patch).eq('id', pedidoId)
+      await sb.from('pedidos_compra').update(patch).eq('id', pedidoSel)
       return baixados
     } catch { return 0 }
   }
@@ -243,12 +262,12 @@ export default function RecebimentoPage() {
       if (error || !data?.ok) { toast('Erro ao confirmar: ' + (error?.message || 'tente novamente'), 'error'); setBusy(''); return }
       // Baixa relacional no pedido vinculado (Recebido por item → ciclo da requisição). Complementar: não bloqueia o recebimento.
       let baixaMsg = ''
-      if (pedidoSel) { const n = await baixarNoPedido(pedidoSel); if (n > 0) baixaMsg = ` · ${n} item(ns) baixado(s) no pedido` }
+      if (pedidoSel) { const n = await baixarNoPedido(); if (n > 0) baixaMsg = ` · ${n} item(ns) baixado(s) no pedido` }
       if (data.status === 'pendente_aprovacao')
         toast(`Recebimento registrado com ${data.retidos} item(ns) retido(s) por divergência — aguardando aprovação. ⏳${baixaMsg}`)
       else
         toast(`Recebimento confirmado! Despesa nº ${data.prestacao} · ABC atualizada${data.estoque ? ` · ${data.estoque} no estoque 📦` : ''}${baixaMsg} ✅`)
-      setFile(null); setAnexo(null); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral(''); setAssinatura(''); setPedidoSel(''); loadRecs(); loadPedidosAbertos(loja)
+      setFile(null); setAnexo(null); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral(''); setAssinatura(''); setPedidoSel(''); setPedidoItens([]); loadRecs(); loadPedidosAbertos(loja)
     } catch (e: any) { toast('Falha ao confirmar: ' + (e?.message || ''), 'error') }
     setBusy('')
   }
@@ -304,13 +323,42 @@ export default function RecebimentoPage() {
           ))}
         </div>
 
-        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: pedidoSel ? '#F0FDF4' : '#faf8f5', border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 12px' }}>
-          <label style={{ fontSize: 12.5, fontWeight: 700, color: '#6B1212', display: 'flex', alignItems: 'center', gap: 6 }}>🔗 Vincular ao pedido</label>
-          <select value={pedidoSel} onChange={e => setPedidoSel(e.target.value)} style={{ ...inp, width: 'auto', minWidth: 280 }}>
-            <option value="">— não vincular (só entrada no estoque) —</option>
-            {pedidosAbertos.map(p => <option key={p.id} value={p.id}>{(p.numero || 'PED')} · {p.fornecedor || '—'} · {fmt(p.total)}</option>)}
-          </select>
-          <span style={{ fontSize: 11, color: '#9ca3af' }}>Ao confirmar, dá baixa no pedido (coluna “Recebido” por item no ciclo da requisição).</span>
+        <div style={{ marginTop: 12, background: pedidoSel ? '#F0FDF4' : '#faf8f5', border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <label style={{ fontSize: 12.5, fontWeight: 700, color: '#6B1212', display: 'flex', alignItems: 'center', gap: 6 }}>🔗 Vincular ao pedido</label>
+            <select value={pedidoSel} onChange={e => setPedidoSel(e.target.value)} style={{ ...inp, width: 'auto', minWidth: 280 }}>
+              <option value="">— não vincular (só entrada no estoque) —</option>
+              {pedidosAbertos.map(p => <option key={p.id} value={p.id}>{(p.numero || 'PED')} · {p.fornecedor || '—'} · {fmt(p.total)}</option>)}
+            </select>
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>Confira o de-para pedido × nota e ajuste o que receber agora (permite recebimento parcial).</span>
+          </div>
+          {pedidoSel && (pedidoItens.length ? (
+            <div style={{ overflowX: 'auto', marginTop: 10 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 640 }}>
+                <thead><tr style={{ textAlign: 'left', color: '#6b7280', fontSize: 11, textTransform: 'uppercase' }}>
+                  <th style={{ padding: 6 }}>Produto (pedido)</th><th>Pedido</th><th>Já recebido</th><th>Falta</th><th>Receber agora</th><th>Ficará</th>
+                </tr></thead>
+                <tbody>
+                  {pedidoItens.map(pi => {
+                    const add = Number(pi.receber) || 0
+                    const ped = Number(pi.qtd_pedida) || 0
+                    const ja = Number(pi.qtd_recebida) || 0
+                    const ficara = ja + add
+                    const excede = ped > 0 && ficara > ped
+                    return <tr key={pi.id} style={{ borderTop: '1px solid #eef0f2' }}>
+                      <td style={{ padding: 6, fontWeight: 600 }}>{pi.produto_nome}</td>
+                      <td>{ped} {pi.unidade || ''}</td>
+                      <td>{ja}</td>
+                      <td style={{ fontWeight: 700, color: pi.falta > 0 ? '#B45309' : '#15803D' }}>{pi.falta > 0 ? pi.falta : '✓'}</td>
+                      <td style={{ width: 100 }}><input type="number" step="0.01" min={0} value={pi.receber} onChange={e => setReceber(pi.id, e.target.value)} style={{ ...inp, width: 90 }} /></td>
+                      <td style={{ fontWeight: 700, color: excede ? '#B45309' : (ficara >= ped && ficara > 0 ? '#15803D' : '#111827') }}>{ficara}{excede ? ' ⚠' : ''}</td>
+                    </tr>
+                  })}
+                </tbody>
+              </table>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>Pré-preenchido pelo que a nota trouxe (casando por nome). Ajuste livremente — deixe 0 no que não chegou. Se “Ficará” &lt; “Pedido”, o item segue <b>parcial</b> e reabre para o próximo recebimento.</div>
+            </div>
+          ) : <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 8 }}>Este pedido não tem itens relacionais para conferência.</div>)}
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '16px 0 8px' }}>
