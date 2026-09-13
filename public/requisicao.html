@@ -89,7 +89,7 @@ async function run(){
      `<h1>${num}</h1>`+
      `<div class="sub">${esc(lojaLabel)} · Solicitante: <b>${esc(req.responsavel_nome||req.created_by||'—')}</b> · ${dDMY(req.created_at)}</div>`+
      `<span class="badge">${esc(STATUS[req.status]||req.status||'—')}</span>`+
-   `</div><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></header>`+
+   `</div><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" style="text-decoration:none;background:var(--card);color:var(--vinho)" href="ciclo-requisicao.html?id=${ID}">🔗 Ver ciclo</a><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></div></header>`+
    `<div class="kpis">`+
      `<div class="kpi"><div class="kn">${itens.length}</div><div class="kl">Itens</div></div>`+
      `<div class="kpi"><div class="kn">${cats.length}</div><div class="kl">Categorias</div></div>`+

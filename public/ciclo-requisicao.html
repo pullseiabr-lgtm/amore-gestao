@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Ciclo da Requisição — Amore</title>
+<style>
+:root{--vinho:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--bad:#B91C1C;--info:#0369A1;--shadow:0 1px 2px rgba(80,20,25,.05),0 8px 24px -12px rgba(80,20,25,.12)}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6)}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5;font-variant-numeric:tabular-nums}
+.wrap{max-width:1080px;margin:0 auto;padding:24px 16px 60px}
+header.top{border-bottom:2px solid var(--vinho);padding-bottom:14px;margin-bottom:6px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
+h1{font-size:23px;margin:6px 0 4px}.sub{color:var(--muted);font-size:13.5px}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 11px;border-radius:20px;background:color-mix(in srgb,var(--vinho) 12%,var(--card));color:var(--vinho);border:1px solid var(--border);margin-top:6px}
+.btn{border:1px solid var(--vinho);background:var(--vinho);color:#fff;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block}
+.btn.ghost{background:var(--card);color:var(--text);border-color:var(--border)}
+/* stepper do ciclo */
+.steps{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}
+.step{flex:1;min-width:130px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;box-shadow:var(--shadow);position:relative}
+.step .st-l{font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);font-weight:700}
+.step .st-v{font-size:13px;font-weight:700;margin-top:3px}
+.step.on{border-color:var(--ok)}.step.on .st-v{color:var(--ok)}
+.step.off .st-v{color:var(--muted);font-weight:600}
+.step .dot{position:absolute;top:10px;right:10px;font-size:14px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:11px;margin:16px 0}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:12px 14px;box-shadow:var(--shadow)}
+.kpi .kn{font-size:22px;font-weight:800}.kpi .kl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-top:2px}
+.sec{margin:22px 0 8px;font-size:15.5px;font-weight:700;color:var(--vinho)}
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:13px;box-shadow:var(--shadow);background:var(--card)}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:720px}
+thead th{text-align:left;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:9px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle}tbody tr:last-child td{border-bottom:none}
+.qt{text-align:right;white-space:nowrap;font-weight:700}.prod{font-weight:600}
+.st{font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap;display:inline-block}
+.st.ok{background:#DCFCE7;color:#15803D}.st.wr{background:#FEF3C7;color:#B45309}.st.no{background:#FEE2E2;color:#B91C1C}.st.aw{background:#E0F2FE;color:#0369A1}.st.na{background:#F3F4F6;color:#6b7280}
+.fe{font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px;background:#FEE2E2;color:#B91C1C;white-space:nowrap;margin-left:6px}
+.tl{background:var(--card);border:1px solid var(--border);border-radius:13px;box-shadow:var(--shadow);padding:6px 4px}
+.tl .ev{display:flex;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12.5px}.tl .ev:last-child{border-bottom:none}
+.tl .ev .d{color:var(--muted);white-space:nowrap;min-width:120px;font-size:11.5px}
+.foot{margin-top:26px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
+.msg{text-align:center;padding:60px 20px;color:var(--muted)}
+@media print{.btn{display:none}body{background:#fff}.tw,.kpi,.step,.tl{box-shadow:none}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Carregando ciclo da requisição…</div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY};
+const q=new URLSearchParams(location.search);
+const ID=(q.get('id')||'').trim();
+const REQNUM=(q.get('req')||q.get('numero')||'').replace(/\D/g,'');
+const g=async p=>{try{return await (await fetch(SB+'/rest/v1/'+p,{headers:H})).json()}catch(e){return []}};
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const nf=v=>{v=Number(v)||0;return Number.isInteger(v)?String(v):(Math.round(v*100)/100).toLocaleString('pt-BR');};
+const un=u=>({'Unidade(s)':'un','Quilograma(s)':'kg','Caixa(s)':'cx','Pacote(s)':'pct','Litro(s)':'L','Grama(s)':'g'}[u]||u||'');
+const norm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+const dDMY=s=>{if(!s)return '';const p=String(s).slice(0,10).split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s};
+const dHora=s=>{if(!s)return '';try{return new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}catch(e){return dDMY(s)}};
+const STATUS={rascunho:'Rascunho',enviada:'Enviada',em_analise:'Em análise',aguardando_cotacao:'Aguardando cotação',em_cotacao:'Em cotação',cotacao_recebida:'Cotação recebida',parcialmente_aprovada:'Parc. aprovada',aprovada:'Aprovada',reprovada:'Reprovada',em_separacao:'Em separação',compra_realizada:'Compra realizada',prestacao_pendente:'Prestação pendente',em_auditoria:'Em auditoria',recebimento_parcial:'Recebimento parcial',recebimento_concluido:'Recebimento concluído',baixa_realizada:'Baixa realizada',concluida:'Concluída',cancelada:'Cancelada'};
+
+async function run(){
+  const app=document.getElementById('app');
+  let req=null;
+  if(ID){ req=((await g(`requisicoes?id=eq.${ID}&select=*`))||[])[0]; }
+  else if(REQNUM){ req=((await g(`requisicoes?numero=eq.${REQNUM}&select=*&order=created_at.desc&limit=1`))||[])[0]; }
+  if(!req){ app.innerHTML='<div class="msg">Requisição não encontrada. Informe <b>?id=</b> ou <b>?req=NÚMERO</b>.</div>'; return; }
+
+  const num='REQ-'+String(req.numero||0).padStart(4,'0');
+  const lojaLabel={'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'}[req.loja]||req.loja;
+  const flow=/flow/i.test(req.loja||''); const MARCA=flow?'Flow':'Amore';
+  if(flow){ document.documentElement.style.setProperty('--vinho','#2E7D34'); }
+
+  // Carrega em paralelo: itens da requisição, pedidos vinculados, cotações, timeline, estoque da loja
+  const [itens, pedidos, cotacoes, timeline, estoque] = await Promise.all([
+    g(`requisicao_itens?requisicao_id=eq.${req.id}&select=id,produto_nome,categoria,quantidade,unidade,status,observacoes&order=produto_nome.asc`),
+    g(`pedidos_compra?requisicao_id=eq.${req.id}&select=id,numero,fornecedor,status,total,recebido_total,created_at,app_config_chave&order=created_at.asc`),
+    g(`requisicao_cotacoes?requisicao_id=eq.${req.id}&select=id,fornecedor_nome,status,total,created_at&order=created_at.asc`),
+    g(`req_timeline?requisicao_id=eq.${req.id}&select=tipo,descricao,usuario,created_at&order=created_at.asc`),
+    g(`estoque_produtos?loja=eq.${encodeURIComponent(req.loja)}&ativo=eq.true&select=nome,nivel_atual,nivel_minimo`),
+  ]);
+
+  // itens de pedido (Comprado/Recebido) — por requisicao_item_id (preciso) + fallback por nome
+  let pedItens=[];
+  if(pedidos.length){ const idIn='('+pedidos.map(p=>p.id).join(',')+')';
+    pedItens=await g(`pedido_compra_itens?pedido_id=in.${idIn}&select=pedido_id,requisicao_item_id,produto_nome,unidade,qtd_pedida,qtd_recebida,preco`); }
+  const pedById={}; pedidos.forEach(p=>pedById[p.id]=p);
+  const compById={}, recById={}, fornById={};      // por requisicao_item_id
+  const compByNome={}, recByNome={}, fornByNome={}; // fallback por nome normalizado
+  for(const it of (pedItens||[])){
+    const c=Number(it.qtd_pedida)||0, r=Number(it.qtd_recebida)||0, forn=(pedById[it.pedido_id]||{}).fornecedor||'';
+    if(it.requisicao_item_id){ compById[it.requisicao_item_id]=(compById[it.requisicao_item_id]||0)+c; recById[it.requisicao_item_id]=(recById[it.requisicao_item_id]||0)+r; if(forn)fornById[it.requisicao_item_id]=forn; }
+    const k=norm(it.produto_nome); if(k){ compByNome[k]=(compByNome[k]||0)+c; recByNome[k]=(recByNome[k]||0)+r; if(forn&&!fornByNome[k])fornByNome[k]=forn; }
+  }
+  // estoque por nome
+  const estMap={}; (estoque||[]).forEach(p=>{ estMap[norm(p.nome)]={atual:Number(p.nivel_atual)||0,min:Number(p.nivel_minimo)||0}; });
+
+  // monta linhas por produto
+  const rows=(itens||[]).map(it=>{
+    const k=norm(it.produto_nome);
+    const solic=Number(it.quantidade)||0;
+    const comprado=(compById[it.id]!=null?compById[it.id]:(compByNome[k]||0));
+    const recebido=(recById[it.id]!=null?recById[it.id]:(recByNome[k]||0));
+    const forn=fornById[it.id]||fornByNome[k]||'';
+    const pendEnt=Math.max(0,comprado-recebido);
+    const faltaComprar=Math.max(0,solic-comprado);
+    const est=estMap[k]||null;
+    const faltaEstoque=!!est && est.atual<=est.min;   // no/abaixo do mínimo
+    let status,cls;
+    if(it.status==='cancelado'){status='Cancelado';cls='na';}
+    else if(comprado<=0){status=faltaComprar>0?'A comprar':'—';cls='no';}
+    else if(recebido<=0){status='Aguardando entrega';cls='aw';}
+    else if(recebido<comprado){status='Parcial';cls='wr';}
+    else{status='Entregue';cls='ok';}
+    return {...it,solic,comprado,recebido,pendEnt,faltaComprar,forn,est,faltaEstoque,status,cls};
+  });
+
+  // status GERAL derivado dos itens
+  const ativos=rows.filter(r=>r.status!=='Cancelado');
+  const nEnt=ativos.filter(r=>r.status==='Entregue').length;
+  const nParc=ativos.filter(r=>r.status==='Parcial').length;
+  const nAguard=ativos.filter(r=>r.status==='Aguardando entrega').length;
+  const nAcomprar=ativos.filter(r=>r.status==='A comprar'||r.status==='—').length;
+  const nFaltaEst=ativos.filter(r=>r.faltaEstoque).length;
+  let geral,gcls;
+  if(!pedidos.length){geral='Aguardando compra';gcls='no';}
+  else if(nEnt===ativos.length){geral='Recebida / concluída';gcls='ok';}
+  else if(nEnt>0||nParc>0){geral='Recebimento parcial';gcls='wr';}
+  else if(nAguard>0&&nAcomprar===0){geral='Aguardando entrega';gcls='aw';}
+  else{geral='Compra em andamento';gcls='aw';}
+
+  // stepper do ciclo
+  const temAprov=!!(req.aprovador_at||req.aprov_gestor_em);
+  const temCot=cotacoes.length>0;
+  const temPed=pedidos.length>0;
+  const temReceb=rows.some(r=>r.recebido>0);
+  const temEstoque=rows.some(r=>r.recebido>0); // entrada no estoque = recebimento confirmado
+  const dtReq=dDMY(req.created_at);
+  const dtAprov=dDMY(req.aprovador_at||req.aprov_gestor_em);
+  const dtCot=temCot?dDMY(cotacoes[0].created_at):'';
+  const dtPed=temPed?dDMY(pedidos[0].created_at):'';
+  const step=(l,v,on,extra)=>`<div class="step ${on?'on':'off'}"><div class="dot">${on?'✅':'⚪'}</div><div class="st-l">${l}</div><div class="st-v">${v||(on?'ok':'—')}</div>${extra?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${extra}</div>`:''}</div>`;
+  const steps=
+    step('1 · Requisição',dtReq,true,req.responsavel_nome||'')+
+    step('2 · Aprovação',temAprov?dtAprov:'pendente',temAprov,req.aprovador_nome||'')+
+    step('3 · Cotação',temCot?dtCot:'não realizada',temCot,temCot?cotacoes.length+' cotação(ões)':'opcional')+
+    step('4 · Pedido',temPed?dtPed:'—',temPed,temPed?(pedidos.map(p=>p.numero).filter(Boolean).join(', ')||pedidos.length+' pedido(s)'):'')+
+    step('5 · Recebimento',temReceb?(nParc?'parcial':'recebido'):'—',temReceb,'')+
+    step('6 · Estoque',temEstoque?'entrada':'—',temEstoque,'');
+
+  // linhas produto
+  const linhas=rows.map(r=>{
+    const badge=`<span class="st ${r.cls}">${esc(r.status)}</span>${r.faltaEstoque?`<span class="fe" title="Estoque atual ${nf(r.est.atual)} ≤ mínimo ${nf(r.est.min)}">🔴 falta estoque</span>`:''}`;
+    return `<tr>
+      <td class="prod">${esc(r.produto_nome)}${r.observacoes?`<div style="font-size:11px;color:var(--warn)">· ${esc(r.observacoes)}</div>`:''}${r.forn?`<div style="font-size:11px;color:var(--muted)">${esc(r.forn)}</div>`:''}</td>
+      <td class="qt">${nf(r.solic)} <span style="color:var(--muted);font-weight:400">${esc(un(r.unidade))}</span></td>
+      <td class="qt">${r.comprado>0?nf(r.comprado):'—'}</td>
+      <td class="qt" style="color:var(--ok)">${r.recebido>0?nf(r.recebido):'—'}</td>
+      <td class="qt" style="color:${r.pendEnt>0?'var(--warn)':'var(--muted)'}">${r.comprado>0?(r.pendEnt>0?nf(r.pendEnt):'✓'):'—'}</td>
+      <td class="qt" style="color:${r.est?(r.faltaEstoque?'var(--bad)':'var(--text)'):'var(--muted)'}">${r.est?nf(r.est.atual):'—'}</td>
+      <td>${badge}</td>
+    </tr>`;
+  }).join('');
+
+  // timeline
+  const tl=(timeline||[]).map(e=>`<div class="ev"><span class="d">${dHora(e.created_at)}</span><span>${esc(e.descricao||e.tipo)}${e.usuario?` <span style="color:var(--muted)">· ${esc(e.usuario)}</span>`:''}</span></div>`).join('')
+    || '<div class="ev"><span style="color:var(--muted)">Sem histórico registrado.</span></div>';
+
+  document.getElementById('app').innerHTML=
+   `<header class="top"><div>`+
+     `<div class="eyebrow">Painel ${MARCA} · Ciclo da Requisição</div>`+
+     `<h1>${num}</h1>`+
+     `<div class="sub">${esc(lojaLabel)} · Solicitante: <b>${esc(req.responsavel_nome||req.created_by||'—')}</b> · ${dDMY(req.created_at)}${req.centro_custo?` · ${esc(req.centro_custo)}`:''}</div>`+
+     `<span class="badge">Situação geral: ${esc(geral)}</span> <span class="badge" title="Status gravado na requisição">Status: ${esc(STATUS[req.status]||req.status||'—')}</span>`+
+   `</div><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn ghost" href="requisicao.html?id=${req.id}">📄 Documento</a><button class="btn" onclick="window.print()">🖨 Imprimir / PDF</button></div></header>`+
+   `<div class="steps">${steps}</div>`+
+   `<div class="kpis">`+
+     `<div class="kpi"><div class="kn">${ativos.length}</div><div class="kl">Produtos</div></div>`+
+     `<div class="kpi"><div class="kn" style="color:var(--ok)">${nEnt}</div><div class="kl">📦 Entregues</div></div>`+
+     `<div class="kpi"><div class="kn" style="color:var(--warn)">${nParc+nAguard}</div><div class="kl">⏳ Pendente entrega</div></div>`+
+     `<div class="kpi"><div class="kn" style="color:var(--bad)">${nAcomprar}</div><div class="kl">🛒 A comprar</div></div>`+
+     (nFaltaEst?`<div class="kpi"><div class="kn" style="color:var(--bad)">${nFaltaEst}</div><div class="kl">🔴 Falta estoque</div></div>`:'')+
+   `</div>`+
+   `<div class="sec">📦 Status por produto</div>`+
+   `<div class="tw"><table><thead><tr><th>Produto</th><th class="qt">Solicitado</th><th class="qt">Comprado</th><th class="qt">Recebido</th><th class="qt">Pendente</th><th class="qt">Estoque</th><th>Status</th></tr></thead><tbody>${linhas||'<tr><td colspan="7" style="padding:18px;text-align:center;color:var(--muted)">Sem itens.</td></tr>'}</tbody></table></div>`+
+   (temPed?`<div class="sec">🧾 Pedidos vinculados</div><div class="tw"><table style="min-width:0"><thead><tr><th>Pedido</th><th>Fornecedor</th><th class="qt">Total</th><th>Status</th><th></th></tr></thead><tbody>`+
+     pedidos.map(p=>`<tr><td class="prod">${esc(p.numero||'—')}</td><td>${esc(p.fornecedor||'—')}</td><td class="qt">${p.total!=null?('R$ '+nf(p.total)):'—'}</td><td>${esc(p.status||'—')}</td><td>${p.app_config_chave?`<a href="pedido.html?p=${encodeURIComponent(String(p.app_config_chave).replace(/^pedido_/,''))}" target="_blank" style="color:var(--vinho);font-weight:700">abrir</a>`:''}</td></tr>`).join('')+
+     `</tbody></table></div>`:'')+
+   `<div class="sec">🕘 Histórico do ciclo</div><div class="tl">${tl}</div>`+
+   `<div class="foot">Ciclo consolidado do Painel ${MARCA}: Requisição → Aprovação → Cotação (opcional) → Pedido → Recebimento → Estoque. ${num} · ${esc(lojaLabel)} · ${new Date().toLocaleString('pt-BR')}</div>`;
+  document.title=`${num} — Ciclo — ${lojaLabel}`;
+}
+run().catch(function(e){document.getElementById('app').innerHTML='<div class="msg">Erro ao carregar: '+esc(e&&e.message||e)+'</div>';});
+</script>
+</body>
+</html>

@@ -132,7 +132,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));const rnd=(a,b)=>a+Math.floor(M
 const nomeLoja=l=>({'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'})[l]||l;
 function show(m,ok){const e=el('msg');e.textContent=m;e.className='msg '+(ok?'ok':'err');}
 function lojaMatch(pedLoja,sel){pedLoja=pedLoja||'';if(sel==='Flow CD')return /flow/i.test(pedLoja);if(sel==='Amore CD')return pedLoja==='Amore CD'||/amore costa dourada/i.test(pedLoja);if(sel==='Amore Paiva')return pedLoja==='Amore Paiva';return false;}
-let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],RECEBIDOS=[],TOTALPED=0,FILTRO='',ROWS=[],REQNUM=null,REQID='',REQIDS=[],REQINFO='',REQDATE='',OVKEY='',VIEW='gestao',PERLABEL='',NPED=0,PEDLIST=[],SHOWEXCL=false,FREQ='',FFORN='',FPROD='';
+let LOJA='Flow CD',SOLIC=[],OVER={},COMPRADOS=[],RECEBIDOS=[],ESTQ={},TOTALPED=0,FILTRO='',ROWS=[],REQNUM=null,REQID='',REQIDS=[],REQINFO='',REQDATE='',OVKEY='',VIEW='gestao',PERLABEL='',NPED=0,PEDLIST=[],SHOWEXCL=false,FREQ='',FFORN='',FPROD='';
 // chave semanal (ISO week) — baixas valem por semana e renovam sozinhas na semana seguinte
 function isoWeek(d){d=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=d.getUTCDay()||7;d.setUTCDate(d.getUTCDate()+4-day);const y0=new Date(Date.UTC(d.getUTCFullYear(),0,1));const wk=Math.ceil(((d-y0)/864e5+1)/7);return d.getUTCFullYear()+'w'+String(wk).padStart(2,'0');}
 
@@ -211,6 +211,12 @@ async function load(){
       RECEBIDOS.push({produto:nome,qtd:q,un:m.unidade||'',data:rd,norm:norm(nome)});
     }
   }catch(e){}
+  // NÍVEL DE ESTOQUE (para o status "falta estoque" por produto): atual × mínimo, por nome normalizado
+  ESTQ={};
+  try{
+    const ep=await (await fetch(SB+'/rest/v1/estoque_produtos?loja=eq.'+encodeURIComponent(LOJA)+'&ativo=eq.true&select=nome,nivel_atual,nivel_minimo&limit=5000',{headers:H})).json();
+    for(const p of (ep||[])){ const k=norm(p.nome); if(k) ESTQ[k]={a:Number(p.nivel_atual)||0,m:Number(p.nivel_minimo)||0}; }
+  }catch(e){}
   compute();render();
 }
 function matchOne(prod){const st=toks(prod);if(!st.length)return{status:'no'};const main=st.slice().sort((a,b)=>b.length-a.length)[0];let best=null,bs=0,qsum=0,vsum=0,forns=new Set();for(const c of COMPRADOS){if(!c.norm.includes(main))continue;let sc=0;for(const t of st)if(c.norm.includes(t))sc++;if(sc>0){qsum+=Number(c.qtd)||0;vsum+=c.subtotal;forns.add(c.fornecedor);}if(sc>bs){bs=sc;best=c;}}if(!best)return{status:'no'};return{status:bs>=st.length?'ok':'wr',best,qsum,vsum,forns:[...forns]};}
@@ -219,6 +225,9 @@ function somaRecebida(prod){const st=toks(prod);if(!st.length)return 0;const mai
 function pendEntrega(r){const p=nb(r.qComprada)-nb(r.qRecebida);return p>0?p:0;}
 // status de ENTREGA (independente do status de compra): sem compra · a caminho · parcial · entregue
 function entregaStatus(r){const qc=nb(r.qComprada),qr=nb(r.qRecebida);if(qc<=0)return 'none';if(qr<=0)return 'aguard';if(qr<qc)return 'parcial';return 'entregue';}
+// "falta estoque" por produto: nível atual ≤ mínimo no estoque da loja
+function faltaEstoque(r){const e=ESTQ[norm(r.produto)];return !!e&&e.a<=e.m;}
+function faltaEstTag(r){const e=ESTQ[norm(r.produto)];if(!e||e.a>e.m)return '';return ` <span class="st no" style="font-size:9px;padding:1px 6px" title="Estoque atual ${e.a} ≤ mínimo ${e.m} — repor">🔴 falta estoque</span>`;}
 function compute(){ROWS=SOLIC.map(si=>{const m=matchOne(si.produto);const o=OVER[norm(si.produto)]||{};const b=m.best||{};const rec=somaRecebida(si.produto);return {...si,m,_recAuto:rec,qRecebida:(o.qRecebida!=null?o.qRecebida:(rec>0?rec:'')),
   _key:norm(si.produto),_op:si.produto,_oq:si.qtd,_ou:si.un,
   produto:(o.produto!=null?o.produto:si.produto),qtd:(o.qtd!=null?o.qtd:si.qtd),un:(o.un!=null?o.un:si.un),
@@ -290,7 +299,7 @@ function render(){
       <td class="q" style="font-weight:800;color:${f>0?'#DC2626':'#15803D'}">${nb(r.qComprada)>0||r.manual!=null?f:''}</td>
       <td class="q" style="white-space:nowrap"><input value="${esc(r.qRecebida)}" onchange="ov(${gi},'qRecebida',this.value)" placeholder="0" style="width:52px;font-weight:700;color:#0f766e" title="Quantidade entregue/recebida — preenche sozinho pelas entradas do estoque; ajuste à mão se o recebimento não passou pelo Recebimento Inteligente">${r._recAuto>0&&(r.qRecebida===''||String(r.qRecebida)===String(r._recAuto))?' <span class="q" style="font-size:9px" title="veio automático do estoque">auto</span>':(nb(r.qRecebida)>0?' <span class="q" style="font-size:9px;color:#0f766e" title="ajustado manualmente">✍</span>':'')}${entregaStatus(r)==='entregue'?' <span class="st ok" style="font-size:9px;padding:1px 6px">📦</span>':entregaStatus(r)==='parcial'?' <span class="st wr" style="font-size:9px;padding:1px 6px">🟡</span>':''}</td>
       <td class="q" style="font-weight:800;color:${pendEntrega(r)>0?'#B45309':'#15803D'}" title="Comprado que ainda não chegou">${nb(r.qComprada)>0?(pendEntrega(r)>0?pendEntrega(r):'✓'):''}</td>
-      <td style="white-space:nowrap"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px"><input type="checkbox" ${eff(r)==='ok'?'checked':''} onchange="checkComprado(${gi},this.checked)" title="Confirmar compra / dar baixa (salva sozinho)">${badge(eff(r))}</label>${conf}${r.manual!=null?' <span class="q">(man.)</span>':''}</td>
+      <td style="white-space:nowrap"><label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px"><input type="checkbox" ${eff(r)==='ok'?'checked':''} onchange="checkComprado(${gi},this.checked)" title="Confirmar compra / dar baixa (salva sozinho)">${badge(eff(r))}</label>${conf}${r.manual!=null?' <span class="q">(man.)</span>':''}${faltaEstTag(r)}</td>
       <td>${inp(gi,'vUnit',r.vUnit,'0,00','pri')}</td>
       <td>${inp(gi,'vTotal',r.vTotal,'0,00','val')}</td>
       <td>${inp(gi,'forn',r.forn,'fornecedor','cin')}${eff(r)==='no'?inp(gi,'wpp',r.wpp,'WhatsApp','wpp'):''}</td>
