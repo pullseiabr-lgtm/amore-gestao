@@ -5,7 +5,7 @@ import { useLoja } from '../../contexts/LojaContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../hooks/useToast'
-import { fetchFornecedores, fetchProdutos, insertProduto, insertPedidoCompra, insertPedidoCompraItens } from '../../lib/db'
+import { fetchFornecedores, fetchProdutos, insertProduto, insertPedidoCompra, insertPedidoCompraItens, fetchRequisicaoItens, insertReqTimeline, logReqAuditoria, updateRequisicao } from '../../lib/db'
 import { enviarWhatsApp } from '../../lib/notify'
 import { siteOrigin } from '../../lib/site'
 import { UNIDADES } from '../../lib/catalogo'
@@ -20,8 +20,11 @@ const DRAFT_KEY = 'pedido_rascunho_v1'
 
 interface PedidoItem { produto: string; qtd: number; un?: string; preco: number; subtotal?: number }
 interface Pedido { chave: string; fornecedor: string; loja: string; data?: string; total?: number; pagamento?: string; cliente?: string; recebimento_responsavel?: string; itens?: PedidoItem[]; cancelados?: string[]; recebimento?: { status: string; por?: string; obs?: string; em?: string } }
-interface Linha { produto: string; qtd: string; un: string; preco: string }
+interface Linha { produto: string; qtd: string; un: string; preco: string; reqItemId?: string; qtdOrig?: number; produtoOrig?: string }
 const linhaVazia = (): Linha => ({ produto: '', qtd: '1', un: 'Unidade(s)', preco: '' })
+// vínculo com a requisição de origem (o Pedido nasce da Requisição — cotação NÃO é obrigatória)
+interface ReqVinc { id: string; numero: number; loja: string; solicitante: string; centro_custo: string | null; observacoes: string | null; status: string }
+const fmtReq = (n: number | string) => 'REQ-' + String(n).padStart(4, '0')
 
 export default function PedidosPage() {
   const { loja } = useLoja()
@@ -45,6 +48,12 @@ export default function PedidosPage() {
   const [fReceb, setFReceb] = useState('')
   const [linhas, setLinhas] = useState<Linha[]>([linhaVazia()])
   const [produtosLoja, setProdutosLoja] = useState<Produto[]>([])
+  // origem: requisição
+  const [fReqNum, setFReqNum] = useState('')
+  const [reqVinc, setReqVinc] = useState<ReqVinc | null>(null)
+  const [buscandoReq, setBuscandoReq] = useState(false)
+  const [fCentroCusto, setFCentroCusto] = useState('')
+  const [fObs, setFObs] = useState('')
   // envio do link
   const [fornMap, setFornMap] = useState<Record<string, string>>({})
   const [profMap, setProfMap] = useState<Record<string, string>>({})
@@ -144,13 +153,43 @@ export default function PedidosPage() {
 
   const setLinha = (i: number, patch: Partial<Linha>) => setLinhas(ls => ls.map((l, j) => j === i ? { ...l, ...patch } : l))
   const totalForm = linhas.reduce((s, l) => s + (Number(l.qtd) || 0) * (Number(l.preco) || 0), 0)
-  const resetForm = () => { setFForn(''); setFCliente(''); setFReceb(''); setFPagto('à vista'); setFData(new Date().toISOString().slice(0, 10)); setLinhas([linhaVazia()]); try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ } }
+  const resetForm = () => { setFForn(''); setFCliente(''); setFReceb(''); setFPagto('à vista'); setFData(new Date().toISOString().slice(0, 10)); setLinhas([linhaVazia()]); setFReqNum(''); setReqVinc(null); setFCentroCusto(''); setFObs(''); try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ } }
+
+  // Origem = Requisição: digita/seleciona REQ-#### → carrega loja, solicitante, centro de custo, obs e TODOS os itens.
+  // O usuário não redigita produtos. Os dados ficam editáveis, mas a requisição original NÃO é alterada (auditoria no salvar).
+  const buscarRequisicao = async () => {
+    const n = Number(String(fReqNum).replace(/\D/g, ''))
+    if (!n) { toast('Informe o número da requisição (ex.: REQ-0125 ou 125).', 'error'); return }
+    setBuscandoReq(true)
+    try {
+      const { data: reqs } = await sb.from('requisicoes').select('*').eq('numero', n).order('created_at', { ascending: false }).limit(1)
+      const req = (reqs || [])[0]
+      if (!req) { toast(`Requisição ${fmtReq(n)} não encontrada.`, 'error'); setBuscandoReq(false); return }
+      const itens = await fetchRequisicaoItens(req.id)
+      const validos = (itens || []).filter((it: any) => it.status !== 'cancelado')
+      if (!validos.length) { toast(`${fmtReq(n)} não tem itens ativos.`, 'error'); setBuscandoReq(false); return }
+      setReqVinc({ id: req.id, numero: req.numero, loja: req.loja, solicitante: req.responsavel_nome || '—', centro_custo: req.centro_custo, observacoes: req.observacoes, status: req.status })
+      setFReqNum(fmtReq(req.numero))
+      if (LOJAS.includes(req.loja)) setFLoja(req.loja)
+      setFCentroCusto(req.centro_custo || '')
+      setFObs(req.observacoes || '')
+      if (recebLoja[req.loja]?.nome) setFReceb(recebLoja[req.loja].nome)
+      setLinhas(validos.map((it: any) => ({
+        produto: it.produto_nome, qtd: String(it.quantidade ?? ''), un: it.unidade || 'Unidade(s)',
+        preco: String(it.preco_final ?? it.preco_cotado ?? it.preco_referencia ?? ''),
+        reqItemId: it.id, qtdOrig: Number(it.quantidade) || 0, produtoOrig: it.produto_nome,
+      })))
+      toast(`${fmtReq(req.numero)} carregada — ${validos.length} item(ns). Confira e ajuste se precisar. ✅`)
+    } catch { toast('Falha ao buscar a requisição.', 'error') }
+    finally { setBuscandoReq(false) }
+  }
+  const desvincularReq = () => { setReqVinc(null); setFReqNum(''); setLinhas(ls => ls.map(l => ({ ...l, reqItemId: undefined, qtdOrig: undefined, produtoOrig: undefined }))) }
 
   // salva rascunho automaticamente enquanto o modal está aberto (não perde o pedido se fechar)
   useEffect(() => {
     if (!mNovo) return
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ fForn, fLoja, fData, fPagto, fCliente, fReceb, linhas })) } catch { /* ignore */ }
-  }, [mNovo, fForn, fLoja, fData, fPagto, fCliente, fReceb, linhas])
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ fForn, fLoja, fData, fPagto, fCliente, fReceb, linhas, reqVinc, fReqNum, fCentroCusto, fObs })) } catch { /* ignore */ }
+  }, [mNovo, fForn, fLoja, fData, fPagto, fCliente, fReceb, linhas, reqVinc, fReqNum, fCentroCusto, fObs])
 
   const abrirNovo = () => {
     let restaurou = false
@@ -163,6 +202,7 @@ export default function PedidosPage() {
           setFForn(d.fForn || ''); setFLoja(d.fLoja || lojaDef); setFData(d.fData || new Date().toISOString().slice(0, 10))
           setFPagto(d.fPagto || 'à vista'); setFCliente(d.fCliente || ''); setFReceb(d.fReceb || '')
           setLinhas(Array.isArray(d.linhas) && d.linhas.length ? d.linhas : [linhaVazia()])
+          setReqVinc(d.reqVinc || null); setFReqNum(d.fReqNum || ''); setFCentroCusto(d.fCentroCusto || ''); setFObs(d.fObs || '')
           restaurou = true
         }
       }
@@ -174,7 +214,8 @@ export default function PedidosPage() {
 
   const salvar = async () => {
     if (!fForn.trim()) { toast('Informe o fornecedor.', 'error'); return }
-    const itens = linhas.filter(l => l.produto.trim() && Number(l.qtd) > 0).map(l => {
+    const linhasValidas = linhas.filter(l => l.produto.trim() && Number(l.qtd) > 0)
+    const itens = linhasValidas.map(l => {
       const qtd = Number(l.qtd), preco = Number(l.preco) || 0
       return { produto: l.produto.trim(), qtd, un: l.un || 'Unidade(s)', preco, subtotal: Math.round(qtd * preco * 100) / 100 }
     })
@@ -201,22 +242,47 @@ export default function PedidosPage() {
       }
       const total = Math.round(itens.reduce((s, i) => s + i.subtotal, 0) * 100) / 100
       const chave = `pedido_${slugify(fForn)}_${slugify(fLoja)}_${Date.now().toString(36).slice(-6)}`
-      const valor = { fornecedor: fForn.trim(), loja: fLoja, data: fData, pagamento: fPagto || null, cliente: fCliente || null, recebimento_responsavel: fReceb || null, itens, total, cancelados: [], em: new Date().toISOString(), created_by: user?.name || 'Painel' }
+      const valor = {
+        fornecedor: fForn.trim(), loja: fLoja, data: fData, pagamento: fPagto || null, cliente: fCliente || null,
+        recebimento_responsavel: fReceb || null, itens, total, cancelados: [], em: new Date().toISOString(), created_by: user?.name || 'Painel',
+        obs: fObs || null,
+        // rastreabilidade: pedido nasce da requisição (quando informada)
+        ...(reqVinc ? { requisicao_id: reqVinc.id, requisicao_numero: reqVinc.numero, solicitante: reqVinc.solicitante, centro_custo: fCentroCusto || null, origem: 'requisicao' } : { origem: 'avulso' }),
+      }
       await sb.from('app_config').upsert({ chave, valor }, { onConflict: 'chave' })
-      // Registro central relacional (ponte via app_config_chave). Pedido do form
-      // manual nasce sem requisição → origem 'avulso' (sinalizado na reconciliação).
+      // Registro central relacional (ponte via app_config_chave). Com requisição informada,
+      // o pedido nasce vinculado (origem 'requisicao'); sem ela, segue 'avulso'.
       try {
         const pc = await insertPedidoCompra({
-          numero: null, requisicao_id: null, loja: fLoja, fornecedor: fForn.trim(),
-          status: 'aberto', origem: 'avulso', total, recebido_total: 0, baixa_feita: false,
-          app_config_chave: chave, observacoes: null, criado_por: user?.name || 'Painel',
+          numero: null, requisicao_id: reqVinc?.id ?? null, loja: fLoja, fornecedor: fForn.trim(),
+          status: 'aberto', origem: reqVinc ? 'requisicao' : 'avulso', total, recebido_total: 0, baixa_feita: false,
+          app_config_chave: chave, observacoes: fObs || null, criado_por: user?.name || 'Painel',
         })
-        await insertPedidoCompraItens(itens.map(it => ({
-          pedido_id: pc.id, requisicao_item_id: null, produto_nome: it.produto,
+        await insertPedidoCompraItens(itens.map((it, idx) => ({
+          pedido_id: pc.id, requisicao_item_id: linhasValidas[idx]?.reqItemId ?? null, produto_nome: it.produto,
           unidade: it.un || 'Unidade(s)', qtd_pedida: it.qtd, qtd_recebida: 0, preco: it.preco || null,
         })))
+        // Auditoria: registra o que foi ajustado NO PEDIDO em relação à requisição — sem alterar a requisição.
+        if (reqVinc) {
+          const audits = [] as any[]
+          const uname = user?.name || 'Painel'
+          for (const l of linhasValidas) {
+            if (!l.reqItemId) continue
+            const qNovo = Number(l.qtd) || 0
+            if (l.qtdOrig != null && qNovo !== l.qtdOrig)
+              audits.push({ requisicao_id: reqVinc.id, entidade: 'pedido', entidade_id: pc.id, campo: 'quantidade', valor_anterior: String(l.qtdOrig), valor_novo: String(qNovo), acao: 'alteracao', usuario: uname })
+            if (l.produtoOrig && l.produto.trim() !== l.produtoOrig)
+              audits.push({ requisicao_id: reqVinc.id, entidade: 'pedido', entidade_id: pc.id, campo: 'produto', valor_anterior: l.produtoOrig, valor_novo: l.produto.trim(), acao: 'alteracao', usuario: uname })
+          }
+          const nItensReq = linhasValidas.filter(l => l.reqItemId).length
+          const nAvulsos = linhasValidas.filter(l => !l.reqItemId).length
+          if (audits.length) await logReqAuditoria(audits)
+          await insertReqTimeline({ requisicao_id: reqVinc.id, tipo: 'pedido', descricao: `Pedido de compra gerado para ${fForn.trim()} (${itens.length} item(ns))${audits.length ? ` · ${audits.length} ajuste(s) no pedido` : ''}${nAvulsos ? ` · ${nAvulsos} item(ns) fora da requisição` : ''}`, usuario: uname, dados: { pedido_chave: chave, pedido_id: pc.id, fornecedor: fForn.trim(), total, itens_da_requisicao: nItensReq } as any })
+          // marca na requisição que o pedido foi gerado (traço do ciclo) — NÃO mexe nos itens/quantidades
+          await updateRequisicao(reqVinc.id, { pedido_numero: chave, pedido_gerado_em: new Date().toISOString(), pedido_status: 'emitido' } as any).catch(() => {})
+        }
       } catch { /* registro relacional é complementar; o blob já garante o pedido */ }
-      toast(cadastrados ? `Pedido gerado. ✅ ${cadastrados} produto(s) novo(s) cadastrado(s).` : 'Pedido gerado. ✅')
+      toast(cadastrados ? `Pedido gerado. ✅ ${cadastrados} produto(s) novo(s) cadastrado(s).` : (reqVinc ? `Pedido gerado e vinculado à ${fmtReq(reqVinc.numero)}. ✅` : 'Pedido gerado. ✅'))
       setMNovo(false); resetForm(); await load()
     } catch (e) { toast('Não foi possível gerar o pedido.', 'error') }
     finally { setSalvando(false) }
@@ -302,6 +368,24 @@ export default function PedidosPage() {
               <strong style={{ fontSize: 16 }}>🧾 Novo pedido de compra</strong>
               <button onClick={() => setMNovo(false)} title="Fechar (mantém o rascunho)" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={18} /></button>
             </div>
+
+            {/* Origem: Requisição — informe o Nº e o sistema carrega loja, solicitante, centro de custo, obs e todos os itens */}
+            <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', marginBottom: 14, background: reqVinc ? 'rgba(21,128,61,.08)' : 'var(--bg)' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>🔗 Requisição de origem <span style={{ fontWeight: 400 }}>— opcional; carrega os itens automaticamente (cotação não é obrigatória)</span></div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input value={fReqNum} onChange={e => setFReqNum(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); buscarRequisicao() } }} placeholder="REQ-0125 ou 125" style={{ ...inp, width: 160 }} disabled={!!reqVinc} />
+                {!reqVinc
+                  ? <button className="btn" onClick={buscarRequisicao} disabled={buscandoReq} style={{ padding: '9px 14px' }}>{buscandoReq ? 'Buscando…' : '🔎 Buscar requisição'}</button>
+                  : <>
+                      <span style={{ fontSize: 12.5, fontWeight: 800, color: '#15803D' }}>✓ {fmtReq(reqVinc.numero)}</span>
+                      <span style={{ fontSize: 12, color: 'var(--muted)' }}>{reqVinc.loja} · Solic.: {reqVinc.solicitante}{fCentroCusto ? ` · C. Custo: ${fCentroCusto}` : ''}</span>
+                      <button onClick={desvincularReq} title="Desvincular a requisição (mantém os itens já carregados)" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', fontSize: 12, fontWeight: 700 }}>✕ desvincular</button>
+                    </>}
+              </div>
+              {reqVinc && fObs && <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>📝 Obs. da requisição: {fObs}</div>}
+              {reqVinc && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Os dados abaixo vieram da requisição e podem ser editados — alterações ficam registradas no pedido, sem mudar a requisição original.</div>}
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 14 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>Fornecedor *
                 <input list="forn-list" value={fForn} onChange={e => setFForn(e.target.value)} placeholder="Nome do fornecedor" style={inp} />
@@ -344,6 +428,7 @@ export default function PedidosPage() {
                           setLinha(i, { produto: v, ...(prod ? { un: prod.unidade || l.un, ...(!l.preco && prod.ultimo_preco_compra ? { preco: String(prod.ultimo_preco_compra) } : {}) } : {}) })
                         }} placeholder="Produto (busque ou digite um novo)" style={{ ...inp, width: '100%' }} />
                         {novo && <div style={{ fontSize: 10.5, color: '#15803D', marginTop: 3, fontWeight: 600 }}>✨ Produto novo — será cadastrado na loja</div>}
+                        {l.reqItemId && <div style={{ fontSize: 10.5, color: '#6b7280', marginTop: 3 }}>🔗 da {reqVinc ? fmtReq(reqVinc.numero) : 'requisição'}{l.qtdOrig != null && Number(l.qtd) !== l.qtdOrig ? ` · era ${l.qtdOrig} ${l.un}` : ''}</div>}
                       </td>
                       <td style={{ padding: 6 }}><input type="number" min={0} step="0.001" value={l.qtd} onChange={e => setLinha(i, { qtd: e.target.value })} style={{ ...inp, width: 74 }} /></td>
                       <td style={{ padding: 6 }}><select value={l.un} onChange={e => setLinha(i, { un: e.target.value })} style={{ ...inp, width: 114 }}>{UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}</select></td>
