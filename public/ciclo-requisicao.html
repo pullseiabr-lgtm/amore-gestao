@@ -75,7 +75,7 @@ async function run(){
   if(flow){ document.documentElement.style.setProperty('--vinho','#2E7D34'); }
 
   // Carrega em paralelo: itens da requisição, pedidos vinculados, cotações, timeline, estoque da loja
-  const [itens, pedidos, cotacoes, timeline, estoque] = await Promise.all([
+  let [itens, pedidos, cotacoes, timeline, estoque] = await Promise.all([
     g(`requisicao_itens?requisicao_id=eq.${req.id}&select=id,produto_nome,categoria,quantidade,unidade,status,observacoes&order=produto_nome.asc`),
     g(`pedidos_compra?requisicao_id=eq.${req.id}&select=id,numero,fornecedor,status,total,recebido_total,created_at,app_config_chave&order=created_at.asc`),
     g(`requisicao_cotacoes?requisicao_id=eq.${req.id}&select=id,fornecedor_nome,status,total,created_at&order=created_at.asc`),
@@ -83,10 +83,20 @@ async function run(){
     g(`estoque_produtos?loja=eq.${encodeURIComponent(req.loja)}&ativo=eq.true&select=nome,nivel_atual,nivel_minimo`),
   ]);
 
-  // itens de pedido (Comprado/Recebido) — por requisicao_item_id (preciso) + fallback por nome
-  let pedItens=[];
+  // itens de pedido (Comprado/Recebido): por requisicao_item_id (preciso, pega até pedido cuja requisicao_id
+  // primária é outra requisição) + os itens dos pedidos vinculados por requisicao_id. Fallback por nome.
+  let pedItens=[]; const _seen=new Set();
   if(pedidos.length){ const idIn='('+pedidos.map(p=>p.id).join(',')+')';
-    pedItens=await g(`pedido_compra_itens?pedido_id=in.${idIn}&select=pedido_id,requisicao_item_id,produto_nome,unidade,qtd_pedida,qtd_recebida,preco`); }
+    const a=await g(`pedido_compra_itens?pedido_id=in.${idIn}&select=id,pedido_id,requisicao_item_id,produto_nome,unidade,qtd_pedida,qtd_recebida,preco`);
+    for(const it of (a||[])){ if(!_seen.has(it.id)){_seen.add(it.id);pedItens.push(it);} } }
+  const itemIds=(itens||[]).map(i=>i.id).filter(Boolean);
+  if(itemIds.length){ const iIn='('+itemIds.join(',')+')';
+    const b=await g(`pedido_compra_itens?requisicao_item_id=in.${iIn}&select=id,pedido_id,requisicao_item_id,produto_nome,unidade,qtd_pedida,qtd_recebida,preco`);
+    for(const it of (b||[])){ if(!_seen.has(it.id)){_seen.add(it.id);pedItens.push(it);} } }
+  // completa a lista de pedidos com os que apareceram só via itens (pedido de outra requisição primária)
+  const pedIdsAll=[...new Set(pedItens.map(p=>p.pedido_id).filter(Boolean))];
+  const faltam=pedIdsAll.filter(id=>!pedidos.some(p=>p.id===id));
+  if(faltam.length){ const extra=await g(`pedidos_compra?id=in.(${faltam.join(',')})&select=id,numero,fornecedor,status,total,recebido_total,created_at,app_config_chave`); pedidos=pedidos.concat(extra||[]); }
   const pedById={}; pedidos.forEach(p=>pedById[p.id]=p);
   const compById={}, recById={}, fornById={};      // por requisicao_item_id
   const compByNome={}, recByNome={}, fornByNome={}; // fallback por nome normalizado

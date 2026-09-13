@@ -156,11 +156,11 @@ async function load(){
       REQINFO=(rs.length>1?rs.length+' requisições abertas: ':'')+nums.join(', ')+(rs.length===1&&rs[0].responsavel_nome?' · '+rs[0].responsavel_nome:'');
       const reqMap={}; rs.forEach(r=>{reqMap[r.id]={num:r.numero,dt:String(r.created_at||'').slice(0,10)};});
       const idIn='('+rs.map(r=>r.id).join(',')+')';
-      const its=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=in.'+idIn+'&select=produto_nome,categoria,quantidade,unidade,requisicao_id&limit=5000',{headers:H})).json();
+      const its=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=in.'+idIn+'&select=id,produto_nome,categoria,quantidade,unidade,requisicao_id&limit=5000',{headers:H})).json();
       // consolida por nome de produto (soma quantidades quando repetido) + guarda de qual requisição veio
       const acc={};
       for(const i of (its||[])){const k=norm(i.produto_nome);if(!k)continue;
-        if(!acc[k]){acc[k]={produto:i.produto_nome,qtd:Number(i.quantidade)||0,un:i.unidade,categoria:i.categoria,reqs:{}};}
+        if(!acc[k]){acc[k]={produto:i.produto_nome,qtd:Number(i.quantidade)||0,un:i.unidade,categoria:i.categoria,reqs:{},reqItemId:i.id,reqIdPrimary:i.requisicao_id};}
         else{acc[k].qtd+=Number(i.quantidade)||0; if(!acc[k].categoria&&i.categoria)acc[k].categoria=i.categoria; if(!acc[k].un&&i.unidade)acc[k].un=i.unidade;}
         const rm=reqMap[i.requisicao_id]; if(rm)acc[k].reqs[rm.num]=rm.dt;
       }
@@ -434,13 +434,27 @@ async function gerarPedidos(){
   const grupos=Object.values(g);
   if(!confirm(`Gerar ${grupos.length} pedido(s) de compra pela ${nomeLoja(LOJA)} com ${sel.length} item(ns) marcado(s)?`+(semForn?`\n\n⚠️ ${semForn} item(ns) marcado(s) SEM fornecedor serão ignorados.`:'')+`\n\nOs pedidos vão para o menu "Pedidos de Compra", onde você confere e clica em Enviar.`))return;
   let receb=null;try{const rl=((await (await fetch(SB+'/rest/v1/app_config?chave=eq.recebimento_por_loja&select=valor',{headers:H})).json())[0]||{}).valor||{};receb=(rl[LOJA]||{}).nome||null;}catch(e){}
+  // próximo nº de pedido (PED-#### sequencial) — maior existente + 1
+  let seq=0; try{ const nums=await (await fetch(SB+'/rest/v1/pedidos_compra?select=numero&numero=not.is.null&limit=3000',{headers:H})).json(); for(const x of (nums||[])){const n=parseInt(String(x.numero).replace(/\D/g,''),10);if(!isNaN(n)&&n>seq)seq=n;} }catch(e){}
   let ok=0,fail=0;
   for(const gr of grupos){
-    const itens=gr.itens.map(r=>{const q=nb(falta(r))>0?nb(falta(r)):nb(r.qtd);const qf=q||nb(r.qtd);const p=nb(r.vUnit);return{produto:r.produto,qtd:qf,un:r.un||'',preco:p||0,subtotal:(p*qf)||0};});
+    const itensRows=gr.itens.map(r=>{const q=nb(falta(r))>0?nb(falta(r)):nb(r.qtd);const qf=q||nb(r.qtd);const p=nb(r.vUnit);return{row:r,produto:r.produto,qtd:qf,un:r.un||'',preco:p||0,subtotal:(p*qf)||0};});
+    const itens=itensRows.map(({produto,un,qtd,preco,subtotal})=>({produto,qtd,un,preco,subtotal}));
     const total=itens.reduce((s,it)=>s+(Number(it.subtotal)||0),0);
+    seq++; const numPed='PED-'+String(seq).padStart(4,'0');
+    const reqIdG=(gr.itens.find(r=>r.reqIdPrimary)||{}).reqIdPrimary||null;
+    const reqNumG=(()=>{const m=gr.itens.map(r=>String(r.reqNum||'')).join(',').match(/\d+/);return m?parseInt(m[0],10):null;})();
     const chave='pedido_'+slugP(gr.forn)+'_'+(SUF[LOJA]||'loja')+'_'+Date.now().toString(36).slice(-5)+Math.random().toString(36).slice(2,4);
-    const valor={fornecedor:gr.forn,loja:LOJA,data:new Date().toISOString().slice(0,10),pagamento:'à vista',cliente:null,recebimento_responsavel:receb,itens,total,cancelados:[],em:new Date().toISOString(),created_by:'Gestão da Lista de Compras',origem:'requisicao'};
-    try{const r=await fetch(SB+'/rest/v1/app_config',{method:'POST',headers:{...H,Prefer:'resolution=merge-duplicates'},body:JSON.stringify({chave,valor})});if(r.ok)ok++;else fail++;}catch(e){fail++;}
+    const valor={fornecedor:gr.forn,loja:LOJA,data:new Date().toISOString().slice(0,10),pagamento:'à vista',cliente:null,recebimento_responsavel:receb,itens,total,cancelados:[],em:new Date().toISOString(),created_by:'Gestão da Lista de Compras',origem:'requisicao',numero_pedido:numPed,requisicao_id:reqIdG,requisicao_numero:reqNumG};
+    let okBlob=false;
+    try{const r=await fetch(SB+'/rest/v1/app_config',{method:'POST',headers:{...H,Prefer:'resolution=merge-duplicates'},body:JSON.stringify({chave,valor})});okBlob=r.ok;if(r.ok)ok++;else fail++;}catch(e){fail++;}
+    // Registro RELACIONAL (pedidos_compra + itens): faz o pedido aparecer no ciclo e alimentar "Comprado" com precisão
+    if(okBlob){ try{
+      const pcRes=await fetch(SB+'/rest/v1/pedidos_compra',{method:'POST',headers:{...H,Prefer:'return=representation'},body:JSON.stringify({numero:numPed,requisicao_id:reqIdG,loja:LOJA,fornecedor:gr.forn,status:'aberto',origem:'requisicao',total,recebido_total:0,baixa_feita:false,app_config_chave:chave,observacoes:null,criado_por:'Gestão da Lista'})});
+      const pc=((await pcRes.json())||[])[0];
+      if(pc&&pc.id){ const pcItens=itensRows.map(ir=>({pedido_id:pc.id,requisicao_item_id:(ir.row&&ir.row.reqItemId)||null,produto_nome:ir.produto,unidade:ir.un||'',qtd_pedida:ir.qtd,qtd_recebida:0,preco:ir.preco||null}));
+        await fetch(SB+'/rest/v1/pedido_compra_itens',{method:'POST',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify(pcItens)}); }
+    }catch(e){} }
   }
   // Atualiza o STATUS das requisições cujos itens entraram no pedido → "compra_realizada"
   // (só a partir de estados pré-compra; não rebaixa recebimento/concluída).
