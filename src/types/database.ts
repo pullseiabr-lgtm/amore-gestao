@@ -1228,6 +1228,8 @@ export interface Tarefa {
   apoio_motivo?: string | null
   apoio_em?: string | null
   apoio_por?: string | null
+  // Linha do tempo de transições de status (append-only): {em, de, para, por, obs, anexos}
+  transicoes?: { em: string; de: string | null; para: string; por: string; obs?: string | null; anexos?: string | null }[]
   created_at: string
   updated_at: string
   checklist?: TarefaChecklist[]

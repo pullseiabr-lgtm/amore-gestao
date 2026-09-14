@@ -314,6 +314,10 @@ export default function TarefasPage() {
   // Edição dos campos da tarefa (gera registro no histórico)
   const [editMode, setEditMode] = useState(false)
   const [editForm, setEditForm] = useState<any>(null)
+  // Transição de status (modal "Atualizar tarefa" ao mover no Kanban)
+  const [transicao, setTransicao] = useState<{ tarefa: Tarefa; novoStatus: TarefaStatus } | null>(null)
+  const [transObs, setTransObs] = useState('')
+  const [transAnexos, setTransAnexos] = useState('')
 
   // ── Load ─────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -432,16 +436,39 @@ export default function TarefasPage() {
     } finally { setSaving(false) }
   }
 
-  // ── Mover status ─────────────────────────────────────────
-  const moverStatus = async (tarefa: Tarefa, novoStatus: TarefaStatus) => {
+  // ── Mover status = abre modal "Atualizar tarefa" (transição registrada) ──
+  const abrirTransicao = (tarefa: Tarefa, novoStatus: TarefaStatus) => {
+    if (!novoStatus || novoStatus === tarefa.status) return
+    setTransObs(''); setTransAnexos(''); setTransicao({ tarefa, novoStatus })
+  }
+  const confirmarTransicao = async () => {
+    if (!transicao) return
+    const { tarefa, novoStatus } = transicao
     const anterior = tarefa.status
-    setTarefas(prev => prev.map(t => t.id === tarefa.id ? { ...t, status: novoStatus } : t))
+    setDetalheSaving(true)
     try {
-      await updateTarefa(tarefa.id, { status: novoStatus })
-      await insertTarefaHistorico({ tarefa_id: tarefa.id, acao: 'Status alterado', campo: 'status', valor_anterior: anterior, valor_novo: novoStatus, usuario_nome: user?.name || 'Sistema' })
-    } catch {
-      setTarefas(prev => prev.map(t => t.id === tarefa.id ? { ...t, status: anterior } : t))
-    }
+      const extra: any = { status: novoStatus }
+      if (novoStatus === 'em_andamento' && !tarefa.iniciado_em) extra.iniciado_em = new Date().toISOString()
+      if ((novoStatus === 'concluido' || novoStatus === 'encerrada') && !tarefa.concluido_em) extra.concluido_em = new Date().toISOString()
+      await updateTarefa(tarefa.id, extra)
+      const lblNovo = COLUNAS.find(c => c.id === novoStatus)?.label || novoStatus
+      // Linha do tempo (append-only) em app_config
+      const trans = [...(tarefa.transicoes || []), { em: new Date().toISOString(), de: anterior, para: novoStatus, por: user?.name || 'Sistema', obs: transObs.trim() || null, anexos: transAnexos.trim() || null }]
+      await saveTV2(tarefa, { transicoes: trans })
+      // Auditoria imutável
+      await insertTarefaHistorico({ tarefa_id: tarefa.id, acao: `Status → ${lblNovo}${transObs.trim() ? ' · ' + transObs.trim() : ''}`, campo: 'status', valor_anterior: anterior, valor_novo: novoStatus, usuario_nome: user?.name || 'Sistema' })
+      if (transObs.trim() || transAnexos.trim()) {
+        await insertTarefaComentario({ tarefa_id: tarefa.id, texto: `[${lblNovo}] ${transObs.trim()}${transAnexos.trim() ? '\n' + transAnexos.trim() : ''}`, autor_nome: user?.name || 'Sistema' })
+      }
+      // Notifica o solicitante da atualização
+      const phone = whatsappDoResponsavel(tarefa.solicitante_nome)
+      if (phone) {
+        const msg = `🔔 *Atualização da sua tarefa*${tarefa.numero != null ? ` #${String(tarefa.numero).padStart(4, '0')}` : ''}\n\n📋 ${tarefa.titulo}\n📌 Status: *${lblNovo}*${transObs.trim() ? `\n📝 ${transObs.trim()}` : ''}\n👤 ${user?.name || '—'}\n\n${linkTarefa(tarefa, 'solic')}\n_Amore Gestão_`
+        await zapPara(tarefa.solicitante_nome, phone, msg, { titulo: `Atualização: ${tarefa.titulo}`, refId: tarefa.id })
+      }
+      setTransicao(null)
+      await load()
+    } finally { setDetalheSaving(false) }
   }
 
   // ── Aprovar ──────────────────────────────────────────────
@@ -1016,7 +1043,7 @@ export default function TarefasPage() {
                       key={t.id}
                       tarefa={t}
                       onClick={() => { setDetalhe(t); setAbaDetalhe('checklist') }}
-                      onMover={moverStatus}
+                      onMover={abrirTransicao}
                       colunas={COLUNAS}
                     />
                   ))}
@@ -1370,7 +1397,7 @@ export default function TarefasPage() {
               <div>
                 <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>STATUS</div>
                 <select value={detalhe.status}
-                  onChange={e => moverStatus(detalhe, e.target.value as TarefaStatus)}
+                  onChange={e => abrirTransicao(detalhe, e.target.value as TarefaStatus)}
                   style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }}>
                   {COLUNAS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                 </select>
@@ -1899,6 +1926,26 @@ export default function TarefasPage() {
             {/* Aba Histórico */}
             {abaDetalhe === 'historico' && (
               <div style={{ padding: 16, flex: 1 }}>
+                {/* Linha do tempo de status (transições) */}
+                {(detalhe.transicoes && detalhe.transicoes.length > 0) && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--bordo)', marginBottom: 8 }}>🧭 LINHA DO TEMPO DE STATUS</div>
+                    {[...detalhe.transicoes].reverse().map((tr, i) => {
+                      const col = COLUNAS.find(c => c.id === tr.para)
+                      return (
+                        <div key={i} style={{ display: 'flex', gap: 10, paddingBottom: 10, borderLeft: `2px solid ${col?.cor || 'var(--border)'}`, paddingLeft: 10, marginLeft: 4 }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 12.5, fontWeight: 700, color: col?.cor }}>{col?.label || tr.para}</div>
+                            {tr.obs && <div style={{ fontSize: 12.5, marginTop: 2, whiteSpace: 'pre-wrap' }}>{tr.obs}</div>}
+                            {tr.anexos && <div style={{ marginTop: 4 }}><AnexoLinks value={tr.anexos} compact /></div>}
+                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{tr.por} · {fmtDataHora(tr.em)}</div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', margin: '14px 0 8px' }}>📋 REGISTRO COMPLETO</div>
+                  </div>
+                )}
                 {(detalhe.historico ?? []).length === 0 && (
                   <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 13, padding: 20 }}>Sem histórico</div>
                 )}
@@ -1921,6 +1968,54 @@ export default function TarefasPage() {
           </div>
         </div>
       )}
+
+      {/* ══════════════════════════════
+          MODAL: ATUALIZAR TAREFA (transição de status)
+      ══════════════════════════════ */}
+      {transicao && (() => {
+        const colDe = COLUNAS.find(c => c.id === transicao.tarefa.status)
+        const colPara = COLUNAS.find(c => c.id === transicao.novoStatus)
+        const HINT: Record<string, string> = {
+          recebida: 'Confirmação de recebimento / ciência',
+          em_andamento: 'Ação executada · previsão de conclusão · responsável',
+          aguardando_retorno: 'Pendência · o que aguarda · de quem',
+          aguardando_fornecedor: 'Fornecedor · valor estimado · data prevista',
+          concluido: 'Resultado · evidência · observação final',
+          aguardando_validacao: 'Enviado para validação do solicitante',
+          encerrada: 'Encerramento · observação final',
+          cancelado: 'Motivo do cancelamento',
+          pendente: 'Observação',
+        }
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setTransicao(null)}>
+            <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 14, padding: 22, width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Atualizar tarefa</h3>
+                <button onClick={() => setTransicao(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={18} /></button>
+              </div>
+              <div style={{ fontSize: 13, marginBottom: 12 }}>
+                <span style={{ background: colDe?.bg, color: colDe?.cor, borderRadius: 6, padding: '2px 8px', fontWeight: 600 }}>{colDe?.label}</span>
+                <span style={{ margin: '0 8px', color: 'var(--muted)' }}>→</span>
+                <span style={{ background: colPara?.bg, color: colPara?.cor, borderRadius: 6, padding: '2px 8px', fontWeight: 700 }}>{colPara?.label}</span>
+              </div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Observação da transição</label>
+              <textarea value={transObs} onChange={e => setTransObs(e.target.value)} rows={3} placeholder={HINT[transicao.novoStatus] || 'Observação'}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical', marginBottom: 10 }} />
+              <AnexoUploader value={transAnexos} onChange={v => setTransAnexos(v || '')} pasta="tarefas" label="📎 Evidência (foto, orçamento, NF, documento…)" />
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8 }}>
+                📲 O solicitante <strong>{transicao.tarefa.solicitante_nome || '—'}</strong> será notificado da atualização.
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+                <button onClick={() => setTransicao(null)} style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 13 }}>Cancelar</button>
+                <button onClick={confirmarTransicao} disabled={detalheSaving}
+                  style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: detalheSaving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {detalheSaving ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle2 size={14} />} Registrar atualização
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       <style>{`@keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }`}</style>
     </div>
