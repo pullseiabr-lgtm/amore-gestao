@@ -450,7 +450,7 @@ export default function App() {
               alignItems: 'center',
               gap: 5,
               cursor: 'pointer',
-              zIndex: 9999,
+              zIndex: 1500, // abaixo dos modais/painéis (z 2000) p/ não cobrir formulários (ex.: Central de Tarefas)
             }}
           >
             {/* Círculo roxo */}
