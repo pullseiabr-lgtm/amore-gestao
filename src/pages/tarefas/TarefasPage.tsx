@@ -3,7 +3,7 @@ import {
   Plus, X, CheckSquare, Square, MessageSquare, Clock,
   AlertTriangle, ChevronDown, Search,
   User, Building2, Flag, RotateCcw,
-  CheckCircle2, Loader2, Trash2, History,
+  CheckCircle2, Loader2, Trash2, History, Pencil,
 } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -311,6 +311,9 @@ export default function TarefasPage() {
   // Monitoramento da execução: desvio e apoio de outro setor
   const [desvioForm, setDesvioForm] = useState('')
   const [apoioForm, setApoioForm] = useState({ setor: '', motivo: '' })
+  // Edição dos campos da tarefa (gera registro no histórico)
+  const [editMode, setEditMode] = useState(false)
+  const [editForm, setEditForm] = useState<any>(null)
 
   // ── Load ─────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -345,6 +348,7 @@ export default function TarefasPage() {
     setOrcEntry({ valor: '', descricao: '', fornecedor: '', data: '', obs: '', anexos: '' })
     setDesvioForm('')
     setApoioForm({ setor: '', motivo: '' })
+    setEditMode(false)
   }, [detalhe?.id]) // eslint-disable-line
 
   // ── Filtro ───────────────────────────────────────────────
@@ -590,6 +594,40 @@ export default function TarefasPage() {
       })
       await updateTarefa(t.id, { status: 'encerrada' })
       await insertTarefaHistorico({ tarefa_id: t.id, acao: `Solicitante validou (${avalForm.nota}★${avalForm.ok ? ', conforme' : ', não conforme'})`, campo: 'status', valor_anterior: t.status, valor_novo: 'encerrada', usuario_nome: user?.name || t.solicitante_nome || 'Solicitante' })
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+
+  // ── Editar campos da tarefa (com registro no histórico) ──
+  const abrirEdicao = (t: Tarefa) => {
+    setEditForm({
+      titulo: t.titulo, loja: t.loja, setor: t.setor, prioridade: t.prioridade,
+      responsavel_nome: t.responsavel_nome || '', solicitante_nome: t.solicitante_nome || '',
+      prazo: t.prazo ? String(t.prazo).slice(0, 10) : '', descricao: t.descricao || '',
+    })
+    setEditMode(true)
+  }
+  const salvarEdicao = async () => {
+    if (!detalhe || !editForm) return
+    const campos: [string, string][] = [
+      ['titulo', 'Título'], ['loja', 'Loja'], ['setor', 'Setor'], ['prioridade', 'Prioridade'],
+      ['responsavel_nome', 'Responsável'], ['solicitante_nome', 'Solicitante'], ['prazo', 'Prazo'], ['descricao', 'Descrição'],
+    ]
+    const upd: any = {}; const logs: { campo: string; de: string; para: string }[] = []
+    for (const [k, lbl] of campos) {
+      const a = String((detalhe as any)[k] ?? '')
+      const n = String(editForm[k] ?? '')
+      if (a !== n) { upd[k] = n || null; logs.push({ campo: lbl, de: a || '—', para: n || '—' }) }
+    }
+    if (logs.length === 0) { setEditMode(false); return }
+    if (!editForm.titulo?.trim()) { alert('O título não pode ficar vazio.'); return }
+    setDetalheSaving(true)
+    try {
+      await updateTarefa(detalhe.id, upd)
+      for (const l of logs) {
+        await insertTarefaHistorico({ tarefa_id: detalhe.id, acao: 'Campo alterado', campo: l.campo, valor_anterior: l.de, valor_novo: l.para, usuario_nome: user?.name || 'Sistema' })
+      }
+      setEditMode(false)
       await load()
     } finally { setDetalheSaving(false) }
   }
@@ -1257,11 +1295,74 @@ export default function TarefasPage() {
                   <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, lineHeight: 1.3 }}>{detalhe.titulo}</h3>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => editMode ? setEditMode(false) : abrirEdicao(detalhe)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: editMode ? 'var(--bordo)' : 'var(--muted)', padding: 4 }} title="Editar"><Pencil size={15} /></button>
                   <button onClick={() => excluirTarefa(detalhe)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 4 }} title="Excluir"><Trash2 size={15} /></button>
                   <button onClick={() => setDetalhe(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }}><X size={18} /></button>
                 </div>
               </div>
             </div>
+
+            {/* Painel de edição dos campos (gera registro no histórico) */}
+            {editMode && editForm && (
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg)', display: 'grid', gap: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--bordo)' }}>✏️ EDITAR TAREFA</div>
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Título</label>
+                  <input value={editForm.titulo} onChange={e => setEditForm((f: any) => ({ ...f, titulo: e.target.value }))}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Loja</label>
+                    <select value={editForm.loja} onChange={e => setEditForm((f: any) => ({ ...f, loja: e.target.value }))}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }}>
+                      {lojas.filter(l => l && l !== 'Todas as Lojas').map(l => <option key={l} value={l}>{l}</option>)}
+                      {editForm.loja && !lojas.includes(editForm.loja) && <option value={editForm.loja}>{editForm.loja}</option>}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Setor</label>
+                    <select value={editForm.setor} onChange={e => setEditForm((f: any) => ({ ...f, setor: e.target.value }))}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }}>
+                      {SETORES.map(s => <option key={s} value={s}>{s}</option>)}
+                      {editForm.setor && !SETORES.includes(editForm.setor) && <option value={editForm.setor}>{editForm.setor}</option>}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Prioridade</label>
+                    <select value={editForm.prioridade} onChange={e => setEditForm((f: any) => ({ ...f, prioridade: e.target.value }))}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }}>
+                      {PRIORIDADES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Prazo</label>
+                    <input type="date" value={editForm.prazo} onChange={e => setEditForm((f: any) => ({ ...f, prazo: e.target.value }))}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Responsável</label>
+                    <input value={editForm.responsavel_nome} onChange={e => setEditForm((f: any) => ({ ...f, responsavel_nome: e.target.value }))}
+                      list="resp-list" style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }} />
+                    <datalist id="resp-list">{responsaveis.map(n => <option key={n} value={n} />)}</datalist>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Solicitante</label>
+                    <input value={editForm.solicitante_nome} onChange={e => setEditForm((f: any) => ({ ...f, solicitante_nome: e.target.value }))}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }} />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Descrição</label>
+                  <textarea value={editForm.descricao} onChange={e => setEditForm((f: any) => ({ ...f, descricao: e.target.value }))} rows={3}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13, resize: 'vertical' }} />
+                </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button onClick={() => setEditMode(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 13 }}>Cancelar</button>
+                  <button onClick={salvarEdicao} disabled={detalheSaving} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Salvar alterações</button>
+                </div>
+              </div>
+            )}
 
             {/* Meta */}
             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
