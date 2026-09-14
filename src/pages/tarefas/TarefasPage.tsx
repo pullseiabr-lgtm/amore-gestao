@@ -143,6 +143,7 @@ function parseHoras(competencia: string | null): { hi: string; hl: string } {
 
 const emptyForm = () => ({
   titulo: '', descricao: '', setor: 'Operação', prioridade: 'media' as TarefaPrioridade,
+  loja: '',
   responsavel_nome: '', solicitante_nome: '',
   data_solicitacao: hojeISO(), prazo: '', horaInicio: '', horaLimite: '', observacoes: '',
   precisa_aprovacao: false,
@@ -153,10 +154,6 @@ const emptyForm = () => ({
   // campos avançados (opcionais)
   objetivo: '', entregaveis: '', anexos: '', tags: '',
   custo_previsto: '', resultado_esperado: '',
-  // ── Orçamento (a tarefa gera custo?) ──
-  gera_custo: false,
-  orcamento_valor: '', orcamento_descricao: '', orcamento_fornecedor: '',
-  orcamento_data: '', orcamento_obs: '', orcamento_anexos: '',
 })
 
 // ── Main Component ───────────────────────────────────────────
@@ -290,6 +287,8 @@ export default function TarefasPage() {
   // Validação do solicitante (nota + feedback) e aprovação de orçamento
   const [avalForm, setAvalForm] = useState({ nota: 0, feedback: '', ok: null as boolean | null })
   const [orcForm, setOrcForm] = useState({ valor: '', obs: '' })
+  // Orçamento informado pelo responsável (quem recebe a tarefa)
+  const [orcEntry, setOrcEntry] = useState({ valor: '', descricao: '', fornecedor: '', data: '', obs: '', anexos: '' })
 
   // ── Load ─────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -321,6 +320,7 @@ export default function TarefasPage() {
     setExtForm({ data: '', motivo: '' })
     setAvalForm({ nota: detalhe?.aval_nota || 0, feedback: detalhe?.aval_feedback || '', ok: detalhe?.aval_ok ?? null })
     setOrcForm({ valor: detalhe?.orcamento_aprovado_valor != null ? String(detalhe.orcamento_aprovado_valor) : (detalhe?.orcamento_valor != null ? String(detalhe.orcamento_valor) : ''), obs: detalhe?.orcamento_obs_aprovacao || '' })
+    setOrcEntry({ valor: '', descricao: '', fornecedor: '', data: '', obs: '', anexos: '' })
   }, [detalhe?.id]) // eslint-disable-line
 
   // ── Filtro ───────────────────────────────────────────────
@@ -336,15 +336,11 @@ export default function TarefasPage() {
   // ── Criar tarefa ─────────────────────────────────────────
   const criarTarefa = async () => {
     if (!form.titulo.trim()) return
+    if (!form.loja) { alert('Selecione a loja/unidade solicitante.'); return }
     setSaving(true)
     try {
-      const orcValor = form.gera_custo && form.orcamento_valor ? Number(form.orcamento_valor) : null
-      // Estimado = custo_previsto; se gera custo e não preencheu o previsto, usa o valor do orçamento.
-      const estimado = form.custo_previsto ? Number(form.custo_previsto) : (orcValor ?? null)
-      // Orçamento entra em aprovação assim que houver valor ou anexo.
-      const precisaAprovarOrc = form.gera_custo && (orcValor != null || !!form.orcamento_anexos.trim())
       const nova = await insertTarefa({
-        loja,
+        loja: form.loja,
         titulo: form.titulo.trim(),
         descricao: form.descricao || null,
         setor: form.setor,
@@ -361,7 +357,7 @@ export default function TarefasPage() {
         entregaveis: form.entregaveis || null,
         anexos: form.anexos || null,
         tags: form.tags || null,
-        custo_previsto: estimado,
+        custo_previsto: form.custo_previsto ? Number(form.custo_previsto) : null,
         custo_executado: null,
         resultado_esperado: form.resultado_esperado || null,
         resultado_final: null,
@@ -379,21 +375,7 @@ export default function TarefasPage() {
         precisa_aprovacao: form.precisa_aprovacao,
         aprovado_por: null, aprovado_at: null, obs_aprovacao: null,
         reaberta: false, created_by: user?.id || null,
-        // ── V2: recebimento / link ──
-        recebido_em: null, recebido_por: null, visualizado_em: null, token: null,
-        // ── V2: validação do solicitante ──
-        aval_ok: null, aval_nota: null, aval_feedback: null, aval_por: null, aval_em: null,
-        // ── V2: orçamento ──
-        gera_custo: form.gera_custo,
-        orcamento_descricao: form.gera_custo ? (form.orcamento_descricao || null) : null,
-        orcamento_fornecedor: form.gera_custo ? (form.orcamento_fornecedor || null) : null,
-        orcamento_valor: orcValor,
-        orcamento_anexos: form.gera_custo ? (form.orcamento_anexos || null) : null,
-        orcamento_data: form.gera_custo && form.orcamento_data ? form.orcamento_data : null,
-        orcamento_obs: form.gera_custo ? (form.orcamento_obs || null) : null,
-        orcamento_status: precisaAprovarOrc ? 'aguardando' : null,
-        orcamento_aprovado_valor: null, orcamento_aprovado_por: null,
-        orcamento_aprovado_em: null, orcamento_obs_aprovacao: null,
+        // Campos V2 (recebimento/orçamento/avaliação/token) vão para app_config abaixo.
       })
       // Checklist items
       for (const desc of form.checklist.filter(Boolean)) {
@@ -401,27 +383,17 @@ export default function TarefasPage() {
       }
       // Histórico
       await insertTarefaHistorico({ tarefa_id: nova.id, acao: 'Tarefa criada', campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || 'Sistema' })
-      // Persiste os campos V2 (token/recebimento/orçamento) em app_config — sem migração
+      // Gera o token do link público (campos V2 vivem em app_config — sem migração).
+      // Custo/orçamento NÃO é definido aqui: quem informa é o responsável que recebe a tarefa.
       const v2blob: Record<string, any> = {
         token: (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(nova.id)),
-        gera_custo: form.gera_custo,
-        orcamento_descricao: form.gera_custo ? (form.orcamento_descricao || null) : null,
-        orcamento_fornecedor: form.gera_custo ? (form.orcamento_fornecedor || null) : null,
-        orcamento_valor: orcValor,
-        orcamento_anexos: form.gera_custo ? (form.orcamento_anexos || null) : null,
-        orcamento_data: form.gera_custo && form.orcamento_data ? form.orcamento_data : null,
-        orcamento_obs: form.gera_custo ? (form.orcamento_obs || null) : null,
-        orcamento_status: precisaAprovarOrc ? 'aguardando' : null,
+        gera_custo: false,
       }
       await saveAppConfig('tv2_' + nova.id, v2blob)
       const novaFull = { ...nova, ...v2blob } as Tarefa
       // Notificação WhatsApp ao responsável (se ativado e houver número cadastrado)
       if (form.enviarWhats && form.responsavel_nome) {
         await notificarTarefaWhats(novaFull)
-      }
-      // Orçamento pendente → dispara aprovação para Wagner + Aline
-      if (precisaAprovarOrc) {
-        await notificarOrcamentoAprovadores(novaFull)
       }
       setShowForm(false)
       setForm(emptyForm())
@@ -587,6 +559,30 @@ export default function TarefasPage() {
       })
       await updateTarefa(t.id, { status: 'encerrada' })
       await insertTarefaHistorico({ tarefa_id: t.id, acao: `Solicitante validou (${avalForm.nota}★${avalForm.ok ? ', conforme' : ', não conforme'})`, campo: 'status', valor_anterior: t.status, valor_novo: 'encerrada', usuario_nome: user?.name || t.solicitante_nome || 'Solicitante' })
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+
+  // ── Responsável informa orçamento → dispara aprovação Wagner/Aline ──
+  const enviarOrcamento = async (t: Tarefa) => {
+    const valor = orcEntry.valor ? Number(orcEntry.valor) : null
+    if (valor == null && !orcEntry.anexos.trim()) { alert('Informe o valor ou anexe o orçamento.'); return }
+    setDetalheSaving(true)
+    try {
+      const patch = {
+        gera_custo: true,
+        orcamento_valor: valor,
+        orcamento_descricao: orcEntry.descricao || null,
+        orcamento_fornecedor: orcEntry.fornecedor || null,
+        orcamento_data: orcEntry.data || null,
+        orcamento_obs: orcEntry.obs || null,
+        orcamento_anexos: orcEntry.anexos || null,
+        orcamento_status: 'aguardando' as const,
+      }
+      await saveTV2(t, patch)
+      if (valor != null && t.custo_previsto == null) await updateTarefa(t.id, { custo_previsto: valor })
+      await insertTarefaHistorico({ tarefa_id: t.id, acao: `Orçamento enviado para aprovação${valor != null ? ` (${fmtMoeda(valor)})` : ''}`, campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || t.responsavel_nome || 'Responsável' })
+      await notificarOrcamentoAprovadores({ ...t, ...patch } as Tarefa)
       await load()
     } finally { setDetalheSaving(false) }
   }
@@ -786,7 +782,7 @@ export default function TarefasPage() {
             ))}
           </div>
           <button
-            onClick={() => { setForm(emptyForm()); setRespModo('lista'); setShowForm(true) }}
+            onClick={() => { setForm({ ...emptyForm(), loja: (loja && loja !== 'Todas as Lojas' ? loja : '') }); setRespModo('lista'); setShowForm(true) }}
             style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
           >
             <Plus size={15} /> Nova Tarefa
@@ -1019,6 +1015,16 @@ export default function TarefasPage() {
                   style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
               </div>
 
+              {/* Loja solicitante */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Loja / unidade solicitante *</label>
+                <select value={form.loja} onChange={e => setForm(f => ({ ...f, loja: e.target.value }))}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${form.loja ? 'var(--border)' : '#f59e0b'}`, background: 'var(--bg)', fontSize: 13 }}>
+                  <option value="">Selecione a loja…</option>
+                  {lojas.filter(l => l && l !== 'Todas as Lojas').map(l => <option key={l} value={l}>{l}</option>)}
+                </select>
+              </div>
+
               {/* Setor + Prioridade */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
@@ -1149,57 +1155,6 @@ export default function TarefasPage() {
                 <input type="checkbox" checked={form.precisa_aprovacao} onChange={e => setForm(f => ({ ...f, precisa_aprovacao: e.target.checked }))} />
                 Requer validação final do gestor
               </label>
-
-              {/* ── Custo / Orçamento ── */}
-              <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: form.gera_custo ? '#fffdf5' : 'var(--bg)' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>💰 Esta tarefa gera custo?</div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {[['Não', false], ['Sim', true]].map(([lbl, val]) => (
-                    <button key={String(val)} type="button" onClick={() => setForm(f => ({ ...f, gera_custo: val as boolean }))}
-                      style={{ flex: 1, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                        border: `1px solid ${form.gera_custo === val ? 'var(--bordo)' : 'var(--border)'}`,
-                        background: form.gera_custo === val ? 'var(--bordo)' : 'var(--card)', color: form.gera_custo === val ? '#fff' : 'var(--text)' }}>
-                      {lbl as string}
-                    </button>
-                  ))}
-                </div>
-
-                {form.gera_custo && (
-                  <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                      <div>
-                        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Valor estimado (R$)</label>
-                        <input type="number" step="0.01" min="0" value={form.orcamento_valor} onChange={e => setForm(f => ({ ...f, orcamento_valor: e.target.value }))}
-                          placeholder="0,00" style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }} />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Data do orçamento</label>
-                        <input type="date" value={form.orcamento_data} onChange={e => setForm(f => ({ ...f, orcamento_data: e.target.value }))}
-                          style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }} />
-                      </div>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Descrição do serviço/produto</label>
-                      <input value={form.orcamento_descricao} onChange={e => setForm(f => ({ ...f, orcamento_descricao: e.target.value }))}
-                        placeholder="Ex: troca da resistência do forno" style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Fornecedor (se houver)</label>
-                      <input value={form.orcamento_fornecedor} onChange={e => setForm(f => ({ ...f, orcamento_fornecedor: e.target.value }))}
-                        placeholder="Nome do fornecedor/prestador" style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }} />
-                    </div>
-                    <AnexoUploader value={form.orcamento_anexos} onChange={v => setForm(f => ({ ...f, orcamento_anexos: v || '' }))} pasta="tarefas" label="📎 Orçamento / documento (foto ou PDF)" />
-                    <div>
-                      <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Observações do orçamento</label>
-                      <textarea value={form.orcamento_obs} onChange={e => setForm(f => ({ ...f, orcamento_obs: e.target.value }))} rows={2}
-                        style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13, resize: 'vertical' }} />
-                    </div>
-                    <div style={{ fontSize: 11.5, color: '#92400e', background: '#fef3c7', borderRadius: 7, padding: '8px 10px' }}>
-                      ⚠️ Ao salvar com valor ou anexo, a <strong>aprovação do orçamento é enviada automaticamente para Wagner e Aline</strong> pelo WhatsApp.
-                    </div>
-                  </div>
-                )}
-              </div>
 
               {/* Observações */}
               <div>
@@ -1373,6 +1328,33 @@ export default function TarefasPage() {
                 </div>
               )}
             </div>
+
+            {/* ── Custo / Orçamento: informado por QUEM RECEBE a tarefa ── */}
+            {!detalhe.gera_custo && detalhe.status !== 'cancelado' && detalhe.status !== 'encerrada' && (
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, marginBottom: 4 }}>💰 ESTA TAREFA GERA CUSTO?</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>Se precisar de compra ou serviço pago, informe o orçamento — vai para aprovação de <strong>Wagner e Aline</strong>.</div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <input type="number" step="0.01" min="0" value={orcEntry.valor} onChange={e => setOrcEntry(f => ({ ...f, valor: e.target.value }))}
+                      placeholder="Valor estimado (R$)" style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                    <input type="date" value={orcEntry.data} onChange={e => setOrcEntry(f => ({ ...f, data: e.target.value }))}
+                      style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                  </div>
+                  <input value={orcEntry.descricao} onChange={e => setOrcEntry(f => ({ ...f, descricao: e.target.value }))}
+                    placeholder="Descrição do serviço/produto" style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                  <input value={orcEntry.fornecedor} onChange={e => setOrcEntry(f => ({ ...f, fornecedor: e.target.value }))}
+                    placeholder="Fornecedor (se houver)" style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                  <AnexoUploader value={orcEntry.anexos} onChange={v => setOrcEntry(f => ({ ...f, anexos: v || '' }))} pasta="tarefas" label="📎 Orçamento / documento" />
+                  <input value={orcEntry.obs} onChange={e => setOrcEntry(f => ({ ...f, obs: e.target.value }))}
+                    placeholder="Observação (opcional)" style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                  <button onClick={() => enviarOrcamento(detalhe)} disabled={detalheSaving}
+                    style={{ alignSelf: 'flex-start', padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                    📤 Enviar orçamento para aprovação
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* ── Orçamento ── */}
             {detalhe.gera_custo && (

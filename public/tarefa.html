@@ -154,6 +154,17 @@ async function main(){
         '<div id="orcMsg" style="margin-top:8px;font-size:13px;font-weight:600"></div></div>';
     }
     orc+='</div>';
+  } else if(t.status!=='cancelado' && t.status!=='encerrada'){
+    // Responsável informa se a tarefa gera custo (entra em aprovação de Wagner/Aline)
+    orc='<div class="sec">💰 Custo / Orçamento</div><div class="box"><b>Esta tarefa gera custo?</b>'+
+      '<div style="color:var(--muted);font-size:12px;margin:2px 0 8px">Se precisar de compra ou serviço pago, informe o orçamento — vai para aprovação de Wagner e Aline.</div>'+
+      '<label class="f">Valor estimado (R$)<input id="oeVal" inputmode="decimal"></label>'+
+      '<label class="f">Descrição do serviço/produto<input id="oeDesc"></label>'+
+      '<label class="f">Fornecedor (se houver)<input id="oeForn"></label>'+
+      '<label class="f">Link do orçamento/documento (opcional)<input id="oeAnx" placeholder="cole um link (Drive/foto/PDF)"></label>'+
+      '<label class="f">Observação (opcional)<input id="oeObs"></label>'+
+      '<div class="row"><button class="btn" id="btnOrcEnviar" style="background:var(--brand)">📤 Enviar para aprovação</button></div>'+
+      '<div id="oeMsg" style="margin-top:8px;font-size:13px;font-weight:600"></div></div>';
   }
 
   app.innerHTML=
@@ -253,6 +264,28 @@ async function main(){
       } else{$('btnOrcAp').disabled=false;$('btnOrcRe').disabled=false;$('orcMsg').style.color='var(--crit)';$('orcMsg').textContent='Falha. Tente de novo.';}
     };
     $('btnOrcAp').onclick=()=>dec(true);$('btnOrcRe').onclick=()=>dec(false);
+  }
+  // Responsável envia orçamento → aprovação Wagner/Aline
+  if($('btnOrcEnviar')){
+    $('btnOrcEnviar').onclick=async()=>{
+      const val=$('oeVal').value?Number(String($('oeVal').value).replace(',','.')):null;
+      const anx=($('oeAnx').value||'').trim();
+      if(val==null && !anx){$('oeMsg').style.color='var(--crit)';$('oeMsg').textContent='Informe o valor ou um link do orçamento.';return;}
+      $('btnOrcEnviar').disabled=true;$('oeMsg').style.color='var(--muted)';$('oeMsg').textContent='Enviando…';
+      const ok=await saveV2({gera_custo:true,orcamento_valor:val,orcamento_descricao:($('oeDesc').value||'').trim()||null,orcamento_fornecedor:($('oeForn').value||'').trim()||null,orcamento_anexos:anx||null,orcamento_obs:($('oeObs').value||'').trim()||null,orcamento_status:'aguardando'});
+      if(ok&&val!=null&&t.custo_previsto==null){ await patch({custo_previsto:val}); }
+      if(ok){
+        await hist('Orçamento enviado para aprovação'+(val!=null?' ('+brl(val)+')':'')+' (link)',t.responsavel_nome||'Responsável');
+        // Notifica Wagner e Aline
+        try{const ps=await (await fetch(SB+'/rest/v1/profiles?select=name,permissions_override',{headers:H})).json();
+          const alvos=(ps||[]).filter(p=>/wagner|aline/i.test(p.name||''));
+          const link=ORIGIN+'/tarefa.html?id='+ID+(t.token?'&t='+t.token:'')+'&papel=aprov';
+          for(const p of alvos){const ph=foneBR(p.permissions_override&&p.permissions_override.__perfil__&&p.permissions_override.__perfil__.whatsapp);
+            if(ph)await zap(ph,'💰 *ORÇAMENTO PARA APROVAÇÃO*'+(t.numero!=null?' #'+String(t.numero).padStart(4,'0'):'')+'\n\n🏪 '+t.loja+'\n📋 '+t.titulo+'\n🔧 '+((($('oeDesc').value||'').trim())||t.descricao||'—')+'\n💵 Valor: '+(val!=null?brl(val):'(sem valor)')+'\n\nAprovar/reprovar:\n'+link+'\n_Amore Gestão_');}
+        }catch(e){}
+        $('oeMsg').style.color='var(--ok)';$('oeMsg').textContent='✅ Enviado para aprovação de Wagner e Aline.';setTimeout(main,900);
+      } else{$('btnOrcEnviar').disabled=false;$('oeMsg').style.color='var(--crit)';$('oeMsg').textContent='Falha. Tente de novo.';}
+    };
   }
 }
 main();
