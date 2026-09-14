@@ -2166,22 +2166,56 @@ export async function fetchMarketAlerts(apenasNaoLidos = false): Promise<MarketA
 
 // ── Tarefas Operacionais ─────────────────────────────────────
 
+// Campos "V2" da Central de Tarefas guardados em app_config (chave tv2_<id>),
+// para não exigir migração de schema na tabela tarefas. O status e os campos de
+// execução (iniciado_em, concluido_em, resultado_final, custo_*) são colunas reais.
+export const TAREFA_V2_KEYS = [
+  'recebido_em', 'recebido_por', 'visualizado_em', 'token',
+  'aval_ok', 'aval_nota', 'aval_feedback', 'aval_por', 'aval_em',
+  'gera_custo', 'orcamento_descricao', 'orcamento_fornecedor', 'orcamento_valor',
+  'orcamento_anexos', 'orcamento_data', 'orcamento_obs', 'orcamento_status',
+  'orcamento_aprovado_valor', 'orcamento_aprovado_por', 'orcamento_aprovado_em', 'orcamento_obs_aprovacao',
+] as const
+function stripTarefaV2<T extends Record<string, any>>(o: T): Record<string, any> {
+  const c: Record<string, any> = { ...o }
+  for (const k of TAREFA_V2_KEYS) delete c[k]
+  return c
+}
+
+// Busca várias linhas de app_config por prefixo de chave → mapa { chave: valor }.
+export async function fetchAppConfigLike(prefix: string): Promise<Record<string, any>> {
+  try {
+    const rows = await sdkCall<{ chave: string; valor: any }[]>(
+      db.from('app_config').select('chave, valor').like('chave', prefix + '%')
+    )
+    const m: Record<string, any> = {}
+    for (const r of rows || []) m[r.chave] = r.valor
+    return m
+  } catch { return {} }
+}
+
 export async function fetchTarefas(loja: string): Promise<Tarefa[]> {
-  return sdkCall<Tarefa[]>(
-    db.from('tarefas')
-      .select('*, checklist:tarefas_checklist(*), comentarios:tarefas_comentarios(*), historico:tarefas_historico(*)')
-      .eq('loja', loja)
-      .order('created_at', { ascending: false })
-      .limit(500),
+  let q = db.from('tarefas')
+    .select('*, checklist:tarefas_checklist(*), comentarios:tarefas_comentarios(*), historico:tarefas_historico(*)')
+  // "Todas as Lojas"/"all" = visão consolidada (mesmo padrão dos demais módulos):
+  // sem esse guard, o admin só via tarefas marcadas literalmente "Todas as Lojas"
+  // e não as criadas dentro de uma loja específica (Amore CD, Flow CD...).
+  if (loja && loja !== 'Todas as Lojas' && loja !== 'all') q = q.eq('loja', loja)
+  const base = await sdkCall<Tarefa[]>(
+    q.order('created_at', { ascending: false }).limit(500),
   ).then(d => d ?? []).catch(() => [])
+  // Mescla os campos V2 guardados em app_config (tv2_<id>)
+  const cfgs = await fetchAppConfigLike('tv2_')
+  return base.map(t => ({ ...t, ...(cfgs['tv2_' + t.id] || {}) }))
 }
 
 export async function insertTarefa(t: Omit<Tarefa, 'id' | 'created_at' | 'updated_at' | 'checklist' | 'comentarios' | 'historico'>): Promise<Tarefa> {
-  return sdkCall<Tarefa>(db.from('tarefas').insert(t).select().single())
+  // Remove campos V2 (guardados em app_config) para não quebrar o insert na tabela.
+  return sdkCall<Tarefa>(db.from('tarefas').insert(stripTarefaV2(t)).select().single())
 }
 
 export async function updateTarefa(id: string, upd: Partial<Omit<Tarefa, 'id' | 'created_at' | 'checklist' | 'comentarios' | 'historico'>>): Promise<void> {
-  await sdkCall<null>(db.from('tarefas').update({ ...upd, updated_at: new Date().toISOString() }).eq('id', id))
+  await sdkCall<null>(db.from('tarefas').update(stripTarefaV2({ ...upd, updated_at: new Date().toISOString() })).eq('id', id))
 }
 
 export async function deleteTarefa(id: string): Promise<void> {
@@ -2636,8 +2670,10 @@ export async function upsertAlertasConfig(loja: string, tipo: string, data: { at
 // Alert-specific queries
 export async function fetchTarefasAtrasadas(loja: string): Promise<Tarefa[]> {
   const hoje = new Date().toISOString().slice(0, 10)
+  let q = db.from('tarefas').select('*')
+  if (loja && loja !== 'Todas as Lojas' && loja !== 'all') q = q.eq('loja', loja)
   return sdkCall<Tarefa[]>(
-    db.from('tarefas').select('*').eq('loja', loja).lt('prazo', hoje).order('prazo', { ascending: true }).limit(50)
+    q.lt('prazo', hoje).order('prazo', { ascending: true }).limit(50)
   ).then(d => (d ?? []).filter((t: Tarefa) => t.status !== 'concluido' && t.status !== 'cancelado')).catch(() => [])
 }
 

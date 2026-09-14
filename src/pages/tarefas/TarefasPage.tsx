@@ -11,9 +11,10 @@ import {
   fetchTarefas, insertTarefa, updateTarefa, deleteTarefa,
   insertTarefaChecklist, updateTarefaChecklist, deleteTarefaChecklist,
   insertTarefaComentario, insertTarefaHistorico, fetchProfiles,
-  fetchAppConfig, saveAppConfig,
+  fetchAppConfig, saveAppConfig, TAREFA_V2_KEYS,
 } from '../../lib/db'
-import { enviarWhatsApp } from '../../lib/notify'
+import { enviarWhatsApp, normalizarFoneBR } from '../../lib/notify'
+import { siteOrigin } from '../../lib/site'
 import type { Tarefa, TarefaStatus, TarefaPrioridade, TarefaResultado, TarefaChecklist, TarefaComentario, CobrancaConfig, CobrancaNivel } from '../../types/database'
 import { AnexoUploader, AnexoLinks } from '../../components/ui/AnexoUploader'
 
@@ -22,13 +23,20 @@ import { AnexoUploader, AnexoLinks } from '../../components/ui/AnexoUploader'
 const SETORES = ['Operação','Cozinha','Delivery','Financeiro','Compras','Administrativo','TI','Manutenção','Eventos','Estoque','Marketing','Salão','Bar','RH','Limpeza','Produção','Diretoria','Geral']
 
 const COLUNAS: { id: TarefaStatus; label: string; cor: string; bg: string }[] = [
-  { id: 'pendente',              label: 'Aberto',                cor: '#6b7280', bg: '#f3f4f6' },
-  { id: 'em_andamento',          label: 'Em Andamento',          cor: '#2563eb', bg: '#eff6ff' },
-  { id: 'aguardando_retorno',    label: 'Aguardando Retorno',    cor: '#d97706', bg: '#fffbeb' },
-  { id: 'aguardando_fornecedor', label: 'Aguardando Fornecedor', cor: '#9333ea', bg: '#faf5ff' },
-  { id: 'concluido',             label: 'Finalizado',            cor: '#16a34a', bg: '#f0fdf4' },
+  { id: 'pendente',              label: 'Solicitada',            cor: '#6b7280', bg: '#f3f4f6' },
+  { id: 'recebida',              label: 'Recebida',              cor: '#0891b2', bg: '#ecfeff' },
+  { id: 'em_andamento',          label: 'Em execução',           cor: '#2563eb', bg: '#eff6ff' },
+  { id: 'aguardando_retorno',    label: 'Aguardando info',       cor: '#d97706', bg: '#fffbeb' },
+  { id: 'aguardando_fornecedor', label: 'Aguardando material',   cor: '#9333ea', bg: '#faf5ff' },
+  { id: 'concluido',             label: 'Concluída',             cor: '#16a34a', bg: '#f0fdf4' },
+  { id: 'aguardando_validacao',  label: 'Aguardando validação',  cor: '#ca8a04', bg: '#fefce8' },
+  { id: 'encerrada',             label: 'Encerrada',             cor: '#0f766e', bg: '#f0fdfa' },
   { id: 'cancelado',             label: 'Cancelado',             cor: '#dc2626', bg: '#fef2f2' },
 ]
+// Conjuntos de status para métricas
+const STATUS_FINAL: TarefaStatus[] = ['concluido', 'encerrada']
+const isFinal = (s: TarefaStatus) => STATUS_FINAL.includes(s)
+const isAtiva = (s: TarefaStatus) => !['concluido', 'encerrada', 'cancelado'].includes(s)
 
 const PRIORIDADES: { id: TarefaPrioridade; label: string; cor: string }[] = [
   { id: 'baixa',   label: 'Baixa',   cor: '#6b7280' },
@@ -109,6 +117,16 @@ function vencido(prazo: string | null) {
   if (!prazo) return false
   return new Date(prazo) < new Date(new Date().toDateString())
 }
+// Semáforo de prazo: 🔴 vencido · 🟡 vence em ≤2 dias · 🟢 dentro do prazo
+function prazoSemaforo(prazo: string | null, status?: TarefaStatus): { cor: string; emoji: string; label: string } | null {
+  if (!prazo) return null
+  if (status === 'concluido' || status === 'cancelado') return null
+  const hoje = new Date(new Date().toDateString()).getTime()
+  const dias = Math.round((new Date(String(prazo).slice(0, 10) + 'T00:00:00').getTime() - hoje) / 86400000)
+  if (dias < 0) return { cor: '#dc2626', emoji: '🔴', label: 'Vencido' }
+  if (dias <= 2) return { cor: '#d97706', emoji: '🟡', label: dias === 0 ? 'Vence hoje' : `Vence em ${dias}d` }
+  return { cor: '#16a34a', emoji: '🟢', label: 'No prazo' }
+}
 
 // ── Empty form ───────────────────────────────────────────────
 const hojeISO = () => new Date().toISOString().slice(0, 10)
@@ -135,11 +153,15 @@ const emptyForm = () => ({
   // campos avançados (opcionais)
   objetivo: '', entregaveis: '', anexos: '', tags: '',
   custo_previsto: '', resultado_esperado: '',
+  // ── Orçamento (a tarefa gera custo?) ──
+  gera_custo: false,
+  orcamento_valor: '', orcamento_descricao: '', orcamento_fornecedor: '',
+  orcamento_data: '', orcamento_obs: '', orcamento_anexos: '',
 })
 
 // ── Main Component ───────────────────────────────────────────
 export default function TarefasPage() {
-  const { loja } = useLoja()
+  const { loja, lojas } = useLoja()
   const { user } = useAuth()
 
   const [tarefas, setTarefas] = useState<Tarefa[]>([])
@@ -150,6 +172,7 @@ export default function TarefasPage() {
   const [busca, setBusca] = useState('')
   const [filtroSetor, setFiltroSetor] = useState('')
   const [filtroPrio, setFiltroPrio] = useState('')
+  const [filtroLoja, setFiltroLoja] = useState('')
   const [view, setView] = useState<'kanban' | 'lista' | 'gerencial'>('kanban')
 
   // Modal nova tarefa
@@ -157,7 +180,14 @@ export default function TarefasPage() {
   const [form, setForm] = useState(emptyForm)
   const [novoCheckItem, setNovoCheckItem] = useState('')
   const [profiles, setProfiles] = useState<any[]>([])
+  const [respModo, setRespModo] = useState<'lista' | 'outro'>('lista')
   useEffect(() => { fetchProfiles().then(setProfiles).catch(() => {}) }, [])
+
+  // Responsáveis pré-cadastrados = perfis com WhatsApp cadastrado (garante roteamento da notificação)
+  const responsaveis = profiles
+    .filter(p => (p.name || '').trim() && (((p.permissions_override as any)?.__perfil__?.whatsapp) || '').trim())
+    .map(p => (p.name || '').trim())
+    .sort((a, b) => a.localeCompare(b))
 
   // Config de cobranças automáticas (módulo 13) — salva em app_config.cobranca_cfg
   const [showCobranca, setShowCobranca] = useState(false)
@@ -172,17 +202,79 @@ export default function TarefasPage() {
     return (perfil?.whatsapp || '').replace(/\D/g, '')
   }
 
-  // Envia notificação de tarefa via Z-API (usa a config salva na Liz → WhatsApp)
-  // e registra na Central de Notificações.
-  const notificarTarefaWhats = async (titulo: string, responsavel: string, prazo: string, setor?: string) => {
+  // Envia notificação de tarefa via Evolution (server-side) e registra na Central.
+  // Manda TODAS as informações de execução (não só um aviso): loja, prioridade,
+  // prazo, solicitante, descrição e os links dos anexos.
+  const notificarTarefaWhats = async (t: Tarefa) => {
+    const responsavel = t.responsavel_nome || ''
     const phone = whatsappDoResponsavel(responsavel)
-    if (!phone) return false  // Evolution é server-side; basta o número do responsável
-    const prazoBR = prazo ? new Date(prazo + 'T12:00:00').toLocaleDateString('pt-BR') : 'sem prazo definido'
-    const msg = `🆕 *Nova tarefa atribuída*\n\n📋 *${titulo}*\n👤 Responsável: ${responsavel}\n⏰ Prazo: ${prazoBR}\n\nAcesse o painel para mais detalhes.\n_Amore Gestão_`
-    return enviarWhatsApp(phone, msg, undefined, {
-      tipo: 'tarefa', modulo: 'tarefas', titulo, setor: setor || null,
-      loja, destinatario_nome: responsavel, created_by: user?.name || null,
+    if (!phone) return false  // sem número cadastrado para o responsável
+    const prioEmoji: Record<string, string> = { urgente: '🔴', alta: '🟠', media: '🔵', baixa: '⚪' }
+    const prazoBR = t.prazo ? new Date(t.prazo + 'T12:00:00').toLocaleDateString('pt-BR') : 'sem prazo definido'
+    const horaLimite = parseHoras(t.competencia).hl
+    const anexos = (t.anexos || '').split(/\n+/).map(s => s.trim()).filter(l => /^https?:\/\//.test(l))
+    const linhas = [
+      `🔔 *NOVA TAREFA*${t.numero != null ? ` #${String(t.numero).padStart(4, '0')}` : ''}`,
+      '',
+      `🏪 Loja: ${t.loja}`,
+      `📋 *${t.titulo}*`,
+      `${prioEmoji[t.prioridade] || '🔵'} Prioridade: ${prioLabel(t.prioridade)}`,
+      `👤 Responsável: ${responsavel}`,
+      t.solicitante_nome ? `🙋 Solicitante: ${t.solicitante_nome}` : '',
+      `⏰ Prazo: ${prazoBR}${horaLimite ? ` às ${horaLimite}` : ''}`,
+      `🏷 Setor: ${t.setor}`,
+      t.descricao ? `\n📝 ${t.descricao}` : '',
+      anexos.length ? `\n📎 Anexos (${anexos.length}):\n${anexos.join('\n')}` : '',
+      '',
+      `Abra para confirmar o recebimento e executar:\n${linkTarefa(t, 'resp')}`,
+      '_Amore Gestão_',
+    ].filter(l => l !== '')
+    return enviarWhatsApp(phone, linhas.join('\n'), undefined, {
+      tipo: 'tarefa', modulo: 'tarefas', titulo: t.titulo, setor: t.setor || null,
+      loja, destinatario_nome: responsavel, referencia_id: t.id, created_by: user?.name || null,
     })
+  }
+
+  // Persistência dos campos V2 em app_config (tv2_<id>) — sem migração de schema.
+  const pickV2 = (t: any) => { const o: any = {}; for (const k of TAREFA_V2_KEYS) if (t?.[k] !== undefined && t?.[k] !== null) o[k] = t[k]; return o }
+  const saveTV2 = async (t: Tarefa, patch: Record<string, any>) => { await saveAppConfig('tv2_' + t.id, { ...pickV2(t), ...patch }) }
+
+  // Link público da tarefa (ações via WhatsApp, sem login). papel: resp | solic | aprov
+  const linkTarefa = (t: Tarefa, papel?: 'resp' | 'solic' | 'aprov') =>
+    `${siteOrigin()}/tarefa.html?id=${t.id}${t.token ? `&t=${t.token}` : ''}${papel ? `&papel=${papel}` : ''}`
+
+  // WhatsApp direto para um número específico (usado nas aprovações e validações).
+  const zapPara = async (nome: string, phone: string, msg: string, meta: { titulo: string; refId: string; tipo?: any }) => {
+    const fone = normalizarFoneBR(phone)
+    if (!fone) return false
+    return enviarWhatsApp(fone, msg, undefined, {
+      tipo: meta.tipo || 'tarefa', modulo: 'tarefas', titulo: meta.titulo,
+      loja, destinatario_nome: nome, referencia_id: meta.refId, created_by: user?.name || null,
+    })
+  }
+
+  // Dispara aprovação de orçamento para Wagner e Aline.
+  const notificarOrcamentoAprovadores = async (t: Tarefa) => {
+    const alvos = profiles.filter(p => /wagner|aline/i.test((p.name || '')))
+    const link = linkTarefa(t, 'aprov')
+    const valor = t.orcamento_valor != null ? fmtMoeda(t.orcamento_valor) : '(sem valor informado)'
+    for (const p of alvos) {
+      const phone = ((p.permissions_override as any)?.__perfil__?.whatsapp) || ''
+      const msg = [
+        `💰 *ORÇAMENTO PARA APROVAÇÃO*${t.numero != null ? ` #${String(t.numero).padStart(4, '0')}` : ''}`,
+        '',
+        `🏪 Loja: ${t.loja}`,
+        `📋 ${t.titulo}`,
+        `🔧 ${t.orcamento_descricao || t.descricao || '—'}`,
+        t.orcamento_fornecedor ? `🏢 Fornecedor: ${t.orcamento_fornecedor}` : '',
+        `💵 Valor: *${valor}*`,
+        `🙋 Solicitante: ${t.solicitante_nome || '—'}`,
+        '',
+        `Aprovar ou reprovar:\n${link}`,
+        '_Amore Gestão_',
+      ].filter(l => l !== '').join('\n')
+      await zapPara(p.name, phone, msg, { titulo: `Orçamento: ${t.titulo}`, refId: t.id, tipo: 'aprovacao' })
+    }
   }
 
   // Modal detalhe
@@ -195,6 +287,9 @@ export default function TarefasPage() {
   const [resForm, setResForm] = useState({ resultado_final: '', custo_executado: '', dificuldades: '', resultado_status: '' as '' | TarefaResultado, observacao_final: '' })
   // Solicitação de mais prazo
   const [extForm, setExtForm] = useState({ data: '', motivo: '' })
+  // Validação do solicitante (nota + feedback) e aprovação de orçamento
+  const [avalForm, setAvalForm] = useState({ nota: 0, feedback: '', ok: null as boolean | null })
+  const [orcForm, setOrcForm] = useState({ valor: '', obs: '' })
 
   // ── Load ─────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -224,6 +319,8 @@ export default function TarefasPage() {
       observacao_final: detalhe?.observacao_final || '',
     })
     setExtForm({ data: '', motivo: '' })
+    setAvalForm({ nota: detalhe?.aval_nota || 0, feedback: detalhe?.aval_feedback || '', ok: detalhe?.aval_ok ?? null })
+    setOrcForm({ valor: detalhe?.orcamento_aprovado_valor != null ? String(detalhe.orcamento_aprovado_valor) : (detalhe?.orcamento_valor != null ? String(detalhe.orcamento_valor) : ''), obs: detalhe?.orcamento_obs_aprovacao || '' })
   }, [detalhe?.id]) // eslint-disable-line
 
   // ── Filtro ───────────────────────────────────────────────
@@ -232,6 +329,7 @@ export default function TarefasPage() {
         !(t.responsavel_nome || '').toLowerCase().includes(busca.toLowerCase())) return false
     if (filtroSetor && t.setor !== filtroSetor) return false
     if (filtroPrio && t.prioridade !== filtroPrio) return false
+    if (filtroLoja && t.loja !== filtroLoja) return false
     return true
   })
 
@@ -240,6 +338,11 @@ export default function TarefasPage() {
     if (!form.titulo.trim()) return
     setSaving(true)
     try {
+      const orcValor = form.gera_custo && form.orcamento_valor ? Number(form.orcamento_valor) : null
+      // Estimado = custo_previsto; se gera custo e não preencheu o previsto, usa o valor do orçamento.
+      const estimado = form.custo_previsto ? Number(form.custo_previsto) : (orcValor ?? null)
+      // Orçamento entra em aprovação assim que houver valor ou anexo.
+      const precisaAprovarOrc = form.gera_custo && (orcValor != null || !!form.orcamento_anexos.trim())
       const nova = await insertTarefa({
         loja,
         titulo: form.titulo.trim(),
@@ -258,7 +361,7 @@ export default function TarefasPage() {
         entregaveis: form.entregaveis || null,
         anexos: form.anexos || null,
         tags: form.tags || null,
-        custo_previsto: form.custo_previsto ? Number(form.custo_previsto) : null,
+        custo_previsto: estimado,
         custo_executado: null,
         resultado_esperado: form.resultado_esperado || null,
         resultado_final: null,
@@ -276,6 +379,21 @@ export default function TarefasPage() {
         precisa_aprovacao: form.precisa_aprovacao,
         aprovado_por: null, aprovado_at: null, obs_aprovacao: null,
         reaberta: false, created_by: user?.id || null,
+        // ── V2: recebimento / link ──
+        recebido_em: null, recebido_por: null, visualizado_em: null, token: null,
+        // ── V2: validação do solicitante ──
+        aval_ok: null, aval_nota: null, aval_feedback: null, aval_por: null, aval_em: null,
+        // ── V2: orçamento ──
+        gera_custo: form.gera_custo,
+        orcamento_descricao: form.gera_custo ? (form.orcamento_descricao || null) : null,
+        orcamento_fornecedor: form.gera_custo ? (form.orcamento_fornecedor || null) : null,
+        orcamento_valor: orcValor,
+        orcamento_anexos: form.gera_custo ? (form.orcamento_anexos || null) : null,
+        orcamento_data: form.gera_custo && form.orcamento_data ? form.orcamento_data : null,
+        orcamento_obs: form.gera_custo ? (form.orcamento_obs || null) : null,
+        orcamento_status: precisaAprovarOrc ? 'aguardando' : null,
+        orcamento_aprovado_valor: null, orcamento_aprovado_por: null,
+        orcamento_aprovado_em: null, orcamento_obs_aprovacao: null,
       })
       // Checklist items
       for (const desc of form.checklist.filter(Boolean)) {
@@ -283,13 +401,34 @@ export default function TarefasPage() {
       }
       // Histórico
       await insertTarefaHistorico({ tarefa_id: nova.id, acao: 'Tarefa criada', campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || 'Sistema' })
+      // Persiste os campos V2 (token/recebimento/orçamento) em app_config — sem migração
+      const v2blob: Record<string, any> = {
+        token: (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(nova.id)),
+        gera_custo: form.gera_custo,
+        orcamento_descricao: form.gera_custo ? (form.orcamento_descricao || null) : null,
+        orcamento_fornecedor: form.gera_custo ? (form.orcamento_fornecedor || null) : null,
+        orcamento_valor: orcValor,
+        orcamento_anexos: form.gera_custo ? (form.orcamento_anexos || null) : null,
+        orcamento_data: form.gera_custo && form.orcamento_data ? form.orcamento_data : null,
+        orcamento_obs: form.gera_custo ? (form.orcamento_obs || null) : null,
+        orcamento_status: precisaAprovarOrc ? 'aguardando' : null,
+      }
+      await saveAppConfig('tv2_' + nova.id, v2blob)
+      const novaFull = { ...nova, ...v2blob } as Tarefa
       // Notificação WhatsApp ao responsável (se ativado e houver número cadastrado)
       if (form.enviarWhats && form.responsavel_nome) {
-        await notificarTarefaWhats(form.titulo.trim(), form.responsavel_nome, form.prazo, form.setor)
+        await notificarTarefaWhats(novaFull)
+      }
+      // Orçamento pendente → dispara aprovação para Wagner + Aline
+      if (precisaAprovarOrc) {
+        await notificarOrcamentoAprovadores(novaFull)
       }
       setShowForm(false)
       setForm(emptyForm())
       await load()
+    } catch (e: any) {
+      // Antes o erro era engolido pelo try/finally e a tarefa parecia "não salvar".
+      alert('Não foi possível salvar a tarefa: ' + (e?.message || 'erro desconhecido'))
     } finally { setSaving(false) }
   }
 
@@ -398,8 +537,85 @@ export default function TarefasPage() {
   const concluirExecucao = async (t: Tarefa) => {
     setDetalheSaving(true)
     try {
-      await updateTarefa(t.id, { concluido_em: new Date().toISOString() })
+      await updateTarefa(t.id, { concluido_em: new Date().toISOString(), status: isFinal(t.status) ? t.status : 'concluido' })
       await insertTarefaHistorico({ tarefa_id: t.id, acao: 'Execução concluída', campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || 'Sistema' })
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+
+  // ── Responsável recebe a tarefa ──────────────────────────
+  const marcarRecebida = async (t: Tarefa) => {
+    setDetalheSaving(true)
+    try {
+      if (t.status === 'pendente') await updateTarefa(t.id, { status: 'recebida' })
+      await saveTV2(t, { recebido_em: new Date().toISOString(), recebido_por: user?.name || t.responsavel_nome || null, visualizado_em: t.visualizado_em || new Date().toISOString() })
+      await insertTarefaHistorico({ tarefa_id: t.id, acao: 'Responsável recebeu a tarefa', campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || t.responsavel_nome || 'Responsável' })
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+
+  // ── Enviar para validação do solicitante ─────────────────
+  const enviarParaValidacao = async (t: Tarefa) => {
+    setDetalheSaving(true)
+    try {
+      await updateTarefa(t.id, { status: 'aguardando_validacao', concluido_em: t.concluido_em || new Date().toISOString() })
+      await insertTarefaHistorico({ tarefa_id: t.id, acao: 'Enviada para validação do solicitante', campo: 'status', valor_anterior: t.status, valor_novo: 'aguardando_validacao', usuario_nome: user?.name || 'Sistema' })
+      // Notifica o solicitante com link para validar
+      const phone = whatsappDoResponsavel(t.solicitante_nome)
+      if (phone) {
+        const msg = [
+          `✅ *TAREFA CONCLUÍDA — sua validação*${t.numero != null ? ` #${String(t.numero).padStart(4, '0')}` : ''}`,
+          '', `🏪 ${t.loja}`, `📋 ${t.titulo}`, `👤 Executada por: ${t.responsavel_nome || '—'}`,
+          t.resultado_final ? `\n📄 Retorno: ${t.resultado_final}` : '',
+          '', `Confirme se o serviço foi realizado e dê sua avaliação:\n${linkTarefa(t, 'solic')}`,
+          '_Amore Gestão_',
+        ].filter(l => l !== '').join('\n')
+        await zapPara(t.solicitante_nome, phone, msg, { titulo: `Validar: ${t.titulo}`, refId: t.id })
+      }
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+
+  // ── Validação do solicitante (nota 1-5 + feedback) ───────
+  const validarSolicitante = async (t: Tarefa) => {
+    if (avalForm.ok == null || !avalForm.nota) { alert('Informe se o serviço foi realizado e a nota (1 a 5).'); return }
+    setDetalheSaving(true)
+    try {
+      await saveTV2(t, {
+        aval_ok: avalForm.ok, aval_nota: avalForm.nota, aval_feedback: avalForm.feedback || null,
+        aval_por: user?.name || t.solicitante_nome || 'Solicitante', aval_em: new Date().toISOString(),
+      })
+      await updateTarefa(t.id, { status: 'encerrada' })
+      await insertTarefaHistorico({ tarefa_id: t.id, acao: `Solicitante validou (${avalForm.nota}★${avalForm.ok ? ', conforme' : ', não conforme'})`, campo: 'status', valor_anterior: t.status, valor_novo: 'encerrada', usuario_nome: user?.name || t.solicitante_nome || 'Solicitante' })
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+
+  // ── Aprovar / reprovar orçamento (Wagner/Aline) ──────────
+  const decidirOrcamento = async (t: Tarefa, aprovar: boolean) => {
+    setDetalheSaving(true)
+    try {
+      const valorAprovado = aprovar ? (orcForm.valor ? Number(orcForm.valor) : (t.orcamento_valor ?? null)) : null
+      await saveTV2(t, {
+        orcamento_status: aprovar ? 'aprovado' : 'reprovado',
+        orcamento_aprovado_valor: valorAprovado,
+        orcamento_aprovado_por: user?.name || 'Gestor',
+        orcamento_aprovado_em: new Date().toISOString(),
+        orcamento_obs_aprovacao: orcForm.obs || null,
+      })
+      // Estimado (custo_previsto) é coluna real — mantém sincronizado se ainda vazio
+      if (aprovar && valorAprovado != null && t.custo_previsto == null) {
+        await updateTarefa(t.id, { custo_previsto: valorAprovado })
+      }
+      await insertTarefaHistorico({ tarefa_id: t.id, acao: aprovar ? `Orçamento APROVADO (${fmtMoeda(valorAprovado)})` : 'Orçamento REPROVADO', campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || 'Gestor' })
+      // Avisa o responsável do resultado
+      const phone = whatsappDoResponsavel(t.responsavel_nome || '')
+      if (phone) {
+        const msg = aprovar
+          ? `✅ *Orçamento APROVADO* — ${t.titulo}\nValor: ${fmtMoeda(valorAprovado)}\nPode executar. ${linkTarefa(t, 'resp')}`
+          : `⛔ *Orçamento REPROVADO* — ${t.titulo}${orcForm.obs ? `\nMotivo: ${orcForm.obs}` : ''}\n${linkTarefa(t, 'resp')}`
+        await zapPara(t.responsavel_nome || '', phone, msg, { titulo: `Orçamento ${aprovar ? 'aprovado' : 'reprovado'}: ${t.titulo}`, refId: t.id })
+      }
       await load()
     } finally { setDetalheSaving(false) }
   }
@@ -450,14 +666,14 @@ export default function TarefasPage() {
   }, {} as Record<TarefaStatus, number>)
 
   // ── Métricas de gestão ───────────────────────────────────
-  const ativas = tarefasFiltradas.filter(t => t.status !== 'concluido' && t.status !== 'cancelado')
+  const ativas = tarefasFiltradas.filter(t => isAtiva(t.status))
   const metricas = {
     total: tarefasFiltradas.length,
     emAndamento: tarefasFiltradas.filter(t => t.status === 'em_andamento').length,
     atrasadas: ativas.filter(t => vencido(t.prazo)).length,
-    concluidas: tarefasFiltradas.filter(t => t.status === 'concluido').length,
+    concluidas: tarefasFiltradas.filter(t => isFinal(t.status)).length,
     pctConclusao: tarefasFiltradas.length > 0
-      ? Math.round((tarefasFiltradas.filter(t => t.status === 'concluido').length / tarefasFiltradas.length) * 100)
+      ? Math.round((tarefasFiltradas.filter(t => isFinal(t.status)).length / tarefasFiltradas.length) * 100)
       : 0,
   }
 
@@ -470,8 +686,8 @@ export default function TarefasPage() {
       const k = keyFn(t) || '—'
       if (!m[k]) m[k] = { total: 0, concl: 0, atras: 0, pontuais: 0 }
       m[k].total++
-      if (t.status === 'concluido') { m[k].concl++; if (noPrazo(t)) m[k].pontuais++ }
-      if (t.status !== 'concluido' && t.status !== 'cancelado' && vencido(t.prazo)) m[k].atras++
+      if (isFinal(t.status)) { m[k].concl++; if (noPrazo(t)) m[k].pontuais++ }
+      if (isAtiva(t.status) && vencido(t.prazo)) m[k].atras++
     }
     return Object.entries(m).map(([chave, v]) => ({
       chave, ...v,
@@ -482,9 +698,17 @@ export default function TarefasPage() {
   const gerPorColab = agrupaTarefas(t => t.responsavel_nome).sort((a, b) => b.pontualidade - a.pontualidade || b.pctConcl - a.pctConcl)
   const gerPorSetor = agrupaTarefas(t => t.setor).sort((a, b) => b.pctConcl - a.pctConcl)
   const gerPorLoja = agrupaTarefas(t => t.loja).sort((a, b) => b.pctConcl - a.pctConcl)
-  const concluidas = tarefasFiltradas.filter(t => t.status === 'concluido')
+  const concluidas = tarefasFiltradas.filter(t => isFinal(t.status))
   const temposExec = concluidas.filter(t => t.iniciado_em && t.concluido_em)
     .map(t => (new Date(t.concluido_em!).getTime() - new Date(t.iniciado_em!).getTime()) / 3600000).filter(h => h >= 0)
+  const media = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
+  // Tempo de resposta: solicitação → recebimento
+  const refIni = (t: Tarefa) => t.data_solicitacao || t.created_at
+  const temposResposta = tarefasFiltradas.filter(t => t.recebido_em)
+    .map(t => (new Date(t.recebido_em!).getTime() - new Date(refIni(t)).getTime()) / 3600000).filter(h => h >= 0)
+  // Avaliações do solicitante
+  const notas = tarefasFiltradas.filter(t => t.aval_nota != null).map(t => t.aval_nota as number)
+  const sum = (arr: (number | null | undefined)[]) => arr.reduce<number>((a, b) => a + (b || 0), 0)
   const ger = {
     hoje: tarefasFiltradas.filter(t => String(t.prazo || '').slice(0, 10) === hojeStr).length,
     andamento: metricas.emAndamento,
@@ -493,11 +717,19 @@ export default function TarefasPage() {
     atrasadas: metricas.atrasadas,
     vencidas: ativas.filter(t => vencido(t.prazo)).length,
     criticas: ativas.filter(t => t.prioridade === 'urgente').length,
-    aguardAprov: tarefasFiltradas.filter(t => t.precisa_aprovacao && t.status === 'concluido' && !t.aprovado_por).length,
+    aguardAprov: tarefasFiltradas.filter(t => t.precisa_aprovacao && isFinal(t.status) && !t.aprovado_por).length,
+    aguardValidacao: tarefasFiltradas.filter(t => t.status === 'aguardando_validacao').length,
     impedimento: tarefasFiltradas.filter(t => t.status === 'aguardando_retorno' || t.status === 'aguardando_fornecedor').length,
-    tempoMedioH: temposExec.length ? temposExec.reduce((a, b) => a + b, 0) / temposExec.length : null,
+    orcAguard: tarefasFiltradas.filter(t => t.orcamento_status === 'aguardando').length,
+    tempoMedioH: media(temposExec),
+    tempoRespostaH: media(temposResposta),
     produtividade: metricas.pctConclusao,
     disciplina: concluidas.length ? Math.round(concluidas.filter(noPrazo).length / concluidas.length * 100) : 0,
+    avalMedia: notas.length ? (sum(notas) / notas.length) : null,
+    avalQtd: notas.length,
+    custoEstimado: sum(tarefasFiltradas.map(t => t.custo_previsto)),
+    custoAprovado: sum(tarefasFiltradas.map(t => t.orcamento_aprovado_valor)),
+    custoRealizado: sum(tarefasFiltradas.map(t => t.custo_executado)),
   }
   const fmtDur = (h: number) => h < 48 ? `${h.toFixed(1)}h` : `${(h / 24).toFixed(1)}d`
 
@@ -554,7 +786,7 @@ export default function TarefasPage() {
             ))}
           </div>
           <button
-            onClick={() => { setForm(emptyForm()); setShowForm(true) }}
+            onClick={() => { setForm(emptyForm()); setRespModo('lista'); setShowForm(true) }}
             style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
           >
             <Plus size={15} /> Nova Tarefa
@@ -587,6 +819,11 @@ export default function TarefasPage() {
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar tarefa ou responsável..."
             style={{ width: '100%', paddingLeft: 30, padding: '8px 10px 8px 30px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }} />
         </div>
+        <select value={filtroLoja} onChange={e => setFiltroLoja(e.target.value)}
+          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }}>
+          <option value="">🏪 Todas as lojas</option>
+          {lojas.filter(l => l && l !== 'Todas as Lojas').map(l => <option key={l} value={l}>{l}</option>)}
+        </select>
         <select value={filtroSetor} onChange={e => setFiltroSetor(e.target.value)}
           style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }}>
           <option value="">Todos os setores</option>
@@ -597,8 +834,8 @@ export default function TarefasPage() {
           <option value="">Todas as prioridades</option>
           {PRIORIDADES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
         </select>
-        {(busca || filtroSetor || filtroPrio) && (
-          <button onClick={() => { setBusca(''); setFiltroSetor(''); setFiltroPrio('') }}
+        {(busca || filtroSetor || filtroPrio || filtroLoja) && (
+          <button onClick={() => { setBusca(''); setFiltroSetor(''); setFiltroPrio(''); setFiltroLoja('') }}
             style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 13, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
             <X size={13} /> Limpar
           </button>
@@ -635,11 +872,18 @@ export default function TarefasPage() {
               { lbl: 'Atrasadas', val: ger.atrasadas, cor: '#dc2626' },
               { lbl: 'Vencidas', val: ger.vencidas, cor: '#dc2626' },
               { lbl: 'Críticas (urgente)', val: ger.criticas, cor: '#dc2626' },
+              { lbl: 'Aguardando validação', val: ger.aguardValidacao, cor: '#ca8a04' },
               { lbl: 'Aguardando aprovação', val: ger.aguardAprov, cor: '#9333ea' },
+              { lbl: 'Orçamento p/ aprovar', val: ger.orcAguard, cor: '#9333ea' },
               { lbl: 'Com impedimento', val: ger.impedimento, cor: '#d97706' },
+              { lbl: 'Tempo médio resposta', val: ger.tempoRespostaH == null ? '—' : fmtDur(ger.tempoRespostaH), cor: '#0891b2' },
               { lbl: 'Tempo médio execução', val: ger.tempoMedioH == null ? '—' : fmtDur(ger.tempoMedioH), cor: '#6b7280' },
+              { lbl: 'Avaliação média', val: ger.avalMedia == null ? '—' : `${ger.avalMedia.toFixed(1)}★`, cor: '#f59e0b' },
               { lbl: 'Índice produtividade', val: `${ger.produtividade}%`, cor: '#9333ea' },
               { lbl: 'Índice disciplina', val: `${ger.disciplina}%`, cor: ger.disciplina >= 80 ? '#16a34a' : ger.disciplina >= 50 ? '#d97706' : '#dc2626' },
+              { lbl: 'Custo estimado', val: fmtMoeda(ger.custoEstimado), cor: '#6b7280' },
+              { lbl: 'Custo aprovado', val: fmtMoeda(ger.custoAprovado), cor: '#2563eb' },
+              { lbl: 'Custo realizado', val: fmtMoeda(ger.custoRealizado), cor: '#16a34a' },
             ].map(m => (
               <div key={m.lbl} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderTop: `3px solid ${m.cor}`, borderRadius: 10, padding: '10px 14px' }}>
                 <div style={{ fontSize: 22, fontWeight: 700, color: m.cor, lineHeight: 1.1 }}>{m.val}</div>
@@ -797,9 +1041,28 @@ export default function TarefasPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Responsável pela execução</label>
-                  <input value={form.responsavel_nome} onChange={e => setForm(f => ({ ...f, responsavel_nome: e.target.value }))}
-                    placeholder="Quem irá executar"
-                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                  {respModo === 'lista' ? (
+                    <select
+                      value={responsaveis.includes(form.responsavel_nome) ? form.responsavel_nome : ''}
+                      onChange={e => {
+                        if (e.target.value === '__outro__') { setRespModo('outro'); setForm(f => ({ ...f, responsavel_nome: '' })) }
+                        else setForm(f => ({ ...f, responsavel_nome: e.target.value }))
+                      }}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }}>
+                      <option value="">Selecione o responsável…</option>
+                      {responsaveis.map(nome => <option key={nome} value={nome}>{nome}</option>)}
+                      <option value="__outro__">✏️ Outro (digitar)…</option>
+                    </select>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input value={form.responsavel_nome} onChange={e => setForm(f => ({ ...f, responsavel_nome: e.target.value }))}
+                        placeholder="Nome do responsável"
+                        style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                      <button type="button" onClick={() => { setRespModo('lista'); setForm(f => ({ ...f, responsavel_nome: '' })) }}
+                        title="Voltar para a lista"
+                        style={{ padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12, color: 'var(--muted)' }}>↩</button>
+                    </div>
+                  )}
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11.5, cursor: 'pointer', color: 'var(--muted)' }}>
                     <input type="checkbox" checked={form.enviarWhats} onChange={e => setForm(f => ({ ...f, enviarWhats: e.target.checked }))} />
                     📲 Avisar no WhatsApp ao salvar
@@ -886,6 +1149,57 @@ export default function TarefasPage() {
                 <input type="checkbox" checked={form.precisa_aprovacao} onChange={e => setForm(f => ({ ...f, precisa_aprovacao: e.target.checked }))} />
                 Requer validação final do gestor
               </label>
+
+              {/* ── Custo / Orçamento ── */}
+              <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: form.gera_custo ? '#fffdf5' : 'var(--bg)' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>💰 Esta tarefa gera custo?</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[['Não', false], ['Sim', true]].map(([lbl, val]) => (
+                    <button key={String(val)} type="button" onClick={() => setForm(f => ({ ...f, gera_custo: val as boolean }))}
+                      style={{ flex: 1, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                        border: `1px solid ${form.gera_custo === val ? 'var(--bordo)' : 'var(--border)'}`,
+                        background: form.gera_custo === val ? 'var(--bordo)' : 'var(--card)', color: form.gera_custo === val ? '#fff' : 'var(--text)' }}>
+                      {lbl as string}
+                    </button>
+                  ))}
+                </div>
+
+                {form.gera_custo && (
+                  <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Valor estimado (R$)</label>
+                        <input type="number" step="0.01" min="0" value={form.orcamento_valor} onChange={e => setForm(f => ({ ...f, orcamento_valor: e.target.value }))}
+                          placeholder="0,00" style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Data do orçamento</label>
+                        <input type="date" value={form.orcamento_data} onChange={e => setForm(f => ({ ...f, orcamento_data: e.target.value }))}
+                          style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }} />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Descrição do serviço/produto</label>
+                      <input value={form.orcamento_descricao} onChange={e => setForm(f => ({ ...f, orcamento_descricao: e.target.value }))}
+                        placeholder="Ex: troca da resistência do forno" style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Fornecedor (se houver)</label>
+                      <input value={form.orcamento_fornecedor} onChange={e => setForm(f => ({ ...f, orcamento_fornecedor: e.target.value }))}
+                        placeholder="Nome do fornecedor/prestador" style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }} />
+                    </div>
+                    <AnexoUploader value={form.orcamento_anexos} onChange={v => setForm(f => ({ ...f, orcamento_anexos: v || '' }))} pasta="tarefas" label="📎 Orçamento / documento (foto ou PDF)" />
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Observações do orçamento</label>
+                      <textarea value={form.orcamento_obs} onChange={e => setForm(f => ({ ...f, orcamento_obs: e.target.value }))} rows={2}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13, resize: 'vertical' }} />
+                    </div>
+                    <div style={{ fontSize: 11.5, color: '#92400e', background: '#fef3c7', borderRadius: 7, padding: '8px 10px' }}>
+                      ⚠️ Ao salvar com valor ou anexo, a <strong>aprovação do orçamento é enviada automaticamente para Wagner e Aline</strong> pelo WhatsApp.
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Observações */}
               <div>
@@ -1016,7 +1330,32 @@ export default function TarefasPage() {
 
             {/* Ações */}
             <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {(detalhe.status === 'concluido' || detalhe.status === 'cancelado') && (
+              <a href={linkTarefa(detalhe)} target="_blank" rel="noreferrer"
+                style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, textDecoration: 'none', color: 'var(--text)' }}>
+                🔗 Abrir link público
+              </a>
+              <button onClick={() => { navigator.clipboard?.writeText(linkTarefa(detalhe)); }}
+                style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12 }}>
+                📋 Copiar link
+              </button>
+              {detalhe.responsavel_nome && (
+                <button onClick={() => notificarTarefaWhats(detalhe)} disabled={detalheSaving}
+                  style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <MessageSquare size={13} /> Reenviar ao responsável
+                </button>
+              )}
+              {!detalhe.recebido_em && detalhe.status !== 'cancelado' && (
+                <button onClick={() => marcarRecebida(detalhe)} disabled={detalheSaving}
+                  style={{ padding: '7px 14px', borderRadius: 7, border: 'none', background: '#0891b2', color: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <CheckCircle2 size={13} /> Marcar como recebida
+                </button>
+              )}
+              {detalhe.recebido_em && (
+                <div style={{ fontSize: 12, color: '#0891b2', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <CheckCircle2 size={13} /> Recebida {detalhe.recebido_por ? `por ${detalhe.recebido_por}` : ''} em {fmtDataHora(detalhe.recebido_em)}
+                </div>
+              )}
+              {(detalhe.status === 'concluido' || detalhe.status === 'cancelado' || detalhe.status === 'encerrada') && (
                 <button onClick={() => reabrirTarefa(detalhe)}
                   style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
                   <RotateCcw size={13} /> Reabrir Tarefa
@@ -1034,6 +1373,104 @@ export default function TarefasPage() {
                 </div>
               )}
             </div>
+
+            {/* ── Orçamento ── */}
+            {detalhe.gera_custo && (
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>💰 ORÇAMENTO</span>
+                  {detalhe.orcamento_status && (
+                    <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 20, padding: '2px 10px',
+                      background: detalhe.orcamento_status === 'aprovado' ? '#dcfce7' : detalhe.orcamento_status === 'reprovado' ? '#fee2e2' : '#fef3c7',
+                      color: detalhe.orcamento_status === 'aprovado' ? '#15803d' : detalhe.orcamento_status === 'reprovado' ? '#b91c1c' : '#92400e' }}>
+                      {detalhe.orcamento_status === 'aprovado' ? 'Aprovado' : detalhe.orcamento_status === 'reprovado' ? 'Reprovado' : 'Aguardando aprovação'}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+                  {[['Estimado', detalhe.custo_previsto ?? detalhe.orcamento_valor], ['Aprovado', detalhe.orcamento_aprovado_valor], ['Realizado', detalhe.custo_executado]].map(([lbl, v]) => (
+                    <div key={lbl as string} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px' }}>
+                      <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>{lbl as string}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{fmtMoeda(v as number | null)}</div>
+                    </div>
+                  ))}
+                </div>
+                {detalhe.orcamento_descricao && <div style={{ fontSize: 13, marginBottom: 4 }}>{detalhe.orcamento_descricao}</div>}
+                {detalhe.orcamento_fornecedor && <div style={{ fontSize: 12, color: 'var(--muted)' }}>🏢 {detalhe.orcamento_fornecedor}{detalhe.orcamento_data ? ` · ${fmtData(detalhe.orcamento_data)}` : ''}</div>}
+                {detalhe.orcamento_anexos && <div style={{ marginTop: 6 }}><AnexoLinks value={detalhe.orcamento_anexos} compact /></div>}
+                {detalhe.orcamento_obs && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{detalhe.orcamento_obs}</div>}
+
+                {detalhe.orcamento_status === 'aguardando' && (
+                  <div style={{ marginTop: 10, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>Decisão (Wagner / Aline)</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                      <input type="number" step="0.01" min="0" value={orcForm.valor} onChange={e => setOrcForm(f => ({ ...f, valor: e.target.value }))}
+                        placeholder="Valor aprovado (R$)" style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }} />
+                      <input value={orcForm.obs} onChange={e => setOrcForm(f => ({ ...f, obs: e.target.value }))}
+                        placeholder="Observação (opcional)" style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13 }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => decidirOrcamento(detalhe, true)} disabled={detalheSaving}
+                        style={{ flex: 1, padding: '8px', borderRadius: 7, border: 'none', background: '#16a34a', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>✓ Aprovar orçamento</button>
+                      <button onClick={() => decidirOrcamento(detalhe, false)} disabled={detalheSaving}
+                        style={{ flex: 1, padding: '8px', borderRadius: 7, border: '1px solid #dc2626', background: 'transparent', color: '#dc2626', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>✕ Reprovar</button>
+                    </div>
+                  </div>
+                )}
+                {detalhe.orcamento_aprovado_em && (
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+                    {detalhe.orcamento_status === 'aprovado' ? '✅' : '⛔'} {detalhe.orcamento_aprovado_por} · {fmtDataHora(detalhe.orcamento_aprovado_em)}
+                    {detalhe.orcamento_obs_aprovacao ? ` — ${detalhe.orcamento_obs_aprovacao}` : ''}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Conclusão & Validação do solicitante ── */}
+            {(detalhe.status === 'concluido' || detalhe.status === 'aguardando_validacao' || detalhe.status === 'encerrada') && (
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, marginBottom: 8 }}>⭐ VALIDAÇÃO DO SOLICITANTE {detalhe.solicitante_nome ? `(${detalhe.solicitante_nome})` : ''}</div>
+
+                {detalhe.aval_em ? (
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>
+                      {detalhe.aval_ok ? '✅ Serviço confirmado' : '⚠️ Marcado como NÃO conforme'} · {'★'.repeat(detalhe.aval_nota || 0)}{'☆'.repeat(5 - (detalhe.aval_nota || 0))}
+                    </div>
+                    {detalhe.aval_feedback && <div style={{ fontSize: 13, marginTop: 4 }}>{detalhe.aval_feedback}</div>}
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>por {detalhe.aval_por} · {fmtDataHora(detalhe.aval_em)}</div>
+                  </div>
+                ) : (
+                  <>
+                    {detalhe.status === 'concluido' && (
+                      <button onClick={() => enviarParaValidacao(detalhe)} disabled={detalheSaving}
+                        style={{ marginBottom: 10, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        📲 Enviar para o solicitante validar
+                      </button>
+                    )}
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <button onClick={() => setAvalForm(f => ({ ...f, ok: true }))}
+                        style={{ flex: 1, padding: '7px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 600, border: `1px solid ${avalForm.ok === true ? '#16a34a' : 'var(--border)'}`, background: avalForm.ok === true ? '#16a34a' : 'var(--bg)', color: avalForm.ok === true ? '#fff' : 'var(--text)' }}>✅ Realizado conforme</button>
+                      <button onClick={() => setAvalForm(f => ({ ...f, ok: false }))}
+                        style={{ flex: 1, padding: '7px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 600, border: `1px solid ${avalForm.ok === false ? '#dc2626' : 'var(--border)'}`, background: avalForm.ok === false ? '#dc2626' : 'var(--bg)', color: avalForm.ok === false ? '#fff' : 'var(--text)' }}>⚠️ Não conforme</button>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <span style={{ fontSize: 12, color: 'var(--muted)' }}>Nota:</span>
+                      {[1, 2, 3, 4, 5].map(n => (
+                        <button key={n} onClick={() => setAvalForm(f => ({ ...f, nota: n }))}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, lineHeight: 1, color: n <= avalForm.nota ? '#f59e0b' : 'var(--border)', padding: 0 }}>★</button>
+                      ))}
+                    </div>
+                    <textarea value={avalForm.feedback} onChange={e => setAvalForm(f => ({ ...f, feedback: e.target.value }))} rows={2}
+                      placeholder="Feedback / observação (opcional)…"
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical', marginBottom: 8 }} />
+                    <button onClick={() => validarSolicitante(detalhe)} disabled={detalheSaving}
+                      style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#0f766e', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                      🔒 Validar e encerrar tarefa
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Abas: Checklist / Comentários / Histórico */}
             <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
@@ -1342,6 +1779,7 @@ function KanbanCard({ tarefa, onClick, onMover, colunas }: {
 
         {/* Tags */}
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+          <span style={{ background: 'var(--bordo)', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>🏪 {tarefa.loja}</span>
           <span style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 6px', fontSize: 10, color: 'var(--muted)' }}>{tarefa.setor}</span>
           <span style={{ background: prioCor(tarefa.prioridade) + '20', color: prioCor(tarefa.prioridade), borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>{prioLabel(tarefa.prioridade)}</span>
           {tarefa.precisa_aprovacao && !tarefa.aprovado_at && (
@@ -1350,20 +1788,30 @@ function KanbanCard({ tarefa, onClick, onMover, colunas }: {
           {tarefa.prazo_extensao_status === 'pendente' && (
             <span style={{ background: '#fef9c3', color: '#854d0e', borderRadius: 4, padding: '1px 6px', fontSize: 10 }}>📅 Prazo+</span>
           )}
+          {tarefa.recebido_em && <span style={{ background: '#ecfeff', color: '#0891b2', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>✓ Recebida</span>}
+          {tarefa.orcamento_status === 'aguardando' && <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: 4, padding: '1px 6px', fontSize: 10 }}>💰 Orçam.</span>}
+          {tarefa.orcamento_status === 'aprovado' && <span style={{ background: '#dcfce7', color: '#15803d', borderRadius: 4, padding: '1px 6px', fontSize: 10 }}>💰 Aprovado</span>}
+          {tarefa.orcamento_status === 'reprovado' && <span style={{ background: '#fee2e2', color: '#b91c1c', borderRadius: 4, padding: '1px 6px', fontSize: 10 }}>💰 Reprovado</span>}
+          {tarefa.aval_nota != null && <span style={{ background: '#fffbeb', color: '#b45309', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>{tarefa.aval_nota}★</span>}
           {parseTags(tarefa.tags).slice(0, 2).map(tg => (
             <span key={tg} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 6px', fontSize: 10, color: 'var(--muted)' }}>#{tg}</span>
           ))}
         </div>
 
         {/* Responsável + prazo */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: 'var(--muted)' }}>
-          <span>{tarefa.responsavel_nome || '—'}</span>
-          {tarefa.prazo && (
-            <span style={{ color: vencido(tarefa.prazo) ? '#dc2626' : 'var(--muted)', fontWeight: vencido(tarefa.prazo) ? 600 : 400 }}>
-              {vencido(tarefa.prazo) && '⚠ '}{fmtData(tarefa.prazo)}{parseHoras(tarefa.competencia).hl ? ` ${parseHoras(tarefa.competencia).hl}` : ''}
-            </span>
-          )}
-        </div>
+        {(() => {
+          const sem = prazoSemaforo(tarefa.prazo, tarefa.status)
+          return (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: 'var(--muted)' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><User size={11} />{tarefa.responsavel_nome || '—'}</span>
+              {tarefa.prazo && (
+                <span style={{ color: sem ? sem.cor : 'var(--muted)', fontWeight: sem && sem.emoji !== '🟢' ? 600 : 400 }}>
+                  {sem ? `${sem.emoji} ` : ''}{fmtData(tarefa.prazo)}{parseHoras(tarefa.competencia).hl ? ` ${parseHoras(tarefa.competencia).hl}` : ''}
+                </span>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Checklist progress */}
         {pct >= 0 && (

@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Tarefa — Amore</title>
+<style>
+:root{--vinho:#8B1212;--brand:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--crit:#DC2626;--info:#0891b2;--shadow:0 1px 2px rgba(80,20,25,.05),0 8px 24px -12px rgba(80,20,25,.12)}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6)}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5;font-variant-numeric:tabular-nums}
+.wrap{max-width:720px;margin:0 auto;padding:26px 18px 60px}
+header.top{border-bottom:2px solid var(--brand);padding-bottom:14px;margin-bottom:14px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--brand);font-weight:700}
+h1{font-size:21px;margin:6px 0 4px;line-height:1.2}.sub{color:var(--muted);font-size:13px}
+.badge{display:inline-block;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0 14px}
+.meta div{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 12px}
+.meta .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.meta .v{font-weight:600;font-size:14px}
+.cards3{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:0 0 4px}
+.big{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:11px 13px;box-shadow:var(--shadow)}
+.big .l{font-size:11px;color:var(--muted)}.big .v{font-size:18px;font-weight:800;margin-top:2px}
+.box{margin-top:14px;padding:13px 15px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:13.5px;box-shadow:var(--shadow)}
+.box b{font-size:14px}
+.sec{font-size:13px;font-weight:800;color:var(--brand);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 6px}
+.foot{margin-top:22px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
+.msg{text-align:center;padding:60px 20px;color:var(--muted)}
+label.f{font-size:12px;color:var(--muted);display:block;margin-top:8px}
+input,select,textarea{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font:inherit;margin-top:4px;box-sizing:border-box}
+.btn{border:none;border-radius:9px;padding:11px 18px;font-weight:700;font-size:14px;color:#fff;cursor:pointer}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.stars{display:flex;gap:4px;font-size:30px;line-height:1;margin-top:6px}
+.stars span{cursor:pointer;color:var(--border)}.stars span.on{color:#f59e0b}
+a{color:var(--brand)}
+.anx a{display:block;font-size:12.5px;word-break:break-all;margin-top:2px}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Carregando tarefa…</div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY};
+const q=new URLSearchParams(location.search);
+const ID=(q.get('id')||'').trim(), TK=(q.get('t')||'').trim(), PAPEL=(q.get('papel')||'').trim();
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const brl=v=>v==null?'—':'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fD=s=>{if(!s)return '—';const p=String(s).slice(0,10).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:s};
+const fDH=s=>{if(!s)return '—';try{return new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}catch(e){return fD(s)}};
+const PRIO={baixa:['⚪ Baixa','#6b7280'],media:['🔵 Média','#2563eb'],alta:['🟠 Alta','#d97706'],urgente:['🔴 Urgente','#dc2626']};
+const STA={pendente:['📥 Solicitada','#374151','#F3F4F6'],recebida:['📨 Recebida','#155e75','#ecfeff'],em_andamento:['🔧 Em execução','#1D4ED8','#DBEAFE'],aguardando_retorno:['⏳ Aguardando info','#92400E','#FEF3C7'],aguardando_fornecedor:['⏳ Aguardando material','#6b21a8','#f3e8ff'],concluido:['✅ Concluída','#166534','#DCFCE7'],aguardando_validacao:['⭐ Aguardando validação','#854d0e','#fefce8'],encerrada:['🔒 Encerrada','#115e59','#ccfbf1'],cancelado:['✖ Cancelado','#991B1B','#FEE2E2']};
+const anxHTML=v=>{const it=String(v||'').split(/\n+/).map(s=>s.trim()).filter(Boolean);if(!it.length)return '';return '<div class="anx">'+it.map(l=>/^https?:\/\//.test(l)?'<a href="'+esc(l)+'" target="_blank" rel="noreferrer">🔗 '+esc(l)+'</a>':'<span>'+esc(l)+'</span>').join('')+'</div>';};
+// Normaliza número BR (adiciona DDI 55) — mesma regra do painel
+const foneBR=f=>{let d=String(f||'').replace(/\D/g,'').replace(/^0+/,'');if(!d)return '';if(d.startsWith('55')&&d.length>=12)return d;if(d.length===10||d.length===11)return '55'+d;return d;};
+async function waDe(nome){ // resolve WhatsApp do perfil pelo nome
+  try{const ps=await (await fetch(SB+'/rest/v1/profiles?select=name,permissions_override',{headers:H})).json();
+    const u=(ps||[]).find(p=>(p.name||'').trim().toLowerCase()===String(nome||'').trim().toLowerCase());
+    return foneBR(u&&u.permissions_override&&u.permissions_override.__perfil__&&u.permissions_override.__perfil__.whatsapp);}catch(e){return '';}
+}
+async function zap(phone,message){ if(!phone)return false; try{const r=await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:phone,message:message})});return r.ok;}catch(e){return false;} }
+const ORIGIN=location.origin;
+
+async function patch(body){const r=await fetch(SB+'/rest/v1/tarefas?id=eq.'+encodeURIComponent(ID),{method:'PATCH',headers:Object.assign({},H,{'Content-Type':'application/json',Prefer:'return=minimal'}),body:JSON.stringify(Object.assign({updated_at:new Date().toISOString()},body))});return r.ok;}
+// Campos V2 (recebimento/orçamento/avaliação/token) ficam em app_config (tv2_<id>)
+let TV2={};
+async function saveV2(patch){const val=Object.assign({},TV2,patch);const r=await fetch(SB+'/rest/v1/app_config?on_conflict=chave',{method:'POST',headers:Object.assign({},H,{'Content-Type':'application/json',Prefer:'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({chave:'tv2_'+ID,valor:val,updated_at:new Date().toISOString()})});if(r.ok)TV2=val;return r.ok;}
+async function hist(acao,quem){try{await fetch(SB+'/rest/v1/tarefas_historico',{method:'POST',headers:Object.assign({},H,{'Content-Type':'application/json',Prefer:'return=minimal'}),body:JSON.stringify({tarefa_id:ID,acao:acao,campo:null,valor_anterior:null,valor_novo:null,usuario_nome:quem||'Link público'})});}catch(e){}}
+
+async function main(){
+  const app=document.getElementById('app');
+  if(!ID){app.innerHTML='<div class="msg">Link inválido (sem id).</div>';return;}
+  let t; try{t=(await (await fetch(SB+'/rest/v1/tarefas?select=*&id=eq.'+encodeURIComponent(ID),{headers:H})).json())[0];}catch(e){}
+  if(!t){app.innerHTML='<div class="msg">Tarefa não encontrada.</div>';return;}
+  // Campos V2 do app_config
+  try{const cfg=(await (await fetch(SB+'/rest/v1/app_config?select=valor&chave=eq.tv2_'+encodeURIComponent(ID),{headers:H})).json())[0];TV2=(cfg&&cfg.valor)||{};}catch(e){TV2={};}
+  Object.assign(t,TV2);
+  if(t.token&&TK&&TK!==t.token){app.innerHTML='<div class="msg">Link inválido ou expirado.</div>';return;}
+
+  // Marca visualização (1x)
+  if(!t.visualizado_em){ saveV2({visualizado_em:new Date().toISOString()}); }
+
+  const isFlow=/flow/i.test(t.loja||'');
+  if(isFlow) document.documentElement.style.setProperty('--brand','#2E7D34');
+  const s=STA[t.status]||[t.status,'#374151','#F3F4F6'];
+  const pr=PRIO[t.prioridade]||[t.prioridade,'#6b7280'];
+  const hl=(()=>{try{const o=JSON.parse(t.competencia||'null');return o&&o.hl?o.hl:''}catch(e){return ''}})();
+
+  // ── Blocos de ação por estado ──
+  let acoes='';
+  // Recebimento
+  if(!t.recebido_em && t.status!=='cancelado' && t.status!=='encerrada'){
+    acoes+='<div class="box" style="border-color:var(--info)"><b>📨 Confirmar recebimento</b>'+
+      '<div style="color:var(--muted);font-size:12px;margin:2px 0 8px">'+esc(t.responsavel_nome||'Responsável')+', confirme que recebeu esta tarefa.</div>'+
+      '<div class="row"><button class="btn" id="btnReceber" style="background:var(--info)">✅ Recebi a tarefa</button></div>'+
+      '<div id="recMsg" style="margin-top:8px;font-size:13px;font-weight:600"></div></div>';
+  } else if(t.recebido_em){
+    acoes+='<div class="box" style="color:var(--info)">📨 Recebida '+(t.recebido_por?'por '+esc(t.recebido_por):'')+' em '+fDH(t.recebido_em)+'</div>';
+  }
+  // Execução (responsável)
+  const bloqOrc=t.gera_custo && t.orcamento_status && t.orcamento_status!=='aprovado';
+  if(t.status!=='cancelado' && t.status!=='encerrada' && !t.aval_em){
+    let ex='<div class="box"><b>🔧 Execução</b>';
+    ex+='<div style="font-size:12px;color:var(--muted);margin:2px 0 6px">Início: <b>'+fDH(t.iniciado_em)+'</b> · Conclusão: <b>'+fDH(t.concluido_em)+'</b></div>';
+    if(bloqOrc){ ex+='<div style="font-size:12.5px;color:var(--warn)">⏳ Aguardando aprovação do orçamento antes de executar.</div>'; }
+    else{
+      if(!t.iniciado_em) ex+='<div class="row"><button class="btn" id="btnIniciar" style="background:#2563eb">▶ Iniciar execução</button></div>';
+      if(t.iniciado_em && !t.concluido_em){
+        ex+='<label class="f">Retorno da execução (o que foi feito)<textarea id="exRet" rows="2">'+esc(t.resultado_final||'')+'</textarea></label>'+
+            '<label class="f">Custo realizado (R$)<input id="exCusto" inputmode="decimal" value="'+(t.custo_executado!=null?t.custo_executado:'')+'"></label>'+
+            (t.gera_custo?'':'')+
+            '<div class="row"><button class="btn" id="btnConcluir" style="background:var(--ok)">■ Concluir e enviar p/ validação</button></div>';
+      }
+    }
+    ex+='<div id="exMsg" style="margin-top:8px;font-size:13px;font-weight:600"></div></div>';
+    acoes+=ex;
+  }
+  // Validação do solicitante
+  if((t.status==='concluido'||t.status==='aguardando_validacao') && !t.aval_em){
+    acoes+='<div class="box" style="border-color:var(--brand)"><b>⭐ Validação do solicitante</b>'+
+      '<div style="color:var(--muted);font-size:12px;margin:2px 0 6px">Confirme se o serviço foi realizado conforme solicitado e dê sua avaliação.</div>'+
+      '<div class="row"><button class="btn" id="okSim" style="background:var(--ok)">✅ Realizado conforme</button>'+
+      '<button class="btn" id="okNao" style="background:var(--crit)">⚠️ Não conforme</button></div>'+
+      '<div class="stars" id="stars">'+[1,2,3,4,5].map(n=>'<span data-n="'+n+'">★</span>').join('')+'</div>'+
+      '<label class="f">Feedback (opcional)<textarea id="avFb" rows="2"></textarea></label>'+
+      '<label class="f">Seu nome<input id="avNome" value="'+esc(PAPEL==='solic'?(t.solicitante_nome||''):'')+'"></label>'+
+      '<div class="row"><button class="btn" id="btnValidar" style="background:#0f766e">🔒 Validar e encerrar</button></div>'+
+      '<div id="avMsg" style="margin-top:8px;font-size:13px;font-weight:600"></div></div>';
+  } else if(t.aval_em){
+    acoes+='<div class="box" style="color:var(--ok)">⭐ '+(t.aval_ok?'Serviço confirmado':'Marcado NÃO conforme')+' · '+('★'.repeat(t.aval_nota||0))+('☆'.repeat(5-(t.aval_nota||0)))+(t.aval_feedback?'<br>“'+esc(t.aval_feedback)+'”':'')+'<br><span style="color:var(--muted);font-size:12px">por '+esc(t.aval_por||'—')+' · '+fDH(t.aval_em)+'</span></div>';
+  }
+
+  // ── Orçamento ──
+  let orc='';
+  if(t.gera_custo){
+    const st=t.orcamento_status;
+    const stBadge=st?('<span class="badge" style="background:'+(st==='aprovado'?'#DCFCE7':st==='reprovado'?'#FEE2E2':'#FEF3C7')+';color:'+(st==='aprovado'?'#166534':st==='reprovado'?'#991B1B':'#92400E')+'">'+(st==='aprovado'?'Aprovado':st==='reprovado'?'Reprovado':'Aguardando aprovação')+'</span>'):'';
+    orc='<div class="sec">💰 Orçamento</div><div class="box">'+stBadge+
+      '<div class="cards3" style="margin-top:10px">'+
+      '<div class="big"><div class="l">Estimado</div><div class="v">'+brl(t.custo_previsto!=null?t.custo_previsto:t.orcamento_valor)+'</div></div>'+
+      '<div class="big"><div class="l">Aprovado</div><div class="v" style="color:var(--ok)">'+brl(t.orcamento_aprovado_valor)+'</div></div>'+
+      '<div class="big"><div class="l">Realizado</div><div class="v">'+brl(t.custo_executado)+'</div></div></div>'+
+      (t.orcamento_descricao?'<div style="margin-top:8px">'+esc(t.orcamento_descricao)+'</div>':'')+
+      (t.orcamento_fornecedor?'<div style="font-size:12.5px;color:var(--muted)">🏢 '+esc(t.orcamento_fornecedor)+(t.orcamento_data?' · '+fD(t.orcamento_data):'')+'</div>':'')+
+      anxHTML(t.orcamento_anexos)+
+      (t.orcamento_obs?'<div style="font-size:12.5px;color:var(--muted);margin-top:4px">'+esc(t.orcamento_obs)+'</div>':'')+
+      (t.orcamento_aprovado_em?'<div style="font-size:12px;color:var(--muted);margin-top:6px">'+(st==='aprovado'?'✅':'⛔')+' '+esc(t.orcamento_aprovado_por||'')+' · '+fDH(t.orcamento_aprovado_em)+(t.orcamento_obs_aprovacao?' — '+esc(t.orcamento_obs_aprovacao):'')+'</div>':'');
+    if(st==='aguardando'){
+      orc+='<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)"><b>Decisão (Wagner / Aline)</b>'+
+        '<label class="f">Valor a aprovar (R$)<input id="orcVal" inputmode="decimal" value="'+(t.orcamento_valor!=null?t.orcamento_valor:'')+'"></label>'+
+        '<label class="f">Quem decide<select id="orcQuem"><option value="">Selecione…</option><option>Wagner</option><option>Aline</option></select></label>'+
+        '<label class="f">Observação (opcional)<textarea id="orcObs" rows="2"></textarea></label>'+
+        '<div class="row"><button class="btn" id="btnOrcAp" style="background:var(--ok)">✅ Aprovar orçamento</button>'+
+        '<button class="btn" id="btnOrcRe" style="background:var(--crit)">✕ Reprovar</button></div>'+
+        '<div id="orcMsg" style="margin-top:8px;font-size:13px;font-weight:600"></div></div>';
+    }
+    orc+='</div>';
+  }
+
+  app.innerHTML=
+    '<header class="top"><div><div class="eyebrow">'+(isFlow?'Flow':'Amore')+' · Tarefa</div>'+
+    '<h1>'+(t.numero!=null?'#'+String(t.numero).padStart(4,'0')+' · ':'')+esc(t.titulo)+'</h1>'+
+    '<div class="sub">🏪 '+esc(t.loja)+' · '+esc(t.setor)+'</div></div>'+
+    '<span class="badge" style="background:'+s[2]+';color:'+s[1]+'">'+s[0]+'</span></header>'+
+    '<div class="meta">'+
+      '<div><div class="l">Prioridade</div><div class="v" style="color:'+pr[1]+'">'+pr[0]+'</div></div>'+
+      '<div><div class="l">Responsável</div><div class="v">'+esc(t.responsavel_nome||'—')+'</div></div>'+
+      '<div><div class="l">Solicitante</div><div class="v">'+esc(t.solicitante_nome||'—')+'</div></div>'+
+      '<div><div class="l">Prazo</div><div class="v">'+fD(t.prazo)+(hl?' '+esc(hl):'')+'</div></div>'+
+      '<div><div class="l">Solicitada em</div><div class="v">'+fD(t.data_solicitacao||t.created_at)+'</div></div>'+
+    '</div>'+
+    (t.descricao?'<div class="box">📝 '+esc(t.descricao)+'</div>':'')+
+    (t.anexos?'<div class="sec">📎 Anexos</div><div class="box">'+anxHTML(t.anexos)+'</div>':'')+
+    orc+
+    (acoes?'<div class="sec">Ações</div>'+acoes:'')+
+    '<div class="foot">Link oficial da tarefa · painel '+(isFlow?'Flow':'Amore')+'. Reflete o status em tempo real.</div>';
+
+  // ── Wiring ──
+  const $=id=>document.getElementById(id);
+  if($('btnReceber')){
+    $('btnReceber').onclick=async()=>{
+      const nome=t.responsavel_nome||'Responsável';
+      $('btnReceber').disabled=true;$('recMsg').style.color='var(--muted)';$('recMsg').textContent='Registrando…';
+      if(t.status==='pendente'){ await patch({status:'recebida'}); }
+      const ok=await saveV2({recebido_em:new Date().toISOString(),recebido_por:nome,visualizado_em:t.visualizado_em||new Date().toISOString()});
+      if(ok){
+        await hist('Responsável recebeu a tarefa (link)',nome);
+        // Dispara aviso ao solicitante de que foi recebida
+        const ph=await waDe(t.solicitante_nome);
+        if(ph){const link=ORIGIN+'/tarefa.html?id='+ID+(t.token?'&t='+t.token:'')+'&papel=solic';
+          await zap(ph,'📨 *Tarefa recebida*'+(t.numero!=null?' #'+String(t.numero).padStart(4,'0'):'')+'\n\n🏪 '+t.loja+'\n📋 '+t.titulo+'\n👤 '+nome+' confirmou o recebimento e vai executar.\n\n'+link+'\n_Amore Gestão_');}
+        $('recMsg').style.color='var(--ok)';$('recMsg').textContent='✅ Recebimento confirmado!';setTimeout(main,800);
+      }
+      else{$('btnReceber').disabled=false;$('recMsg').style.color='var(--crit)';$('recMsg').textContent='Falha. Tente de novo.';}
+    };
+  }
+  if($('btnIniciar')){
+    $('btnIniciar').onclick=async()=>{
+      $('btnIniciar').disabled=true;$('exMsg').textContent='Iniciando…';
+      const ns=(t.status==='pendente'||t.status==='recebida')?'em_andamento':t.status;
+      const ok=await patch({iniciado_em:new Date().toISOString(),status:ns});
+      if(ok){await hist('Execução iniciada (link)',t.responsavel_nome||'Responsável');setTimeout(main,600);}
+      else{$('btnIniciar').disabled=false;$('exMsg').style.color='var(--crit)';$('exMsg').textContent='Falha. Tente de novo.';}
+    };
+  }
+  if($('btnConcluir')){
+    $('btnConcluir').onclick=async()=>{
+      $('btnConcluir').disabled=true;$('exMsg').textContent='Concluindo…';
+      const ret=($('exRet').value||'').trim();
+      const custo=$('exCusto').value?Number(String($('exCusto').value).replace(',','.')):null;
+      const ok=await patch({concluido_em:new Date().toISOString(),status:'aguardando_validacao',resultado_final:ret||null,custo_executado:custo});
+      if(ok){
+        await hist('Execução concluída — enviada para validação (link)',t.responsavel_nome||'Responsável');
+        // Notifica o solicitante para validar
+        const ph=await waDe(t.solicitante_nome);
+        if(ph){const link=ORIGIN+'/tarefa.html?id='+ID+(t.token?'&t='+t.token:'')+'&papel=solic';
+          await zap(ph,'✅ *TAREFA CONCLUÍDA — sua validação*\n\n🏪 '+t.loja+'\n📋 '+t.titulo+'\n👤 Executada por: '+(t.responsavel_nome||'—')+(ret?'\n\n📄 '+ret:'')+'\n\nConfirme e avalie:\n'+link+'\n_Amore Gestão_');}
+        $('exMsg').style.color='var(--ok)';$('exMsg').textContent='✅ Concluída! Enviada para validação.';setTimeout(main,800);
+      } else{$('btnConcluir').disabled=false;$('exMsg').style.color='var(--crit)';$('exMsg').textContent='Falha. Tente de novo.';}
+    };
+  }
+  // Validação solicitante
+  let avOk=null, avN=0;
+  if($('okSim')){
+    const setOk=v=>{avOk=v;$('okSim').style.opacity=v?1:.5;$('okNao').style.opacity=v?.5:1;};
+    $('okSim').onclick=()=>setOk(true);$('okNao').onclick=()=>setOk(false);
+    $('stars').querySelectorAll('span').forEach(sp=>{sp.onclick=()=>{avN=+sp.dataset.n;$('stars').querySelectorAll('span').forEach(x=>x.classList.toggle('on',+x.dataset.n<=avN));};});
+    $('btnValidar').onclick=async()=>{
+      if(avOk==null){$('avMsg').style.color='var(--crit)';$('avMsg').textContent='Diga se o serviço foi realizado conforme.';return;}
+      if(!avN){$('avMsg').style.color='var(--crit)';$('avMsg').textContent='Dê uma nota de 1 a 5 estrelas.';return;}
+      const nome=($('avNome').value||'').trim()||t.solicitante_nome||'Solicitante';
+      $('btnValidar').disabled=true;$('avMsg').textContent='Registrando…';
+      const ok=await saveV2({aval_ok:avOk,aval_nota:avN,aval_feedback:($('avFb').value||'').trim()||null,aval_por:nome,aval_em:new Date().toISOString()});
+      if(ok)await patch({status:'encerrada'});
+      if(ok){await hist('Solicitante validou ('+avN+'★'+(avOk?', conforme':', não conforme')+') (link)',nome);$('avMsg').style.color='var(--ok)';$('avMsg').textContent='✅ Obrigado! Tarefa encerrada.';setTimeout(main,800);}
+      else{$('btnValidar').disabled=false;$('avMsg').style.color='var(--crit)';$('avMsg').textContent='Falha. Tente de novo.';}
+    };
+  }
+  // Orçamento
+  if($('btnOrcAp')){
+    const dec=async(aprovar)=>{
+      const quem=($('orcQuem').value||'').trim(); if(!quem){$('orcMsg').style.color='var(--crit)';$('orcMsg').textContent='Selecione quem decide.';return;}
+      const obs=($('orcObs').value||'').trim();
+      const val=aprovar?($('orcVal').value?Number(String($('orcVal').value).replace(',','.')):(t.orcamento_valor||null)):null;
+      $('btnOrcAp').disabled=true;$('btnOrcRe').disabled=true;$('orcMsg').textContent='Registrando…';
+      const ok=await saveV2({orcamento_status:aprovar?'aprovado':'reprovado',orcamento_aprovado_valor:val,orcamento_aprovado_por:quem,orcamento_aprovado_em:new Date().toISOString(),orcamento_obs_aprovacao:obs||null});
+      if(ok&&aprovar&&val!=null&&t.custo_previsto==null){ await patch({custo_previsto:val}); }
+      if(ok){
+        await hist(aprovar?('Orçamento APROVADO ('+brl(val)+')'):'Orçamento REPROVADO',quem);
+        const ph=await waDe(t.responsavel_nome);
+        if(ph){const link=ORIGIN+'/tarefa.html?id='+ID+(t.token?'&t='+t.token:'')+'&papel=resp';
+          await zap(ph,(aprovar?'✅ *Orçamento APROVADO* — '+t.titulo+'\nValor: '+brl(val)+'\nPode executar.':'⛔ *Orçamento REPROVADO* — '+t.titulo+(obs?'\nMotivo: '+obs:''))+'\n'+link);}
+        $('orcMsg').style.color=aprovar?'var(--ok)':'var(--crit)';$('orcMsg').textContent=aprovar?'✅ Orçamento aprovado!':'⛔ Orçamento reprovado.';setTimeout(main,800);
+      } else{$('btnOrcAp').disabled=false;$('btnOrcRe').disabled=false;$('orcMsg').style.color='var(--crit)';$('orcMsg').textContent='Falha. Tente de novo.';}
+    };
+    $('btnOrcAp').onclick=()=>dec(true);$('btnOrcRe').onclick=()=>dec(false);
+  }
+}
+main();
+</script>
+</body>
+</html>

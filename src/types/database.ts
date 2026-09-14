@@ -1147,7 +1147,7 @@ export interface CobrancaConfig {
   critico_acelera: boolean        // tarefas urgentes escalam na metade do tempo
 }
 
-export type TarefaStatus     = 'pendente' | 'em_andamento' | 'aguardando_retorno' | 'aguardando_fornecedor' | 'concluido' | 'cancelado'
+export type TarefaStatus     = 'pendente' | 'recebida' | 'em_andamento' | 'aguardando_retorno' | 'aguardando_fornecedor' | 'concluido' | 'aguardando_validacao' | 'encerrada' | 'cancelado'
 export type TarefaPrioridade = 'baixa' | 'media' | 'alta' | 'urgente'
 export type TarefaResultado  = 'resolvido' | 'resolvido_parcial' | 'pendente_ajuste' | 'nao_concluido'
 export type TarefaSetor      = 'Cozinha' | 'Bar' | 'Salão' | 'Estoque' | 'Compras' | 'Financeiro' | 'RH' | 'Limpeza' | 'Produção' | 'Diretoria' | 'Geral'
@@ -1196,6 +1196,30 @@ export interface Tarefa {
   obs_aprovacao: string | null
   reaberta: boolean
   created_by: string | null
+  // ── V2: recebimento / link público (opcionais: DB tem defaults; nem todo chamador preenche) ──
+  recebido_em?: string | null
+  recebido_por?: string | null
+  visualizado_em?: string | null
+  token?: string | null
+  // ── V2: validação do solicitante ──
+  aval_ok?: boolean | null
+  aval_nota?: number | null
+  aval_feedback?: string | null
+  aval_por?: string | null
+  aval_em?: string | null
+  // ── V2: orçamento (estimado × aprovado × realizado) ──
+  gera_custo?: boolean
+  orcamento_descricao?: string | null
+  orcamento_fornecedor?: string | null
+  orcamento_valor?: number | null
+  orcamento_anexos?: string | null
+  orcamento_data?: string | null
+  orcamento_obs?: string | null
+  orcamento_status?: 'aguardando' | 'aprovado' | 'reprovado' | null
+  orcamento_aprovado_valor?: number | null
+  orcamento_aprovado_por?: string | null
+  orcamento_aprovado_em?: string | null
+  orcamento_obs_aprovacao?: string | null
   created_at: string
   updated_at: string
   checklist?: TarefaChecklist[]

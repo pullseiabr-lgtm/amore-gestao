@@ -57,6 +57,16 @@ export function soDigitos(fone: string | null | undefined): string {
   return (fone || '').replace(/\D/g, '')
 }
 
+// Normaliza número brasileiro para o formato aceito pela Evolution API (com DDI 55).
+// Cadastros feitos como "81982710008" (DDD + número, sem o 55) causavam HTTP 400 no envio.
+export function normalizarFoneBR(fone: string | null | undefined): string {
+  let d = soDigitos(fone).replace(/^0+/, '')
+  if (!d) return ''
+  if (d.startsWith('55') && d.length >= 12) return d      // já tem DDI 55
+  if (d.length === 10 || d.length === 11) return '55' + d // DDD + número, sem DDI
+  return d
+}
+
 // Busca o WhatsApp de um usuário pelo nome.
 // O número fica em profiles.permissions_override.__perfil__.whatsapp (cadastro de usuário).
 export function whatsappDoPerfilPorNome(profiles: any[], nome: string): string {
@@ -79,7 +89,7 @@ export function perfisDoSetor(profiles: any[], setor: string): any[] {
 // Se `meta` for informado, registra a notificação na Central (tabela notificacoes).
 // `_cfg` mantido por compatibilidade com chamadores antigos (não usado — credenciais ficam no servidor).
 export async function enviarWhatsApp(phone: string, message: string, _cfg?: ZapiCfg, meta?: NotifyMeta): Promise<boolean> {
-  const fone = soDigitos(phone)
+  const fone = normalizarFoneBR(phone)
   let ok = false
   let erro: string | null = null
   try {
