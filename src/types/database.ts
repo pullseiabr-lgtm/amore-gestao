@@ -1220,6 +1220,14 @@ export interface Tarefa {
   orcamento_aprovado_por?: string | null
   orcamento_aprovado_em?: string | null
   orcamento_obs_aprovacao?: string | null
+  // ── V2: monitoramento da execução ──
+  desvio_motivo?: string | null
+  desvio_em?: string | null
+  desvio_por?: string | null
+  apoio_setor?: string | null
+  apoio_motivo?: string | null
+  apoio_em?: string | null
+  apoio_por?: string | null
   created_at: string
   updated_at: string
   checklist?: TarefaChecklist[]

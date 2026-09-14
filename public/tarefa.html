@@ -59,6 +59,16 @@ async function waDe(nome){ // resolve WhatsApp do perfil pelo nome
 }
 async function zap(phone,message){ if(!phone)return false; try{const r=await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:phone,message:message})});return r.ok;}catch(e){return false;} }
 const ORIGIN=location.origin;
+const SETORES=['Operação','Cozinha','Delivery','Financeiro','Compras','Administrativo','TI','Manutenção','Eventos','Estoque','Marketing','Salão','Bar','RH','Limpeza','Produção','Diretoria','Geral'];
+const durH=h=>h<48?Math.round(h)+'h':Math.round(h/24)+'d';
+function slaTxt(t){ if(!t.recebido_em)return null; if(['concluido','encerrada','cancelado'].indexOf(t.status)>=0)return null;
+  const hDesde=(Date.now()-new Date(t.recebido_em).getTime())/36e5;
+  if(!t.prazo)return {txt:'recebida há '+durH(Math.max(0,hDesde)),cor:'var(--info)'};
+  let hl=''; try{const o=JSON.parse(t.competencia||'null'); hl=(o&&o.hl)||''}catch(e){}
+  const dl=new Date(String(t.prazo).slice(0,10)+'T'+(hl||'23:59')+':00').getTime();
+  const r=dl-Date.now(); if(r<0)return {txt:'atrasada '+durH(Math.abs(r)/36e5),cor:'var(--crit)'};
+  const rh=r/36e5; return {txt:'faltam '+durH(rh),cor:rh<=24?'var(--warn)':'var(--ok)'};
+}
 
 async function patch(body){const r=await fetch(SB+'/rest/v1/tarefas?id=eq.'+encodeURIComponent(ID),{method:'PATCH',headers:Object.assign({},H,{'Content-Type':'application/json',Prefer:'return=minimal'}),body:JSON.stringify(Object.assign({updated_at:new Date().toISOString()},body))});return r.ok;}
 // Campos V2 (recebimento/orçamento/avaliação/token) ficam em app_config (tv2_<id>)
@@ -94,7 +104,8 @@ async function main(){
       '<div class="row"><button class="btn" id="btnReceber" style="background:var(--info)">✅ Recebi a tarefa</button></div>'+
       '<div id="recMsg" style="margin-top:8px;font-size:13px;font-weight:600"></div></div>';
   } else if(t.recebido_em){
-    acoes+='<div class="box" style="color:var(--info)">📨 Recebida '+(t.recebido_por?'por '+esc(t.recebido_por):'')+' em '+fDH(t.recebido_em)+'</div>';
+    const sl=slaTxt(t);
+    acoes+='<div class="box" style="color:var(--info)">📨 Ciência dada '+(t.recebido_por?'por '+esc(t.recebido_por):'')+' em '+fDH(t.recebido_em)+(sl?' · <b style="color:'+sl.cor+'">⏱ '+sl.txt+'</b>':'')+'</div>';
   }
   // Execução (responsável)
   const bloqOrc=t.gera_custo && t.orcamento_status && t.orcamento_status!=='aprovado';
@@ -113,6 +124,24 @@ async function main(){
     }
     ex+='<div id="exMsg" style="margin-top:8px;font-size:13px;font-weight:600"></div></div>';
     acoes+=ex;
+  }
+  // Andamento e necessidades (desvio · apoio de outro setor · mais prazo) — responsável
+  if(t.recebido_em && t.status!=='cancelado' && t.status!=='encerrada' && !t.aval_em){
+    let nd='<div class="box"><b>🧭 Andamento e necessidades</b>';
+    if(t.desvio_motivo) nd+='<div style="font-size:12.5px;background:#fef2f2;color:#b91c1c;border-radius:8px;padding:8px 10px;margin-top:8px">⚠ Desvio: '+esc(t.desvio_motivo)+'</div>';
+    if(t.apoio_setor) nd+='<div style="font-size:12.5px;background:#eef2ff;color:#4338ca;border-radius:8px;padding:8px 10px;margin-top:8px">🤝 Apoio a '+esc(t.apoio_setor)+(t.apoio_motivo?' — '+esc(t.apoio_motivo):'')+'</div>';
+    if(t.prazo_extensao_status==='pendente') nd+='<div style="font-size:12.5px;background:#fef9c3;color:#854d0e;border-radius:8px;padding:8px 10px;margin-top:8px">📅 Mais prazo solicitado: '+fD(t.prazo_extensao_data)+(t.prazo_extensao_motivo?' — '+esc(t.prazo_extensao_motivo):'')+'</div>';
+    nd+='<label class="f">↪️ Registrar desvio da tarefa<input id="ndDesv" placeholder="O que mudou/desviou do combinado?"></label>'+
+        '<div class="row"><button class="btn" id="btnNdDesv" style="background:#b91c1c">Registrar desvio</button></div>';
+    nd+='<label class="f">🤝 Solicitar apoio de outro setor</label>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><select id="ndApSetor"><option value="">Setor…</option>'+SETORES.map(s=>'<option>'+s+'</option>').join('')+'</select>'+
+        '<input id="ndApMot" placeholder="Motivo"></div>'+
+        '<div class="row"><button class="btn" id="btnNdApoio" style="background:#4338ca">Solicitar apoio</button></div>';
+    nd+='<label class="f">📅 Solicitar aumento de prazo</label>'+
+        '<div style="display:grid;grid-template-columns:150px 1fr;gap:8px"><input type="date" id="ndPzData"><input id="ndPzMot" placeholder="Motivo do novo prazo"></div>'+
+        '<div class="row"><button class="btn" id="btnNdPrazo" style="background:var(--warn)">Solicitar mais prazo</button></div>';
+    nd+='<div id="ndMsg" style="margin-top:8px;font-size:13px;font-weight:600"></div></div>';
+    acoes+=nd;
   }
   // Validação do solicitante
   if((t.status==='concluido'||t.status==='aguardando_validacao') && !t.aval_em){
@@ -264,6 +293,36 @@ async function main(){
       } else{$('btnOrcAp').disabled=false;$('btnOrcRe').disabled=false;$('orcMsg').style.color='var(--crit)';$('orcMsg').textContent='Falha. Tente de novo.';}
     };
     $('btnOrcAp').onclick=()=>dec(true);$('btnOrcRe').onclick=()=>dec(false);
+  }
+  // Andamento: desvio / apoio de outro setor / mais prazo
+  if($('btnNdDesv')){
+    $('btnNdDesv').onclick=async()=>{
+      const v=($('ndDesv').value||'').trim(); if(!v){$('ndMsg').style.color='var(--crit)';$('ndMsg').textContent='Descreva o desvio.';return;}
+      $('btnNdDesv').disabled=true;$('ndMsg').style.color='var(--muted)';$('ndMsg').textContent='Registrando…';
+      const ok=await saveV2({desvio_motivo:v,desvio_em:new Date().toISOString(),desvio_por:t.responsavel_nome||'Responsável'});
+      if(ok){await hist('Desvio registrado na execução (link)',t.responsavel_nome||'Responsável');$('ndMsg').style.color='var(--ok)';$('ndMsg').textContent='✅ Desvio registrado.';setTimeout(main,800);}
+      else{$('btnNdDesv').disabled=false;$('ndMsg').style.color='var(--crit)';$('ndMsg').textContent='Falha. Tente de novo.';}
+    };
+  }
+  if($('btnNdApoio')){
+    $('btnNdApoio').onclick=async()=>{
+      const setor=($('ndApSetor').value||'').trim(); if(!setor){$('ndMsg').style.color='var(--crit)';$('ndMsg').textContent='Escolha o setor.';return;}
+      const mot=($('ndApMot').value||'').trim();
+      $('btnNdApoio').disabled=true;$('ndMsg').style.color='var(--muted)';$('ndMsg').textContent='Enviando…';
+      const ok=await saveV2({apoio_setor:setor,apoio_motivo:mot||null,apoio_em:new Date().toISOString(),apoio_por:t.responsavel_nome||'Responsável'});
+      if(ok){ if(['pendente','recebida','em_andamento'].indexOf(t.status)>=0) await patch({status:'aguardando_retorno'}); await hist('Apoio solicitado ao setor '+setor+' (link)',t.responsavel_nome||'Responsável');$('ndMsg').style.color='var(--ok)';$('ndMsg').textContent='✅ Apoio solicitado.';setTimeout(main,800);}
+      else{$('btnNdApoio').disabled=false;$('ndMsg').style.color='var(--crit)';$('ndMsg').textContent='Falha. Tente de novo.';}
+    };
+  }
+  if($('btnNdPrazo')){
+    $('btnNdPrazo').onclick=async()=>{
+      const d=$('ndPzData').value; if(!d){$('ndMsg').style.color='var(--crit)';$('ndMsg').textContent='Escolha a nova data.';return;}
+      const mot=($('ndPzMot').value||'').trim();
+      $('btnNdPrazo').disabled=true;$('ndMsg').style.color='var(--muted)';$('ndMsg').textContent='Enviando…';
+      const ok=await patch({prazo_extensao_data:d,prazo_extensao_motivo:mot||null,prazo_extensao_status:'pendente'});
+      if(ok){await hist('Solicitou aumento de prazo para '+fD(d)+' (link)',t.responsavel_nome||'Responsável');$('ndMsg').style.color='var(--ok)';$('ndMsg').textContent='✅ Pedido de prazo enviado.';setTimeout(main,800);}
+      else{$('btnNdPrazo').disabled=false;$('ndMsg').style.color='var(--crit)';$('ndMsg').textContent='Falha. Tente de novo.';}
+    };
   }
   // Responsável envia orçamento → aprovação Wagner/Aline
   if($('btnOrcEnviar')){

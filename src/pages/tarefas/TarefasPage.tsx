@@ -127,6 +127,25 @@ function prazoSemaforo(prazo: string | null, status?: TarefaStatus): { cor: stri
   if (dias <= 2) return { cor: '#d97706', emoji: '🟡', label: dias === 0 ? 'Vence hoje' : `Vence em ${dias}d` }
   return { cor: '#16a34a', emoji: '🟢', label: 'No prazo' }
 }
+const durH = (h: number) => h < 48 ? `${h.toFixed(0)}h` : `${(h / 24).toFixed(0)}d`
+// SLA: a contagem do prazo começa quando a tarefa é RECEBIDA (dada a ciência).
+function slaInfo(t: Tarefa): { txt: string; cor: string } | null {
+  if (!t.recebido_em) return null
+  if (t.status === 'concluido' || t.status === 'encerrada' || t.status === 'cancelado') return null
+  const hDesde = (Date.now() - new Date(t.recebido_em).getTime()) / 3600000
+  if (!t.prazo) return { txt: `recebida há ${durH(Math.max(0, hDesde))}`, cor: '#0891b2' }
+  const hl = parseHoras(t.competencia).hl
+  const deadline = new Date(String(t.prazo).slice(0, 10) + 'T' + (hl || '23:59') + ':00').getTime()
+  const restante = deadline - Date.now()
+  if (restante < 0) return { txt: `atrasada ${durH(Math.abs(restante) / 3600000)}`, cor: '#dc2626' }
+  const rh = restante / 3600000
+  return { txt: `faltam ${durH(rh)}`, cor: rh <= 24 ? '#d97706' : '#16a34a' }
+}
+function ultimaAtualizacao(t: Tarefa): string {
+  const c = t.comentarios
+  if (c && c.length) return [...c].sort((a, b) => b.created_at.localeCompare(a.created_at))[0].texto
+  return ''
+}
 
 // ── Empty form ───────────────────────────────────────────────
 const hojeISO = () => new Date().toISOString().slice(0, 10)
@@ -289,6 +308,9 @@ export default function TarefasPage() {
   const [orcForm, setOrcForm] = useState({ valor: '', obs: '' })
   // Orçamento informado pelo responsável (quem recebe a tarefa)
   const [orcEntry, setOrcEntry] = useState({ valor: '', descricao: '', fornecedor: '', data: '', obs: '', anexos: '' })
+  // Monitoramento da execução: desvio e apoio de outro setor
+  const [desvioForm, setDesvioForm] = useState('')
+  const [apoioForm, setApoioForm] = useState({ setor: '', motivo: '' })
 
   // ── Load ─────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -321,6 +343,8 @@ export default function TarefasPage() {
     setAvalForm({ nota: detalhe?.aval_nota || 0, feedback: detalhe?.aval_feedback || '', ok: detalhe?.aval_ok ?? null })
     setOrcForm({ valor: detalhe?.orcamento_aprovado_valor != null ? String(detalhe.orcamento_aprovado_valor) : (detalhe?.orcamento_valor != null ? String(detalhe.orcamento_valor) : ''), obs: detalhe?.orcamento_obs_aprovacao || '' })
     setOrcEntry({ valor: '', descricao: '', fornecedor: '', data: '', obs: '', anexos: '' })
+    setDesvioForm('')
+    setApoioForm({ setor: '', motivo: '' })
   }, [detalhe?.id]) // eslint-disable-line
 
   // ── Filtro ───────────────────────────────────────────────
@@ -519,9 +543,16 @@ export default function TarefasPage() {
   const marcarRecebida = async (t: Tarefa) => {
     setDetalheSaving(true)
     try {
+      const quem = user?.name || t.responsavel_nome || 'Responsável'
       if (t.status === 'pendente') await updateTarefa(t.id, { status: 'recebida' })
-      await saveTV2(t, { recebido_em: new Date().toISOString(), recebido_por: user?.name || t.responsavel_nome || null, visualizado_em: t.visualizado_em || new Date().toISOString() })
-      await insertTarefaHistorico({ tarefa_id: t.id, acao: 'Responsável recebeu a tarefa', campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || t.responsavel_nome || 'Responsável' })
+      await saveTV2(t, { recebido_em: new Date().toISOString(), recebido_por: quem, visualizado_em: t.visualizado_em || new Date().toISOString() })
+      await insertTarefaHistorico({ tarefa_id: t.id, acao: `Ciência dada — ${quem} recebeu a tarefa`, campo: null, valor_anterior: null, valor_novo: null, usuario_nome: quem })
+      // Dá ciência ao solicitante (SLA começa a contar a partir daqui)
+      const phone = whatsappDoResponsavel(t.solicitante_nome)
+      if (phone) {
+        const msg = `📨 *Ciência da tarefa*${t.numero != null ? ` #${String(t.numero).padStart(4, '0')}` : ''}\n\n🏪 ${t.loja}\n📋 ${t.titulo}\n👤 ${quem} recebeu e vai executar.\n\n${linkTarefa(t, 'solic')}\n_Amore Gestão_`
+        await zapPara(t.solicitante_nome, phone, msg, { titulo: `Ciência: ${t.titulo}`, refId: t.id })
+      }
       await load()
     } finally { setDetalheSaving(false) }
   }
@@ -559,6 +590,31 @@ export default function TarefasPage() {
       })
       await updateTarefa(t.id, { status: 'encerrada' })
       await insertTarefaHistorico({ tarefa_id: t.id, acao: `Solicitante validou (${avalForm.nota}★${avalForm.ok ? ', conforme' : ', não conforme'})`, campo: 'status', valor_anterior: t.status, valor_novo: 'encerrada', usuario_nome: user?.name || t.solicitante_nome || 'Solicitante' })
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+
+  // ── Registrar desvio da execução ─────────────────────────
+  const registrarDesvio = async (t: Tarefa) => {
+    if (!desvioForm.trim()) return
+    setDetalheSaving(true)
+    try {
+      await saveTV2(t, { desvio_motivo: desvioForm.trim(), desvio_em: new Date().toISOString(), desvio_por: user?.name || t.responsavel_nome || null })
+      await insertTarefaHistorico({ tarefa_id: t.id, acao: 'Desvio registrado na execução', campo: null, valor_anterior: null, valor_novo: desvioForm.trim(), usuario_nome: user?.name || 'Sistema' })
+      setDesvioForm('')
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+
+  // ── Solicitar apoio de outro setor (marca impedimento) ───
+  const solicitarApoioSetor = async (t: Tarefa) => {
+    if (!apoioForm.setor) return
+    setDetalheSaving(true)
+    try {
+      await saveTV2(t, { apoio_setor: apoioForm.setor, apoio_motivo: apoioForm.motivo || null, apoio_em: new Date().toISOString(), apoio_por: user?.name || null })
+      if (isAtiva(t.status) && t.status !== 'aguardando_retorno') await updateTarefa(t.id, { status: 'aguardando_retorno' })
+      await insertTarefaHistorico({ tarefa_id: t.id, acao: `Apoio solicitado ao setor ${apoioForm.setor}`, campo: null, valor_anterior: null, valor_novo: apoioForm.motivo || null, usuario_nome: user?.name || 'Sistema' })
+      setApoioForm({ setor: '', motivo: '' })
       await load()
     } finally { setDetalheSaving(false) }
   }
@@ -1305,11 +1361,12 @@ export default function TarefasPage() {
                   <CheckCircle2 size={13} /> Marcar como recebida
                 </button>
               )}
-              {detalhe.recebido_em && (
-                <div style={{ fontSize: 12, color: '#0891b2', display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <CheckCircle2 size={13} /> Recebida {detalhe.recebido_por ? `por ${detalhe.recebido_por}` : ''} em {fmtDataHora(detalhe.recebido_em)}
+              {detalhe.recebido_em && (() => { const sla = slaInfo(detalhe); return (
+                <div style={{ fontSize: 12, color: '#0891b2', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <CheckCircle2 size={13} /> Ciência dada {detalhe.recebido_por ? `por ${detalhe.recebido_por}` : ''} em {fmtDataHora(detalhe.recebido_em)}
+                  {sla && <span style={{ color: sla.cor, fontWeight: 700 }}>· ⏱ {sla.txt}</span>}
                 </div>
-              )}
+              ) })()}
               {(detalhe.status === 'concluido' || detalhe.status === 'cancelado' || detalhe.status === 'encerrada') && (
                 <button onClick={() => reabrirTarefa(detalhe)}
                   style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -1603,6 +1660,44 @@ export default function TarefasPage() {
                   )}
                 </div>
 
+                {/* ── Desvio da tarefa ── */}
+                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>↪️ DESVIO DA TAREFA</div>
+                  {detalhe.desvio_motivo && (
+                    <div style={{ fontSize: 12.5, background: '#fef2f2', color: '#b91c1c', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                      ⚠ {detalhe.desvio_motivo}<div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{detalhe.desvio_por} · {fmtDataHora(detalhe.desvio_em || null)}</div>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input value={desvioForm} onChange={e => setDesvioForm(e.target.value)}
+                      placeholder="O que mudou/desviou do combinado?"
+                      style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }} />
+                    <button onClick={() => registrarDesvio(detalhe)} disabled={detalheSaving || !desvioForm.trim()}
+                      style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: '#b91c1c', color: '#fff', cursor: desvioForm.trim() ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 600 }}>Registrar</button>
+                  </div>
+                </div>
+
+                {/* ── Solicitar apoio de outro setor ── */}
+                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>🤝 SOLICITAR APOIO DE OUTRO SETOR</div>
+                  {detalhe.apoio_setor && (
+                    <div style={{ fontSize: 12.5, background: '#eef2ff', color: '#4338ca', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                      Apoio a <strong>{detalhe.apoio_setor}</strong>{detalhe.apoio_motivo ? ` — ${detalhe.apoio_motivo}` : ''}<div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{detalhe.apoio_por} · {fmtDataHora(detalhe.apoio_em || null)}</div>
+                    </div>
+                  )}
+                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr auto', gap: 6 }}>
+                    <select value={apoioForm.setor} onChange={e => setApoioForm(f => ({ ...f, setor: e.target.value }))}
+                      style={{ padding: '7px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }}>
+                      <option value="">Setor…</option>
+                      {SETORES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <input value={apoioForm.motivo} onChange={e => setApoioForm(f => ({ ...f, motivo: e.target.value }))}
+                      placeholder="Motivo do apoio" style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }} />
+                    <button onClick={() => solicitarApoioSetor(detalhe)} disabled={detalheSaving || !apoioForm.setor}
+                      style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: '#4338ca', color: '#fff', cursor: apoioForm.setor ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 600 }}>Solicitar</button>
+                  </div>
+                </div>
+
                 {/* ── Dificuldades na execução ── */}
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>⚠️ DIFICULDADES / DEFICIÊNCIAS NA EXECUÇÃO</label>
@@ -1775,6 +1870,8 @@ function KanbanCard({ tarefa, onClick, onMover, colunas }: {
           {tarefa.orcamento_status === 'aprovado' && <span style={{ background: '#dcfce7', color: '#15803d', borderRadius: 4, padding: '1px 6px', fontSize: 10 }}>💰 Aprovado</span>}
           {tarefa.orcamento_status === 'reprovado' && <span style={{ background: '#fee2e2', color: '#b91c1c', borderRadius: 4, padding: '1px 6px', fontSize: 10 }}>💰 Reprovado</span>}
           {tarefa.aval_nota != null && <span style={{ background: '#fffbeb', color: '#b45309', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>{tarefa.aval_nota}★</span>}
+          {tarefa.desvio_motivo && <span style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>⚠ Desvio</span>}
+          {tarefa.apoio_setor && <span style={{ background: '#eef2ff', color: '#4338ca', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>🤝 {tarefa.apoio_setor}</span>}
           {parseTags(tarefa.tags).slice(0, 2).map(tg => (
             <span key={tg} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 6px', fontSize: 10, color: 'var(--muted)' }}>#{tg}</span>
           ))}
@@ -1792,6 +1889,34 @@ function KanbanCard({ tarefa, onClick, onMover, colunas }: {
                 </span>
               )}
             </div>
+          )
+        })()}
+
+        {/* SLA (conta a partir do recebimento) + andamento por status */}
+        {(() => {
+          const sla = slaInfo(tarefa)
+          const upd = ultimaAtualizacao(tarefa)
+          let info = ''
+          if (tarefa.status === 'aguardando_retorno' || tarefa.status === 'aguardando_fornecedor') info = tarefa.apoio_setor ? `Apoio: ${tarefa.apoio_setor}${tarefa.apoio_motivo ? ' — ' + tarefa.apoio_motivo : ''}` : 'Aguardando retorno'
+          else if (tarefa.status === 'aguardando_validacao') info = `Aguardando validação${tarefa.solicitante_nome ? ' de ' + tarefa.solicitante_nome : ''}`
+          else if (tarefa.status === 'encerrada' && tarefa.aval_nota != null) info = `Encerrada · ${tarefa.aval_nota}★`
+          else if (tarefa.desvio_motivo) info = `Desvio: ${tarefa.desvio_motivo}`
+          else if (upd) info = upd
+          return (
+            <>
+              {(sla || tarefa.recebido_em) && (
+                <div style={{ marginTop: 6, fontSize: 10.5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  {tarefa.recebido_em && <span style={{ color: '#0891b2', fontWeight: 600 }}>✓ ciente</span>}
+                  {sla && <span style={{ color: sla.cor, fontWeight: 600 }}>⏱ {sla.txt}</span>}
+                  {tarefa.prazo_extensao_status === 'pendente' && <span style={{ color: '#854d0e' }}>· +prazo pedido</span>}
+                </div>
+              )}
+              {info && (
+                <div style={{ marginTop: 4, fontSize: 11, color: 'var(--muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  💬 {info}
+                </div>
+              )}
+            </>
           )
         })()}
 
