@@ -451,12 +451,12 @@ async function gerarPedidos(){
   let receb=null;try{const rl=((await (await fetch(SB+'/rest/v1/app_config?chave=eq.recebimento_por_loja&select=valor',{headers:H})).json())[0]||{}).valor||{};receb=(rl[LOJA]||{}).nome||null;}catch(e){}
   // próximo nº de pedido (PED-#### sequencial) — maior existente + 1
   let seq=0; try{ const nums=await (await fetch(SB+'/rest/v1/pedidos_compra?select=numero&numero=not.is.null&limit=3000',{headers:H})).json(); for(const x of (nums||[])){const n=parseInt(String(x.numero).replace(/\D/g,''),10);if(!isNaN(n)&&n>seq)seq=n;} }catch(e){}
-  let ok=0,fail=0;
+  let ok=0,fail=0,ultimoPed='';
   for(const gr of grupos){
     const itensRows=gr.itens.map(r=>{const q=nb(falta(r))>0?nb(falta(r)):nb(r.qtd);const qf=q||nb(r.qtd);const p=nb(r.vUnit);return{row:r,produto:r.produto,qtd:qf,un:r.un||'',preco:p||0,subtotal:(p*qf)||0};});
     const itens=itensRows.map(({produto,un,qtd,preco,subtotal})=>({produto,qtd,un,preco,subtotal}));
     const total=itens.reduce((s,it)=>s+(Number(it.subtotal)||0),0);
-    seq++; const numPed='PED-'+String(seq).padStart(4,'0');
+    seq++; const numPed='PED-'+String(seq).padStart(4,'0'); ultimoPed=numPed;
     const reqIdG=(gr.itens.find(r=>r.reqIdPrimary)||{}).reqIdPrimary||null;
     const reqNumG=(()=>{const m=gr.itens.map(r=>String(r.reqNum||'')).join(',').match(/\d+/);return m?parseInt(m[0],10):null;})();
     const chave='pedido_'+slugP(gr.forn)+'_'+(SUF[LOJA]||'loja')+'_'+Date.now().toString(36).slice(-5)+Math.random().toString(36).slice(2,4);
@@ -475,7 +475,7 @@ async function gerarPedidos(){
   // (só a partir de estados pré-compra; não rebaixa recebimento/concluída).
   const reqNums=[...new Set(sel.flatMap(r=>String(r.reqNum||'').match(/\d+/g)||[]).map(n=>parseInt(n,10)).filter(Boolean))];
   if(ok>0 && reqNums.length){
-    try{ await fetch(SB+'/rest/v1/requisicoes?loja=eq.'+encodeURIComponent(LOJA)+'&numero=in.('+reqNums.join(',')+')&status=in.(enviada,em_analise,aguardando_cotacao,em_cotacao,cotacao_recebida,parcialmente_aprovada,aprovada,em_separacao)',{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({status:'compra_realizada'})}); }catch(e){}
+    try{ await fetch(SB+'/rest/v1/requisicoes?loja=eq.'+encodeURIComponent(LOJA)+'&numero=in.('+reqNums.join(',')+')&status=in.(enviada,em_analise,aguardando_cotacao,em_cotacao,cotacao_recebida,parcialmente_aprovada,aprovada,em_separacao)',{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({status:'compra_realizada',pedido_numero:ultimoPed||null,pedido_gerado_em:new Date().toISOString(),pedido_status:'emitido'})}); }catch(e){}
   }
   ROWS.forEach(r=>{if(r.pedir)r.pedir=false;});
   if(ok>0){
