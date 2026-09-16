@@ -19,6 +19,10 @@
   .btn-fire{background:var(--vinho);color:#fff}
   .btn-go{background:#0369A1;color:#fff}
   .btn-ghost{background:#fff;color:#374151;border:1px solid #cbd5e1}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;flex-basis:100%;margin-top:2px}
+  .chip{background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px}
+  .chip b{font-weight:800}
+  .chip span{cursor:pointer;color:#6366f1;font-weight:900}
   .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
   .kpi{background:#fff;border:1px solid var(--linha);border-radius:14px;padding:14px 16px}
   .kpi .l{font-size:12px;color:var(--cinza);text-transform:uppercase;letter-spacing:.06em}
@@ -51,15 +55,16 @@
 </header>
 
 <div class="toolbar">
-  <span class="lab">Consultar por requisição:</span>
-  <input type="text" id="reqs" style="min-width:220px" placeholder="Nº (ex.: 15, 17, 37)" onkeydown="if(event.key==='Enter')carregar()">
-  <button class="btn btn-go" onclick="carregar()">🔎 Consultar</button>
-  <span class="lab" style="margin-left:12px">ou por dia:</span>
-  <input type="date" id="data">
-  <button class="btn btn-ghost" onclick="limparReqs()">↻ Ver o dia</button>
+  <span class="lab">Adicionar requisição:</span>
+  <input type="text" id="reqs" style="min-width:150px" placeholder="Nº (ex.: 15)" onkeydown="if(event.key==='Enter')addReqs()">
+  <button class="btn btn-go" onclick="addReqs()">➕ Adicionar</button>
+  <span class="lab" style="margin-left:10px">ou dia:</span>
+  <input type="date" id="data" onchange="verDia()">
+  <button class="btn btn-ghost" onclick="verDia()">↻ Ver o dia</button>
   <button class="btn btn-fire" id="btnDisparar" onclick="dispararRelatorio()">📲 Disparar relatório</button>
   <span id="status"></span>
-  <div class="hint">Deixe o campo de requisição vazio para ver os pedidos do dia. Informe um ou vários números (separados por vírgula/espaço) para montar o relatório com as requisições que quiser.</div>
+  <div id="chips" class="chips"></div>
+  <div class="hint">Você pode <b>somar quantas requisições quiser</b> — adicione uma a uma (ou digite "15, 17" de vez) e <b>todas ficam no relatório</b>. Toque no × do chip para remover. Sem requisições = pedidos do dia.</div>
 </div>
 
 <div id="kpis" class="kpis"></div>
@@ -79,21 +84,33 @@ const j=async p=>{const r=await fetch(SB+'/rest/v1/'+p,{headers:H});return r.jso
 const brl=n=>'R$ '+(Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const el=id=>document.getElementById(id);
 const dataBR=d=>d.split('-').reverse().join('/');
-let DADOS=null,DATA='',PERIODO='';
+let DADOS=null,DATA='',PERIODO='',REQSEL=[];   // REQSEL = lista ACUMULADA de números de requisição
 
 function hoje(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10);}
-function limparReqs(){el('reqs').value='';carregar();}
+
+function addReqs(){
+  const nums=((el('reqs').value||'').match(/\d+/g)||[]).map(n=>parseInt(n,10));
+  if(!nums.length)return;
+  for(const n of nums)if(!REQSEL.includes(n))REQSEL.push(n);
+  REQSEL.sort((a,b)=>a-b);
+  el('reqs').value='';
+  renderChips();carregar();
+}
+function removeReq(n){REQSEL=REQSEL.filter(x=>x!==n);renderChips();carregar();}
+function verDia(){REQSEL=[];renderChips();carregar();}
+function renderChips(){
+  el('chips').innerHTML = REQSEL.length
+    ? '<span class="lab">No relatório:</span>'+REQSEL.map(n=>'<span class="chip"><b>REQ-'+String(n).padStart(4,'0')+'</b><span onclick="removeReq('+n+')" title="Remover">×</span></span>').join('')
+    : '';
+}
 
 async function carregar(){
-  const reqsRaw=(el('reqs').value||'').trim();
   DATA=el('data').value||hoje();
   el('conteudo').innerHTML='<div class="card">Carregando…</div>';el('kpis').innerHTML='';el('status').textContent='';
   let reqRows=[],peds=[];
-  if(reqsRaw){
-    const nums=[...new Set((reqsRaw.match(/\d+/g)||[]).map(n=>parseInt(n,10)))];
-    if(!nums.length){el('conteudo').innerHTML='<div class="card">Informe números de requisição válidos (ex.: 15, 17).</div>';return;}
-    reqRows=await j('requisicoes?numero=in.('+nums.join(',')+')&select=id,numero,loja,titulo');
-    if(!Array.isArray(reqRows)||!reqRows.length){el('conteudo').innerHTML='<div class="card">Nenhuma requisição encontrada para: '+nums.map(n=>'REQ-'+String(n).padStart(4,'0')).join(', ')+'.</div>';return;}
+  if(REQSEL.length){
+    reqRows=await j('requisicoes?numero=in.('+REQSEL.join(',')+')&select=id,numero,loja,titulo');
+    if(!Array.isArray(reqRows)||!reqRows.length){el('conteudo').innerHTML='<div class="card">Nenhuma requisição encontrada para: '+REQSEL.map(n=>'REQ-'+String(n).padStart(4,'0')).join(', ')+'.</div>';return;}
     const reqIds=reqRows.map(r=>r.id);
     peds=await j('pedidos_compra?requisicao_id=in.('+reqIds.join(',')+')&select=numero,loja,fornecedor,requisicao_id,total&order=numero');
     PERIODO='Requisições '+reqRows.slice().sort((a,b)=>a.numero-b.numero).map(r=>'REQ-'+String(r.numero).padStart(4,'0')).join(', ');
@@ -105,7 +122,6 @@ async function carregar(){
     for(const id of reqIds){const r=(await j('requisicoes?id=eq.'+id+'&select=id,numero,loja,titulo'))[0];if(r)reqRows.push(r);}
     PERIODO='Compras de '+dataBR(DATA);
   }
-  // monta por loja
   const lojas={};let totPeds=0,totValor=0;
   for(const p of (peds||[])){const L=p.loja||'—';(lojas[L]=lojas[L]||{peds:[],reqs:[],valor:0});lojas[L].peds.push(p);lojas[L].valor+=Number(p.total||0);totPeds++;totValor+=Number(p.total||0);}
   for(const r of reqRows){const L=r.loja||'—';lojas[L]=lojas[L]||{peds:[],reqs:[],valor:0};}
@@ -115,8 +131,7 @@ async function carregar(){
     const pci=ids.length?await j('pedido_compra_itens?requisicao_item_id=in.('+ids.join(',')+')&select=requisicao_item_id'):[];
     const cov={};(pci||[]).forEach(x=>cov[x.requisicao_item_id]=true);
     const faltam=its.filter(x=>!cov[x.id]);
-    const L=r.loja||'—';
-    lojas[L].reqs.push({numero:r.numero,titulo:r.titulo,tot:its.length,comprados:its.length-faltam.length,faltam:faltam.length,pct:its.length?Math.round((its.length-faltam.length)/its.length*1000)/10:0,faltaLista:faltam.map(x=>x.produto_nome+' — '+x.quantidade+' '+x.unidade)});
+    lojas[r.loja||'—'].reqs.push({numero:r.numero,titulo:r.titulo,tot:its.length,comprados:its.length-faltam.length,faltam:faltam.length,pct:its.length?Math.round((its.length-faltam.length)/its.length*1000)/10:0,faltaLista:faltam.map(x=>x.produto_nome+' — '+x.quantidade+' '+x.unidade)});
   }
   for(const L of Object.keys(lojas))lojas[L].reqs.sort((a,b)=>a.numero-b.numero);
   DADOS={lojas,totPeds,totValor};
@@ -149,7 +164,6 @@ function render(){
 function kpi(l,v){return '<div class="kpi"><div class="l">'+l+'</div><div class="v">'+v+'</div></div>';}
 function esc(s){return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 
-// ---- Mensagens ----
 function linkLoja(L){return 'https://painel.amorefood.com.br/montar-pedido.html?loja='+(SUF[L]||'');}
 function resumoLoja(L){const l=DADOS.lojas[L];if(!l)return '';return l.reqs.map(r=>'• REQ-'+String(r.numero).padStart(4,'0')+': *'+r.pct+'%* '+(r.faltam?'(faltam '+r.faltam+')':'(completa)')).join('\n');}
 function msgGerente(L){const gm=GERENTE[L],l=DADOS.lojas[L];
@@ -174,7 +188,8 @@ async function dispararRelatorio(){
 el('data').value=hoje();
 const qp=new URLSearchParams(location.search);
 if(qp.get('data'))el('data').value=qp.get('data');
-if(qp.get('reqs'))el('reqs').value=qp.get('reqs');
+if(qp.get('reqs'))REQSEL=[...new Set((qp.get('reqs').match(/\d+/g)||[]).map(n=>parseInt(n,10)))].sort((a,b)=>a-b);
+renderChips();
 carregar().then(()=>{if(qp.get('disparar')==='1')dispararRelatorio();});
 </script>
 </body></html>
