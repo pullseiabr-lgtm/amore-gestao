@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relatório Diário de Compras — Amore Food</title>
+<style>
+  :root{--vinho:#C4161C;--vinho2:#9e1015;--flow:#2E7D34;--flow2:#6DC06A;--tinta:#1f2937;--cinza:#6b7280;--linha:#e5e7eb;--bg:#f7f7f8;--ok:#16a34a;--alerta:#d97706;--falta:#dc2626}
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:var(--bg);color:var(--tinta);font-size:14px}
+  .wrap{max-width:960px;margin:0 auto;padding:16px}
+  header.top{background:linear-gradient(135deg,var(--vinho),var(--vinho2));color:#fff;border-radius:16px;padding:20px 24px;margin-bottom:16px}
+  header.top .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;opacity:.9}
+  header.top h1{margin:6px 0 2px;font-size:22px}
+  header.top .sub{opacity:.92;font-size:13px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
+  .toolbar input[type=date]{padding:8px 10px;border:1px solid var(--linha);border-radius:10px}
+  .btn{border:0;border-radius:10px;padding:10px 14px;font-weight:800;cursor:pointer;font-size:13px}
+  .btn-fire{background:var(--vinho);color:#fff}
+  .btn-ghost{background:#fff;color:#374151;border:1px solid #cbd5e1}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+  .kpi{background:#fff;border:1px solid var(--linha);border-radius:14px;padding:14px 16px}
+  .kpi .l{font-size:12px;color:var(--cinza);text-transform:uppercase;letter-spacing:.06em}
+  .kpi .v{font-size:22px;font-weight:800;margin-top:4px}
+  .card{background:#fff;border:1px solid var(--linha);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+  .card.flow{border:2px solid var(--flow2)}
+  .card h2{margin:0 0 4px;font-size:16px;color:var(--vinho)}
+  .card.flow h2{color:var(--flow)}
+  .card .lojatot{font-size:12px;color:var(--cinza);margin-bottom:10px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--linha)}
+  th{background:#faf6f6;color:var(--vinho2);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  td.num,th.num{text-align:right}
+  .bar{height:9px;border-radius:6px;background:#eee;overflow:hidden;min-width:80px;display:inline-block;vertical-align:middle}
+  .bar>i{display:block;height:100%;border-radius:6px}
+  .pct{font-weight:800;margin-left:6px}
+  .falta{columns:2;column-gap:22px;font-size:12.5px;color:#374151;margin:8px 0 0;padding-left:18px}
+  .falta li{margin:2px 0;break-inside:avoid}
+  .muted{color:var(--cinza);font-size:12px}
+  .foot{text-align:center;color:var(--cinza);font-size:11px;margin:8px 0 24px}
+  #status{font-size:13px;font-weight:700;margin-left:6px}
+  @media(max-width:640px){.falta{columns:1}}
+</style></head>
+<body><div class="wrap">
+<header class="top">
+  <div class="eyebrow">Amore Food · Gestão da Lista de Compras</div>
+  <h1>📊 Relatório Diário de Compras</h1>
+  <div class="sub" id="subtitle">Compras geradas no dia por loja · comprado × falta · % de compra</div>
+</header>
+
+<div class="toolbar">
+  <label class="muted">Data:</label>
+  <input type="date" id="data">
+  <button class="btn btn-ghost" onclick="carregar()">↻ Atualizar</button>
+  <button class="btn btn-fire" id="btnDisparar" onclick="dispararRelatorio()">📲 Disparar relatório</button>
+  <span id="status"></span>
+</div>
+
+<div id="kpis" class="kpis"></div>
+<div id="conteudo"></div>
+<div class="foot">Amore Food — Relatório Diário de Compras · % de compra = itens com pedido ÷ itens da requisição · gerado pela Gestão da Lista de Compras.</div>
+</div>
+
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:ANON,Authorization:'Bearer '+ANON,'Content-Type':'application/json'};
+const SUF={'Flow CD':'flow','Amore CD':'amore_cd','Amore Paiva':'amore_paiva'};
+// Gerente (recebedor) por loja + seguidores — pode ser sobrescrito por app_config
+const GERENTE={'Amore Paiva':{nome:'Carlos',fone:'5581997725519'},'Flow CD':{nome:'Joais',fone:'5581994943074'},'Amore CD':{nome:'Diego',fone:'5581989694374'}};
+const SEGUIDORES=[{nome:'Aline',fone:'5581994573420'},{nome:'Wagner',fone:'5581994135602'},{nome:'Esdras',fone:'5581982710008'}];
+const j=async p=>{const r=await fetch(SB+'/rest/v1/'+p,{headers:H});return r.json();};
+const brl=n=>'R$ '+(Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const el=id=>document.getElementById(id);
+let DADOS=null,DATA='';
+
+function hoje(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10);}
+
+async function carregar(){
+  DATA=el('data').value||hoje();
+  el('conteudo').innerHTML='<div class="card">Carregando…</div>';el('kpis').innerHTML='';
+  // pedidos criados na data
+  const ini=DATA+'T00:00:00',fim=DATA+'T23:59:59.999';
+  const peds=await j('pedidos_compra?created_at=gte.'+ini+'&created_at=lte.'+fim+'&select=numero,loja,fornecedor,requisicao_id,total&order=numero');
+  if(!Array.isArray(peds)){el('conteudo').innerHTML='<div class="card">Erro ao carregar.</div>';return;}
+  const lojas={};
+  for(const p of peds){const L=p.loja||'—';(lojas[L]=lojas[L]||{peds:[],reqs:{}});lojas[L].peds.push(p);if(p.requisicao_id)lojas[L].reqs[p.requisicao_id]=true;}
+  // cobertura por requisição
+  const out={};let totPeds=0,totValor=0;
+  for(const L of Object.keys(lojas)){
+    const info=lojas[L];out[L]={peds:info.peds,reqs:[],valor:0};
+    totPeds+=info.peds.length;
+    for(const p of info.peds){out[L].valor+=Number(p.total||0);}
+    totValor+=out[L].valor;
+    for(const rid of Object.keys(info.reqs)){
+      const r=(await j('requisicoes?id=eq.'+rid+'&select=id,numero,loja,titulo'))[0];if(!r)continue;
+      const its=await j('requisicao_itens?requisicao_id=eq.'+rid+'&select=id,produto_nome,quantidade,unidade');
+      const ids=its.map(x=>x.id);
+      const pci=ids.length?await j('pedido_compra_itens?requisicao_item_id=in.('+ids.join(',')+')&select=requisicao_item_id'):[];
+      const cov={};(pci||[]).forEach(x=>cov[x.requisicao_item_id]=true);
+      const faltam=its.filter(x=>!cov[x.id]);
+      out[L].reqs.push({numero:r.numero,titulo:r.titulo,tot:its.length,comprados:its.length-faltam.length,faltam:faltam.length,pct:its.length?Math.round((its.length-faltam.length)/its.length*1000)/10:0,faltaLista:faltam.map(x=>x.produto_nome+' — '+x.quantidade+' '+x.unidade)});
+    }
+    out[L].reqs.sort((a,b)=>a.numero-b.numero);
+  }
+  DADOS={lojas:out,totPeds,totValor,data:DATA};
+  render();
+}
+
+function corPct(p){return p>=100?'var(--ok)':p>=50?'var(--alerta)':'var(--falta)';}
+
+function render(){
+  const d=DADOS;el('subtitle').textContent='Compras de '+DATA.split('-').reverse().join('/')+' · comprado × falta · % de compra';
+  const nLojas=Object.keys(d.lojas).length;
+  el('kpis').innerHTML=
+    kpi('Pedidos gerados',d.totPeds)+kpi('Valor total comprado',brl(d.totValor))+kpi('Lojas',nLojas)+
+    kpi('Requisições',Object.values(d.lojas).reduce((s,l)=>s+l.reqs.length,0));
+  let html='';
+  const ordem=['Amore Paiva','Flow CD','Amore CD'];
+  const lojas=Object.keys(d.lojas).sort((a,b)=>ordem.indexOf(a)-ordem.indexOf(b));
+  if(!lojas.length)html='<div class="card">Nenhum pedido gerado nesta data.</div>';
+  for(const L of lojas){
+    const l=d.lojas[L];const flow=L==='Flow CD';
+    let reqRows='';let faltaHtml='';
+    for(const r of l.reqs){
+      reqRows+='<tr><td>REQ-'+String(r.numero).padStart(4,'0')+' · '+esc(r.titulo||'')+'</td><td class="num">'+r.tot+'</td><td class="num">'+r.comprados+'</td><td class="num">'+r.faltam+'</td><td><span class="bar"><i style="width:'+Math.max(4,r.pct)+'%;background:'+corPct(r.pct)+'"></i></span><span class="pct">'+r.pct+'%</span></td></tr>';
+      if(r.faltam)faltaHtml+='<div style="margin-top:6px"><b style="color:var(--falta)">❌ Falta na REQ-'+String(r.numero).padStart(4,'0')+' ('+r.faltam+'):</b><ul class="falta">'+r.faltaLista.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>';
+    }
+    const gm=GERENTE[L];
+    html+='<div class="card'+(flow?' flow':'')+'"><h2>'+(flow?'🟢':'🟣')+' '+esc(L)+'</h2>'+
+      '<div class="lojatot">Comprado hoje: <b>'+brl(l.valor)+'</b> · '+l.peds.length+' pedido(s)'+(gm?' · Gerente: <b>'+gm.nome+'</b>':'')+'</div>'+
+      '<table><thead><tr><th>Requisição</th><th class="num">Itens</th><th class="num">Comprados</th><th class="num">Faltam</th><th>% compra</th></tr></thead><tbody>'+reqRows+'</tbody></table>'+
+      '<div style="margin-top:8px" class="muted">Pedidos: '+l.peds.map(p=>p.numero+' ('+esc(p.fornecedor||'')+')').join(' · ')+'</div>'+
+      faltaHtml+'</div>';
+  }
+  el('conteudo').innerHTML=html;
+}
+function kpi(l,v){return '<div class="kpi"><div class="l">'+l+'</div><div class="v">'+v+'</div></div>';}
+function esc(s){return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+// ---- Mensagem por loja ----
+function linkLoja(L){const s=SUF[L]||'';return 'https://painel.amorefood.com.br/montar-pedido.html?loja='+s;}
+function resumoLoja(L){
+  const l=DADOS.lojas[L];if(!l)return '';
+  let linhas=l.reqs.map(r=>'• REQ-'+String(r.numero).padStart(4,'0')+': *'+r.pct+'%* '+(r.faltam?'(faltam '+r.faltam+')':'(completa)')).join('\n');
+  return linhas;
+}
+function msgGerente(L){
+  const gm=GERENTE[L];const l=DADOS.lojas[L];
+  return 'Olá, '+gm.nome+'! 👋 *Relatório de compras '+DATA.split('-').reverse().join('/')+'* — *'+L+'*.\n\n'+
+    '✅ Comprado: *'+brl(l.valor)+'* ('+l.peds.length+' pedido[s]).\n'+resumoLoja(L)+'\n\n'+
+    'Veja item a item o comprado e o que falta:\n'+linkLoja(L)+'\n\nObrigado! 💚';
+}
+function msgSeguidor(nome){
+  let corpo='Olá, '+nome+'! 👋 *Relatório GERAL de compras '+DATA.split('-').reverse().join('/')+'* — '+DADOS.totPeds+' pedidos · *'+brl(DADOS.totValor)+'*.\n';
+  const ordem=['Amore Paiva','Flow CD','Amore CD'];
+  for(const L of Object.keys(DADOS.lojas).sort((a,b)=>ordem.indexOf(a)-ordem.indexOf(b))){
+    const l=DADOS.lojas[L];const ic=L==='Flow CD'?'🟢':L==='Amore CD'?'🔵':'🟣';
+    corpo+='\n'+ic+' *'+L+'* — '+brl(l.valor)+'\n'+resumoLoja(L)+'\n'+linkLoja(L)+'\n';
+  }
+  return corpo+'\nObrigado! 💚';
+}
+async function enviar(fone,message){try{const r=await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:fone,message})});return r.ok;}catch(e){return false;}}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function dispararRelatorio(){
+  if(!DADOS||!Object.keys(DADOS.lojas).length){alert('Nada para disparar nesta data.');return;}
+  if(!confirm('Disparar o relatório de '+DATA.split('-').reverse().join('/')+' para os gerentes (Carlos/Joais/Diego) e acompanhantes (Aline/Wagner/Esdras)?'))return;
+  const btn=el('btnDisparar');btn.disabled=true;const st=el('status');let ok=0,fail=0;
+  const fila=[];
+  for(const L of Object.keys(DADOS.lojas)){if(GERENTE[L])fila.push({nome:GERENTE[L].nome,fone:GERENTE[L].fone,msg:msgGerente(L)});}
+  for(const s of SEGUIDORES)fila.push({nome:s.nome,fone:s.fone,msg:msgSeguidor(s.nome)});
+  for(let i=0;i<fila.length;i++){
+    st.textContent='Enviando para '+fila[i].nome+'… ('+(i+1)+'/'+fila.length+')';
+    (await enviar(fila[i].fone,fila[i].msg))?ok++:fail++;
+    if(i<fila.length-1)await sleep(5000+Math.floor(Math.random()*6000)); // jitter anti-ban
+  }
+  st.textContent='✅ Enviados: '+ok+(fail?' · ❌ falhas: '+fail:'');
+  btn.disabled=false;
+}
+// init
+el('data').value=hoje();
+if(new URLSearchParams(location.search).get('data'))el('data').value=new URLSearchParams(location.search).get('data');
+carregar().then(()=>{ if(new URLSearchParams(location.search).get('disparar')==='1')dispararRelatorio(); });
+</script>
+</body></html>
