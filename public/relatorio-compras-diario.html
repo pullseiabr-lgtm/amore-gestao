@@ -46,7 +46,11 @@
   .foot{text-align:center;color:var(--cinza);font-size:11px;margin:8px 0 24px}
   #status{font-size:13px;font-weight:700;margin-left:6px}
   @media(max-width:640px){.falta{columns:1}}
-</style></head>
+  body.viewonly .edit{display:none!important}
+  #roleNote{background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:800}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
 <body><div class="wrap">
 <header class="top">
   <div class="eyebrow">Amore Food · Gestão da Lista de Compras</div>
@@ -55,16 +59,18 @@
 </header>
 
 <div class="toolbar">
-  <span class="lab">Adicionar requisição:</span>
-  <input type="text" id="reqs" style="min-width:150px" placeholder="Nº (ex.: 15)" onkeydown="if(event.key==='Enter')addReqs()">
-  <button class="btn btn-go" onclick="addReqs()">➕ Adicionar</button>
-  <span class="lab" style="margin-left:10px">ou dia:</span>
-  <input type="date" id="data" onchange="verDia()">
-  <button class="btn btn-ghost" onclick="verDia()">↻ Ver o dia</button>
-  <button class="btn btn-fire" id="btnDisparar" onclick="dispararRelatorio()">📲 Disparar relatório</button>
+  <span class="lab edit">Adicionar requisição:</span>
+  <input type="text" id="reqs" class="edit" style="min-width:150px" placeholder="Nº (ex.: 15)" onkeydown="if(event.key==='Enter')addReqs()">
+  <button class="btn btn-go edit" onclick="addReqs()">➕ Adicionar</button>
+  <span class="lab edit" style="margin-left:10px">ou dia:</span>
+  <input type="date" id="data" class="edit" onchange="verDia()">
+  <button class="btn btn-ghost edit" onclick="verDia()">↻ Ver o dia</button>
+  <button class="btn btn-fire edit" id="btnDisparar" onclick="dispararRelatorio()">📲 Disparar relatório</button>
+  <span id="roleNote" style="display:none">🔒 Somente visualização</span>
   <span id="status"></span>
   <div id="chips" class="chips"></div>
-  <div class="hint">Você pode <b>somar quantas requisições quiser</b> — adicione uma a uma (ou digite "15, 17" de vez) e <b>todas ficam no relatório</b>. Toque no × do chip para remover. Sem requisições = pedidos do dia.</div>
+  <div class="hint edit">Você pode <b>somar quantas requisições quiser</b> — adicione uma a uma (ou digite "15, 17" de vez) e <b>todas ficam no relatório</b>. Toque no × do chip para remover. Sem requisições = pedidos do dia.</div>
+  <div class="hint" id="hintView" style="display:none">Relatório em modo leitura. Apenas o Esdras pode adicionar/remover requisições e disparar. As informações abaixo podem ser consultadas normalmente.</div>
 </div>
 
 <div id="kpis" class="kpis"></div>
@@ -80,6 +86,20 @@ const SUF={'Flow CD':'flow','Amore CD':'amore_cd','Amore Paiva':'amore_paiva'};
 // Gerente (recebe SÓ da sua loja) — acompanhantes recebem as TRÊS lojas
 const GERENTE={'Amore Paiva':{nome:'Carlos',fone:'5581997725519'},'Flow CD':{nome:'Joais',fone:'5581994943074'},'Amore CD':{nome:'Diego',fone:'5581989694374'}};
 const SEGUIDORES=[{nome:'Aline',fone:'5581994573420'},{nome:'Wagner',fone:'5581994135602'},{nome:'Esdras',fone:'5581982710008'}];
+// DONOS: só Esdras pode editar/alterar/disparar. Demais = somente visualização.
+const OWNER_EMAILS=['comercial.gf7@gmail.com','s7showmusic@gmail.com','admin@amore.com.br'];
+let EDIT=false; // habilitado só quando o logado é dono (Esdras)
+const sb=(window.supabase&&window.supabase.createClient)?window.supabase.createClient(SB,ANON,{auth:{persistSession:true,autoRefreshToken:true}}):null;
+async function checarPermissao(){
+  try{if(!sb)throw 0;const {data}=await sb.auth.getSession();const email=(data&&data.session&&data.session.user&&data.session.user.email||'').trim().toLowerCase();
+    let owner=OWNER_EMAILS.includes(email);
+    if(!owner&&email){try{const pr=await j('profiles?email=eq.'+encodeURIComponent(email)+'&select=role');owner=Array.isArray(pr)&&pr[0]&&pr[0].role==='super_admin';}catch(e){}}
+    EDIT=owner;
+  }catch(e){EDIT=false;}
+  document.body.classList.toggle('viewonly',!EDIT);
+  el('roleNote').style.display=EDIT?'none':'inline-block';
+  el('hintView').style.display=EDIT?'none':'block';
+}
 const j=async p=>{const r=await fetch(SB+'/rest/v1/'+p,{headers:H});return r.json();};
 const brl=n=>'R$ '+(Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const el=id=>document.getElementById(id);
@@ -90,6 +110,7 @@ const INICIO='2026-09-13';   // padrão do relatório: só requisições/pedidos
 function hoje(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10);}
 
 function addReqs(){
+  if(!EDIT)return;
   const nums=((el('reqs').value||'').match(/\d+/g)||[]).map(n=>parseInt(n,10));
   if(!nums.length)return;
   for(const n of nums)if(!REQSEL.includes(n))REQSEL.push(n);
@@ -97,11 +118,11 @@ function addReqs(){
   el('reqs').value='';
   renderChips();carregar();
 }
-function removeReq(n){REQSEL=REQSEL.filter(x=>x!==n);renderChips();carregar();}
-function verDia(){REQSEL=[];renderChips();carregar();}
+function removeReq(n){if(!EDIT)return;REQSEL=REQSEL.filter(x=>x!==n);renderChips();carregar();}
+function verDia(){if(!EDIT)return;REQSEL=[];renderChips();carregar();}
 function renderChips(){
   el('chips').innerHTML = REQSEL.length
-    ? '<span class="lab">No relatório:</span>'+REQSEL.map(n=>'<span class="chip"><b>REQ-'+String(n).padStart(4,'0')+'</b><span onclick="removeReq('+n+')" title="Remover">×</span></span>').join('')
+    ? '<span class="lab">No relatório:</span>'+REQSEL.map(n=>'<span class="chip"><b>REQ-'+String(n).padStart(4,'0')+'</b>'+(EDIT?'<span onclick="removeReq('+n+')" title="Remover">×</span>':'')+'</span>').join('')
     : '';
 }
 
@@ -176,6 +197,7 @@ function msgSeguidor(nome){let c='Olá, '+nome+'! 👋 *Relatório GERAL de comp
 async function enviar(fone,message){try{const r=await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:fone,message})});return r.ok;}catch(e){return false;}}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function dispararRelatorio(){
+  if(!EDIT){alert('Somente o Esdras pode disparar o relatório.');return;}
   if(!DADOS||!Object.keys(DADOS.lojas).length){alert('Nada para disparar.');return;}
   if(!confirm('Disparar este relatório ('+PERIODO+')?\n\n• Gerentes (só da sua loja): Carlos, Joais, Diego\n• Acompanham as 3 lojas: Aline, Wagner, Esdras'))return;
   const btn=el('btnDisparar');btn.disabled=true;const st=el('status');let ok=0,fail=0;
@@ -190,7 +212,11 @@ el('data').value=hoje();
 const qp=new URLSearchParams(location.search);
 if(qp.get('data'))el('data').value=qp.get('data');
 if(qp.get('reqs'))REQSEL=[...new Set((qp.get('reqs').match(/\d+/g)||[]).map(n=>parseInt(n,10)))].sort((a,b)=>a-b);
-renderChips();
-carregar().then(()=>{if(qp.get('disparar')==='1')dispararRelatorio();});
+(async()=>{
+  await checarPermissao();
+  renderChips();
+  await carregar();
+  if(EDIT && qp.get('disparar')==='1')dispararRelatorio();
+})();
 </script>
 </body></html>
