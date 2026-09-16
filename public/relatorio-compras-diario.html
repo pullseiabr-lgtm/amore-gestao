@@ -85,6 +85,7 @@ const brl=n=>'R$ '+(Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:
 const el=id=>document.getElementById(id);
 const dataBR=d=>d.split('-').reverse().join('/');
 let DADOS=null,DATA='',PERIODO='',REQSEL=[];   // REQSEL = lista ACUMULADA de números de requisição
+const INICIO='2026-09-13';   // padrão do relatório: só requisições/pedidos gerados de 13/09 em diante
 
 function hoje(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10);}
 
@@ -109,8 +110,8 @@ async function carregar(){
   el('conteudo').innerHTML='<div class="card">Carregando…</div>';el('kpis').innerHTML='';el('status').textContent='';
   let reqRows=[],peds=[];
   if(REQSEL.length){
-    reqRows=await j('requisicoes?numero=in.('+REQSEL.join(',')+')&select=id,numero,loja,titulo');
-    if(!Array.isArray(reqRows)||!reqRows.length){el('conteudo').innerHTML='<div class="card">Nenhuma requisição encontrada para: '+REQSEL.map(n=>'REQ-'+String(n).padStart(4,'0')).join(', ')+'.</div>';return;}
+    reqRows=await j('requisicoes?numero=in.('+REQSEL.join(',')+')&created_at=gte.'+INICIO+'T00:00:00&select=id,numero,loja,titulo');
+    if(!Array.isArray(reqRows)||!reqRows.length){el('conteudo').innerHTML='<div class="card">Nenhuma requisição (de 13/09 em diante) encontrada para: '+REQSEL.map(n=>'REQ-'+String(n).padStart(4,'0')).join(', ')+'.</div>';return;}
     const reqIds=reqRows.map(r=>r.id);
     peds=await j('pedidos_compra?requisicao_id=in.('+reqIds.join(',')+')&select=numero,loja,fornecedor,requisicao_id,total&order=numero');
     PERIODO='Requisições '+reqRows.slice().sort((a,b)=>a.numero-b.numero).map(r=>'REQ-'+String(r.numero).padStart(4,'0')).join(', ');
