@@ -107,6 +107,17 @@ async function main(){
     '</div>';
   }
 
+  // Reembolso — compra com recurso próprio (info de autorização)
+  let rpHTML='';
+  const rp=(c.estimativa_base&&c.estimativa_base.reembolso_proprio)||null;
+  if(rp){
+    rpHTML='<div class="box" style="border-color:#5B21B6;background:#F5F3FF">'+
+      '<b style="color:#5B21B6">🔄 Reembolso — compra com recurso próprio</b>'+
+      '<div style="font-size:13px;margin-top:6px">Autorizado por: <b>'+esc(rp.autorizado_por||'—')+'</b>'+(rp.data_compra?' · Compra em <b>'+fD(rp.data_compra)+'</b>':'')+'</div>'+
+      (rp.necessidade?'<div style="font-size:13px;margin-top:4px">Necessidade: '+esc(rp.necessidade)+'</div>':'')+
+    '</div>';
+  }
+
   app.innerHTML=
     '<header class="top"><div><div class="eyebrow">'+(isFlow?'Flow Costa Dourada':'Amore Food')+' · Crédito</div>'+
     '<h1>CRD-'+esc(c.numero)+'</h1><div class="sub">'+esc(c.solicitante_nome)+' · '+esc(c.unidade)+(c.setor?' · '+esc(c.setor):'')+'</div></div>'+
@@ -124,7 +135,7 @@ async function main(){
       '<div class="big"><div class="l">Crédito aprovado</div><div class="v" style="color:var(--ok)">'+(c.valor_aprovado!=null?brl(c.valor_aprovado):'—')+'</div></div>'+
       (gasto>0?'<div class="big"><div class="l">Saldo</div><div class="v" style="color:'+(saldo<0?'var(--crit)':'var(--ok)')+'">'+brl(saldo)+'</div></div>':'')+
     '</div>'+
-    valaHTML+prestHTML+
+    rpHTML+valaHTML+prestHTML+
     (c.observacao?'<div class="box">📝 '+esc(c.observacao)+'</div>':'')+
     (c.anexo_url?'<div class="box">📎 <a href="'+esc(c.anexo_url)+'" target="_blank" rel="noreferrer">Ver comprovante/orçamento anexado</a></div>':'')+
     (c.reprovado_motivo?'<div class="box" style="color:var(--crit)">❌ Reprovado: '+esc(c.reprovado_motivo)+'</div>':'')+

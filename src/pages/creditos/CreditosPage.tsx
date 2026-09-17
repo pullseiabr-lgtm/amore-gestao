@@ -286,6 +286,14 @@ function CreditoCard({ c, podeAprovar, user, onChange, onPrestar }: {
       </div>
       <div style={{ fontSize: 11, color: 'var(--muted)' }}>Solicitado em {fmtData(c.data_solicitacao)}{c.data_necessaria ? ` · precisa em ${fmtData(c.data_necessaria)}` : ''}</div>
       {c.reprovado_motivo && <div style={{ fontSize: 11, color: '#991B1B', background: '#FEE2E2', padding: '4px 8px', borderRadius: 6 }}>❌ {c.reprovado_motivo}</div>}
+      {c.estimativa_base?.reembolso_proprio && (
+        <div style={{ fontSize: 11, color: '#5B21B6', background: '#EDE9FE', padding: '6px 8px', borderRadius: 6, lineHeight: 1.5 }}>
+          🔄 <b>Reembolso — recurso próprio</b><br />
+          Autorizado por: <b>{c.estimativa_base.reembolso_proprio.autorizado_por || '—'}</b>
+          {c.estimativa_base.reembolso_proprio.data_compra ? ` · Compra em ${fmtData(c.estimativa_base.reembolso_proprio.data_compra)}` : ''}
+          {c.estimativa_base.reembolso_proprio.necessidade ? <><br />Necessidade: {c.estimativa_base.reembolso_proprio.necessidade}</> : null}
+        </div>
+      )}
 
       {/* Ações por status */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
@@ -305,8 +313,8 @@ function CreditoCard({ c, podeAprovar, user, onChange, onPrestar }: {
             <button className="btn bo bsm" onClick={disponibilizar}><Wallet size={12} /> Só disponibilizar</button>
           </>
         )}
-        {['disponibilizado', 'em_prestacao', 'prestacao_pendente', 'divergencia', 'aguardando_devolucao'].includes(c.status) && !busy && (
-          <button className="btn bp bsm" onClick={onPrestar}><FileCheck2 size={12} /> Prestar contas</button>
+        {['disponibilizado', 'em_prestacao', 'prestacao_pendente', 'divergencia', 'aguardando_devolucao', 'em_analise'].includes(c.status) && !busy && (
+          <button className="btn bp bsm" onClick={onPrestar}><FileCheck2 size={12} /> {c.status === 'em_analise' ? 'Editar / corrigir' : 'Prestar contas'}</button>
         )}
         <a href={linkPublico} target="_blank" rel="noreferrer" className="btn bo bsm" style={{ textDecoration: 'none' }}><ExternalLink size={12} /> Ver</a>
         {(user?.role === 'admin' || user?.role === 'super_admin') && !busy && c.total_gasto === 0 && (
@@ -325,6 +333,7 @@ function NovoCredito({ onClose, onSaved, lojaAtual, profiles, user }: {
     solicitante_nome: user?.name || '', setor: '', unidade: LOJAS.includes(lojaAtual) ? lojaAtual : 'Amore CD',
     data_solicitacao: hoje(), data_necessaria: '', finalidade: 'compras_semana', subcategoria: '',
     prioridade: 'media', valor_solicitado: '', forma_recebimento: 'Pix', observacao: '',
+    reembolso_proprio: false, autorizado_por: '', data_compra: hoje(), necessidade: '',
   })
   const [anexo, setAnexo] = useState<File | null>(null)
   const [salvando, setSalvando] = useState(false)
@@ -333,20 +342,34 @@ function NovoCredito({ onClose, onSaved, lojaAtual, profiles, user }: {
 
   const salvar = async () => {
     if (!f.solicitante_nome.trim()) { alert('Informe o solicitante.'); return }
-    const valor = Number(String(f.valor_solicitado).replace(',', '.'))
-    if (!(valor > 0)) { alert('Informe um valor solicitado válido.'); return }
+    const valor = Number(String(f.valor_solicitado).replace(',', '.')) || 0
+    if (f.reembolso_proprio) {
+      // Compra com recurso próprio: não exige valor solicitado antecipado,
+      // mas exige quem autorizou e a necessidade da compra.
+      if (!f.autorizado_por.trim()) { alert('Informe quem autorizou a compra.'); return }
+      if (!f.necessidade.trim()) { alert('Descreva a necessidade da compra com recurso próprio.'); return }
+    } else if (!(valor > 0)) {
+      alert('Informe um valor solicitado válido.'); return
+    }
     setSalvando(true)
     try {
       let anexo_url: string | null = null
       if (anexo) anexo_url = await uploadAnexo(anexo, 'creditos')
       const solId = profiles.find(p => p.name === f.solicitante_nome)?.id || null
-      const centro_custo = [f.unidade, f.setor, fin?.label.replace(/^[^ ]+ /, ''), f.subcategoria].filter(Boolean).join(' > ')
+      const finalidade = f.reembolso_proprio ? 'reembolso' : f.finalidade
+      const finObj = FINALIDADES.find(x => x.id === finalidade)
+      const centro_custo = [f.unidade, f.setor, finObj?.label.replace(/^[^ ]+ /, ''), f.subcategoria].filter(Boolean).join(' > ')
+      const estimativa_base = f.reembolso_proprio
+        ? { reembolso_proprio: { autorizado_por: f.autorizado_por.trim(), data_compra: f.data_compra, necessidade: f.necessidade.trim() } }
+        : null
       await sb.from('creditos').insert({
         solicitante_nome: f.solicitante_nome.trim(), solicitante_id: solId, setor: f.setor || null, unidade: f.unidade,
         data_solicitacao: f.data_solicitacao, data_necessaria: f.data_necessaria || null,
-        finalidade: f.finalidade, subcategoria: f.subcategoria || null, prioridade: f.prioridade,
-        valor_solicitado: valor, forma_recebimento: f.forma_recebimento, centro_custo,
-        observacao: f.observacao || null, anexo_url, status: 'solicitado', created_by: user?.name || 'Painel',
+        finalidade, subcategoria: f.subcategoria || null, prioridade: f.prioridade,
+        valor_solicitado: valor, forma_recebimento: f.forma_recebimento, centro_custo, estimativa_base,
+        observacao: f.observacao || null, anexo_url,
+        // Recurso próprio já foi comprado: vai direto para prestação (anexar notas e conciliar o reembolso).
+        status: f.reembolso_proprio ? 'em_prestacao' : 'solicitado', created_by: user?.name || 'Painel',
       })
       onSaved(); onClose()
     } catch (e: any) { alert('Falha ao salvar: ' + (e?.message || e)) }
@@ -356,8 +379,12 @@ function NovoCredito({ onClose, onSaved, lojaAtual, profiles, user }: {
   return (
     <div className="ov open" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
-        <div className="mhd"><b>💳 Solicitar Crédito</b><button className="btn bo bsm" onClick={onClose}><X size={13} /></button></div>
+        <div className="mhd"><b>{f.reembolso_proprio ? '🔄 Reembolso — recurso próprio' : '💳 Solicitar Crédito'}</b><button className="btn bo bsm" onClick={onClose}><X size={13} /></button></div>
         <div className="mbd" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <label className="fg" style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8, background: f.reembolso_proprio ? '#EDE9FE' : 'var(--bg2,#F8FAFC)', padding: '8px 10px', borderRadius: 8, cursor: 'pointer', margin: 0 }}>
+            <input type="checkbox" checked={f.reembolso_proprio} onChange={e => setF(o => ({ ...o, reembolso_proprio: e.target.checked, finalidade: e.target.checked ? 'reembolso' : 'compras_semana', subcategoria: '' }))} />
+            <span style={{ fontSize: 12 }}><b>🔄 Compra com recurso próprio (reembolso)</b> — o colaborador já pagou do próprio bolso e pede o valor de volta. Não é preciso solicitar crédito antes.</span>
+          </label>
           <div className="fg"><label className="fl">Solicitante *</label>
             <input className="inp" list="prof-list" value={f.solicitante_nome} onChange={e => set('solicitante_nome', e.target.value)} placeholder="Nome" />
             <datalist id="prof-list">{profiles.map(p => <option key={p.id} value={p.name} />)}</datalist>
@@ -370,7 +397,7 @@ function NovoCredito({ onClose, onSaved, lojaAtual, profiles, user }: {
             <select className="sel" value={f.prioridade} onChange={e => set('prioridade', e.target.value)}>{PRIORIDADES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select>
           </div>
           <div className="fg"><label className="fl">Finalidade *</label>
-            <select className="sel" value={f.finalidade} onChange={e => { set('finalidade', e.target.value); set('subcategoria', '') }}>{FINALIDADES.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select>
+            <select className="sel" value={f.finalidade} disabled={f.reembolso_proprio} onChange={e => { set('finalidade', e.target.value); set('subcategoria', '') }}>{FINALIDADES.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select>
           </div>
           <div className="fg"><label className="fl">Subcategoria</label>
             {fin && fin.subs.length > 0
@@ -379,10 +406,17 @@ function NovoCredito({ onClose, onSaved, lojaAtual, profiles, user }: {
           </div>
           <div className="fg"><label className="fl">Data da solicitação</label><input type="date" className="inp" value={f.data_solicitacao} onChange={e => set('data_solicitacao', e.target.value)} /></div>
           <div className="fg"><label className="fl">Data necessária</label><input type="date" className="inp" value={f.data_necessaria} onChange={e => set('data_necessaria', e.target.value)} /></div>
-          <div className="fg"><label className="fl">Valor solicitado (R$) *</label><input className="inp" inputMode="decimal" value={f.valor_solicitado} onChange={e => set('valor_solicitado', e.target.value)} placeholder="0,00" /></div>
+          <div className="fg"><label className="fl">{f.reembolso_proprio ? 'Valor gasto a reembolsar (R$)' : 'Valor solicitado (R$) *'}</label><input className="inp" inputMode="decimal" value={f.valor_solicitado} onChange={e => set('valor_solicitado', e.target.value)} placeholder="0,00" /></div>
           <div className="fg"><label className="fl">Forma de recebimento</label>
             <select className="sel" value={f.forma_recebimento} onChange={e => set('forma_recebimento', e.target.value)}>{FORMAS.map(x => <option key={x}>{x}</option>)}</select>
           </div>
+          {f.reembolso_proprio && (
+            <>
+              <div className="fg"><label className="fl">Quem autorizou a compra *</label><input className="inp" list="prof-list" value={f.autorizado_por} onChange={e => set('autorizado_por', e.target.value)} placeholder="Nome de quem autorizou" /></div>
+              <div className="fg"><label className="fl">Data da compra *</label><input type="date" className="inp" value={f.data_compra} onChange={e => set('data_compra', e.target.value)} /></div>
+              <div className="fg" style={{ gridColumn: '1 / -1' }}><label className="fl">Necessidade — por que comprou com recurso próprio *</label><textarea className="inp" rows={2} value={f.necessidade} onChange={e => set('necessidade', e.target.value)} placeholder="Ex.: urgência na cozinha, sem tempo de solicitar crédito, autorizado por…" /></div>
+            </>
+          )}
           <div className="fg" style={{ gridColumn: '1 / -1' }}><label className="fl">Observação</label><textarea className="inp" rows={2} value={f.observacao} onChange={e => set('observacao', e.target.value)} /></div>
           <div className="fg" style={{ gridColumn: '1 / -1' }}><label className="fl">Anexo / comprovante prévio</label>
             <label className="btn bo bsm" style={{ cursor: 'pointer', margin: 0, width: 'fit-content' }}>
@@ -390,15 +424,20 @@ function NovoCredito({ onClose, onSaved, lojaAtual, profiles, user }: {
               <input type="file" hidden onChange={e => setAnexo(e.target.files?.[0] || null)} />
             </label>
           </div>
-          {f.finalidade === 'compras_semana' && (
+          {f.finalidade === 'compras_semana' && !f.reembolso_proprio && (
             <div style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--muted)', background: 'var(--bg2,#F8FAFC)', padding: '8px 10px', borderRadius: 6 }}>
               💡 Estimativa automática por custo médio e histórico entra na <b>Fase 2</b>. Por ora, informe o valor manualmente.
+            </div>
+          )}
+          {f.reembolso_proprio && (
+            <div style={{ gridColumn: '1 / -1', fontSize: 11, color: '#5B21B6', background: '#EDE9FE', padding: '8px 10px', borderRadius: 6 }}>
+              🔄 Ao salvar, este registro vai direto para a <b>Prestação de Contas</b>: anexe as notas/comprovantes da compra e concilie para gerar o <b>reembolso ao colaborador</b>, que segue para aprovação (Wagner/Aline).
             </div>
           )}
         </div>
         <div className="mft">
           <button className="btn bo bsm" onClick={onClose}>Cancelar</button>
-          <button className="btn bp bsm" onClick={salvar} disabled={salvando}>{salvando ? <Loader className="spin" size={13} /> : <Check size={13} />} Solicitar</button>
+          <button className="btn bp bsm" onClick={salvar} disabled={salvando}>{salvando ? <Loader className="spin" size={13} /> : <Check size={13} />} {f.reembolso_proprio ? 'Registrar reembolso' : 'Solicitar'}</button>
         </div>
       </div>
     </div>
@@ -409,7 +448,7 @@ function NovoCredito({ onClose, onSaved, lojaAtual, profiles, user }: {
 function PrestacaoContas({ creditos, selId, setSelId, onChange, user }: {
   creditos: Credito[]; selId: string | null; setSelId: (id: string | null) => void; onChange: () => void; user: any
 }) {
-  const elegiveis = creditos.filter(c => ['aprovado', 'disponibilizado', 'em_prestacao', 'prestacao_pendente', 'divergencia', 'aguardando_devolucao'].includes(c.status))
+  const elegiveis = creditos.filter(c => ['aprovado', 'disponibilizado', 'em_prestacao', 'prestacao_pendente', 'divergencia', 'aguardando_devolucao', 'em_analise'].includes(c.status))
   const c = creditos.find(x => x.id === selId) || null
 
   if (!c) {
@@ -442,7 +481,9 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
   const [nd, setNd] = useState({ descricao: '', categoria: 'Compra', fornecedor: '', valor: '', data: hoje(), forma_pagamento: '' })
   const [comprovante, setComprovante] = useState<File | null>(null)
   const [addBusy, setAddBusy] = useState(false)
-  const [justificativa, setJustificativa] = useState('')
+  const rp = c.estimativa_base?.reembolso_proprio
+  const isReembolsoProprio = !!rp
+  const [justificativa, setJustificativa] = useState(rp?.necessidade || '')
   const [destino, setDestino] = useState('')
 
   const load = useCallback(async () => {
@@ -501,14 +542,17 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
   }
 
   // Opções de destino conforme saldo
-  const opcoesDestino = saldo > 0.001
-    ? [{ id: 'devolucao', label: '💵 Devolução ao caixa' }, { id: 'remanescente', label: '🔄 Crédito remanescente' }]
-    : saldo < -0.001
-      ? [{ id: 'complemento', label: '➕ Complemento' }, { id: 'reembolso', label: '🔴 Reembolso ao colaborador' }]
-      : [{ id: 'zerado', label: '🟢 Crédito totalmente utilizado' }]
+  const opcoesDestino = isReembolsoProprio
+    ? [{ id: 'reembolso', label: '🔴 Reembolsar colaborador' }]
+    : saldo > 0.001
+      ? [{ id: 'devolucao', label: '💵 Devolução ao caixa' }, { id: 'remanescente', label: '🔄 Crédito remanescente' }]
+      : saldo < -0.001
+        ? [{ id: 'complemento', label: '➕ Complemento' }, { id: 'reembolso', label: '🔴 Reembolso ao colaborador' }]
+        : [{ id: 'zerado', label: '🟢 Crédito totalmente utilizado' }]
 
   const encerrar = async () => {
-    const dst = saldo === 0 ? 'zerado' : destino
+    if (isReembolsoProprio && totalGasto <= 0) { alert('Lance ao menos uma despesa (nota/comprovante) da compra antes de enviar o reembolso.'); return }
+    const dst = isReembolsoProprio ? 'reembolso' : (saldo === 0 ? 'zerado' : destino)
     if (!dst) { alert('Escolha o destino do saldo.'); return }
     // Conciliação: crédito = despesas + (devolução|remanescente) ; ou complemento/reembolso cobre o excesso
     const absSaldo = Math.abs(saldo)
@@ -532,9 +576,12 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
       prestacao.complemento = absSaldo
       await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: 'complemento', valor: absSaldo, data: hoje(), obs: justificativa, created_by: user?.name || 'Painel' })
     } else if (dst === 'reembolso') {
-      if (!justificativa.trim()) { alert('Reembolso: descreva a justificativa.'); return }
-      prestacao.reembolso = absSaldo
-      await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: 'reembolso', valor: absSaldo, data: hoje(), obs: justificativa, created_by: user?.name || 'Painel' })
+      const valorReembolso = isReembolsoProprio ? totalGasto : absSaldo
+      const just = justificativa.trim() || (rp?.necessidade || '')
+      if (!just) { alert('Reembolso: descreva a justificativa.'); return }
+      prestacao.reembolso = valorReembolso
+      if (isReembolsoProprio) prestacao.reembolso_proprio = rp
+      await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: 'reembolso', valor: valorReembolso, data: hoje(), obs: isReembolsoProprio ? `Reembolso recurso próprio — ${just}` : just, created_by: user?.name || 'Painel' })
     }
     // A prestação NÃO encerra na hora: vai para ANÁLISE e é enviada a Wagner/Aline para aprovar.
     prestacao.status_final = novoStatus  // status que assume quando aprovada
@@ -544,7 +591,9 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
     try { const { data } = await sb.from('app_config').select('valor').eq('chave', 'credito_aprovadores').maybeSingle(); if (Array.isArray(data?.valor?.lista) && data.valor.lista.length) aprovadores = data.valor.lista } catch { /* fallback */ }
     const link = `https://painel.amorefood.com.br/credito.html?id=${c.id}`
     const destinoTxt = dst === 'devolucao' ? `Devolução ${fmtR$(absSaldo)}` : dst === 'remanescente' ? `Remanescente ${fmtR$(absSaldo)}` : dst === 'reembolso' ? `Reembolso ${fmtR$(absSaldo)}` : dst === 'complemento' ? `Complemento ${fmtR$(absSaldo)}` : 'Totalmente utilizado'
-    const msg = `🧾 *Prestação de contas para aprovar* — CRD-${c.numero}\n${c.solicitante_nome} · ${c.unidade}${c.setor ? ' · ' + c.setor : ''}\n💰 Crédito ${fmtR$(credito)} · Gasto ${fmtR$(totalGasto)} · Saldo ${fmtR$(saldo)}\n📌 ${destinoTxt}\n\n👉 Abrir para conferir e *aprovar / apontar divergência*:\n${link}`
+    const msg = isReembolsoProprio
+      ? `🔄 *Reembolso para aprovar* — CRD-${c.numero}\n${c.solicitante_nome} · ${c.unidade}${c.setor ? ' · ' + c.setor : ''}\n🧾 Compra com recurso próprio · Valor a reembolsar *${fmtR$(totalGasto)}*\n👤 Autorizado por: ${rp?.autorizado_por || '—'}${rp?.data_compra ? ` · Compra em ${fmtData(rp.data_compra)}` : ''}\n📝 ${rp?.necessidade || justificativa || ''}\n\n👉 Abrir para conferir e *aprovar*:\n${link}`
+      : `🧾 *Prestação de contas para aprovar* — CRD-${c.numero}\n${c.solicitante_nome} · ${c.unidade}${c.setor ? ' · ' + c.setor : ''}\n💰 Crédito ${fmtR$(credito)} · Gasto ${fmtR$(totalGasto)} · Saldo ${fmtR$(saldo)}\n📌 ${destinoTxt}\n\n👉 Abrir para conferir e *aprovar / apontar divergência*:\n${link}`
     let okSend = 0
     for (const a of aprovadores) { try { const rr = await fetch('/api/evolution-send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: a.fone, message: msg }) }); if (rr.ok) okSend++ } catch { /* segue */ } }
     onChange(); onVoltar()
@@ -565,10 +614,22 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
           <span className="badge" style={{ background: st(c.status).bg, color: st(c.status).cor, padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{st(c.status).label}</span>
           <span style={{ fontSize: 12, color: 'var(--muted)' }}>{c.solicitante_nome} · {c.unidade} · {finLabel(c.finalidade)}</span>
         </div>
+        {c.status === 'em_analise' && (
+          <div style={{ marginTop: 10, fontSize: 12, color: '#9A3412', background: '#FFEDD5', padding: '8px 10px', borderRadius: 8 }}>
+            🕓 <b>Em análise de aprovação.</b> Você ainda pode <b>lançar, corrigir ou excluir despesas</b>. Ao concluir, use o botão abaixo para <b>reenviar a prestação corrigida</b> para os aprovadores.
+          </div>
+        )}
+        {isReembolsoProprio && (
+          <div style={{ marginTop: 10, fontSize: 12, color: '#5B21B6', background: '#EDE9FE', padding: '8px 10px', borderRadius: 8, lineHeight: 1.5 }}>
+            🔄 <b>Reembolso — compra com recurso próprio</b><br />
+            Autorizado por: <b>{rp.autorizado_por || '—'}</b>{rp.data_compra ? ` · Compra em ${fmtData(rp.data_compra)}` : ''}
+            {rp.necessidade ? <><br />Necessidade: {rp.necessidade}</> : null}
+          </div>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginTop: 12 }}>
-          <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>Crédito original</div><div style={{ fontSize: 18, fontWeight: 800 }}>{fmtR$(credito)}</div></div>
-          <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>Despesas</div><div style={{ fontSize: 18, fontWeight: 800, color: '#B45309' }}>{fmtR$(totalGasto)}</div></div>
-          <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>Saldo</div><div style={{ fontSize: 18, fontWeight: 800, color: saldo < 0 ? '#DC2626' : '#166534' }}>{fmtR$(saldo)}</div></div>
+          <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>{isReembolsoProprio ? 'Crédito prévio' : 'Crédito original'}</div><div style={{ fontSize: 18, fontWeight: 800 }}>{isReembolsoProprio ? 'Recurso próprio' : fmtR$(credito)}</div></div>
+          <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>{isReembolsoProprio ? 'Gasto (a reembolsar)' : 'Despesas'}</div><div style={{ fontSize: 18, fontWeight: 800, color: '#B45309' }}>{fmtR$(totalGasto)}</div></div>
+          <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>{isReembolsoProprio ? 'Reembolso' : 'Saldo'}</div><div style={{ fontSize: 18, fontWeight: 800, color: isReembolsoProprio ? '#5B21B6' : (saldo < 0 ? '#DC2626' : '#166534') }}>{fmtR$(isReembolsoProprio ? totalGasto : saldo)}</div></div>
         </div>
       </div>
 
@@ -618,24 +679,32 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
         </div>
       ) : c.status !== 'encerrado' && c.status !== 'remanescente' && (
         <div className="card" style={{ padding: 16 }}>
-          <div style={{ fontWeight: 700, marginBottom: 10 }}>✅ Conciliação e encerramento</div>
-          <div style={{ fontSize: 13, marginBottom: 10 }}>
-            {saldo > 0.001 && <span>Sobrou <b style={{ color: '#166534' }}>{fmtR$(saldo)}</b>. O que fazer com o saldo?</span>}
-            {saldo < -0.001 && <span style={{ color: '#DC2626' }}><AlertTriangle size={14} style={{ verticalAlign: -2 }} /> Despesa superior ao crédito em <b>{fmtR$(Math.abs(saldo))}</b>.</span>}
-            {Math.abs(saldo) <= 0.001 && <span>🟢 Crédito totalmente utilizado, sem saldo.</span>}
-          </div>
-          {Math.abs(saldo) > 0.001 && (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-              {opcoesDestino.map(o => (
-                <button key={o.id} className={`btn ${destino === o.id ? 'bp' : 'bo'} bsm`} onClick={() => setDestino(o.id)}>{o.label}</button>
-              ))}
+          <div style={{ fontWeight: 700, marginBottom: 10 }}>{isReembolsoProprio ? '✅ Conciliação e reembolso' : '✅ Conciliação e encerramento'}</div>
+          {isReembolsoProprio ? (
+            <div style={{ fontSize: 13, marginBottom: 10, color: '#5B21B6' }}>
+              🔄 Reembolso de <b>{fmtR$(totalGasto)}</b> a <b>{c.solicitante_nome}</b> (compra paga com recurso próprio).
             </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 13, marginBottom: 10 }}>
+                {saldo > 0.001 && <span>Sobrou <b style={{ color: '#166534' }}>{fmtR$(saldo)}</b>. O que fazer com o saldo?</span>}
+                {saldo < -0.001 && <span style={{ color: '#DC2626' }}><AlertTriangle size={14} style={{ verticalAlign: -2 }} /> Despesa superior ao crédito em <b>{fmtR$(Math.abs(saldo))}</b>.</span>}
+                {Math.abs(saldo) <= 0.001 && <span>🟢 Crédito totalmente utilizado, sem saldo.</span>}
+              </div>
+              {Math.abs(saldo) > 0.001 && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                  {opcoesDestino.map(o => (
+                    <button key={o.id} className={`btn ${destino === o.id ? 'bp' : 'bo'} bsm`} onClick={() => setDestino(o.id)}>{o.label}</button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
-          {(destino === 'complemento' || destino === 'reembolso' || (saldo < -0.001)) && (
-            <div className="fg" style={{ marginBottom: 10 }}><label className="fl">Justificativa (obrigatória)</label><textarea className="inp" rows={2} value={justificativa} onChange={e => setJustificativa(e.target.value)} /></div>
+          {(isReembolsoProprio || destino === 'complemento' || destino === 'reembolso' || (saldo < -0.001)) && (
+            <div className="fg" style={{ marginBottom: 10 }}><label className="fl">{isReembolsoProprio ? 'Necessidade / justificativa do reembolso (obrigatória)' : 'Justificativa (obrigatória)'}</label><textarea className="inp" rows={2} value={justificativa} onChange={e => setJustificativa(e.target.value)} /></div>
           )}
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>Conciliação: Crédito {fmtR$(credito)} = Despesas {fmtR$(totalGasto)} {saldo >= 0 ? '+' : '−'} {fmtR$(Math.abs(saldo))} ({saldo >= 0 ? 'saldo' : 'excedente'}).</div>
-          <button className="btn bp bsm" onClick={encerrar}><FileCheck2 size={13} /> Enviar prestação para aprovação</button>
+          {!isReembolsoProprio && <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>Conciliação: Crédito {fmtR$(credito)} = Despesas {fmtR$(totalGasto)} {saldo >= 0 ? '+' : '−'} {fmtR$(Math.abs(saldo))} ({saldo >= 0 ? 'saldo' : 'excedente'}).</div>}
+          <button className="btn bp bsm" onClick={encerrar}><FileCheck2 size={13} /> {isReembolsoProprio ? 'Enviar reembolso para aprovação' : (c.status === 'em_analise' ? 'Reenviar prestação corrigida' : 'Enviar prestação para aprovação')}</button>
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>⚠️ Nenhum crédito é encerrado sem prestação de contas conciliada.</div>
         </div>
       )}
