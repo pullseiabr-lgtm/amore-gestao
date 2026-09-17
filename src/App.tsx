@@ -67,6 +67,7 @@ import ControleAgentePage from './pages/agente-controle/ControleAgentePage'
 import RelatoriosPrecosPage from './pages/relatorios-precos/RelatoriosPrecosPage'
 import RecebimentoPage from './pages/recebimento/RecebimentoPage'
 import EtiquetasPage from './pages/etiquetas/EtiquetasPage'
+import TransferenciasPage from './pages/transferencias/TransferenciasPage'
 import TarefasPage from './pages/tarefas/TarefasPage'
 import ChecklistsPage from './pages/checklists/ChecklistsPage'
 import PautaReuniaoPage from './pages/pautas/PautaReuniaoPage'
@@ -141,6 +142,7 @@ export type PageId =
   | 'relatorios-precos'
   | 'recebimento'
   | 'etiquetas'
+  | 'transferencias'
   | 'pesquisa-aura'
   | 'gestao-lista'
   | 'requisicao-nova'
@@ -212,6 +214,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'relatorios-precos': 'Relatório de Compras',
   recebimento: 'Recebimento Inteligente',
   etiquetas: 'Etiquetas & Leitura',
+  transferencias: 'Transferências entre Unidades',
   'pesquisa-aura': 'Pesquisa — Vamos Farmar Aura',
   'gestao-lista': 'Gestão da Lista de Compras',
   'requisicao-nova': 'Nova Requisição de Compra',
@@ -313,6 +316,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'relatorios-precos':    return <RelatoriosPrecosPage />
     case 'recebimento':          return <RecebimentoPage />
     case 'etiquetas':            return <EtiquetasPage />
+    case 'transferencias':       return <TransferenciasPage />
     case 'pesquisa-aura':        return <PesquisaAuraPage />
     case 'gestao-lista':         return <GestaoListaPage />
     case 'requisicao-nova':      return <RequisicaoNovaPage />
@@ -349,7 +353,7 @@ const PAGE_PERM: Partial<Record<PageId, string>> = {
   'requisicao-inteligente': 'requisicoes', 'analise-semanal': 'requisicoes',
   'pipeline-suprimentos': 'requisicoes', 'dashboard-suprimentos': 'requisicoes',
   'boletos': 'financeiro', 'pesquisa-aura': 'campanhas', 'produtos-categorias': 'produtos',
-  'site-leads': 'clientes',
+  'site-leads': 'clientes', 'transferencias': 'estoque',
 }
 function permForPage(p: PageId): string { return PAGE_PERM[p] ?? p }
 // Ordem de fallback: primeira página que o usuário PODE ver (colaborador cai em Central de Tarefas).
