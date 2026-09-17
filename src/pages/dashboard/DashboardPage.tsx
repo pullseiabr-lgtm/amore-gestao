@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
-import { AlertTriangle, CheckCircle, AlertCircle, TrendingUp, TrendingDown, ShoppingCart, Package, Clock, BarChart2, Zap, Bot, Shield, MessageSquare, ChefHat, Star } from 'lucide-react'
+import { AlertTriangle, CheckCircle, AlertCircle, TrendingUp, TrendingDown, ShoppingCart, Package, Clock, BarChart2, Zap, Bot, Shield, MessageSquare, ChefHat, Star, CalendarDays } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
+import { useAuth } from '../../contexts/AuthContext'
 import {
   fetchRupturas, fetchRelatoriosCVL, fetchRequisicoes, fetchProdutos,
   fetchComprasAuditoria, fetchCozinhaProducao, fetchCozinhaDesperdicio, fetchCozinhaFichas,
@@ -49,6 +50,18 @@ function KpiCard({ lbl, val, sub, col, icon, trend, loading }: KpiCardProps) {
 
 export default function DashboardPage() {
   const { loja } = useLoja()
+  const { user } = useAuth()
+
+  // ── Saudação inteligente + data por extenso ──────────────────
+  const agora = new Date()
+  const horaAtual = agora.getHours()
+  const saudacao = horaAtual < 12 ? 'Bom dia' : horaAtual < 18 ? 'Boa tarde' : 'Boa noite'
+  const emojiSaudacao = horaAtual < 12 ? '☀️' : horaAtual < 18 ? '🌤️' : '🌙'
+  const primeiroNome = (user?.name || '').trim().split(' ')[0] || 'Chef'
+  const dataExtenso = (() => {
+    const s = agora.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+    return s.charAt(0).toUpperCase() + s.slice(1)
+  })()
 
   // ── real data ────────────────────────────────────────────────
   const [rupturas,     setRupturas]     = useState<Ruptura[]>([])
@@ -236,8 +249,19 @@ export default function DashboardPage() {
 
   return (
     <div>
-      {/* ── Cabeçalho com ação de relatório ────────────────────── */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+      {/* ── Saudação inteligente + data + ação de relatório ────── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: 12.5, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <CalendarDays size={13} /> {dataExtenso}
+          </div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, margin: '5px 0 0', color: 'var(--bordo)', lineHeight: 1.15 }}>
+            {saudacao}, {primeiroNome}! <span style={{ fontSize: 22 }}>{emojiSaudacao}</span>
+          </h1>
+          <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3 }}>
+            Aqui está o resumo da operação{loja && loja !== 'Todas as Lojas' ? ` — ${loja}` : ''}.
+          </div>
+        </div>
         <button className="btn bo bsm" onClick={gerarRelatorioWhatsApp}
           style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <Zap size={11} style={{ color: '#25D366' }} />
