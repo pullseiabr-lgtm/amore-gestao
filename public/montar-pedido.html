@@ -449,11 +449,14 @@ async function analisarCotacao(reqId,numero){
   try{cots=await (await fetch(SB+'/rest/v1/requisicao_cotacoes?requisicao_id=eq.'+reqId+'&status=eq.respondida&select=id,fornecedor_nome,total&order=total.asc',{headers:H})).json();}catch(e){}
   try{itens=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=eq.'+reqId+'&select=id,produto_nome,quantidade,unidade&order=produto_nome.asc&limit=3000',{headers:H})).json();}catch(e){}
   if(cots.length){const cin='('+cots.map(c=>c.id).join(',')+')';
-    try{pri=await (await fetch(SB+'/rest/v1/requisicao_cotacao_itens?cotacao_id=in.'+cin+'&select=cotacao_id,item_id,preco_unitario,disponivel,observacoes&limit=8000',{headers:H})).json();}catch(e){}
+    try{pri=await (await fetch(SB+'/rest/v1/requisicao_cotacao_itens?cotacao_id=in.'+cin+'&select=cotacao_id,item_id,preco_unitario,disponivel,observacoes,produto_nome&limit=8000',{headers:H})).json();}catch(e){}
   }
   A_COTS=cots;A_ITENS=itens;A_PRICE={};
-  for(const p of (pri||[])){ if(!A_PRICE[p.item_id])A_PRICE[p.item_id]={}; let marca='';try{marca=(JSON.parse(p.observacoes||'{}').marca)||'';}catch(_){}
-    A_PRICE[p.item_id][p.cotacao_id]={preco:(p.disponivel!==false&&Number(p.preco_unitario)>0)?Number(p.preco_unitario):null,marca}; }
+  // resolve cada preço para o item atual por ID e, se o ID mudou, por NOME (resiliente à recriação de itens)
+  const byId={},byNome={}; itens.forEach(it=>{byId[it.id]=it.id; byNome[norm(it.produto_nome)]=it.id;});
+  for(const p of (pri||[])){ const tid=byId[p.item_id]||(p.produto_nome?byNome[norm(p.produto_nome)]:null); if(!tid)continue;
+    if(!A_PRICE[tid])A_PRICE[tid]={}; let marca='';try{marca=(JSON.parse(p.observacoes||'{}').marca)||'';}catch(_){}
+    A_PRICE[tid][p.cotacao_id]={preco:(p.disponivel!==false&&Number(p.preco_unitario)>0)?Number(p.preco_unitario):null,marca}; }
   for(const it of itens){const m=A_PRICE[it.id]||{};let best=null,bp=null;for(const c of cots){const cell=m[c.id];if(cell&&cell.preco!=null&&(bp==null||cell.preco<bp)){bp=cell.preco;best=c.id;}}if(best)A_ESC[it.id]=best;}
   renderAnalise();
 }

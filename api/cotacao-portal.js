@@ -89,8 +89,8 @@ export default async function handler(req, res) {
   const itensResp = Array.isArray(resposta.itens) ? resposta.itens : []
   const geral = resposta.geral || {}
   // total = soma(preço unitário × quantidade) dos itens disponíveis
-  const reqItens = (await getJson('requisicao_itens?select=id,quantidade&requisicao_id=eq.' + tok.requisicao_id)) || []
-  const qtdDe = {}; reqItens.forEach(i => { qtdDe[i.id] = Number(i.quantidade) || 0 })
+  const reqItens = (await getJson('requisicao_itens?select=id,quantidade,produto_nome&requisicao_id=eq.' + tok.requisicao_id)) || []
+  const qtdDe = {}, nomeDe = {}; reqItens.forEach(i => { qtdDe[i.id] = Number(i.quantidade) || 0; nomeDe[i.id] = i.produto_nome || null })
   let total = 0
   const linhas = []
   for (const it of itensResp) {
@@ -98,7 +98,7 @@ export default async function handler(req, res) {
     const disp = it.disponivel !== false
     if (disp && preco > 0) total += preco * (qtdDe[it.item_id] || 0)
     linhas.push({
-      cotacao_id: tok.cotacao_id, item_id: it.item_id,
+      cotacao_id: tok.cotacao_id, item_id: it.item_id, produto_nome: nomeDe[it.item_id] || null,
       preco_unitario: disp ? preco : null, disponivel: disp,
       observacoes: JSON.stringify({ marca: it.marca || '', qtd_disp: it.qtd_disp || null, obs: it.obs || '' }),
     })
