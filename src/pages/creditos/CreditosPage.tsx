@@ -1154,7 +1154,11 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
       const cred = c.valor_aprovado || 0
       const gasto = c.total_gasto || 0
       const res = Math.round((cred - gasto) * 100) / 100
-      return { c, cred, gasto, res }
+      // Como este caixa fechou (acertos da prestação deste crédito)
+      const compl = pv(c, 'complemento'), reemb = pv(c, 'reembolso'), devol = pv(c, 'devolucao'), reman = pv(c, 'remanescente')
+      // Identidade por caixa: crédito + complemento + reembolso − devolução − remanescente = despesas
+      const diff = Math.round((cred + compl + reemb - devol - reman - gasto) * 100) / 100
+      return { c, cred, gasto, res, compl, reemb, devol, reman, diff }
     })
     .sort((a, b) => ((a.c.data_solicitacao || a.c.created_at || '') < (b.c.data_solicitacao || b.c.created_at || '') ? 1 : -1)), [credFiltrados])
 
@@ -1253,10 +1257,19 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
             <thead><tr>
               <th style={th}>Caixa</th><th style={th}>Data</th><th style={th}>Loja</th><th style={th}>Solicitante</th>
               <th style={{ ...th, textAlign: 'right' }}>Crédito</th><th style={{ ...th, textAlign: 'right' }}>Despesas</th>
-              <th style={{ ...th, textAlign: 'right' }}>Resultado</th><th style={th}>Status</th>
+              <th style={{ ...th, textAlign: 'right' }}>Resultado</th>
+              <th style={{ ...th, textAlign: 'right' }}>Como fechou</th><th style={{ ...th, textAlign: 'right' }}>Confere</th>
+              <th style={th}>Status</th>
             </tr></thead>
-            <tbody>{porCaixa.length === 0 ? <tr><td colSpan={8} style={{ padding: 10, color: 'var(--muted)' }}>Nenhum caixa com compras no período.</td></tr> : porCaixa.map(({ c, cred, gasto, res }) => {
+            <tbody>{porCaixa.length === 0 ? <tr><td colSpan={10} style={{ padding: 10, color: 'var(--muted)' }}>Nenhum caixa com compras no período.</td></tr> : porCaixa.map(({ c, cred, gasto, res, compl, reemb, devol, reman, diff }) => {
               const sobra = res > 0.001, exced = res < -0.001
+              const okDiff = Math.abs(diff) <= 0.05
+              // Como este caixa fechou — chips só do que existe (nada de reembolso e devolução juntos no mesmo caixa)
+              const acertos: { txt: string; bg: string; cor: string }[] = []
+              if (compl > 0.005) acertos.push({ txt: `➕ complemento ${fmtR$(compl)}`, bg: '#F3E8FF', cor: '#7C3AED' })
+              if (reemb > 0.005) acertos.push({ txt: `🔄 reembolso ${fmtR$(reemb)}`, bg: '#EDE9FE', cor: '#5B21B6' })
+              if (devol > 0.005) acertos.push({ txt: `💵 devolveu ${fmtR$(devol)}`, bg: '#DCFCE7', cor: '#166534' })
+              if (reman > 0.005) acertos.push({ txt: `🔵 virou crédito ${fmtR$(reman)}`, bg: '#DBEAFE', cor: '#1E40AF' })
               return (
                 <tr key={c.id} style={{ borderTop: '1px solid var(--border)', background: exced ? '#FAF5FF' : sobra ? '#F0FDF4' : undefined }}>
                   <td style={{ padding: '6px 8px' }}><CaixaTag numero={c.numero} /></td>
@@ -1272,7 +1285,19 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
                       background: exced ? '#EDE9FE' : sobra ? '#DCFCE7' : '#F1F5F9',
                       color: exced ? '#5B21B6' : sobra ? '#166534' : '#334155',
                     }}>
-                      {exced ? `↑ além ${fmtR$(Math.abs(res))}` : sobra ? `↓ sobrou ${fmtR$(res)}` : '= exato'}
+                      {exced ? `↑ faltou ${fmtR$(Math.abs(res))}` : sobra ? `↓ sobrou ${fmtR$(res)}` : '= exato'}
+                    </span>
+                  </td>
+                  <td style={{ ...tdN, padding: '6px 8px' }}>
+                    {acertos.length === 0
+                      ? <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>{okDiff ? '—' : 'em prestação'}</span>
+                      : <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end' }}>
+                          {acertos.map((a, i) => <span key={i} style={{ whiteSpace: 'nowrap', fontWeight: 700, fontSize: 10.5, padding: '2px 7px', borderRadius: 99, background: a.bg, color: a.cor }}>{a.txt}</span>)}
+                        </span>}
+                  </td>
+                  <td style={{ ...tdN, padding: '6px 8px' }}>
+                    <span style={{ whiteSpace: 'nowrap', fontWeight: 700, fontSize: 10.5, padding: '2px 8px', borderRadius: 99, background: okDiff ? '#DCFCE7' : '#FEF3C7', color: okDiff ? '#166534' : '#92400E' }}>
+                      {okDiff ? '✅ fechado' : `⏳ ${fmtR$(Math.abs(diff))}`}
                     </span>
                   </td>
                   <td style={{ padding: '6px 8px' }}><span className="badge" style={{ background: st(c.status).bg, color: st(c.status).cor, fontSize: 10.5, padding: '2px 7px', borderRadius: 99, fontWeight: 700 }}>{st(c.status).label}</span></td>
@@ -1281,31 +1306,100 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
             })}</tbody>
           </table>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>💡 <b>↓ sobrou</b> = comprou a menor e deixou crédito; <b>↑ além</b> = gastou acima do crédito (complemento/reembolso). O <b>líquido</b> é o crédito das lojas ainda não consumido.</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>💡 Cada caixa fecha sozinho: <b>Crédito + Complemento + Reembolso − Devolução − Remanescente = Despesas</b>. <b>↓ sobrou</b> = comprou a menor; <b>↑ faltou</b> = gastou além (coberto por complemento/reembolso). <b>Como fechou</b> mostra o destino da diferença — por isso reembolso e devolução <b>nunca</b> aparecem juntos no mesmo caixa. <b>⏳</b> = ainda em prestação.</div>
       </div>
 
       <div className="card" style={{ padding: 16 }}>
-        <div style={{ fontWeight: 700, marginBottom: 10 }}>🏬 Por loja</div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
-            <thead><tr>
-              <th style={th}>Loja</th><th style={{ ...th, textAlign: 'right' }}>Créditos</th><th style={{ ...th, textAlign: 'right' }}>Aprovado</th>
-              <th style={{ ...th, textAlign: 'right' }}>Despesas</th><th style={{ ...th, textAlign: 'right' }}>Complemento</th><th style={{ ...th, textAlign: 'right' }}>Reembolso</th>
-              <th style={{ ...th, textAlign: 'right' }}>Devolução</th><th style={{ ...th, textAlign: 'right' }}>Remanescente</th><th style={{ ...th, textAlign: 'right' }}>Saldo disp. (agora)</th><th style={{ ...th, textAlign: 'right' }}>Devol. pendente</th>
-            </tr></thead>
-            <tbody>{porLoja.length === 0 ? <tr><td colSpan={10} style={{ padding: 10, color: 'var(--muted)' }}>Sem dados no período.</td></tr> : porLoja.map(l => (
-              <tr key={l.loja} style={{ borderTop: '1px solid var(--border)' }}>
-                <td style={{ padding: '6px 8px', fontWeight: 700 }}>{l.loja}</td>
-                <td style={tdN}>{l.qtd}</td><td style={tdN}>{fmtR$(l.aprovado)}</td>
-                <td style={{ ...tdN, color: '#B45309' }}>{fmtR$(l.despesas)}</td>
-                <td style={{ ...tdN, color: '#7C3AED' }}>{fmtR$(l.complemento)}</td>
-                <td style={{ ...tdN, color: '#5B21B6' }}>{fmtR$(l.reembolso)}</td><td style={{ ...tdN, color: '#166534' }}>{fmtR$(l.devolucao)}</td>
-                <td style={{ ...tdN, color: '#1E40AF' }}>{fmtR$(l.remanescente)}</td>
-                <td style={{ ...tdN, color: '#166534' }}>{fmtR$(l.saldoAtual)}</td>
-                <td style={{ ...tdN, color: l.devPend > 0 ? '#5B21B6' : 'var(--muted)' }}>{fmtR$(l.devPend)}</td>
-              </tr>
-            ))}</tbody>
-          </table>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>🏬 Por loja</div>
+        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.5 }}>
+          Cada linha soma vários caixas da loja. A conta fecha assim: <b>Liberado</b> (Aprovado + Complemento + Reembolso) <b>− Despesas = Devolução + Remanescente</b>. O <b>Resultado</b> é o líquido da loja: <span style={{ color: '#166534', fontWeight: 700 }}>↓ sobrou</span> (comprou a menor) ou <span style={{ color: '#7C3AED', fontWeight: 700 }}>↑ faltou</span> (gastou além, coberto por complemento/reembolso).
+        </div>
+        {(() => {
+          const rows = porLoja.map(l => {
+            const liberado = Math.round((l.aprovado + l.complemento + l.reembolso) * 100) / 100
+            const resultado = Math.round((l.aprovado - l.despesas) * 100) / 100          // + sobrou / − faltou
+            const diff = Math.round((liberado - l.despesas - l.devolucao - l.remanescente) * 100) / 100
+            return { ...l, liberado, resultado, diff }
+          })
+          const T = rows.reduce((a, r) => ({
+            qtd: a.qtd + r.qtd, aprovado: a.aprovado + r.aprovado, complemento: a.complemento + r.complemento,
+            reembolso: a.reembolso + r.reembolso, liberado: a.liberado + r.liberado, despesas: a.despesas + r.despesas,
+            devolucao: a.devolucao + r.devolucao, remanescente: a.remanescente + r.remanescente,
+            resultado: a.resultado + r.resultado, saldoAtual: a.saldoAtual + r.saldoAtual, devPend: a.devPend + r.devPend, diff: a.diff + r.diff,
+          }), { qtd: 0, aprovado: 0, complemento: 0, reembolso: 0, liberado: 0, despesas: 0, devolucao: 0, remanescente: 0, resultado: 0, saldoAtual: 0, devPend: 0, diff: 0 })
+          const libCol: React.CSSProperties = { ...tdN, color: '#0F172A', borderLeft: '2px solid var(--border)', background: 'var(--bg2,#F8FAFC)' }
+          const resBadge = (v: number) => {
+            const sobrou = v > 0.005, faltou = v < -0.005
+            return (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', fontWeight: 700, fontSize: 11,
+                padding: '2px 8px', borderRadius: 99,
+                background: faltou ? '#EDE9FE' : sobrou ? '#DCFCE7' : '#F1F5F9',
+                color: faltou ? '#5B21B6' : sobrou ? '#166534' : '#334155',
+              }}>{faltou ? `↑ faltou ${fmtR$(Math.abs(v))}` : sobrou ? `↓ sobrou ${fmtR$(v)}` : '= exato'}</span>
+            )
+          }
+          const confereBadge = (diff: number) => {
+            const ok = Math.abs(diff) <= 0.05
+            return (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', fontWeight: 700, fontSize: 10.5,
+                padding: '2px 8px', borderRadius: 99, background: ok ? '#DCFCE7' : '#FEF3C7', color: ok ? '#166534' : '#92400E',
+              }}>{ok ? '✅ Confere' : `⏳ a acertar ${fmtR$(Math.abs(diff))}`}</span>
+            )
+          }
+          return (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
+                <thead><tr>
+                  <th style={th}>Loja</th><th style={{ ...th, textAlign: 'right' }}>Créditos</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Aprovado</th><th style={{ ...th, textAlign: 'right' }}>+ Compl.</th><th style={{ ...th, textAlign: 'right' }}>+ Reemb.</th>
+                  <th style={{ ...th, textAlign: 'right', borderLeft: '2px solid var(--border)' }}>= Liberado</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Despesas</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Devolução</th><th style={{ ...th, textAlign: 'right' }}>Remanesc.</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Resultado</th><th style={{ ...th, textAlign: 'right' }}>Confere</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Saldo disp. (agora)</th><th style={{ ...th, textAlign: 'right' }}>Devol. pend.</th>
+                </tr></thead>
+                <tbody>{rows.length === 0 ? <tr><td colSpan={13} style={{ padding: 10, color: 'var(--muted)' }}>Sem dados no período.</td></tr> : rows.map(l => (
+                  <tr key={l.loja} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ padding: '6px 8px', fontWeight: 700 }}>{l.loja}</td>
+                    <td style={tdN}>{l.qtd}</td>
+                    <td style={tdN}>{fmtR$(l.aprovado)}</td>
+                    <td style={{ ...tdN, color: l.complemento > 0 ? '#7C3AED' : 'var(--muted)' }}>{fmtR$(l.complemento)}</td>
+                    <td style={{ ...tdN, color: l.reembolso > 0 ? '#5B21B6' : 'var(--muted)' }}>{fmtR$(l.reembolso)}</td>
+                    <td style={libCol}>{fmtR$(l.liberado)}</td>
+                    <td style={{ ...tdN, color: '#B45309' }}>{fmtR$(l.despesas)}</td>
+                    <td style={{ ...tdN, color: l.devolucao > 0 ? '#166534' : 'var(--muted)' }}>{fmtR$(l.devolucao)}</td>
+                    <td style={{ ...tdN, color: l.remanescente > 0 ? '#1E40AF' : 'var(--muted)' }}>{fmtR$(l.remanescente)}</td>
+                    <td style={{ ...tdN, padding: '6px 8px' }}>{resBadge(l.resultado)}</td>
+                    <td style={{ ...tdN, padding: '6px 8px' }}>{confereBadge(l.diff)}</td>
+                    <td style={{ ...tdN, color: l.saldoAtual > 0 ? '#166534' : 'var(--muted)' }}>{fmtR$(l.saldoAtual)}</td>
+                    <td style={{ ...tdN, color: l.devPend > 0 ? '#5B21B6' : 'var(--muted)' }}>{fmtR$(l.devPend)}</td>
+                  </tr>
+                ))}</tbody>
+                {rows.length > 0 && (
+                  <tfoot><tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2,#F8FAFC)' }}>
+                    <td style={{ padding: '8px', fontWeight: 800 }}>Geral</td>
+                    <td style={{ ...tdN, fontWeight: 800 }}>{T.qtd}</td>
+                    <td style={{ ...tdN, fontWeight: 800 }}>{fmtR$(T.aprovado)}</td>
+                    <td style={{ ...tdN, fontWeight: 800, color: '#7C3AED' }}>{fmtR$(T.complemento)}</td>
+                    <td style={{ ...tdN, fontWeight: 800, color: '#5B21B6' }}>{fmtR$(T.reembolso)}</td>
+                    <td style={{ ...libCol, fontWeight: 800 }}>{fmtR$(T.liberado)}</td>
+                    <td style={{ ...tdN, fontWeight: 800, color: '#B45309' }}>{fmtR$(T.despesas)}</td>
+                    <td style={{ ...tdN, fontWeight: 800, color: '#166534' }}>{fmtR$(T.devolucao)}</td>
+                    <td style={{ ...tdN, fontWeight: 800, color: '#1E40AF' }}>{fmtR$(T.remanescente)}</td>
+                    <td style={{ ...tdN, padding: '8px' }}>{resBadge(T.resultado)}</td>
+                    <td style={{ ...tdN, padding: '8px' }}>{confereBadge(T.diff)}</td>
+                    <td style={{ ...tdN, fontWeight: 800, color: '#166534' }}>{fmtR$(T.saldoAtual)}</td>
+                    <td style={{ ...tdN, fontWeight: 800, color: T.devPend > 0 ? '#5B21B6' : 'var(--muted)' }}>{fmtR$(T.devPend)}</td>
+                  </tr></tfoot>
+                )}
+              </table>
+            </div>
+          )
+        })()}
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>
+          💡 <b>Confere</b> checa se a loja fechou: <b>Liberado − Despesas − Devolução − Remanescente ≈ 0</b>. Quando aparece <b>⏳ a acertar</b>, há crédito da loja <b>ainda em prestação</b> (não é erro). Reembolso e Devolução podem coexistir na mesma linha porque são de <b>caixas diferentes</b> — veja o detalhe em "Análise por caixa" acima.
         </div>
       </div>
 
