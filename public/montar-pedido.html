@@ -161,10 +161,10 @@ async function load(){
       const its=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=in.'+idIn+'&select=id,produto_nome,categoria,quantidade,unidade,requisicao_id&limit=5000',{headers:H})).json();
       // consolida por nome de produto (soma quantidades quando repetido) + guarda de qual requisição veio
       const acc={};
-      for(const i of (its||[])){const k=norm(i.produto_nome);if(!k)continue;
-        if(!acc[k]){acc[k]={produto:i.produto_nome,qtd:Number(i.quantidade)||0,un:i.unidade,categoria:i.categoria,reqs:{},reqItemId:i.id,reqIdPrimary:i.requisicao_id,itemIds:[i.id]};}
-        else{acc[k].qtd+=Number(i.quantidade)||0; acc[k].itemIds.push(i.id); if(!acc[k].categoria&&i.categoria)acc[k].categoria=i.categoria; if(!acc[k].un&&i.unidade)acc[k].un=i.unidade;}
-        const rm=reqMap[i.requisicao_id]; if(rm)acc[k].reqs[rm.num]=rm.dt;
+      for(const i of (its||[])){const k=norm(i.produto_nome);if(!k)continue;const qi=Number(i.quantidade)||0;
+        if(!acc[k]){acc[k]={produto:i.produto_nome,qtd:qi,un:i.unidade,categoria:i.categoria,reqs:{},reqQtd:{},reqItemId:i.id,reqIdPrimary:i.requisicao_id,itemIds:[i.id]};}
+        else{acc[k].qtd+=qi; acc[k].itemIds.push(i.id); if(!acc[k].categoria&&i.categoria)acc[k].categoria=i.categoria; if(!acc[k].un&&i.unidade)acc[k].un=i.unidade;}
+        const rm=reqMap[i.requisicao_id]; if(rm){acc[k].reqs[rm.num]=rm.dt; acc[k].reqQtd[rm.num]=(acc[k].reqQtd[rm.num]||0)+qi;}
       }
       // rastreabilidade: nº da requisição de compra + dia em que foi gerada
       Object.values(acc).forEach(a=>{const nums=Object.keys(a.reqs).sort((x,y)=>Number(x)-Number(y));a.reqNum=nums.map(n=>'REQ-'+String(n).padStart(4,'0')).join(', ');a.reqDia=nums.map(n=>dmy(a.reqs[n])).join(', ');});
@@ -268,6 +268,8 @@ function eff(r){
   return 'ok';
 }
 function falta(r){const f=nb(r.qtd)-nb(r.qComprada);return f>0?f:0;}
+// Rateio da quantidade por requisição — deixa claro que a Qtd é a SOMA de várias requisições da semana.
+function rateioQtd(r){const rq=r.reqQtd||{};const ns=Object.keys(rq);if(ns.length<2)return '';const soma=ns.reduce((s,n)=>s+(Number(rq[n])||0),0);const det=ns.sort((a,b)=>Number(a)-Number(b)).map(n=>'REQ-'+String(n).padStart(4,'0')+': '+rq[n]).join(' · ');return `<div style="font-size:10px;color:#B45309;margin-top:3px;line-height:1.3" title="Este produto está em ${ns.length} requisições — a Qtd é a SOMA da semana">Σ ${soma} = ${det}</div>`;}
 function compEm(r){return r.compradoEm!=null?r.compradoEm:(r.m.forns?r.m.forns.join(', '):'');}
 function valorC(r){return r.valor!=null&&r.valor!==''?nb(r.valor):(r.m.vsum||0);}
 function setF(f){FILTRO=f;[...document.querySelectorAll('#seg button')].forEach(b=>b.classList.toggle('on',b.dataset.f===f));render();}
@@ -313,7 +315,7 @@ function render(){
       <td style="text-align:center"><input type="checkbox" ${r.pedir?'checked':''} onchange="ov(${gi},'pedir',this.checked)" title="Marcar para gerar pedido de compra" style="width:17px;height:17px;cursor:pointer"></td>
       <td><input value="${esc(r.produto)}" onchange="ov(${gi},'produto',this.value)" placeholder="produto" style="width:100%"></td>
       <td style="white-space:nowrap;font-size:11px">${r.reqNum?`<b style="color:var(--v)">${esc(r.reqNum)}</b><div style="color:#6b7280">🗓️ ${esc(r.reqDia||'')}</div>`:'<span style="color:#9ca3af">—</span>'}</td>
-      <td class="q"><input value="${esc(r.qtd)}" onchange="ov(${gi},'qtd',this.value)" style="width:44px"> <input value="${esc(r.un)}" onchange="ov(${gi},'un',this.value)" placeholder="un" style="width:64px"></td>
+      <td class="q"><input value="${esc(r.qtd)}" onchange="ov(${gi},'qtd',this.value)" style="width:44px"> <input value="${esc(r.un)}" onchange="ov(${gi},'un',this.value)" placeholder="un" style="width:64px">${rateioQtd(r)}</td>
       <td class="q"><input value="${esc(r.qComprada)}" onchange="ov(${gi},'qComprada',this.value)" placeholder="0" style="width:52px" title="Quantidade já comprada"></td>
       <td class="q" style="font-weight:800;color:${f>0?'#DC2626':'#15803D'}">${nb(r.qComprada)>0||r.manual!=null?f:''}</td>
       <td class="q" style="white-space:nowrap"><input value="${esc(r.qRecebida)}" onchange="ov(${gi},'qRecebida',this.value)" placeholder="0" style="width:52px;font-weight:700;color:#0f766e" title="Quantidade entregue/recebida — preenche sozinho pelas entradas do estoque; ajuste à mão se o recebimento não passou pelo Recebimento Inteligente">${r._recAuto>0&&(r.qRecebida===''||String(r.qRecebida)===String(r._recAuto))?' <span class="q" style="font-size:9px" title="veio automático do estoque">auto</span>':(nb(r.qRecebida)>0?' <span class="q" style="font-size:9px;color:#0f766e" title="ajustado manualmente">✍</span>':'')}${entregaStatus(r)==='entregue'?' <span class="st ok" style="font-size:9px;padding:1px 6px">📦</span>':entregaStatus(r)==='parcial'?' <span class="st wr" style="font-size:9px;padding:1px 6px">🟡</span>':''}</td>
