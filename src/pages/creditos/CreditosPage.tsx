@@ -276,11 +276,13 @@ export default function CreditosPage() {
   )
 }
 
-function Kpi({ titulo, valor, destaque }: { titulo: string; valor: string; destaque?: boolean }) {
+function Kpi({ titulo, valor, destaque, sub, cor }: { titulo: string; valor: string; destaque?: boolean; sub?: string; cor?: string }) {
+  const c = cor || (destaque ? '#DC2626' : 'var(--bordo)')
   return (
-    <div className="card" style={{ padding: '12px 14px', borderLeft: `3px solid ${destaque ? '#DC2626' : 'var(--bordo)'}` }}>
+    <div className="card" style={{ padding: '12px 14px', borderLeft: `3px solid ${c}` }}>
       <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>{titulo}</div>
-      <div style={{ fontSize: 18, fontWeight: 800, color: destaque ? '#DC2626' : 'var(--bordo)' }}>{valor}</div>
+      <div style={{ fontSize: 18, fontWeight: 800, color: c }}>{valor}</div>
+      {sub && <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 3, lineHeight: 1.3 }}>{sub}</div>}
     </div>
   )
 }
@@ -1047,8 +1049,10 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
       loja, qtd: cs.length,
       aprovado: cs.reduce((s, c) => s + (c.valor_aprovado || 0), 0),
       despesas: ds.reduce((s, d) => s + (d.valor || 0), 0),
+      complemento: cs.reduce((s, c) => s + pv(c, 'complemento'), 0),
       reembolso: cs.reduce((s, c) => s + pv(c, 'reembolso'), 0),
       devolucao: cs.reduce((s, c) => s + pv(c, 'devolucao'), 0),
+      remanescente: cs.reduce((s, c) => s + pv(c, 'remanescente'), 0),
       saldoAtual, devPend,
     }
   }).filter(l => l.qtd > 0 || l.saldoAtual > 0 || l.despesas > 0), [credFiltrados, despFiltradas, creditos])
@@ -1069,6 +1073,14 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
 
   const th: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.03em' }
   const tdN: React.CSSProperties = { textAlign: 'right', padding: '6px 8px', fontWeight: 700 }
+  const grpLabel: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }
+  const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10 }
+
+  // Conciliação: Aprovado + Complemento + Reembolso − Devolução − Remanescente = Despesas.
+  // Diferença ≠ 0 ⇒ créditos ainda em prestação (valor a acertar), não é erro.
+  const concLeft = tot.aprovado + tot.complemento + tot.reembolso - tot.devolucao - tot.remanescente
+  const concDiff = Math.round((concLeft - tot.despesas) * 100) / 100
+  const confere = Math.abs(concDiff) <= 0.05
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -1084,17 +1096,50 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
         </div>
       </div>
 
-      <div>
-        <div style={{ fontWeight: 800, color: 'var(--bordo)', marginBottom: 8 }}>📊 Totais no período {fLoja && `· ${fLoja}`}</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10 }}>
-          <Kpi titulo="📄 Créditos" valor={String(tot.qtd)} />
-          <Kpi titulo="✅ Aprovado" valor={fmtR$(tot.aprovado)} />
-          <Kpi titulo="🧾 Despesas" valor={fmtR$(tot.despesas)} />
-          <Kpi titulo="🔄 Reembolsos" valor={fmtR$(tot.reembolso)} />
-          <Kpi titulo="💵 Devoluções" valor={fmtR$(tot.devolucao)} />
-          <Kpi titulo="🔵 Remanescente" valor={fmtR$(tot.remanescente)} />
-          <Kpi titulo="➕ Complementos" valor={fmtR$(tot.complemento)} />
-          <Kpi titulo="🏦 Saldo disponível (agora)" valor={fmtR$(saldoDispTotal)} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ fontWeight: 800, color: 'var(--bordo)' }}>📊 Totais no período {fLoja && `· ${fLoja}`}</div>
+
+        {/* 1 — Recursos liberados */}
+        <div>
+          <div style={grpLabel}>💳 Recursos liberados</div>
+          <div style={grid}>
+            <Kpi titulo="📄 Créditos (qtd)" valor={String(tot.qtd)} sub="solicitações no período" />
+            <Kpi titulo="💰 Aprovado (adiantado)" valor={fmtR$(tot.aprovado)} cor="#166534" sub="recurso liberado ao colaborador antes da compra" />
+          </div>
+        </div>
+
+        {/* 2 — Utilização (custo real) */}
+        <div>
+          <div style={grpLabel}>🧾 Utilização — custo real</div>
+          <div style={grid}>
+            <Kpi titulo="🧾 Despesas comprovadas" valor={fmtR$(tot.despesas)} cor="#B45309" sub="total gasto com nota/comprovante — o custo real do período" />
+          </div>
+        </div>
+
+        {/* 3 — Acertos de caixa */}
+        <div>
+          <div style={grpLabel}>⚖️ Acertos de caixa</div>
+          <div style={grid}>
+            <Kpi titulo="➕ Complemento" valor={fmtR$(tot.complemento)} cor="#7C3AED" sub="empresa completou o que faltou (gasto acima do crédito)" />
+            <Kpi titulo="🔴 Reembolso" valor={fmtR$(tot.reembolso)} cor="#5B21B6" sub="devolvido ao colaborador (recurso próprio ou excedente)" />
+            <Kpi titulo="💵 Devolução" valor={fmtR$(tot.devolucao)} cor="#166534" sub="sobra que voltou ao caixa" />
+            <Kpi titulo="🔵 Remanescente" valor={fmtR$(tot.remanescente)} cor="#1E40AF" sub="sobra que virou crédito para a próxima compra" />
+            <Kpi titulo="🏦 Saldo disponível (agora)" valor={fmtR$(saldoDispTotal)} sub="pronto para gerar novo caixa" />
+          </div>
+        </div>
+
+        {/* Conciliação — mostra a conta fechando */}
+        <div className="card" style={{ padding: '12px 14px', borderLeft: `3px solid ${confere ? '#166534' : '#B45309'}`, background: confere ? '#F0FDF4' : '#FFFBEB' }}>
+          <div style={{ fontWeight: 700, marginBottom: 6, color: confere ? '#166534' : '#92400E' }}>
+            ⚖️ Conciliação do período {confere ? '· ✅ tudo conciliado' : `· ⏳ a acertar ${fmtR$(Math.abs(concDiff))}`}
+          </div>
+          <div style={{ fontSize: 12.5, lineHeight: 1.8 }}>
+            Aprovado <b>{fmtR$(tot.aprovado)}</b> ➕ Complemento <b style={{ color: '#7C3AED' }}>{fmtR$(tot.complemento)}</b> ➕ Reembolso <b style={{ color: '#5B21B6' }}>{fmtR$(tot.reembolso)}</b> ➖ Devolução <b style={{ color: '#166534' }}>{fmtR$(tot.devolucao)}</b> ➖ Remanescente <b style={{ color: '#1E40AF' }}>{fmtR$(tot.remanescente)}</b> <span style={{ color: 'var(--muted)' }}>➡️</span> <b style={{ color: '#B45309' }}>Despesas {fmtR$(tot.despesas)}</b>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+            💡 As <b>Despesas</b> são o <b>custo real</b>. As demais linhas mostram <b>como</b> esse custo foi financiado e acertado no caixa.
+            {!confere && <> A diferença de <b>{fmtR$(Math.abs(concDiff))}</b> são créditos <b>ainda em prestação</b> (valor a acertar).</>}
+          </div>
         </div>
       </div>
 
@@ -1104,15 +1149,17 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
           <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
             <thead><tr>
               <th style={th}>Loja</th><th style={{ ...th, textAlign: 'right' }}>Créditos</th><th style={{ ...th, textAlign: 'right' }}>Aprovado</th>
-              <th style={{ ...th, textAlign: 'right' }}>Despesas</th><th style={{ ...th, textAlign: 'right' }}>Reembolso</th>
-              <th style={{ ...th, textAlign: 'right' }}>Devolução</th><th style={{ ...th, textAlign: 'right' }}>Saldo disp. (agora)</th><th style={{ ...th, textAlign: 'right' }}>Devol. pendente</th>
+              <th style={{ ...th, textAlign: 'right' }}>Despesas</th><th style={{ ...th, textAlign: 'right' }}>Complemento</th><th style={{ ...th, textAlign: 'right' }}>Reembolso</th>
+              <th style={{ ...th, textAlign: 'right' }}>Devolução</th><th style={{ ...th, textAlign: 'right' }}>Remanescente</th><th style={{ ...th, textAlign: 'right' }}>Saldo disp. (agora)</th><th style={{ ...th, textAlign: 'right' }}>Devol. pendente</th>
             </tr></thead>
-            <tbody>{porLoja.length === 0 ? <tr><td colSpan={8} style={{ padding: 10, color: 'var(--muted)' }}>Sem dados no período.</td></tr> : porLoja.map(l => (
+            <tbody>{porLoja.length === 0 ? <tr><td colSpan={10} style={{ padding: 10, color: 'var(--muted)' }}>Sem dados no período.</td></tr> : porLoja.map(l => (
               <tr key={l.loja} style={{ borderTop: '1px solid var(--border)' }}>
                 <td style={{ padding: '6px 8px', fontWeight: 700 }}>{l.loja}</td>
                 <td style={tdN}>{l.qtd}</td><td style={tdN}>{fmtR$(l.aprovado)}</td>
                 <td style={{ ...tdN, color: '#B45309' }}>{fmtR$(l.despesas)}</td>
-                <td style={tdN}>{fmtR$(l.reembolso)}</td><td style={tdN}>{fmtR$(l.devolucao)}</td>
+                <td style={{ ...tdN, color: '#7C3AED' }}>{fmtR$(l.complemento)}</td>
+                <td style={{ ...tdN, color: '#5B21B6' }}>{fmtR$(l.reembolso)}</td><td style={{ ...tdN, color: '#166534' }}>{fmtR$(l.devolucao)}</td>
+                <td style={{ ...tdN, color: '#1E40AF' }}>{fmtR$(l.remanescente)}</td>
                 <td style={{ ...tdN, color: '#166534' }}>{fmtR$(l.saldoAtual)}</td>
                 <td style={{ ...tdN, color: l.devPend > 0 ? '#5B21B6' : 'var(--muted)' }}>{fmtR$(l.devPend)}</td>
               </tr>
