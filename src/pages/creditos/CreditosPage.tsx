@@ -1153,18 +1153,22 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
     .map(c => {
       const cred = c.valor_aprovado || 0
       const gasto = c.total_gasto || 0
-      const res = Math.round((cred - gasto) * 100) / 100
       // Como este caixa fechou (acertos da prestação deste crédito)
       const compl = pv(c, 'complemento'), reemb = pv(c, 'reembolso'), devol = pv(c, 'devolucao'), reman = pv(c, 'remanescente')
+      // Complemento é crédito GERADO pela empresa → conta como crédito. Só vira reembolso o que passar
+      // de TODO o crédito gerado (aprovado + complemento). Por isso o resultado compara contra credGerado.
+      const credGerado = Math.round((cred + compl) * 100) / 100
+      const res = Math.round((credGerado - gasto) * 100) / 100   // + sobra (não consumido) / − reembolso ao prestador
       // Identidade por caixa: crédito + complemento + reembolso − devolução − remanescente = despesas
       const diff = Math.round((cred + compl + reemb - devol - reman - gasto) * 100) / 100
-      return { c, cred, gasto, res, compl, reemb, devol, reman, diff }
+      return { c, cred, gasto, credGerado, res, compl, reemb, devol, reman, diff }
     })
     .sort((a, b) => ((a.c.data_solicitacao || a.c.created_at || '') < (b.c.data_solicitacao || b.c.created_at || '') ? 1 : -1)), [credFiltrados])
 
   const resumoCaixa = useMemo(() => {
-    // Sobra = crédito da empresa não gasto (a favor da empresa). Excedente = compra além do crédito,
-    // sem solicitação/crédito no caixa → vira REEMBOLSO a quem gerou o caixa. NÃO se subtrai um do outro.
+    // Sobra = crédito não gasto (a favor da empresa). Reembolso = compra acima de TODO o crédito gerado
+    // (aprovado + complemento) → volta a quem gerou o caixa. Complemento NÃO é reembolso (é crédito gerado).
+    // NÃO se subtrai um do outro.
     const sobras = porCaixa.filter(x => x.res > 0.001).reduce((s, x) => s + x.res, 0)
     const excedentes = porCaixa.filter(x => x.res < -0.001).reduce((s, x) => s + Math.abs(x.res), 0)
     return { sobras, excedentes, nSobra: porCaixa.filter(x => x.res > 0.001).length, nExced: porCaixa.filter(x => x.res < -0.001).length }
@@ -1266,7 +1270,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
         </div>
         <div style={{ ...grid, marginBottom: 14 }}>
           <Kpi titulo="🟢 Crédito não consumido" valor={fmtR$(resumoCaixa.sobras)} cor="#166534" sub={`${resumoCaixa.nSobra} caixa(s) compraram a menor — sobra fica a favor da empresa`} />
-          <Kpi titulo="🔴 Reembolso ao prestador" valor={fmtR$(resumoCaixa.excedentes)} cor="#5B21B6" sub={`${resumoCaixa.nExced} caixa(s) compraram além do crédito (sem crédito solicitado) — devolvido a quem gerou o caixa`} />
+          <Kpi titulo="🔴 Reembolso ao prestador" valor={fmtR$(resumoCaixa.excedentes)} cor="#5B21B6" sub={`${resumoCaixa.nExced} caixa(s) com compra acima de TODO o crédito gerado (aprovado + complemento) — excedente volta a quem gerou o caixa`} />
           <Kpi titulo="📦 Caixas analisados" valor={String(porCaixa.length)} sub={`${resumoCaixa.nSobra} a menor · ${resumoCaixa.nExced} além · ${Math.max(0, porCaixa.length - resumoCaixa.nSobra - resumoCaixa.nExced)} exato`} />
         </div>
         <div style={{ overflowX: 'auto' }}>
@@ -1302,7 +1306,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
                       background: exced ? '#EDE9FE' : sobra ? '#DCFCE7' : '#F1F5F9',
                       color: exced ? '#5B21B6' : sobra ? '#166534' : '#334155',
                     }}>
-                      {exced ? `↑ faltou ${fmtR$(Math.abs(res))}` : sobra ? `↓ sobrou ${fmtR$(res)}` : '= exato'}
+                      {exced ? `🔄 reembolso ${fmtR$(Math.abs(res))}` : sobra ? `↓ sobrou ${fmtR$(res)}` : '= exato'}
                     </span>
                   </td>
                   <td style={{ ...tdN, padding: '6px 8px' }}>
@@ -1323,7 +1327,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
             })}</tbody>
           </table>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>💡 Cada caixa fecha sozinho: <b>Crédito + Complemento + Reembolso − Devolução − Remanescente = Despesas</b>. <b>↓ sobrou</b> = comprou a menor (crédito não consumido, fica a favor da empresa); <b>↑ faltou</b> = gastou além do crédito sem solicitação → <b>vira reembolso a quem gerou o caixa</b> (ou complemento, se a empresa cobriu direto). <b>Como fechou</b> mostra o destino da diferença — por isso reembolso e devolução <b>nunca</b> aparecem juntos no mesmo caixa. <b>⏳</b> = ainda em prestação.</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>💡 Cada caixa fecha sozinho: <b>Crédito + Complemento + Reembolso − Devolução − Remanescente = Despesas</b>. <b>↓ sobrou</b> = comprou a menor (crédito não consumido, fica a favor da empresa); <b>🔄 reembolso</b> = gastou acima de <b>TODO o crédito gerado</b> (aprovado + complemento) → o excedente <b>volta a quem gerou o caixa</b>. Complemento é crédito gerado pela empresa e conta como crédito — não é reembolso. <b>Como fechou</b> mostra o destino da diferença — por isso reembolso e devolução <b>nunca</b> aparecem juntos no mesmo caixa. <b>⏳</b> = ainda em prestação.</div>
       </div>
 
       <div className="card" style={{ padding: 16 }}>
