@@ -93,8 +93,10 @@ export default function CotacaoPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    try { setReqs(await fetchRequisicoes(loja).catch(() => [])) } finally { setLoading(false) }
-  }, [loja])
+    // Carrega de TODAS as lojas; o filtro por loja é aplicado no client (abaixo).
+    // Assim a busca por NÚMERO sempre acha a requisição (o número é único), mesmo que a loja do topo esteja diferente.
+    try { setReqs(await fetchRequisicoes().catch(() => [])) } finally { setLoading(false) }
+  }, [])
   useEffect(() => { load() }, [load])
 
   // deep-link ?req=<id> (vindo da validação da requisição) → abre a cotação já selecionada, 1x
@@ -111,9 +113,14 @@ export default function CotacaoPage() {
   useEffect(() => { if (sel) { const f = reqs.find(r => r.id === sel.id); if (f && f !== sel) setSel(f) } }, [reqs, sel])
 
   const filtradas = reqs.filter(r => {
-    if (!busca) return true
-    const t = busca.toLowerCase()
-    return r.titulo.toLowerCase().includes(t) || String(r.numero).includes(t) || (r.responsavel_nome || '').toLowerCase().includes(t)
+    const t = busca.trim().toLowerCase()
+    // Sem busca: mostra as da loja selecionada no topo (comportamento normal).
+    if (!t) return !loja || loja === 'Todas as Lojas' || r.loja === loja
+    // Com busca: encontra em QUALQUER loja. Número casa em qualquer formato (REQ-0026, 0026, 26).
+    const tNum = t.replace(/\D/g, '')
+    const byNum = tNum !== '' && Number(tNum) === Number(r.numero)
+    const byText = (r.titulo || '').toLowerCase().includes(t) || (r.responsavel_nome || '').toLowerCase().includes(t)
+    return byNum || byText
   })
 
   // ── Detalhe: análise da cotação ───────────────────────────

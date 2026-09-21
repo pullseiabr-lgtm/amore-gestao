@@ -95,6 +95,25 @@ export default function PedidosPage() {
     setPedidos(list); setLoading(false)
   }, [])
   useEffect(() => { load() }, [load])
+
+  // Cancelar/Excluir pedido: remove o pedido da lista (app_config), cancela o pedido relacional
+  // e LIBERA a requisição de origem para gerar um novo pedido. Só o comprador (podeCriar).
+  const cancelarPedido = async (p: Pedido) => {
+    const nome = p.numero_pedido ? `${p.numero_pedido} ` : ''
+    if (!confirm(`Cancelar/excluir o pedido ${nome}de ${p.fornecedor || 'fornecedor'} (${fmtR$(p.total || 0)})?\n\nO pedido sai da lista. Se veio de uma requisição, ela é liberada para gerar um novo pedido.`)) return
+    const uname = user?.name || 'Painel'
+    try {
+      await sb.from('app_config').delete().eq('chave', p.chave)
+      if (p.requisicao_id) {
+        try {
+          if (p.numero_pedido) await sb.from('pedidos_compra').update({ status: 'cancelada' }).eq('numero', p.numero_pedido)
+          await updateRequisicao(p.requisicao_id, { pedido_numero: null, pedido_status: null, status: 'aprovada' } as any).catch(() => {})
+          await insertReqTimeline({ requisicao_id: p.requisicao_id, tipo: 'ajuste', descricao: `Pedido ${p.numero_pedido || ''} cancelado por ${uname} — requisição liberada para novo pedido`, usuario: uname, dados: null }).catch(() => {})
+        } catch { /* segue */ }
+      }
+      toast('Pedido cancelado/excluído.'); load()
+    } catch { toast('Falha ao cancelar o pedido.', 'error') }
+  }
   useEffect(() => { fetchFornecedores(fLoja).then(f => setForns(f.filter(x => x.ativo !== false))).catch(() => setForns([])) }, [fLoja])
   useEffect(() => { if (!mNovo) return; fetchProdutos(fLoja, { ativo: true }).then(setProdutosLoja).catch(() => setProdutosLoja([])) }, [mNovo, fLoja])
   useEffect(() => { (async () => {
@@ -344,6 +363,9 @@ export default function PedidosPage() {
                 {p.requisicao_id && <a href={`${siteOrigin()}/ciclo-requisicao.html?id=${p.requisicao_id}`} target="_blank" rel="noreferrer" className="btn" style={{ padding: '8px 14px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }} title="Ver o ciclo completo da requisição de origem">🔗 Ciclo</a>}
                 {podeCriar && <button onClick={() => abrirEnviar(p)} className="btn" style={{ padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <Send size={15} /> Enviar
+                </button>}
+                {podeCriar && <button onClick={() => cancelarPedido(p)} className="btn" title="Cancelar / excluir este pedido" style={{ padding: '8px 12px', display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--bg)', color: '#DC2626', border: '1px solid var(--border)' }}>
+                  <Trash2 size={15} /> Cancelar
                 </button>}
               </div>
               {aberto && <div style={{ ...card, marginTop: -6, background: 'var(--bg)' }}>
