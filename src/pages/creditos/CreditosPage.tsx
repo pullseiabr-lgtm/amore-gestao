@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Loader, Plus, RefreshCw, Wallet, FileCheck2, Send, Check, X, ChevronLeft, Paperclip, Trash2, ExternalLink, AlertTriangle } from 'lucide-react'
+import { Loader, Plus, RefreshCw, Wallet, FileCheck2, Send, Check, X, ChevronLeft, Paperclip, Trash2, ExternalLink, AlertTriangle, BarChart3 } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
@@ -124,8 +124,9 @@ export default function CreditosPage() {
   const { user, can } = useAuth()
   const podeAprovar = can('financeiro', 'create') || user?.role === 'admin' || user?.role === 'super_admin'
 
-  const [tab, setTab] = useState<'solicitacoes' | 'prestacao' | 'saldos'>('solicitacoes')
+  const [tab, setTab] = useState<'solicitacoes' | 'prestacao' | 'saldos' | 'painel'>('solicitacoes')
   const [creditos, setCreditos] = useState<Credito[]>([])
+  const [despesasAll, setDespesasAll] = useState<Despesa[]>([])
   const [profiles, setProfiles] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [novoOpen, setNovoOpen] = useState(false)
@@ -137,8 +138,12 @@ export default function CreditosPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await sb.from('creditos').select('*').order('created_at', { ascending: false })
-    setCreditos((data as Credito[]) || [])
+    const [cr, dp] = await Promise.all([
+      sb.from('creditos').select('*').order('created_at', { ascending: false }),
+      sb.from('credito_despesas').select('*').order('data', { ascending: false }),
+    ])
+    setCreditos((cr.data as Credito[]) || [])
+    setDespesasAll((dp.data as Despesa[]) || [])
     setLoading(false)
   }, [])
 
@@ -180,6 +185,7 @@ export default function CreditosPage() {
           <button className={`btn ${tab === 'solicitacoes' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('solicitacoes')}><Wallet size={13} /> Solicitações</button>
           <button className={`btn ${tab === 'prestacao' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('prestacao')}><FileCheck2 size={13} /> Prestação de Contas</button>
           <button className={`btn ${tab === 'saldos' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('saldos')}><Wallet size={13} /> Saldos disponíveis{saldos.length > 0 && <span className="badge" style={{ background: '#DCFCE7', color: '#166534' }}>{saldos.length}</span>}</button>
+          <button className={`btn ${tab === 'painel' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('painel')}><BarChart3 size={13} /> Painel / Gestão</button>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <button className="btn bo bsm" onClick={load} title="Atualizar"><RefreshCw size={13} /></button>
@@ -228,8 +234,10 @@ export default function CreditosPage() {
         </>
       ) : tab === 'prestacao' ? (
         <PrestacaoContas creditos={creditos} selId={prestacaoId} setSelId={setPrestacaoId} onChange={load} user={user} />
-      ) : (
+      ) : tab === 'saldos' ? (
         <SaldosDisponiveis saldos={saldos} onGerar={setSaldoSrc} />
+      ) : (
+        <PainelGestaoCred creditos={creditos} despesas={despesasAll} />
       )}
 
       {novoOpen && <NovoCredito onClose={() => setNovoOpen(false)} onSaved={load} lojaAtual={loja} profiles={profiles} user={user} />}
@@ -928,6 +936,186 @@ function GerarCaixaDoSaldo({ origem, onClose, onSaved, profiles, user }: {
           <button className="btn bo bsm" onClick={onClose}>Cancelar</button>
           <button className="btn bp bsm" onClick={salvar} disabled={salvando}>{salvando ? <Loader className="spin" size={13} /> : <Check size={13} />} Gerar caixa</button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Origem do crédito (como foi gerado) ──────────────────────
+function origemCred(c: Credito): string {
+  if (c.estimativa_base?.origem_saldo) return '🏦 Gerado de saldo'
+  if (c.estimativa_base?.reembolso_proprio) return '🔄 Reembolso (recurso próprio)'
+  if (c.estimativa_base?.lancamento_direto) return '⚡ Lançado direto (sem aprovação)'
+  return '📝 Solicitação aprovada'
+}
+
+// ── Aba: Painel / Gestão (análise financeira do módulo) ──────
+function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesas: Despesa[] }) {
+  const hojeStr = new Date().toISOString().slice(0, 10)
+  const [dataIni, setDataIni] = useState(hojeStr.slice(0, 8) + '01')
+  const [dataFim, setDataFim] = useState(hojeStr)
+  const [fLoja, setFLoja] = useState('')
+
+  const credById = useMemo(() => { const m: Record<string, Credito> = {}; for (const c of creditos) m[c.id] = c; return m }, [creditos])
+  const ativos = (c: Credito) => !['cancelado', 'excluido', 'reprovado'].includes(c.status)
+
+  const credFiltrados = useMemo(() => creditos.filter(c => {
+    if (!ativos(c)) return false
+    const d = (c.data_solicitacao || c.created_at || '').slice(0, 10)
+    if (d < dataIni || d > dataFim) return false
+    if (fLoja && c.unidade !== fLoja) return false
+    return true
+  }), [creditos, dataIni, dataFim, fLoja])
+
+  const despFiltradas = useMemo(() => despesas.filter(d => {
+    const dd = (d.data || '').slice(0, 10)
+    if (dd < dataIni || dd > dataFim) return false
+    const loja = credById[d.credito_id]?.unidade
+    if (fLoja && loja !== fLoja) return false
+    return true
+  }).map(d => ({ ...d, _loja: credById[d.credito_id]?.unidade || '—' }))
+    .sort((a, b) => (a.data < b.data ? 1 : -1)), [despesas, credById, dataIni, dataFim, fLoja])
+
+  const sum = (arr: Credito[], f: (c: Credito) => number) => arr.reduce((s, c) => s + (f(c) || 0), 0)
+  const pv = (c: Credito, k: string) => Number((c.prestacao || {})[k] || 0)
+
+  const tot = useMemo(() => ({
+    qtd: credFiltrados.length,
+    solicitado: sum(credFiltrados, c => c.valor_solicitado || 0),
+    aprovado: sum(credFiltrados, c => c.valor_aprovado || 0),
+    despesas: despFiltradas.reduce((s, d) => s + (d.valor || 0), 0),
+    reembolso: sum(credFiltrados, c => pv(c, 'reembolso')),
+    devolucao: sum(credFiltrados, c => pv(c, 'devolucao')),
+    remanescente: sum(credFiltrados, c => pv(c, 'remanescente')),
+    complemento: sum(credFiltrados, c => pv(c, 'complemento')),
+  }), [credFiltrados, despFiltradas])
+
+  const porLoja = useMemo(() => LOJAS.map(loja => {
+    const cs = credFiltrados.filter(c => c.unidade === loja)
+    const ds = despFiltradas.filter(d => d._loja === loja)
+    const saldoAtual = creditos.filter(c => c.unidade === loja).reduce((s, c) => s + dispSaldo(c), 0)
+    const devPend = creditos.filter(c => c.unidade === loja && c.status === 'aguardando_devolucao').reduce((s, c) => s + Math.abs(c.saldo || 0), 0)
+    return {
+      loja, qtd: cs.length,
+      aprovado: cs.reduce((s, c) => s + (c.valor_aprovado || 0), 0),
+      despesas: ds.reduce((s, d) => s + (d.valor || 0), 0),
+      reembolso: cs.reduce((s, c) => s + pv(c, 'reembolso'), 0),
+      devolucao: cs.reduce((s, c) => s + pv(c, 'devolucao'), 0),
+      saldoAtual, devPend,
+    }
+  }).filter(l => l.qtd > 0 || l.saldoAtual > 0 || l.despesas > 0), [credFiltrados, despFiltradas, creditos])
+
+  const porOrigem = useMemo(() => {
+    const m: Record<string, { qtd: number; valor: number }> = {}
+    for (const c of credFiltrados) { const o = origemCred(c); (m[o] = m[o] || { qtd: 0, valor: 0 }); m[o].qtd++; m[o].valor += (c.valor_aprovado || c.valor_solicitado || 0) }
+    return Object.entries(m).sort((a, b) => b[1].valor - a[1].valor)
+  }, [credFiltrados])
+
+  const porStatus = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const c of credFiltrados) m[c.status] = (m[c.status] || 0) + 1
+    return Object.entries(m).sort((a, b) => b[1] - a[1])
+  }, [credFiltrados])
+
+  const saldoDispTotal = useMemo(() => creditos.reduce((s, c) => s + dispSaldo(c), 0), [creditos])
+
+  const th: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.03em' }
+  const tdN: React.CSSProperties = { textAlign: 'right', padding: '6px 8px', fontWeight: 700 }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="card" style={{ padding: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'end' }}>
+        <div className="fg" style={{ margin: 0 }}><label className="fl">De</label><input type="date" className="inp" value={dataIni} onChange={e => setDataIni(e.target.value)} /></div>
+        <div className="fg" style={{ margin: 0 }}><label className="fl">Até</label><input type="date" className="inp" value={dataFim} onChange={e => setDataFim(e.target.value)} /></div>
+        <div className="fg" style={{ margin: 0 }}><label className="fl">Loja</label>
+          <select className="sel" value={fLoja} onChange={e => setFLoja(e.target.value)}><option value="">Todas as lojas</option>{LOJAS.map(l => <option key={l} value={l}>{l}</option>)}</select>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn bo bsm" onClick={() => { setDataIni(hojeStr.slice(0, 8) + '01'); setDataFim(hojeStr) }}>Mês atual</button>
+          <button className="btn bo bsm" onClick={() => { setDataIni(hojeStr.slice(0, 4) + '-01-01'); setDataFim(hojeStr) }}>Ano</button>
+        </div>
+      </div>
+
+      <div>
+        <div style={{ fontWeight: 800, color: 'var(--bordo)', marginBottom: 8 }}>📊 Totais no período {fLoja && `· ${fLoja}`}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10 }}>
+          <Kpi titulo="📄 Créditos" valor={String(tot.qtd)} />
+          <Kpi titulo="✅ Aprovado" valor={fmtR$(tot.aprovado)} />
+          <Kpi titulo="🧾 Despesas" valor={fmtR$(tot.despesas)} />
+          <Kpi titulo="🔄 Reembolsos" valor={fmtR$(tot.reembolso)} />
+          <Kpi titulo="💵 Devoluções" valor={fmtR$(tot.devolucao)} />
+          <Kpi titulo="🔵 Remanescente" valor={fmtR$(tot.remanescente)} />
+          <Kpi titulo="➕ Complementos" valor={fmtR$(tot.complemento)} />
+          <Kpi titulo="🏦 Saldo disponível (agora)" valor={fmtR$(saldoDispTotal)} />
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 16 }}>
+        <div style={{ fontWeight: 700, marginBottom: 10 }}>🏬 Por loja</div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
+            <thead><tr>
+              <th style={th}>Loja</th><th style={{ ...th, textAlign: 'right' }}>Créditos</th><th style={{ ...th, textAlign: 'right' }}>Aprovado</th>
+              <th style={{ ...th, textAlign: 'right' }}>Despesas</th><th style={{ ...th, textAlign: 'right' }}>Reembolso</th>
+              <th style={{ ...th, textAlign: 'right' }}>Devolução</th><th style={{ ...th, textAlign: 'right' }}>Saldo disp. (agora)</th><th style={{ ...th, textAlign: 'right' }}>Devol. pendente</th>
+            </tr></thead>
+            <tbody>{porLoja.length === 0 ? <tr><td colSpan={8} style={{ padding: 10, color: 'var(--muted)' }}>Sem dados no período.</td></tr> : porLoja.map(l => (
+              <tr key={l.loja} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: '6px 8px', fontWeight: 700 }}>{l.loja}</td>
+                <td style={tdN}>{l.qtd}</td><td style={tdN}>{fmtR$(l.aprovado)}</td>
+                <td style={{ ...tdN, color: '#B45309' }}>{fmtR$(l.despesas)}</td>
+                <td style={tdN}>{fmtR$(l.reembolso)}</td><td style={tdN}>{fmtR$(l.devolucao)}</td>
+                <td style={{ ...tdN, color: '#166534' }}>{fmtR$(l.saldoAtual)}</td>
+                <td style={{ ...tdN, color: l.devPend > 0 ? '#5B21B6' : 'var(--muted)' }}>{fmtR$(l.devPend)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 16 }}>
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ fontWeight: 700, marginBottom: 10 }}>🎯 Por origem do crédito</div>
+          <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
+            <thead><tr><th style={th}>Origem</th><th style={{ ...th, textAlign: 'right' }}>Qtd</th><th style={{ ...th, textAlign: 'right' }}>Valor</th></tr></thead>
+            <tbody>{porOrigem.length === 0 ? <tr><td colSpan={3} style={{ padding: 10, color: 'var(--muted)' }}>Sem dados.</td></tr> : porOrigem.map(([o, v]) => (
+              <tr key={o} style={{ borderTop: '1px solid var(--border)' }}><td style={{ padding: '6px 8px' }}>{o}</td><td style={tdN}>{v.qtd}</td><td style={tdN}>{fmtR$(v.valor)}</td></tr>
+            ))}</tbody>
+          </table>
+        </div>
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ fontWeight: 700, marginBottom: 10 }}>🧾 Prestações por status</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {porStatus.length === 0 ? <span style={{ color: 'var(--muted)', fontSize: 13 }}>Sem dados.</span> : porStatus.map(([s, n]) => (
+              <span key={s} className="badge" style={{ background: st(s).bg, color: st(s).cor, padding: '4px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700 }}>{st(s).label}: {n}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontWeight: 700 }}>🧾 Despesas geradas no período</div>
+          <span className="badge" style={{ background: '#FEF3C7', color: '#92400E' }}>Total: {fmtR$(tot.despesas)} · {despFiltradas.length} lançamento(s)</span>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
+            <thead><tr>
+              <th style={th}>Data</th><th style={th}>Loja</th><th style={th}>Descrição</th><th style={th}>Categoria</th><th style={th}>Fornecedor</th><th style={{ ...th, textAlign: 'right' }}>Valor</th>
+            </tr></thead>
+            <tbody>{despFiltradas.length === 0 ? <tr><td colSpan={6} style={{ padding: 10, color: 'var(--muted)' }}>Nenhuma despesa no período.</td></tr> : despFiltradas.slice(0, 300).map(d => (
+              <tr key={d.id} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: '6px 8px' }}>{fmtData(d.data)}</td>
+                <td style={{ padding: '6px 8px' }}>{d._loja}</td>
+                <td style={{ padding: '6px 8px' }}>{d.descricao}{d.comprovante_url ? <a href={d.comprovante_url} target="_blank" rel="noreferrer"> 📎</a> : ''}</td>
+                <td style={{ padding: '6px 8px' }}>{d.categoria || '—'}</td>
+                <td style={{ padding: '6px 8px' }}>{d.fornecedor || '—'}</td>
+                <td style={tdN}>{fmtR$(d.valor)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+        {despFiltradas.length > 300 && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>Mostrando as 300 primeiras. Refine o período/loja.</div>}
       </div>
     </div>
   )
