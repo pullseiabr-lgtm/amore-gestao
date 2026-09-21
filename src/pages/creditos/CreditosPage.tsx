@@ -1163,9 +1163,11 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
     .sort((a, b) => ((a.c.data_solicitacao || a.c.created_at || '') < (b.c.data_solicitacao || b.c.created_at || '') ? 1 : -1)), [credFiltrados])
 
   const resumoCaixa = useMemo(() => {
+    // Sobra = crédito da empresa não gasto (a favor da empresa). Excedente = compra além do crédito,
+    // sem solicitação/crédito no caixa → vira REEMBOLSO a quem gerou o caixa. NÃO se subtrai um do outro.
     const sobras = porCaixa.filter(x => x.res > 0.001).reduce((s, x) => s + x.res, 0)
     const excedentes = porCaixa.filter(x => x.res < -0.001).reduce((s, x) => s + Math.abs(x.res), 0)
-    return { sobras, excedentes, liquido: Math.round((sobras - excedentes) * 100) / 100, nSobra: porCaixa.filter(x => x.res > 0.001).length, nExced: porCaixa.filter(x => x.res < -0.001).length }
+    return { sobras, excedentes, nSobra: porCaixa.filter(x => x.res > 0.001).length, nExced: porCaixa.filter(x => x.res < -0.001).length }
   }, [porCaixa])
 
   const th: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.03em' }
@@ -1263,9 +1265,9 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
           <span className="badge" style={{ background: '#F1F5F9', color: '#334155' }}>{porCaixa.length} caixa(s) com compras</span>
         </div>
         <div style={{ ...grid, marginBottom: 14 }}>
-          <Kpi titulo="🟢 Comprou a menor (sobras)" valor={fmtR$(resumoCaixa.sobras)} cor="#166534" sub={`${resumoCaixa.nSobra} caixa(s) gastaram menos que o crédito`} />
-          <Kpi titulo="🟣 Comprou além (excedentes)" valor={fmtR$(resumoCaixa.excedentes)} cor="#7C3AED" sub={`${resumoCaixa.nExced} caixa(s) gastaram acima do crédito`} />
-          <Kpi titulo="⚖️ Crédito não consumido (líquido)" valor={fmtR$(resumoCaixa.liquido)} cor={resumoCaixa.liquido >= 0 ? '#166534' : '#DC2626'} sub="sobras − excedentes = saldo de crédito das lojas" />
+          <Kpi titulo="🟢 Crédito não consumido" valor={fmtR$(resumoCaixa.sobras)} cor="#166534" sub={`${resumoCaixa.nSobra} caixa(s) compraram a menor — sobra fica a favor da empresa`} />
+          <Kpi titulo="🔴 Reembolso ao prestador" valor={fmtR$(resumoCaixa.excedentes)} cor="#5B21B6" sub={`${resumoCaixa.nExced} caixa(s) compraram além do crédito (sem crédito solicitado) — devolvido a quem gerou o caixa`} />
+          <Kpi titulo="📦 Caixas analisados" valor={String(porCaixa.length)} sub={`${resumoCaixa.nSobra} a menor · ${resumoCaixa.nExced} além · ${Math.max(0, porCaixa.length - resumoCaixa.nSobra - resumoCaixa.nExced)} exato`} />
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
@@ -1321,7 +1323,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
             })}</tbody>
           </table>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>💡 Cada caixa fecha sozinho: <b>Crédito + Complemento + Reembolso − Devolução − Remanescente = Despesas</b>. <b>↓ sobrou</b> = comprou a menor; <b>↑ faltou</b> = gastou além (coberto por complemento/reembolso). <b>Como fechou</b> mostra o destino da diferença — por isso reembolso e devolução <b>nunca</b> aparecem juntos no mesmo caixa. <b>⏳</b> = ainda em prestação.</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>💡 Cada caixa fecha sozinho: <b>Crédito + Complemento + Reembolso − Devolução − Remanescente = Despesas</b>. <b>↓ sobrou</b> = comprou a menor (crédito não consumido, fica a favor da empresa); <b>↑ faltou</b> = gastou além do crédito sem solicitação → <b>vira reembolso a quem gerou o caixa</b> (ou complemento, se a empresa cobriu direto). <b>Como fechou</b> mostra o destino da diferença — por isso reembolso e devolução <b>nunca</b> aparecem juntos no mesmo caixa. <b>⏳</b> = ainda em prestação.</div>
       </div>
 
       <div className="card" style={{ padding: 16 }}>
