@@ -629,8 +629,9 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
   const [addBusy, setAddBusy] = useState(false)
   const rp = c.estimativa_base?.reembolso_proprio
   const isReembolsoProprio = !!rp
-  const [justificativa, setJustificativa] = useState(rp?.necessidade || '')
-  const [destino, setDestino] = useState('')
+  const [justificativa, setJustificativa] = useState(rp?.necessidade || c.prestacao?.justificativa || '')
+  // Pré-carrega a definição já escolhida (permite editar sem começar do zero)
+  const [destino, setDestino] = useState(c.destino_saldo && c.destino_saldo !== 'zerado' ? c.destino_saldo : '')
   // Créditos adicionais informais (aportes) inseridos na própria prestação (ciclo ainda aberto)
   const [aporteOpen, setAporteOpen] = useState(false)
   const [ap, setAp] = useState({ valor: '', forma: 'Pix', data: hoje(), motivo: '' })
@@ -734,42 +735,49 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
           ]
         : [{ id: 'zerado', label: '🟢 Crédito totalmente utilizado', desc: '' }]
 
-  const encerrar = async () => {
+  const encerrar = async (opts?: { enviar?: boolean }) => {
+    const enviar = opts?.enviar !== false          // false = salva a alteração SEM novo disparo
+    const jaEnviado = c.status === 'em_analise'     // edição de uma prestação já enviada antes
     if (isReembolsoProprio && totalGasto <= 0) { alert('Lance ao menos uma despesa (nota/comprovante) da compra antes de enviar o reembolso.'); return }
     const dst = isReembolsoProprio ? 'reembolso' : (saldo === 0 ? 'zerado' : destino)
     if (!dst) { alert('Escolha o destino do saldo.'); return }
     // Conciliação: crédito = despesas + (devolução|remanescente) ; ou complemento/reembolso cobre o excesso
     const absSaldo = Math.abs(saldo)
-    // Trava: divergência exige justificativa (aqui a divergência só existiria se houver diferença não explicada;
-    // como o destino cobre todo o saldo, exigimos justificativa apenas quando o usuário declara valor divergente)
     let novoStatus = 'encerrado'
+    // Preserva aportes/saldo_usos/reembolso_pago e LIMPA destinos anteriores (permite trocar a definição).
     let prestacao: any = {
+      ...(c.prestacao || {}),
       total_gasto: totalGasto, saldo, destino: dst,
       conciliado_em: new Date().toISOString(), conciliado_por: user?.name || 'Painel',
       justificativa: justificativa || null,
+      devolucao: undefined, remanescente: undefined, complemento: undefined, reembolso: undefined,
     }
     if (dst === 'devolucao') {
       prestacao.devolucao = absSaldo
       novoStatus = 'aguardando_devolucao'
-      await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: 'devolucao', valor: absSaldo, data: hoje(), obs: 'Devolução de saldo ao caixa', created_by: user?.name || 'Painel' })
+      if (!jaEnviado) await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: 'devolucao', valor: absSaldo, data: hoje(), obs: 'Devolução de saldo ao caixa', created_by: user?.name || 'Painel' })
     } else if (dst === 'remanescente') {
       prestacao.remanescente = absSaldo
       novoStatus = 'remanescente'
     } else if (dst === 'complemento') {
       if (!justificativa.trim()) { alert('Gasto acima do crédito: descreva a justificativa do complemento.'); return }
       prestacao.complemento = absSaldo
-      await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: 'complemento', valor: absSaldo, data: hoje(), obs: justificativa, created_by: user?.name || 'Painel' })
+      if (!jaEnviado) await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: 'complemento', valor: absSaldo, data: hoje(), obs: justificativa, created_by: user?.name || 'Painel' })
     } else if (dst === 'reembolso') {
       const valorReembolso = isReembolsoProprio ? totalGasto : absSaldo
       const just = justificativa.trim() || (rp?.necessidade || '')
       if (!just) { alert('Reembolso: descreva a justificativa.'); return }
       prestacao.reembolso = valorReembolso
       if (isReembolsoProprio) prestacao.reembolso_proprio = rp
-      await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: 'reembolso', valor: valorReembolso, data: hoje(), obs: isReembolsoProprio ? `Reembolso recurso próprio — ${just}` : just, created_by: user?.name || 'Painel' })
+      if (!jaEnviado) await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: 'reembolso', valor: valorReembolso, data: hoje(), obs: isReembolsoProprio ? `Reembolso recurso próprio — ${just}` : just, created_by: user?.name || 'Painel' })
     }
     // A prestação NÃO encerra na hora: vai para ANÁLISE e é enviada a Wagner/Aline para aprovar.
     prestacao.status_final = novoStatus  // status que assume quando aprovada
+    // Histórico de edição (quem/quando/o quê) quando for alteração de uma prestação já enviada
+    if (jaEnviado) prestacao.edicoes = [...((c.prestacao?.edicoes as any[]) || []), { destino: dst, valor: absSaldo, por: user?.name || 'Painel', em: new Date().toISOString(), reenviado: enviar }]
     await sb.from('creditos').update({ status: 'em_analise', destino_saldo: dst, saldo, total_gasto: totalGasto, prestacao, updated_at: new Date().toISOString() }).eq('id', c.id)
+    // Salvar SEM disparar: atualiza a informação e sai (nada de WhatsApp).
+    if (!enviar) { onChange(); onVoltar(); alert('Alteração salva ✅ — sem novo disparo. A informação já está atualizada no painel e no relatório.'); return }
     // dispara Wagner e Aline pela VPS (Evolution)
     let aprovadores: { nome: string; fone: string }[] = [{ nome: 'Wagner', fone: '5581994135602' }, { nome: 'Aline', fone: '5581994573420' }]
     try { const { data } = await sb.from('app_config').select('valor').eq('chave', 'credito_aprovadores').maybeSingle(); if (Array.isArray(data?.valor?.lista) && data.valor.lista.length) aprovadores = data.valor.lista } catch { /* fallback */ }
@@ -800,7 +808,7 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
         </div>
         {c.status === 'em_analise' && (
           <div style={{ marginTop: 10, fontSize: 12, color: '#9A3412', background: '#FFEDD5', padding: '8px 10px', borderRadius: 8 }}>
-            🕓 <b>Em análise de aprovação.</b> Você ainda pode <b>lançar, corrigir ou excluir despesas</b>. Ao concluir, use o botão abaixo para <b>reenviar a prestação corrigida</b> para os aprovadores.
+            🕓 <b>Em análise de aprovação.</b> Você pode <b>editar despesas</b> e <b>alterar a definição do caixa</b> (devolução, remanescente, complemento ou reembolso). <b>Salve a alteração sem novo disparo</b>, ou salve e <b>reenvie</b> aos aprovadores quando quiser.
           </div>
         )}
         {isReembolsoProprio && (
@@ -943,8 +951,15 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
             <div className="fg" style={{ marginBottom: 10 }}><label className="fl">{isReembolsoProprio ? 'Necessidade / justificativa do reembolso (obrigatória)' : 'Justificativa (obrigatória)'}</label><textarea className="inp" rows={2} value={justificativa} onChange={e => setJustificativa(e.target.value)} /></div>
           )}
           {!isReembolsoProprio && <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>Conciliação: Crédito {fmtR$(credito)} = Despesas {fmtR$(totalGasto)} {saldo >= 0 ? '+' : '−'} {fmtR$(Math.abs(saldo))} ({saldo >= 0 ? 'saldo' : 'excedente'}).</div>}
-          <button className="btn bp bsm" onClick={encerrar}><FileCheck2 size={13} /> {isReembolsoProprio ? 'Enviar reembolso para aprovação' : (c.status === 'em_analise' ? 'Reenviar prestação corrigida' : 'Enviar prestação para aprovação')}</button>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>⚠️ Nenhum crédito é encerrado sem prestação de contas conciliada.</div>
+          {c.status === 'em_analise' ? (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn bo bsm" onClick={() => encerrar({ enviar: false })}><Check size={13} /> Salvar alteração (sem disparar)</button>
+              <button className="btn bp bsm" onClick={() => encerrar({ enviar: true })}><Send size={13} /> Salvar e reenviar p/ aprovação</button>
+            </div>
+          ) : (
+            <button className="btn bp bsm" onClick={() => encerrar({ enviar: true })}><FileCheck2 size={13} /> {isReembolsoProprio ? 'Enviar reembolso para aprovação' : 'Enviar prestação para aprovação'}</button>
+          )}
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>⚠️ Nenhum crédito é encerrado sem prestação de contas conciliada. {c.status === 'em_analise' && 'Você pode alterar a definição e salvar sem disparar; reenvie só quando quiser avisar os aprovadores.'}</div>
         </div>
       )}
       {c.status === 'remanescente' && (
