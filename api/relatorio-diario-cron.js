@@ -156,6 +156,49 @@ async function enviarAlertaAvaliacoes(cfg, host, dia) {
   return { enviados: r.ok ? 1 : 0, negativos: neg.length, identificados: ident, para: FB_ALERTA_FONE }
 }
 
+// ── Fechamento de Caixas — Créditos (resumo semanal, dobrado aqui / limite Hobby=12) ──
+const LOJAS_CRED = ['Amore CD', 'Amore Paiva', 'Flow CD']
+function _baseSaldoCred(c) {
+  if (['cancelado', 'excluido', 'reprovado', 'rascunho'].includes(c.status)) return 0
+  const p = c.prestacao || {}
+  if (c.estimativa_base?.lancamento_direto && ['disponibilizado', 'em_prestacao'].includes(c.status)) return Math.max(0, (c.valor_aprovado || 0) - (c.total_gasto || 0))
+  if (c.status === 'remanescente') return Number(p.remanescente ?? Math.abs(c.saldo || 0)) || 0
+  if (c.status === 'encerrado' && p.destino === 'devolucao') return Number(p.devolucao || 0) || 0
+  return 0
+}
+function _dispCred(c) {
+  const usado = ((c.prestacao?.saldo_usos) || []).reduce((s, u) => s + (Number(u.valor) || 0), 0)
+  return Math.round((_baseSaldoCred(c) - usado) * 100) / 100
+}
+async function montarFechamentoCreditos(host) {
+  const cred = await sb('creditos?select=numero,unidade,status,valor_aprovado,total_gasto,saldo,prestacao,estimativa_base&limit=5000')
+  const ativos = (cred || []).filter(c => !['cancelado', 'excluido', 'reprovado'].includes(c.status))
+  const abertoStatus = ['solicitado', 'em_aprovacao', 'aprovado', 'disponibilizado', 'em_prestacao', 'em_analise', 'prestacao_pendente', 'divergencia']
+  const linhas = []
+  let tEmAnalise = 0, tReemb = 0, tDevol = 0, tDisp = 0, tAberto = 0
+  for (const loja of LOJAS_CRED) {
+    const cs = ativos.filter(c => c.unidade === loja)
+    const emAnalise = cs.filter(c => c.status === 'em_analise').length
+    const emAberto = cs.filter(c => abertoStatus.includes(c.status)).length
+    const reembPagar = cs.filter(c => Number((c.prestacao || {}).reembolso || 0) > 0.005 && !(c.prestacao || {}).reembolso_pago)
+    const devolPend = cs.filter(c => c.status === 'aguardando_devolucao')
+    const disponivel = cs.reduce((s, c) => s + _dispCred(c), 0)
+    const vReemb = reembPagar.reduce((s, c) => s + Number((c.prestacao || {}).reembolso || 0), 0)
+    const vDevol = devolPend.reduce((s, c) => s + (Number((c.prestacao || {}).devolucao || Math.abs(c.saldo || 0)) || 0), 0)
+    tEmAnalise += emAnalise; tReemb += vReemb; tDevol += vDevol; tDisp += disponivel; tAberto += emAberto
+    linhas.push(`🏬 *${loja}*\n   🕓 Em análise (aprovação): *${emAnalise}*\n   📋 Em aberto (total): ${emAberto}\n   🔴 Reembolso a pagar: ${brl(vReemb)}${reembPagar.length ? ` (${reembPagar.length})` : ''}\n   💵 Devolução a receber: ${brl(vDevol)}${devolPend.length ? ` (${devolPend.length})` : ''}\n   🏦 Crédito disponível: ${brl(disponivel)}`)
+  }
+  const link = `https://${host}/?page=creditos`
+  const texto = `🔒 *Fechamento de Caixas — Créditos*\nSegunda-feira · ${new Date(Date.now() - 3 * 3600e3).toLocaleDateString('pt-BR')}\n━━━━━━━━━━━━\n${linhas.join('\n\n')}\n━━━━━━━━━━━━\n📊 *Geral:* ${tAberto} caixa(s) em aberto · ${tEmAnalise} em análise/aprovação\n🔴 Reembolso a pagar: *${brl(tReemb)}* · 💵 Devolução a receber: ${brl(tDevol)}\n🏦 Crédito disponível: ${brl(tDisp)}\n\n👉 Abrir fechamento (aba 🔒 Fechamento):\n${link}\n\n_Painel Amore · resumo semanal automático_`
+  return { texto, resumo: { emAberto: tAberto, emAnalise: tEmAnalise, reembolso: tReemb, devolucao: tDevol, disponivel: tDisp }, link }
+}
+async function enviarFechamentoCreditos(host, cfg, dest) {
+  const { texto, resumo } = await montarFechamentoCreditos(host)
+  let env = 0
+  for (const to of dest) { const r = await enviarEvolution(to, texto, cfg); if (r.ok) env++; await new Promise(x => setTimeout(x, 1200)) }
+  return { ...resumo, enviados: env }
+}
+
 export default async function handler(req, res) {
   const preview = req.query?.preview === '1' || req.query?.preview === 'true'
   // segurança do ENVIO (preview é liberado p/ conferência)
@@ -179,6 +222,8 @@ export default async function handler(req, res) {
   const host = (!reqHost || /vercel\.app$/i.test(reqHost)) ? 'painel.amorefood.com.br' : reqHost
 
   try {
+    // Preview do Fechamento de Créditos (semanal): ?cred=1&preview=1
+    if (preview && req.query?.cred === '1') { const f = await montarFechamentoCreditos(host); return res.status(200).json({ preview: true, tipo: 'fechamento_creditos', resumo: f.resumo, link: f.link, texto: f.texto }) }
     const { texto, resumo, link } = await montar(dia, loja, host)
     if (preview) return res.status(200).json({ preview: true, dia, loja: canon(loja) || 'todas', resumo, link, texto })
 
@@ -202,11 +247,17 @@ export default async function handler(req, res) {
       try { requisicao = await enviarRequisicaoSemanal(host, cfg, dest) }
       catch (e) { requisicao = { error: String((e && e.message) || e) } }
     }
+    // Fechamento de Caixas (Créditos): resumo semanal às SEGUNDAS (ou sob demanda ?cred=1).
+    let fechamento = null
+    if (isSegunda || req.query?.cred === '1') {
+      try { fechamento = await enviarFechamentoCreditos(host, cfg, dest) }
+      catch (e) { fechamento = { error: String((e && e.message) || e) } }
+    }
     // Alerta de avaliações negativas (só p/ Esdras, e só se houver negativa) — todo dia
     let alertaFb = null
     try { alertaFb = await enviarAlertaAvaliacoes(cfg, host, dia) }
     catch (e) { alertaFb = { error: String((e && e.message) || e) } }
-    return res.status(200).json({ dia, enviados: resultados.filter(r => r.ok).length, total: dest.length, resumo, resultados, requisicao, alertaFb })
+    return res.status(200).json({ dia, enviados: resultados.filter(r => r.ok).length, total: dest.length, resumo, resultados, requisicao, fechamento, alertaFb })
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Erro no relatório diário' })
   }

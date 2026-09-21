@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Loader, Plus, RefreshCw, Wallet, FileCheck2, Send, Check, X, ChevronLeft, Paperclip, Trash2, ExternalLink, AlertTriangle, BarChart3 } from 'lucide-react'
+import { Loader, Plus, RefreshCw, Wallet, FileCheck2, Send, Check, X, ChevronLeft, Paperclip, Trash2, ExternalLink, AlertTriangle, BarChart3, Lock } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
@@ -154,7 +154,7 @@ export default function CreditosPage() {
   const { user, can } = useAuth()
   const podeAprovar = can('financeiro', 'create') || user?.role === 'admin' || user?.role === 'super_admin'
 
-  const [tab, setTab] = useState<'solicitacoes' | 'prestacao' | 'saldos' | 'painel'>('solicitacoes')
+  const [tab, setTab] = useState<'solicitacoes' | 'prestacao' | 'saldos' | 'fechamento' | 'painel'>('solicitacoes')
   const [creditos, setCreditos] = useState<Credito[]>([])
   const [despesasAll, setDespesasAll] = useState<Despesa[]>([])
   const [profiles, setProfiles] = useState<any[]>([])
@@ -196,6 +196,12 @@ export default function CreditosPage() {
     .sort((a, b) => (a.unidade || '').localeCompare(b.unidade || '')), [creditos])
   const totalSaldoDisp = useMemo(() => saldos.reduce((s, c) => s + dispSaldo(c), 0), [saldos])
 
+  // Caixas que exigem fechamento manual (devolução a confirmar + reembolso a pagar)
+  const fechPend = useMemo(() => creditos.filter(c =>
+    c.status === 'aguardando_devolucao' ||
+    (Number((c.prestacao || {}).reembolso || 0) > 0.005 && !c.prestacao?.reembolso_pago)
+  ).length, [creditos])
+
   // KPIs
   const kpi = useMemo(() => {
     const solicitado = creditos.reduce((s, c) => s + (c.valor_solicitado || 0), 0)
@@ -215,6 +221,7 @@ export default function CreditosPage() {
           <button className={`btn ${tab === 'solicitacoes' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('solicitacoes')}><Wallet size={13} /> Solicitações</button>
           <button className={`btn ${tab === 'prestacao' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('prestacao')}><FileCheck2 size={13} /> Prestação de Contas</button>
           <button className={`btn ${tab === 'saldos' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('saldos')}><Wallet size={13} /> Saldos disponíveis{saldos.length > 0 && <span className="badge" style={{ background: '#DCFCE7', color: '#166534' }}>{saldos.length}</span>}</button>
+          <button className={`btn ${tab === 'fechamento' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('fechamento')}><Lock size={13} /> Fechamento{fechPend > 0 && <span className="badge" style={{ background: '#FEE2E2', color: '#991B1B' }}>{fechPend}</span>}</button>
           <button className={`btn ${tab === 'painel' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('painel')}><BarChart3 size={13} /> Painel / Gestão</button>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
@@ -266,6 +273,8 @@ export default function CreditosPage() {
         <PrestacaoContas creditos={creditos} selId={prestacaoId} setSelId={setPrestacaoId} onChange={load} user={user} />
       ) : tab === 'saldos' ? (
         <SaldosDisponiveis saldos={saldos} onGerar={setSaldoSrc} />
+      ) : tab === 'fechamento' ? (
+        <FechamentoCaixas creditos={creditos} onChange={load} user={user} />
       ) : (
         <PainelGestaoCred creditos={creditos} despesas={despesasAll} />
       )}
@@ -1088,6 +1097,139 @@ function origemCred(c: Credito): string {
   if (c.estimativa_base?.reembolso_proprio) return '🔄 Reembolso (recurso próprio)'
   if (c.estimativa_base?.lancamento_direto) return '⚡ Lançado direto (sem aprovação)'
   return '📝 Solicitação aprovada'
+}
+
+// ── Aba: Fechamento dos caixas (ciclos por loja + fechamento individual) ──────
+function MiniKpi({ titulo, valor, sub, cor, destaque }: { titulo: string; valor: string; sub?: string; cor: string; destaque?: boolean }) {
+  return (
+    <div style={{ borderLeft: `3px solid ${cor}`, background: destaque ? '#FFF7ED' : 'var(--bg2,#F8FAFC)', borderRadius: 8, padding: '8px 10px' }}>
+      <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{titulo}</div>
+      <div style={{ fontSize: 16, fontWeight: 800, color: cor }}>{valor}</div>
+      {sub && <div style={{ fontSize: 10, color: 'var(--muted)' }}>{sub}</div>}
+    </div>
+  )
+}
+function LinhaFech({ c, children }: { c: Credito; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 10px', borderTop: '1px solid var(--border)' }}>
+      <CaixaTag numero={c.numero} />
+      <span style={{ fontSize: 12.5, fontWeight: 600 }}>{c.solicitante_nome}</span>
+      <span style={{ fontSize: 11, color: 'var(--muted)' }}>{c.unidade} · {finLabel(c.finalidade)}</span>
+      <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{children}</span>
+    </div>
+  )
+}
+function FechamentoCaixas({ creditos, onChange, user }: { creditos: Credito[]; onChange: () => void; user: any }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [fLoja, setFLoja] = useState('')
+
+  const rVal = (c: Credito) => Number((c.prestacao || {}).reembolso || 0)
+  const rPago = (c: Credito) => (c.prestacao?.reembolso_pago as any) || null
+  const devVal = (c: Credito) => Number((c.prestacao || {}).devolucao || Math.abs(c.saldo || 0)) || 0
+
+  const grupos = useMemo(() => LOJAS.filter(l => !fLoja || l === fLoja).map(loja => {
+    const cs = creditos.filter(c => c.unidade === loja && !['cancelado', 'excluido', 'reprovado'].includes(c.status))
+    const disponivel = cs.reduce((s, c) => s + dispSaldo(c), 0)
+    const devolucaoPend = cs.filter(c => c.status === 'aguardando_devolucao')
+    const reembolsoPagar = cs.filter(c => rVal(c) > 0.005 && !rPago(c))
+    const reembolsoFeito = cs.filter(c => rPago(c))
+    const emAberto = cs.filter(c => ['disponibilizado', 'em_prestacao', 'em_analise', 'prestacao_pendente', 'divergencia'].includes(c.status))
+    return {
+      loja, disponivel, devolucaoPend, reembolsoPagar, reembolsoFeito, emAberto,
+      emAbertoValor: emAberto.reduce((s, c) => s + (c.valor_aprovado || 0), 0),
+      totDevol: devolucaoPend.reduce((s, c) => s + devVal(c), 0),
+      totReembPagar: reembolsoPagar.reduce((s, c) => s + rVal(c), 0),
+      totReembFeito: reembolsoFeito.reduce((s, c) => s + (rPago(c)?.valor || rVal(c)), 0),
+    }
+  }).filter(g => g.disponivel > 0.005 || g.devolucaoPend.length || g.reembolsoPagar.length || g.emAberto.length || g.reembolsoFeito.length), [creditos, fLoja])
+
+  const confirmarDevolucao = async (c: Credito) => {
+    if (!confirm(`Confirmar devolução de ${fmtR$(devVal(c))} ao caixa da ${c.unidade}? Fecha o CRD-${c.numero}.`)) return
+    setBusy(c.id)
+    const prest = { ...(c.prestacao || {}), devolucao_confirmada: { valor: devVal(c), em: new Date().toISOString(), por: user?.name || 'Painel' } }
+    await sb.from('creditos').update({ status: 'encerrado', prestacao: prest, updated_at: new Date().toISOString() }).eq('id', c.id)
+    try { await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: 'devolucao_confirmada', valor: devVal(c), data: hoje(), obs: 'Devolução confirmada ao caixa', created_by: user?.name || 'Painel' }) } catch { /* segue */ }
+    setBusy(null); onChange()
+  }
+  const marcarReembolsoPago = async (c: Credito) => {
+    const v = rVal(c)
+    if (!confirm(`Confirmar que o reembolso de ${fmtR$(v)} foi PAGO a ${c.solicitante_nome}? Fecha o CRD-${c.numero}.`)) return
+    setBusy(c.id)
+    const prest = { ...(c.prestacao || {}), reembolso_pago: { valor: v, em: new Date().toISOString(), por: user?.name || 'Painel' } }
+    await sb.from('creditos').update({ status: 'encerrado', prestacao: prest, updated_at: new Date().toISOString() }).eq('id', c.id)
+    try { await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: 'reembolso_pago', valor: v, data: hoje(), obs: `Reembolso pago a ${c.solicitante_nome}`, created_by: user?.name || 'Painel' }) } catch { /* segue */ }
+    setBusy(null); onChange()
+  }
+
+  const totalPend = grupos.reduce((s, g) => s + g.devolucaoPend.length + g.reembolsoPagar.length, 0)
+  const subT: React.CSSProperties = { fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.03em', margin: '10px 0 2px' }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="card" style={{ padding: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ fontWeight: 800, color: 'var(--bordo)' }}>🔒 Fechamento dos caixas</div>
+        <select className="sel" value={fLoja} onChange={e => setFLoja(e.target.value)} style={{ maxWidth: 180 }}><option value="">Todas as lojas</option>{LOJAS.map(l => <option key={l} value={l}>{l}</option>)}</select>
+        <span className="badge" style={{ background: totalPend > 0 ? '#FEE2E2' : '#DCFCE7', color: totalPend > 0 ? '#991B1B' : '#166534', marginLeft: 'auto' }}>{totalPend > 0 ? `${totalPend} caixa(s) a fechar` : 'Nada pendente'}</span>
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.5 }}>💡 Cada caixa é fechado <b>individualmente</b>: confirme a <b>devolução</b> (dinheiro que voltou ao caixa) ou marque o <b>reembolso como pago</b> (registra valor, data e quem pagou). O crédito em aberto fica em destaque por loja até ser prestado/aprovado.</div>
+
+      {grupos.length === 0 ? <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--muted)' }}>Nenhum caixa em aberto para fechar.</div> :
+        grupos.map(g => (
+          <div key={g.loja} className="card" style={{ padding: 16 }}>
+            <div style={{ fontWeight: 800, color: 'var(--bordo)', marginBottom: 10 }}>🏬 {g.loja}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10 }}>
+              <MiniKpi cor="#166534" titulo="🏦 Crédito disponível" valor={fmtR$(g.disponivel)} sub="pronto p/ nova compra" />
+              <MiniKpi cor="#1E40AF" titulo="🔵 Crédito em aberto" valor={fmtR$(g.emAbertoValor)} sub={`${g.emAberto.length} caixa(s) em prestação/análise`} />
+              <MiniKpi cor="#5B21B6" titulo="🔴 Reembolso a pagar" valor={fmtR$(g.totReembPagar)} sub={`${g.reembolsoPagar.length} caixa(s)`} destaque={g.totReembPagar > 0.005} />
+              <MiniKpi cor="#B45309" titulo="💵 Devolução a receber" valor={fmtR$(g.totDevol)} sub={`${g.devolucaoPend.length} caixa(s)`} destaque={g.totDevol > 0.005} />
+            </div>
+
+            {g.reembolsoPagar.length > 0 && (<>
+              <div style={subT}>🔴 Reembolso a pagar — feche individualmente</div>
+              {g.reembolsoPagar.map(c => (
+                <LinhaFech key={c.id} c={c}>
+                  <span style={{ fontWeight: 800, color: '#5B21B6' }}>{fmtR$(rVal(c))}</span>
+                  {c.status === 'em_analise' && <span className="badge" style={{ background: '#FFEDD5', color: '#9A3412', fontSize: 10 }}>aguardando aprovação</span>}
+                  <button className="btn bp bsm" disabled={busy === c.id} onClick={() => marcarReembolsoPago(c)}>{busy === c.id ? <Loader className="spin" size={12} /> : <Check size={12} />} Marcar reembolso pago</button>
+                </LinhaFech>
+              ))}
+            </>)}
+
+            {g.devolucaoPend.length > 0 && (<>
+              <div style={subT}>💵 Devolução a receber — confirme individualmente</div>
+              {g.devolucaoPend.map(c => (
+                <LinhaFech key={c.id} c={c}>
+                  <span style={{ fontWeight: 800, color: '#166534' }}>{fmtR$(devVal(c))}</span>
+                  <button className="btn bp bsm" disabled={busy === c.id} onClick={() => confirmarDevolucao(c)}>{busy === c.id ? <Loader className="spin" size={12} /> : <Check size={12} />} Confirmar devolução</button>
+                </LinhaFech>
+              ))}
+            </>)}
+
+            {g.reembolsoFeito.length > 0 && (<>
+              <div style={subT}>✅ Reembolsos pagos (ciclo fechado)</div>
+              {g.reembolsoFeito.map(c => { const p = rPago(c); return (
+                <LinhaFech key={c.id} c={c}>
+                  <span style={{ fontWeight: 700, color: '#166534' }}>✅ {fmtR$(p?.valor || rVal(c))}</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)' }}>pago em {fmtData(p?.em)}{p?.por ? ` · por ${p.por}` : ''}</span>
+                </LinhaFech>
+              ) })}
+            </>)}
+
+            {g.emAberto.length > 0 && (<>
+              <div style={subT}>🔵 Em aberto — aguardando prestação/aprovação ({g.emAberto.length})</div>
+              {g.emAberto.map(c => (
+                <LinhaFech key={c.id} c={c}>
+                  <span className="badge" style={{ background: st(c.status).bg, color: st(c.status).cor, fontSize: 10 }}>{st(c.status).label}</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)' }}>crédito {fmtR$(c.valor_aprovado)} · gasto {fmtR$(c.total_gasto)}</span>
+                  <a href={`${location.origin}/credito.html?id=${c.id}`} target="_blank" rel="noreferrer" className="btn bo bsm" style={{ textDecoration: 'none' }}><ExternalLink size={12} /> Ver</a>
+                </LinhaFech>
+              ))}
+            </>)}
+          </div>
+        ))
+      }
+    </div>
+  )
 }
 
 // ── Aba: Painel / Gestão (análise financeira do módulo) ──────
