@@ -98,6 +98,36 @@ const fmtR$ = (v: number | null | undefined) => v == null ? '—' : `R$ ${Number
 const fmtData = (d: string | null) => { if (!d) return '—'; const [y, m, dd] = d.split('T')[0].split('-'); return `${dd}/${m}/${y}` }
 const hoje = () => new Date().toISOString().slice(0, 10)
 
+// ── Nº do caixa (crédito) por linha — reembolso é destacado como CRÉDITO ao colaborador ──
+function CaixaTag({ numero, reembolso }: { numero: number | null | undefined; reembolso?: boolean }) {
+  if (numero == null) return <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>—</span>
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+      background: reembolso ? '#EDE9FE' : '#F1F5F9', color: reembolso ? '#5B21B6' : '#334155',
+      border: `1px solid ${reembolso ? '#DDD6FE' : '#E2E8F0'}`, fontWeight: 700, fontSize: 10.5,
+      padding: '2px 8px', borderRadius: 99,
+    }}>
+      {reembolso ? '🔄' : '💳'} CRD-{numero}{reembolso ? ' · Reembolso' : ''}
+    </span>
+  )
+}
+
+// ── Selo de anexo — destaca e identifica o comprovante (substitui o antigo 📎 solto) ──
+function AnexoLink({ url, label = 'Ver anexo' }: { url: string | null | undefined; label?: string }) {
+  if (!url) return <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>— sem anexo</span>
+  return (
+    <a href={url} target="_blank" rel="noreferrer" title="Abrir comprovante anexado"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none',
+        background: '#DBEAFE', color: '#1E40AF', fontWeight: 700, fontSize: 10.5, lineHeight: 1.4,
+        padding: '2px 8px', borderRadius: 99, border: '1px solid #93C5FD', whiteSpace: 'nowrap',
+      }}>
+      <Paperclip size={11} /> {label}
+    </a>
+  )
+}
+
 // ── Saldo disponível gerado por um crédito (fica amarrado à LOJA de origem) ──
 // Fontes do saldo: remanescente da prestação, devolução ao caixa, ou crédito
 // lançado sem aprovação (parte ainda não gasta). Ver GerarCaixaDoSaldo.
@@ -745,13 +775,15 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
               <thead><tr style={{ textAlign: 'left', color: 'var(--muted)' }}>
-                <th style={{ padding: 6 }}>Data</th><th>Descrição</th><th>Categoria</th><th>Fornecedor</th><th style={{ textAlign: 'right' }}>Valor</th><th></th><th></th>
+                <th style={{ padding: 6 }}>Data</th><th>Caixa</th><th>Descrição</th><th>Categoria</th><th>Fornecedor</th><th style={{ textAlign: 'right' }}>Valor</th><th>Anexo</th><th></th>
               </tr></thead>
               <tbody>{despesas.map(d => (
                 <tr key={d.id} style={{ borderTop: '1px solid var(--border)' }}>
-                  <td style={{ padding: 6 }}>{fmtData(d.data)}</td><td>{d.descricao}</td><td>{d.categoria}</td><td>{d.fornecedor || '—'}</td>
+                  <td style={{ padding: 6 }}>{fmtData(d.data)}</td>
+                  <td><CaixaTag numero={c.numero} reembolso={isReembolsoProprio} /></td>
+                  <td>{d.descricao}</td><td>{d.categoria}</td><td>{d.fornecedor || '—'}</td>
                   <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtR$(d.valor)}</td>
-                  <td>{d.comprovante_url ? <a href={d.comprovante_url} target="_blank" rel="noreferrer">📎</a> : ''}</td>
+                  <td><AnexoLink url={d.comprovante_url} label="Ver NF" /></td>
                   <td><button className="btn bo bsm" style={{ color: '#991B1B', padding: '2px 6px' }} onClick={() => excluirDespesa(d)}><Trash2 size={11} /></button></td>
                 </tr>
               ))}</tbody>
@@ -989,7 +1021,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
     const loja = credById[d.credito_id]?.unidade
     if (fLoja && loja !== fLoja) return false
     return true
-  }).map(d => ({ ...d, _loja: credById[d.credito_id]?.unidade || '—' }))
+  }).map(d => { const cr = credById[d.credito_id]; return { ...d, _loja: cr?.unidade || '—', _num: cr?.numero ?? null, _reemb: !!cr?.estimativa_base?.reembolso_proprio } })
     .sort((a, b) => (a.data < b.data ? 1 : -1)), [despesas, credById, dataIni, dataFim, fLoja])
 
   const sum = (arr: Credito[], f: (c: Credito) => number) => arr.reduce((s, c) => s + (f(c) || 0), 0)
@@ -1117,15 +1149,17 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
             <thead><tr>
-              <th style={th}>Data</th><th style={th}>Loja</th><th style={th}>Descrição</th><th style={th}>Categoria</th><th style={th}>Fornecedor</th><th style={{ ...th, textAlign: 'right' }}>Valor</th>
+              <th style={th}>Data</th><th style={th}>Caixa</th><th style={th}>Loja</th><th style={th}>Descrição</th><th style={th}>Categoria</th><th style={th}>Fornecedor</th><th style={th}>Anexo</th><th style={{ ...th, textAlign: 'right' }}>Valor</th>
             </tr></thead>
-            <tbody>{despFiltradas.length === 0 ? <tr><td colSpan={6} style={{ padding: 10, color: 'var(--muted)' }}>Nenhuma despesa no período.</td></tr> : despFiltradas.slice(0, 300).map(d => (
-              <tr key={d.id} style={{ borderTop: '1px solid var(--border)' }}>
+            <tbody>{despFiltradas.length === 0 ? <tr><td colSpan={8} style={{ padding: 10, color: 'var(--muted)' }}>Nenhuma despesa no período.</td></tr> : despFiltradas.slice(0, 300).map(d => (
+              <tr key={d.id} style={{ borderTop: '1px solid var(--border)', background: d._reemb ? '#FAF5FF' : undefined }}>
                 <td style={{ padding: '6px 8px' }}>{fmtData(d.data)}</td>
+                <td style={{ padding: '6px 8px' }}><CaixaTag numero={d._num} reembolso={d._reemb} /></td>
                 <td style={{ padding: '6px 8px' }}>{d._loja}</td>
-                <td style={{ padding: '6px 8px' }}>{d.descricao}{d.comprovante_url ? <a href={d.comprovante_url} target="_blank" rel="noreferrer"> 📎</a> : ''}</td>
+                <td style={{ padding: '6px 8px' }}>{d.descricao}</td>
                 <td style={{ padding: '6px 8px' }}>{d.categoria || '—'}</td>
                 <td style={{ padding: '6px 8px' }}>{d.fornecedor || '—'}</td>
+                <td style={{ padding: '6px 8px' }}>{d.comprovante_url ? <AnexoLink url={d.comprovante_url} label="NF" /> : ''}</td>
                 <td style={tdN}>{fmtR$(d.valor)}</td>
               </tr>
             ))}</tbody>
