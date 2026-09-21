@@ -416,7 +416,9 @@ async function verCotacoes(){
   if(VIEW==='gestao'){cb.style.display='none';mc.style.display='';gestChrome(true);render();return;}
   gestChrome(false);
   cb.innerHTML='<div style="padding:16px;color:#6b7280">Carregando cotações…</div>'; mc.style.display='none'; cb.style.display='';
-  let rows=[];try{rows=await (await fetch(SB+'/rest/v1/requisicoes?loja=eq.'+encodeURIComponent(LOJA)+'&status=in.(em_cotacao,cotacao_recebida)&order=numero.desc&select=id,numero,titulo,responsavel_nome,created_at&limit=80',{headers:H})).json();}catch(e){}
+  // Requisições ainda NÃO viradas em pedido (qualquer estado pré-compra) — a cotação pode estar
+  // respondida mesmo já com a requisição "aprovada". O que decide é EXISTIR cotação, não o status.
+  let rows=[];try{rows=await (await fetch(SB+'/rest/v1/requisicoes?loja=eq.'+encodeURIComponent(LOJA)+'&status=in.(enviada,em_analise,aguardando_cotacao,em_cotacao,cotacao_recebida,parcialmente_aprovada,aprovada)&order=numero.desc&select=id,numero,titulo,responsavel_nome,created_at&limit=150',{headers:H})).json();}catch(e){}
   let im={},cots=[];
   if(rows&&rows.length){ const idIn='('+rows.map(r=>r.id).join(',')+')';
     try{const its=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=in.'+idIn+'&select=requisicao_id&limit=8000',{headers:H})).json();(its||[]).forEach(i=>{im[i.requisicao_id]=(im[i.requisicao_id]||0)+1;});}catch(e){}
@@ -424,7 +426,8 @@ async function verCotacoes(){
   }
   const byReq={}; (cots||[]).forEach(c=>{const a=byReq[c.requisicao_id]=byReq[c.requisicao_id]||{env:0,resp:0,melhor:null,fornMelhor:null};a.env++;if(c.status==='respondida'){a.resp++;const t=Number(c.total)||0;if(t>0&&(a.melhor==null||t<a.melhor)){a.melhor=t;a.fornMelhor=c.fornecedor_nome;}}});
   const comResp=[],semResp=[];
-  (rows||[]).forEach(q=>{const a=byReq[q.id]||{env:0,resp:0,melhor:null,fornMelhor:null};(a.resp>0?comResp:semResp).push({q,a});});
+  // Só mostra requisições que TÊM cotação (respondida → "com respostas"; enviada sem resposta → "aguardando").
+  (rows||[]).forEach(q=>{const a=byReq[q.id]; if(!a||!a.env)return; (a.resp>0?comResp:semResp).push({q,a});});
   const analisar=id=>"try{window.top.location.href='/?page=cotacao&req="+id+"'}catch(_){window.open('/?page=cotacao&req="+id+"','_blank')}";
   const linhaResp=o=>{const q=o.q,a=o.a;return `<tr><td style="font-weight:700;color:var(--v)">REQ-${String(q.numero).padStart(4,'0')}</td><td>${esc(q.titulo||'Cotação')}</td><td class="q" style="text-align:center">${im[q.id]||0}</td><td class="q" style="text-align:center"><b style="color:#15803D">${a.resp}</b>/${a.env}</td><td class="q">${a.melhor!=null?('R$ '+a.melhor.toLocaleString('pt-BR',{minimumFractionDigits:2})):'—'}${a.fornMelhor?('<div style="font-size:10.5px;color:#6b7280">'+esc(a.fornMelhor)+'</div>'):''}</td><td><button class="btn" style="padding:7px 13px;background:#0369A1;color:#fff;font-weight:800;border:0" onclick="${analisar(q.id)}">📊 Analisar &amp; gerar pedido</button></td></tr>`;};
   const linhaSem=o=>{const q=o.q,a=o.a;return `<tr><td style="font-weight:700;color:var(--v)">REQ-${String(q.numero).padStart(4,'0')}</td><td>${esc(q.titulo||'Cotação')}</td><td class="q" style="text-align:center">${im[q.id]||0}</td><td class="q" style="text-align:center">${a.env?('0/'+a.env):'—'}</td><td><button class="btn" style="padding:6px 12px;background:#7C3AED;color:#fff;font-weight:700;border:0" onclick="${analisar(q.id)}">▶ Enviar aos fornecedores</button></td></tr>`;};
