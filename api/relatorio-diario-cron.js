@@ -188,8 +188,8 @@ async function montarFechamentoCreditos(host) {
     tEmAnalise += emAnalise; tReemb += vReemb; tDevol += vDevol; tDisp += disponivel; tAberto += emAberto
     linhas.push(`🏬 *${loja}*\n   🕓 Em análise (aprovação): *${emAnalise}*\n   📋 Em aberto (total): ${emAberto}\n   🔴 Reembolso a pagar: ${brl(vReemb)}${reembPagar.length ? ` (${reembPagar.length})` : ''}\n   💵 Devolução a receber: ${brl(vDevol)}${devolPend.length ? ` (${devolPend.length})` : ''}\n   🏦 Crédito disponível: ${brl(disponivel)}`)
   }
-  const link = `https://${host}/?page=creditos`
-  const texto = `🔒 *Fechamento de Caixas — Créditos*\nSegunda-feira · ${new Date(Date.now() - 3 * 3600e3).toLocaleDateString('pt-BR')}\n━━━━━━━━━━━━\n${linhas.join('\n\n')}\n━━━━━━━━━━━━\n📊 *Geral:* ${tAberto} caixa(s) em aberto · ${tEmAnalise} em análise/aprovação\n🔴 Reembolso a pagar: *${brl(tReemb)}* · 💵 Devolução a receber: ${brl(tDevol)}\n🏦 Crédito disponível: ${brl(tDisp)}\n\n👉 Abrir fechamento (aba 🔒 Fechamento):\n${link}\n\n_Painel Amore · resumo semanal automático_`
+  const link = `https://${host}/relatorio-fechamento.html`
+  const texto = `🔒 *Fechamento de Caixas — Créditos*\nSegunda-feira · ${new Date(Date.now() - 3 * 3600e3).toLocaleDateString('pt-BR')}\n━━━━━━━━━━━━\n${linhas.join('\n\n')}\n━━━━━━━━━━━━\n📊 *Geral:* ${tAberto} caixa(s) em aberto · ${tEmAnalise} em análise/aprovação\n🔴 Reembolso a pagar: *${brl(tReemb)}* · 💵 Devolução a receber: ${brl(tDevol)}\n🏦 Crédito disponível: ${brl(tDisp)}\n\n👉 Relatório completo (conferência e validação):\n${link}\n\n_Painel Amore · resumo semanal automático_`
   return { texto, resumo: { emAberto: tAberto, emAnalise: tEmAnalise, reembolso: tReemb, devolucao: tDevol, disponivel: tDisp }, link }
 }
 async function enviarFechamentoCreditos(host, cfg, dest) {
