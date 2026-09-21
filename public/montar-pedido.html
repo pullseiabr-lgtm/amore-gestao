@@ -111,6 +111,7 @@
   <div class="card" id="baixadasBox" style="display:none;margin-top:12px"></div>
   <div class="card" id="pedidosBox" style="display:none;margin-top:12px"></div>
   <div class="card" id="cotacoesBox" style="display:none;margin-top:12px"></div>
+  <div class="card" id="cotAnaliseBox" style="display:none;margin-top:12px"></div>
   <div class="msg" id="msg"></div><div class="prog" id="prog"></div><div class="foot" id="foot"></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -428,15 +429,102 @@ async function verCotacoes(){
   const comResp=[],semResp=[];
   // Só mostra requisições que TÊM cotação (respondida → "com respostas"; enviada sem resposta → "aguardando").
   (rows||[]).forEach(q=>{const a=byReq[q.id]; if(!a||!a.env)return; (a.resp>0?comResp:semResp).push({q,a});});
-  const analisar=id=>"try{window.top.location.href='/?page=cotacao&req="+id+"'}catch(_){window.open('/?page=cotacao&req="+id+"','_blank')}";
-  const linhaResp=o=>{const q=o.q,a=o.a;return `<tr><td style="font-weight:700;color:var(--v)">REQ-${String(q.numero).padStart(4,'0')}</td><td>${esc(q.titulo||'Cotação')}</td><td class="q" style="text-align:center">${im[q.id]||0}</td><td class="q" style="text-align:center"><b style="color:#15803D">${a.resp}</b>/${a.env}</td><td class="q">${a.melhor!=null?('R$ '+a.melhor.toLocaleString('pt-BR',{minimumFractionDigits:2})):'—'}${a.fornMelhor?('<div style="font-size:10.5px;color:#6b7280">'+esc(a.fornMelhor)+'</div>'):''}</td><td><button class="btn" style="padding:7px 13px;background:#0369A1;color:#fff;font-weight:800;border:0" onclick="${analisar(q.id)}">📊 Analisar &amp; gerar pedido</button></td></tr>`;};
-  const linhaSem=o=>{const q=o.q,a=o.a;return `<tr><td style="font-weight:700;color:var(--v)">REQ-${String(q.numero).padStart(4,'0')}</td><td>${esc(q.titulo||'Cotação')}</td><td class="q" style="text-align:center">${im[q.id]||0}</td><td class="q" style="text-align:center">${a.env?('0/'+a.env):'—'}</td><td><button class="btn" style="padding:6px 12px;background:#7C3AED;color:#fff;font-weight:700;border:0" onclick="${analisar(q.id)}">▶ Enviar aos fornecedores</button></td></tr>`;};
+  const analisarEnv=id=>"try{window.top.location.href='/?page=cotacao&req="+id+"'}catch(_){window.open('/?page=cotacao&req="+id+"','_blank')}";
+  const linhaResp=o=>{const q=o.q,a=o.a;return `<tr><td style="font-weight:700;color:var(--v)">REQ-${String(q.numero).padStart(4,'0')}</td><td>${esc(q.titulo||'Cotação')}</td><td class="q" style="text-align:center">${im[q.id]||0}</td><td class="q" style="text-align:center"><b style="color:#15803D">${a.resp}</b>/${a.env}</td><td class="q">${a.melhor!=null?('R$ '+a.melhor.toLocaleString('pt-BR',{minimumFractionDigits:2})):'—'}${a.fornMelhor?('<div style="font-size:10.5px;color:#6b7280">'+esc(a.fornMelhor)+'</div>'):''}</td><td><button class="btn" style="padding:7px 13px;background:#0369A1;color:#fff;font-weight:800;border:0" onclick="analisarCotacao('${q.id}',${q.numero})">📊 Analisar &amp; gerar pedido</button></td></tr>`;};
+  const linhaSem=o=>{const q=o.q,a=o.a;return `<tr><td style="font-weight:700;color:var(--v)">REQ-${String(q.numero).padStart(4,'0')}</td><td>${esc(q.titulo||'Cotação')}</td><td class="q" style="text-align:center">${im[q.id]||0}</td><td class="q" style="text-align:center">${a.env?('0/'+a.env):'—'}</td><td><button class="btn" style="padding:6px 12px;background:#7C3AED;color:#fff;font-weight:700;border:0" onclick="${analisarEnv(q.id)}">▶ Enviar aos fornecedores</button></td></tr>`;};
   const tblResp=comResp.length?`<div style="padding:10px 12px;border-bottom:1px solid var(--border);font-size:12.5px;background:#F0FDF4"><b>📥 Com respostas — pronto para analisar e gerar o pedido</b> · ${LOJA}</div><table style="min-width:0"><thead><tr><th>Cotação</th><th>Título</th><th>Itens</th><th>Responderam</th><th>Melhor oferta</th><th>Ação</th></tr></thead><tbody>${comResp.map(linhaResp).join('')}</tbody></table>`:'';
   const tblSem=`<div style="padding:10px 12px;${comResp.length?'border-top:6px solid var(--border);':''}border-bottom:1px solid var(--border);font-size:12.5px"><b>⏳ Aguardando resposta dos fornecedores</b></div><table style="min-width:0"><thead><tr><th>Cotação</th><th>Título</th><th>Itens</th><th>Resp.</th><th>Ação</th></tr></thead><tbody>${semResp.map(linhaSem).join('')||'<tr><td colspan="5" style="padding:14px;text-align:center;color:#6b7280">Nenhuma aguardando. Marque itens 🛒 e clique em "📋 Gerar Cotação".</td></tr>'}</tbody></table>`;
   cb.innerHTML=tblResp+tblSem;
   el('foot').textContent=LOJA+' · '+comResp.length+' com resposta · '+semResp.length+' aguardando';
 }
 async function reabrir(id){ if(!confirm('Reabrir esta requisição? Ela volta para a gestão ativa.'))return; try{await fetch(SB+'/rest/v1/requisicoes?id=eq.'+id,{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({status:'enviada'})});}catch(e){} VIEW='gestao'; load(); }
+// ── Análise da cotação recebida (comparativo item × fornecedor) → gerar pedido dos melhores preços ──
+let A_REQ=null,A_NUM=null,A_ITENS=[],A_COTS=[],A_PRICE={},A_ESC={};
+async function analisarCotacao(reqId,numero){
+  A_REQ=reqId;A_NUM=numero;A_ESC={};
+  const cb=el('cotacoesBox'),ab=el('cotAnaliseBox');
+  if(cb)cb.style.display='none'; el('mainCard').style.display='none'; ab.style.display=''; gestChrome(false);
+  ab.innerHTML='<div style="padding:16px;color:#6b7280">Carregando comparativo…</div>';
+  let cots=[],itens=[],pri=[];
+  try{cots=await (await fetch(SB+'/rest/v1/requisicao_cotacoes?requisicao_id=eq.'+reqId+'&status=eq.respondida&select=id,fornecedor_nome,total&order=total.asc',{headers:H})).json();}catch(e){}
+  try{itens=await (await fetch(SB+'/rest/v1/requisicao_itens?requisicao_id=eq.'+reqId+'&select=id,produto_nome,quantidade,unidade&order=produto_nome.asc&limit=3000',{headers:H})).json();}catch(e){}
+  if(cots.length){const cin='('+cots.map(c=>c.id).join(',')+')';
+    try{pri=await (await fetch(SB+'/rest/v1/requisicao_cotacao_itens?cotacao_id=in.'+cin+'&select=cotacao_id,item_id,preco_unitario,disponivel,observacoes&limit=8000',{headers:H})).json();}catch(e){}
+  }
+  A_COTS=cots;A_ITENS=itens;A_PRICE={};
+  for(const p of (pri||[])){ if(!A_PRICE[p.item_id])A_PRICE[p.item_id]={}; let marca='';try{marca=(JSON.parse(p.observacoes||'{}').marca)||'';}catch(_){}
+    A_PRICE[p.item_id][p.cotacao_id]={preco:(p.disponivel!==false&&Number(p.preco_unitario)>0)?Number(p.preco_unitario):null,marca}; }
+  for(const it of itens){const m=A_PRICE[it.id]||{};let best=null,bp=null;for(const c of cots){const cell=m[c.id];if(cell&&cell.preco!=null&&(bp==null||cell.preco<bp)){bp=cell.preco;best=c.id;}}if(best)A_ESC[it.id]=best;}
+  renderAnalise();
+}
+function escolherForn(itemId,cotId){ A_ESC[itemId]=(A_ESC[itemId]===cotId?null:cotId); renderAnalise(); }
+function voltarCotacoes(){ el('cotAnaliseBox').style.display='none'; VIEW='gestao'; verCotacoes(); }
+function renderAnalise(){
+  const ab=el('cotAnaliseBox'),cots=A_COTS,itens=A_ITENS;
+  const brln=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const totForn={};let grand=0,nEsc=0;
+  const linhas=itens.map(it=>{const m=A_PRICE[it.id]||{};const qtd=Number(it.quantidade)||0;
+    let bp=null;for(const c of cots){const cell=m[c.id];if(cell&&cell.preco!=null&&(bp==null||cell.preco<bp))bp=cell.preco;}
+    const cells=cots.map(c=>{const cell=m[c.id];const sel=A_ESC[it.id]===c.id;
+      if(!cell||cell.preco==null)return '<td class="q" style="text-align:center;color:#cbd5e1">—</td>';
+      const best=(cell.preco===bp);
+      return `<td class="q" style="text-align:center;cursor:pointer;background:${sel?'#DCFCE7':(best?'#F0FDF4':'transparent')};border:${sel?'2px solid #15803D':'1px solid var(--border)'}" onclick="escolherForn('${it.id}','${c.id}')" title="${esc(c.fornecedor_nome)}${cell.marca?(' · '+esc(cell.marca)):''} — clique para escolher">${best?'⭐ ':''}${brln(cell.preco)}</td>`;});
+    const escId=A_ESC[it.id];const escCell=escId?m[escId]:null;const sub=(escCell&&escCell.preco!=null)?escCell.preco*qtd:0;
+    if(escId&&escCell&&escCell.preco!=null){const c=cots.find(x=>x.id===escId);const fn=c?c.fornecedor_nome:'';totForn[fn]=(totForn[fn]||0)+sub;grand+=sub;nEsc++;}
+    const escNome=escId?esc((cots.find(x=>x.id===escId)||{}).fornecedor_nome||''):'<span style="color:#B45309">— escolher —</span>';
+    return `<tr><td style="font-weight:600">${esc(it.produto_nome)}</td><td class="q" style="text-align:center">${qtd} ${esc(it.unidade||'')}</td>${cells.join('')}<td style="font-size:11.5px">${escNome}</td><td class="q" style="text-align:right;font-weight:700">${sub?brln(sub):'—'}</td></tr>`;
+  }).join('');
+  const ths=cots.map(c=>`<th class="q" style="text-align:center">${esc(c.fornecedor_nome)}<div style="font-size:10px;color:#6b7280;font-weight:400">total ${brln(c.total)}</div></th>`).join('');
+  const resumoForn=Object.entries(totForn).map(([f,v])=>`<span style="display:inline-block;background:#EEF2FF;border:1px solid #c7d2fe;border-radius:20px;padding:3px 10px;margin:2px;font-size:12px"><b>${esc(f)}</b>: ${brln(v)}</span>`).join('')||'<span style="color:#6b7280;font-size:12px">nenhum item escolhido ainda</span>';
+  ab.innerHTML=`<div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn" style="background:#fff;border:1px solid #cbd5e1" onclick="voltarCotacoes()">← Voltar</button>
+      <b style="font-size:13.5px">📊 Comparativo — REQ-${String(A_NUM).padStart(4,'0')}</b>
+      <span style="font-size:12px;color:#6b7280">${cots.length} fornecedor(es) responderam · ${itens.length} item(ns) · clique no preço para escolher (⭐ = menor preço)</span>
+    </div>
+    <div style="overflow-x:auto"><table style="min-width:0"><thead><tr><th>Produto</th><th class="q">Qtd</th>${ths}<th>Escolhido</th><th class="q" style="text-align:right">Subtotal</th></tr></thead><tbody>${linhas||('<tr><td colspan="'+(cots.length+4)+'" style="padding:14px;text-align:center;color:#6b7280">Sem itens.</td></tr>')}</tbody></table></div>
+    <div style="padding:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--border)">
+      <div style="flex:1;min-width:200px">${resumoForn}</div>
+      <div style="font-weight:800;font-size:15px">Total do pedido: ${brln(grand)} <span style="font-size:11.5px;color:#6b7280;font-weight:400">(${nEsc}/${itens.length} itens)</span></div>
+      <button class="btn" style="background:#0369A1;color:#fff;font-weight:800" onclick="gerarPedidoCotacao()">🧾 Gerar pedido dos escolhidos</button>
+    </div>`;
+  el('foot').textContent=nomeLoja(LOJA)+' · comparativo REQ-'+String(A_NUM).padStart(4,'0');
+}
+async function gerarPedidoCotacao(){
+  const cots=A_COTS,itens=A_ITENS;
+  const sel=itens.filter(it=>A_ESC[it.id]&&(A_PRICE[it.id]||{})[A_ESC[it.id]]&&(A_PRICE[it.id][A_ESC[it.id]].preco!=null));
+  if(!sel.length){show('Escolha ao menos 1 item (clique no preço do fornecedor).',false);return;}
+  const cotById={};cots.forEach(c=>cotById[c.id]=c);
+  const g={};for(const it of sel){const c=cotById[A_ESC[it.id]];const fn=(c&&c.fornecedor_nome)||'';(g[fn]=g[fn]||{forn:fn,itens:[]}).itens.push({it,preco:A_PRICE[it.id][A_ESC[it.id]].preco});}
+  const grupos=Object.values(g);
+  if(!confirm('Gerar '+grupos.length+' pedido(s) pela '+nomeLoja(LOJA)+' com '+sel.length+' item(ns) escolhido(s) pelos melhores preços?\n\nOs pedidos vão para "Pedidos de Compra" para conferência e envio.'))return;
+  let receb=null;try{const rl=((await (await fetch(SB+'/rest/v1/app_config?chave=eq.recebimento_por_loja&select=valor',{headers:H})).json())[0]||{}).valor||{};receb=(rl[LOJA]||{}).nome||null;}catch(e){}
+  let seq=0;try{const nums=await (await fetch(SB+'/rest/v1/pedidos_compra?select=numero&numero=not.is.null&limit=3000',{headers:H})).json();for(const x of (nums||[])){const n=parseInt(String(x.numero).replace(/\D/g,''),10);if(!isNaN(n)&&n>seq)seq=n;}}catch(e){}
+  let ok=0,fail=0,ultimoPed='';
+  for(const gr of grupos){
+    const itensRows=gr.itens.map(({it,preco})=>{const q=Number(it.quantidade)||0;return{row:it,produto:it.produto_nome,qtd:q,un:it.unidade||'',preco:preco||0,subtotal:(preco*q)||0};});
+    const itensP=itensRows.map(({produto,un,qtd,preco,subtotal})=>({produto,qtd,un,preco,subtotal}));
+    const total=itensP.reduce((s,x)=>s+(Number(x.subtotal)||0),0);
+    seq++;const numPed='PED-'+String(seq).padStart(4,'0');ultimoPed=numPed;
+    const chave='pedido_'+slugP(gr.forn)+'_'+(SUF[LOJA]||'loja')+'_'+Date.now().toString(36).slice(-5)+Math.random().toString(36).slice(2,4);
+    const valor={fornecedor:gr.forn,loja:LOJA,data:new Date().toISOString().slice(0,10),pagamento:'à vista',cliente:null,recebimento_responsavel:receb,itens:itensP,total,cancelados:[],em:new Date().toISOString(),created_by:'Cotação (melhores preços)',origem:'requisicao',numero_pedido:numPed,requisicao_id:A_REQ,requisicao_numero:A_NUM};
+    let okBlob=false;
+    try{const r=await fetch(SB+'/rest/v1/app_config',{method:'POST',headers:{...H,Prefer:'resolution=merge-duplicates'},body:JSON.stringify({chave,valor})});okBlob=r.ok;if(r.ok)ok++;else fail++;}catch(e){fail++;}
+    if(okBlob){try{
+      const pcRes=await fetch(SB+'/rest/v1/pedidos_compra',{method:'POST',headers:{...H,Prefer:'return=representation'},body:JSON.stringify({numero:numPed,requisicao_id:A_REQ,loja:LOJA,fornecedor:gr.forn,status:'aberto',origem:'requisicao',total,recebido_total:0,baixa_feita:false,app_config_chave:chave,observacoes:'Gerado da cotação (melhores preços)',criado_por:'Cotação'})});
+      const pc=((await pcRes.json())||[])[0];
+      if(pc&&pc.id){const pcItens=itensRows.map(ir=>({pedido_id:pc.id,requisicao_item_id:(ir.row&&ir.row.id)||null,produto_nome:ir.produto,unidade:ir.un||'',qtd_pedida:ir.qtd,qtd_recebida:0,preco:ir.preco||null}));
+        await fetch(SB+'/rest/v1/pedido_compra_itens',{method:'POST',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify(pcItens)});}
+    }catch(e){}}
+  }
+  if(ok>0){
+    try{await fetch(SB+'/rest/v1/requisicoes?id=eq.'+A_REQ+'&status=in.(enviada,em_analise,aguardando_cotacao,em_cotacao,cotacao_recebida,parcialmente_aprovada,aprovada,em_separacao)',{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({status:'compra_realizada',pedido_numero:ultimoPed||null,pedido_gerado_em:new Date().toISOString(),pedido_status:'emitido'})});}catch(e){}
+    const usadas=new Set(sel.map(it=>A_ESC[it.id]));
+    for(const c of cots){try{await fetch(SB+'/rest/v1/requisicao_cotacoes?id=eq.'+c.id,{method:'PATCH',headers:{...H,Prefer:'return=minimal'},body:JSON.stringify({status:usadas.has(c.id)?'aprovada':'rejeitada'})});}catch(e){}}
+    el('cotAnaliseBox').style.display='none';await load();verPedidos();
+    var abrirP="try{window.top.location.href='/?page=pedidos'}catch(_){window.open('/?page=pedidos','_blank')}";
+    var pEl=el('msg');pEl.className='msg ok';pEl.innerHTML='✅ '+ok+' pedido(s) gerado(s) da cotação'+(fail?(' · '+fail+' falha(s)'):'')+'. Veja em "Pedidos da semana" e clique em 📲 Enviar. <button onclick="'+abrirP+'" style="margin-left:8px;padding:6px 12px;border:0;border-radius:8px;background:#0369A1;color:#fff;font-weight:700;cursor:pointer">▶ Módulo Pedidos</button>';
+  } else { show('Não consegui gerar o pedido'+(fail?(' ('+fail+' falha(s))'):'')+'.',false); }
+}
 function gerarPDF(){
   try{const J=window.jspdf&&window.jspdf.jsPDF;if(!J){show('PDF carregando, tente de novo.',false);return;}
     const doc=new J({orientation:'landscape',unit:'pt',format:'a4'});
