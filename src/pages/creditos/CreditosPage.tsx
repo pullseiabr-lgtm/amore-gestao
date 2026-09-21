@@ -622,6 +622,12 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
   const isReembolsoProprio = !!rp
   const [justificativa, setJustificativa] = useState(rp?.necessidade || '')
   const [destino, setDestino] = useState('')
+  // Créditos adicionais informais (aportes) inseridos na própria prestação (ciclo ainda aberto)
+  const [aporteOpen, setAporteOpen] = useState(false)
+  const [ap, setAp] = useState({ valor: '', forma: 'Pix', data: hoje(), motivo: '' })
+  const [apBusy, setApBusy] = useState(false)
+  const aportes = (c.prestacao?.aportes as any[]) || []
+  const totalAportes = aportes.reduce((s, a) => s + (Number(a.valor) || 0), 0)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -647,6 +653,7 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
 
   const totalGasto = despesas.reduce((s, d) => s + (d.valor || 0), 0)
   const credito = c.valor_aprovado || 0
+  const creditoBase = credito - totalAportes   // valor aprovado formalmente (sem os aportes informais)
   const saldo = credito - totalGasto
 
   const addDespesa = async () => {
@@ -676,6 +683,31 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
     const novoTotal = totalGasto - d.valor
     await sb.from('creditos').update({ total_gasto: novoTotal, saldo: credito - novoTotal, updated_at: new Date().toISOString() }).eq('id', c.id)
     await load(); onChange()
+  }
+
+  // Insere crédito adicional (informal/sem aprovação) na prestação de um caixa ainda aberto.
+  const addAporte = async () => {
+    const valor = Number(String(ap.valor).replace(',', '.'))
+    if (!(valor > 0)) { alert('Informe o valor do crédito adicional.'); return }
+    if (!ap.motivo.trim()) { alert('Descreva o motivo do crédito informal (sem aprovação / fora do planejamento).'); return }
+    setApBusy(true)
+    try {
+      const novoTotalCred = credito + valor
+      const novoAporte = { valor, forma: ap.forma, data: ap.data, motivo: ap.motivo.trim(), por: user?.name || 'Painel', em: new Date().toISOString() }
+      const novaPrest = { ...(c.prestacao || {}), aportes: [...aportes, novoAporte] }
+      await sb.from('creditos').update({
+        valor_aprovado: novoTotalCred, saldo: novoTotalCred - totalGasto,
+        prestacao: novaPrest, updated_at: new Date().toISOString(),
+      }).eq('id', c.id)
+      await sb.from('credito_movimentos').insert({
+        credito_id: c.id, tipo: 'aporte', valor, data: ap.data,
+        obs: `Crédito adicional informal (sem aprovação, fora do planejamento formal) — ${ap.motivo.trim()}${ap.forma ? ` · ${ap.forma}` : ''}`,
+        created_by: user?.name || 'Painel',
+      })
+      setAp({ valor: '', forma: 'Pix', data: hoje(), motivo: '' }); setAporteOpen(false)
+      onChange()
+    } catch (e: any) { alert('Falha ao inserir crédito: ' + (e?.message || e)) }
+    setApBusy(false)
   }
 
   // Opções de destino conforme saldo
@@ -764,11 +796,54 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
           </div>
         )}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginTop: 12 }}>
-          <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>{isReembolsoProprio ? 'Crédito prévio' : 'Crédito original'}</div><div style={{ fontSize: 18, fontWeight: 800 }}>{isReembolsoProprio ? 'Recurso próprio' : fmtR$(credito)}</div></div>
+          <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>{isReembolsoProprio ? 'Crédito prévio' : 'Crédito disponível'}</div><div style={{ fontSize: 18, fontWeight: 800 }}>{isReembolsoProprio ? 'Recurso próprio' : fmtR$(credito)}</div>{!isReembolsoProprio && totalAportes > 0 && <div style={{ fontSize: 10.5, color: '#92400E' }}>base {fmtR$(creditoBase)} + aportes {fmtR$(totalAportes)}</div>}</div>
           <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>{isReembolsoProprio ? 'Gasto (a reembolsar)' : 'Despesas'}</div><div style={{ fontSize: 18, fontWeight: 800, color: '#B45309' }}>{fmtR$(totalGasto)}</div></div>
           <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>{isReembolsoProprio ? 'Reembolso' : 'Saldo'}</div><div style={{ fontSize: 18, fontWeight: 800, color: isReembolsoProprio ? '#5B21B6' : (saldo < 0 ? '#DC2626' : '#166534') }}>{fmtR$(isReembolsoProprio ? totalGasto : saldo)}</div></div>
         </div>
       </div>
+
+      {/* Créditos da prestação — base + aportes informais (caixa ainda aberto) */}
+      {!isReembolsoProprio && (
+        <div className="card" style={{ padding: 16, marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontWeight: 700 }}>💳 Créditos desta prestação</div>
+            <span className="badge" style={{ background: '#DCFCE7', color: '#166534' }}>Total: {fmtR$(credito)}</span>
+          </div>
+          <div style={{ fontSize: 12.5, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <span>📝 Crédito aprovado (base)</span><b>{fmtR$(creditoBase)}</b>
+            </div>
+            {aportes.map((a, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 6, padding: '6px 8px' }}>
+                <span style={{ lineHeight: 1.45 }}>
+                  ➕ <b>Crédito adicional</b> · <span style={{ color: '#92400E', fontWeight: 700 }}>informal — sem aprovação (fora do planejamento)</span>
+                  {a.forma ? ` · ${a.forma}` : ''}{a.data ? ` · ${fmtData(a.data)}` : ''}
+                  {a.motivo ? <><br /><span style={{ color: 'var(--muted)' }}>Motivo: {a.motivo}</span></> : null}
+                  {a.por ? <span style={{ color: 'var(--muted)' }}> · por {a.por}</span> : null}
+                </span>
+                <b>{fmtR$(a.valor)}</b>
+              </div>
+            ))}
+          </div>
+          {c.status !== 'encerrado' && c.status !== 'remanescente' && (
+            aporteOpen ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 8, marginTop: 12, alignItems: 'end', borderTop: '1px dashed var(--border)', paddingTop: 12 }}>
+                <div className="fg"><label className="fl">Valor adicional (R$) *</label><input className="inp" inputMode="decimal" value={ap.valor} onChange={e => setAp(o => ({ ...o, valor: e.target.value }))} placeholder="0,00" /></div>
+                <div className="fg"><label className="fl">Forma</label><select className="sel" value={ap.forma} onChange={e => setAp(o => ({ ...o, forma: e.target.value }))}>{FORMAS.map(x => <option key={x}>{x}</option>)}</select></div>
+                <div className="fg"><label className="fl">Data</label><input type="date" className="inp" value={ap.data} onChange={e => setAp(o => ({ ...o, data: e.target.value }))} /></div>
+                <div className="fg" style={{ gridColumn: '1 / -1' }}><label className="fl">Motivo — crédito informal / sem aprovação *</label><textarea className="inp" rows={2} value={ap.motivo} onChange={e => setAp(o => ({ ...o, motivo: e.target.value }))} placeholder="Ex.: depósito de R$ 250,00 fora do planejamento formal de solicitação; autorizado verbalmente por…" /></div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button className="btn bp bsm" onClick={addAporte} disabled={apBusy}>{apBusy ? <Loader className="spin" size={12} /> : <Plus size={12} />} Inserir crédito</button>
+                  <button className="btn bo bsm" onClick={() => setAporteOpen(false)}>Cancelar</button>
+                </div>
+              </div>
+            ) : (
+              <button className="btn bo bsm" style={{ marginTop: 12 }} onClick={() => setAporteOpen(true)}><Plus size={12} /> Adicionar crédito à prestação</button>
+            )
+          )}
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>💡 Use para valores depositados <b>fora do planejamento formal</b> (sem passar pela aprovação). Fica registrado como crédito adicional com o motivo e entra na conciliação.</div>
+        </div>
+      )}
 
       {/* Lista de despesas */}
       <div className="card" style={{ padding: 16, marginBottom: 14 }}>
@@ -1038,6 +1113,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
     devolucao: sum(credFiltrados, c => pv(c, 'devolucao')),
     remanescente: sum(credFiltrados, c => pv(c, 'remanescente')),
     complemento: sum(credFiltrados, c => pv(c, 'complemento')),
+    aportes: credFiltrados.reduce((s, c) => s + (((c.prestacao?.aportes as any[]) || []).reduce((x, a) => x + (Number(a.valor) || 0), 0)), 0),
   }), [credFiltrados, despFiltradas])
 
   const porLoja = useMemo(() => LOJAS.map(loja => {
@@ -1105,6 +1181,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
           <div style={grid}>
             <Kpi titulo="📄 Créditos (qtd)" valor={String(tot.qtd)} sub="solicitações no período" />
             <Kpi titulo="💰 Aprovado (adiantado)" valor={fmtR$(tot.aprovado)} cor="#166534" sub="recurso liberado ao colaborador antes da compra" />
+            {tot.aportes > 0 && <Kpi titulo="➕ Aportes informais" valor={fmtR$(tot.aportes)} cor="#B45309" sub="depósitos fora do planejamento (sem aprovação), já inclusos no aprovado" />}
           </div>
         </div>
 
