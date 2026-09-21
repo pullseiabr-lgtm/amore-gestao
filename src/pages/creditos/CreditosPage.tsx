@@ -1147,6 +1147,23 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
 
   const saldoDispTotal = useMemo(() => creditos.reduce((s, c) => s + dispSaldo(c), 0), [creditos])
 
+  // Análise caixa a caixa: crédito × despesas → sobra (comprou a menor) ou excedente (comprou além)
+  const porCaixa = useMemo(() => credFiltrados
+    .filter(c => c.valor_aprovado != null && !c.estimativa_base?.reembolso_proprio && (c.total_gasto || 0) > 0)
+    .map(c => {
+      const cred = c.valor_aprovado || 0
+      const gasto = c.total_gasto || 0
+      const res = Math.round((cred - gasto) * 100) / 100
+      return { c, cred, gasto, res }
+    })
+    .sort((a, b) => ((a.c.data_solicitacao || a.c.created_at || '') < (b.c.data_solicitacao || b.c.created_at || '') ? 1 : -1)), [credFiltrados])
+
+  const resumoCaixa = useMemo(() => {
+    const sobras = porCaixa.filter(x => x.res > 0.001).reduce((s, x) => s + x.res, 0)
+    const excedentes = porCaixa.filter(x => x.res < -0.001).reduce((s, x) => s + Math.abs(x.res), 0)
+    return { sobras, excedentes, liquido: Math.round((sobras - excedentes) * 100) / 100, nSobra: porCaixa.filter(x => x.res > 0.001).length, nExced: porCaixa.filter(x => x.res < -0.001).length }
+  }, [porCaixa])
+
   const th: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.03em' }
   const tdN: React.CSSProperties = { textAlign: 'right', padding: '6px 8px', fontWeight: 700 }
   const grpLabel: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }
@@ -1218,6 +1235,53 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
             {!confere && <> A diferença de <b>{fmtR$(Math.abs(concDiff))}</b> são créditos <b>ainda em prestação</b> (valor a acertar).</>}
           </div>
         </div>
+      </div>
+
+      {/* Análise caixa a caixa — comprou a menor / além do crédito */}
+      <div className="card" style={{ padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div style={{ fontWeight: 700 }}>📦 Análise por caixa (crédito × despesas)</div>
+          <span className="badge" style={{ background: '#F1F5F9', color: '#334155' }}>{porCaixa.length} caixa(s) com compras</span>
+        </div>
+        <div style={{ ...grid, marginBottom: 14 }}>
+          <Kpi titulo="🟢 Comprou a menor (sobras)" valor={fmtR$(resumoCaixa.sobras)} cor="#166534" sub={`${resumoCaixa.nSobra} caixa(s) gastaram menos que o crédito`} />
+          <Kpi titulo="🟣 Comprou além (excedentes)" valor={fmtR$(resumoCaixa.excedentes)} cor="#7C3AED" sub={`${resumoCaixa.nExced} caixa(s) gastaram acima do crédito`} />
+          <Kpi titulo="⚖️ Crédito não consumido (líquido)" valor={fmtR$(resumoCaixa.liquido)} cor={resumoCaixa.liquido >= 0 ? '#166534' : '#DC2626'} sub="sobras − excedentes = saldo de crédito das lojas" />
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
+            <thead><tr>
+              <th style={th}>Caixa</th><th style={th}>Data</th><th style={th}>Loja</th><th style={th}>Solicitante</th>
+              <th style={{ ...th, textAlign: 'right' }}>Crédito</th><th style={{ ...th, textAlign: 'right' }}>Despesas</th>
+              <th style={{ ...th, textAlign: 'right' }}>Resultado</th><th style={th}>Status</th>
+            </tr></thead>
+            <tbody>{porCaixa.length === 0 ? <tr><td colSpan={8} style={{ padding: 10, color: 'var(--muted)' }}>Nenhum caixa com compras no período.</td></tr> : porCaixa.map(({ c, cred, gasto, res }) => {
+              const sobra = res > 0.001, exced = res < -0.001
+              return (
+                <tr key={c.id} style={{ borderTop: '1px solid var(--border)', background: exced ? '#FAF5FF' : sobra ? '#F0FDF4' : undefined }}>
+                  <td style={{ padding: '6px 8px' }}><CaixaTag numero={c.numero} /></td>
+                  <td style={{ padding: '6px 8px' }}>{fmtData(c.data_solicitacao || c.created_at)}</td>
+                  <td style={{ padding: '6px 8px' }}>{c.unidade}</td>
+                  <td style={{ padding: '6px 8px' }}>{c.solicitante_nome}</td>
+                  <td style={tdN}>{fmtR$(cred)}</td>
+                  <td style={{ ...tdN, color: '#B45309' }}>{fmtR$(gasto)}</td>
+                  <td style={tdN}>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', fontWeight: 700, fontSize: 11,
+                      padding: '2px 8px', borderRadius: 99,
+                      background: exced ? '#EDE9FE' : sobra ? '#DCFCE7' : '#F1F5F9',
+                      color: exced ? '#5B21B6' : sobra ? '#166534' : '#334155',
+                    }}>
+                      {exced ? `↑ além ${fmtR$(Math.abs(res))}` : sobra ? `↓ sobrou ${fmtR$(res)}` : '= exato'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '6px 8px' }}><span className="badge" style={{ background: st(c.status).bg, color: st(c.status).cor, fontSize: 10.5, padding: '2px 7px', borderRadius: 99, fontWeight: 700 }}>{st(c.status).label}</span></td>
+                </tr>
+              )
+            })}</tbody>
+          </table>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>💡 <b>↓ sobrou</b> = comprou a menor e deixou crédito; <b>↑ além</b> = gastou acima do crédito (complemento/reembolso). O <b>líquido</b> é o crédito das lojas ainda não consumido.</div>
       </div>
 
       <div className="card" style={{ padding: 16 }}>
