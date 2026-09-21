@@ -1116,7 +1116,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
     aportes: credFiltrados.reduce((s, c) => s + (((c.prestacao?.aportes as any[]) || []).reduce((x, a) => x + (Number(a.valor) || 0), 0)), 0),
   }), [credFiltrados, despFiltradas])
 
-  const porLoja = useMemo(() => LOJAS.map(loja => {
+  const porLoja = useMemo(() => LOJAS.filter(loja => !fLoja || loja === fLoja).map(loja => {
     const cs = credFiltrados.filter(c => c.unidade === loja)
     const ds = despFiltradas.filter(d => d._loja === loja)
     const saldoAtual = creditos.filter(c => c.unidade === loja).reduce((s, c) => s + dispSaldo(c), 0)
@@ -1131,7 +1131,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
       remanescente: cs.reduce((s, c) => s + pv(c, 'remanescente'), 0),
       saldoAtual, devPend,
     }
-  }).filter(l => l.qtd > 0 || l.saldoAtual > 0 || l.despesas > 0), [credFiltrados, despFiltradas, creditos])
+  }).filter(l => l.qtd > 0 || l.saldoAtual > 0 || l.despesas > 0), [credFiltrados, despFiltradas, creditos, fLoja])
 
   const porOrigem = useMemo(() => {
     const m: Record<string, { qtd: number; valor: number }> = {}
@@ -1145,7 +1145,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
     return Object.entries(m).sort((a, b) => b[1] - a[1])
   }, [credFiltrados])
 
-  const saldoDispTotal = useMemo(() => creditos.reduce((s, c) => s + dispSaldo(c), 0), [creditos])
+  const saldoDispTotal = useMemo(() => creditos.filter(c => !fLoja || c.unidade === fLoja).reduce((s, c) => s + dispSaldo(c), 0), [creditos, fLoja])
 
   // Análise caixa a caixa: crédito × despesas → sobra (comprou a menor) ou excedente (comprou além)
   const porCaixa = useMemo(() => credFiltrados
@@ -1173,11 +1173,13 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
   const grpLabel: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }
   const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10 }
 
-  // Conciliação: Aprovado + Complemento + Reembolso − Devolução − Remanescente = Despesas.
-  // Diferença ≠ 0 ⇒ créditos ainda em prestação (valor a acertar), não é erro.
-  const concLeft = tot.aprovado + tot.complemento + tot.reembolso - tot.devolucao - tot.remanescente
-  const concDiff = Math.round((concLeft - tot.despesas) * 100) / 100
-  const confere = Math.abs(concDiff) <= 0.05
+  // Conciliação — sempre fecha (dois lados iguais):
+  // Liberado (Aprovado + Complemento + Reembolso) = Despesas + Devolução + Remanescente + Em aberto.
+  // "Em aberto" = créditos ainda em prestação (dinheiro com o colaborador, não acertado). Não é erro.
+  const liberadoTot = Math.round((tot.aprovado + tot.complemento + tot.reembolso) * 100) / 100
+  const emAbertoTot = Math.round((liberadoTot - tot.despesas - tot.devolucao - tot.remanescente) * 100) / 100
+  const destinoTot = Math.round((tot.despesas + tot.devolucao + tot.remanescente + emAbertoTot) * 100) / 100
+  const confere = Math.abs(emAbertoTot) <= 0.05
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -1226,17 +1228,30 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
           </div>
         </div>
 
-        {/* Conciliação — mostra a conta fechando */}
+        {/* Conciliação — dois lados que sempre batem: Liberado = Destino */}
         <div className="card" style={{ padding: '12px 14px', borderLeft: `3px solid ${confere ? '#166534' : '#B45309'}`, background: confere ? '#F0FDF4' : '#FFFBEB' }}>
-          <div style={{ fontWeight: 700, marginBottom: 6, color: confere ? '#166534' : '#92400E' }}>
-            ⚖️ Conciliação do período {confere ? '· ✅ tudo conciliado' : `· ⏳ a acertar ${fmtR$(Math.abs(concDiff))}`}
+          <div style={{ fontWeight: 700, marginBottom: 10, color: confere ? '#166534' : '#92400E' }}>
+            ⚖️ Conciliação do período {fLoja ? `· ${fLoja}` : '· todas as lojas'} {confere ? '· ✅ fechado' : `· ⏳ ${fmtR$(Math.abs(emAbertoTot))} em prestação`}
           </div>
-          <div style={{ fontSize: 12.5, lineHeight: 1.8 }}>
-            Aprovado <b>{fmtR$(tot.aprovado)}</b> ➕ Complemento <b style={{ color: '#7C3AED' }}>{fmtR$(tot.complemento)}</b> ➕ Reembolso <b style={{ color: '#5B21B6' }}>{fmtR$(tot.reembolso)}</b> ➖ Devolução <b style={{ color: '#166534' }}>{fmtR$(tot.devolucao)}</b> ➖ Remanescente <b style={{ color: '#1E40AF' }}>{fmtR$(tot.remanescente)}</b> <span style={{ color: 'var(--muted)' }}>➡️</span> <b style={{ color: '#B45309' }}>Despesas {fmtR$(tot.despesas)}</b>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'stretch' }}>
+            <div style={{ flex: '1 1 260px', background: 'var(--bg2,#F8FAFC)', borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ fontSize: 10.5, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4 }}>💳 Empresa liberou</div>
+              <div style={{ fontSize: 12.5, lineHeight: 1.7 }}>
+                Aprovado <b>{fmtR$(tot.aprovado)}</b>{tot.complemento > 0.005 && <> ➕ Complemento <b style={{ color: '#7C3AED' }}>{fmtR$(tot.complemento)}</b></>}{tot.reembolso > 0.005 && <> ➕ Reembolso <b style={{ color: '#5B21B6' }}>{fmtR$(tot.reembolso)}</b></>}
+              </div>
+              <div style={{ marginTop: 6, fontWeight: 800, fontSize: 14 }}>= Liberado {fmtR$(liberadoTot)}</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: confere ? '#166534' : '#B45309', flex: '0 0 auto', padding: '0 4px' }}>=</div>
+            <div style={{ flex: '1 1 260px', background: 'var(--bg2,#F8FAFC)', borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ fontSize: 10.5, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4 }}>📍 Onde esse dinheiro está</div>
+              <div style={{ fontSize: 12.5, lineHeight: 1.7 }}>
+                Despesas <b style={{ color: '#B45309' }}>{fmtR$(tot.despesas)}</b>{tot.devolucao > 0.005 && <> ➕ Devolveu <b style={{ color: '#166534' }}>{fmtR$(tot.devolucao)}</b></>}{tot.remanescente > 0.005 && <> ➕ Virou crédito <b style={{ color: '#1E40AF' }}>{fmtR$(tot.remanescente)}</b></>}{Math.abs(emAbertoTot) > 0.05 && <> ➕ Em aberto <b style={{ color: '#92400E' }}>{fmtR$(emAbertoTot)}</b></>}
+              </div>
+              <div style={{ marginTop: 6, fontWeight: 800, fontSize: 14 }}>= {fmtR$(destinoTot)}</div>
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
-            💡 As <b>Despesas</b> são o <b>custo real</b>. As demais linhas mostram <b>como</b> esse custo foi financiado e acertado no caixa.
-            {!confere && <> A diferença de <b>{fmtR$(Math.abs(concDiff))}</b> são créditos <b>ainda em prestação</b> (valor a acertar).</>}
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>
+            💡 Os dois lados <b>sempre batem</b>: tudo que a empresa liberou está em <b>despesas</b> (custo real), foi <b>devolvido</b>, <b>virou crédito</b>, ou está <b>em aberto</b> (crédito ainda em prestação — dinheiro com o colaborador, não é erro).
           </div>
         </div>
       </div>
@@ -1258,7 +1273,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
               <th style={th}>Caixa</th><th style={th}>Data</th><th style={th}>Loja</th><th style={th}>Solicitante</th>
               <th style={{ ...th, textAlign: 'right' }}>Crédito</th><th style={{ ...th, textAlign: 'right' }}>Despesas</th>
               <th style={{ ...th, textAlign: 'right' }}>Resultado</th>
-              <th style={{ ...th, textAlign: 'right' }}>Como fechou</th><th style={{ ...th, textAlign: 'right' }}>Confere</th>
+              <th style={{ ...th, textAlign: 'right' }}>Como fechou</th><th style={{ ...th, textAlign: 'right' }}>Em aberto</th>
               <th style={th}>Status</th>
             </tr></thead>
             <tbody>{porCaixa.length === 0 ? <tr><td colSpan={10} style={{ padding: 10, color: 'var(--muted)' }}>Nenhum caixa com compras no período.</td></tr> : porCaixa.map(({ c, cred, gasto, res, compl, reemb, devol, reman, diff }) => {
@@ -1312,7 +1327,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
       <div className="card" style={{ padding: 16 }}>
         <div style={{ fontWeight: 700, marginBottom: 4 }}>🏬 Por loja</div>
         <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.5 }}>
-          Cada linha soma vários caixas da loja. A conta fecha assim: <b>Liberado</b> (Aprovado + Complemento + Reembolso) <b>− Despesas = Devolução + Remanescente</b>. O <b>Resultado</b> é o líquido da loja: <span style={{ color: '#166534', fontWeight: 700 }}>↓ sobrou</span> (comprou a menor) ou <span style={{ color: '#7C3AED', fontWeight: 700 }}>↑ faltou</span> (gastou além, coberto por complemento/reembolso).
+          Cada linha soma os caixas da loja e <b>sempre fecha</b>: <b>Liberado</b> (Aprovado + Complemento + Reembolso) <b>= Despesas + Devolução + Remanescente + Em aberto</b>. O <b>Resultado</b> é o líquido da loja: <span style={{ color: '#166534', fontWeight: 700 }}>↓ sobrou</span> (comprou a menor) ou <span style={{ color: '#7C3AED', fontWeight: 700 }}>↑ faltou</span> (gastou além, coberto por complemento/reembolso). <b>Em aberto</b> = crédito ainda em prestação.
         </div>
         {(() => {
           const rows = porLoja.map(l => {
@@ -1345,7 +1360,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', fontWeight: 700, fontSize: 10.5,
                 padding: '2px 8px', borderRadius: 99, background: ok ? '#DCFCE7' : '#FEF3C7', color: ok ? '#166534' : '#92400E',
-              }}>{ok ? '✅ Confere' : `⏳ a acertar ${fmtR$(Math.abs(diff))}`}</span>
+              }}>{ok ? '✅ fechado' : `⏳ ${fmtR$(Math.abs(diff))}`}</span>
             )
           }
           return (
@@ -1357,7 +1372,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
                   <th style={{ ...th, textAlign: 'right', borderLeft: '2px solid var(--border)' }}>= Liberado</th>
                   <th style={{ ...th, textAlign: 'right' }}>Despesas</th>
                   <th style={{ ...th, textAlign: 'right' }}>Devolução</th><th style={{ ...th, textAlign: 'right' }}>Remanesc.</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Resultado</th><th style={{ ...th, textAlign: 'right' }}>Confere</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Resultado</th><th style={{ ...th, textAlign: 'right' }}>Em aberto</th>
                   <th style={{ ...th, textAlign: 'right' }}>Saldo disp. (agora)</th><th style={{ ...th, textAlign: 'right' }}>Devol. pend.</th>
                 </tr></thead>
                 <tbody>{rows.length === 0 ? <tr><td colSpan={13} style={{ padding: 10, color: 'var(--muted)' }}>Sem dados no período.</td></tr> : rows.map(l => (
@@ -1399,7 +1414,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
           )
         })()}
         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>
-          💡 <b>Confere</b> checa se a loja fechou: <b>Liberado − Despesas − Devolução − Remanescente ≈ 0</b>. Quando aparece <b>⏳ a acertar</b>, há crédito da loja <b>ainda em prestação</b> (não é erro). Reembolso e Devolução podem coexistir na mesma linha porque são de <b>caixas diferentes</b> — veja o detalhe em "Análise por caixa" acima.
+          💡 <b>Em aberto</b> = <b>Liberado − Despesas − Devolução − Remanescente</b> (crédito da loja <b>ainda em prestação</b>; <b>✅ fechado</b> quando zera). Reembolso e Devolução podem coexistir na mesma linha porque são de <b>caixas diferentes</b> — veja o detalhe em "Análise por caixa" acima.
         </div>
       </div>
 
