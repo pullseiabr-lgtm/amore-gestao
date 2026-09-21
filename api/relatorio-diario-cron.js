@@ -213,7 +213,7 @@ async function montarAprovacaoRequisicoes(host) {
   }).join('\n\n')
   const link = `https://${host}/?page=requisicoes`
   const resumoLoja = Object.fromEntries(Object.entries(porLoja).map(([l, a]) => [l, a.length]))
-  const texto = `📋 *Requisições aguardando aprovação*\n${dDMY(new Date(Date.now() - 3 * 3600e3).toISOString())}\n━━━━━━━━━━━━\n${blocos}\n━━━━━━━━━━━━\n📊 Total: *${lista.length} requisição(ões)* a validar\n\n👉 Revisar e aprovar no painel (✅ Aprovação de Requisição):\n${link}\n\n_Painel Amore · alerta automático_`
+  const texto = `📋 *Requisições aguardando aprovação*\n${dDMY(new Date(Date.now() - 3 * 3600e3).toISOString())} · 17h\n━━━━━━━━━━━━\n${blocos}\n━━━━━━━━━━━━\n📊 Total: *${lista.length} requisição(ões)* ainda SEM análise/aprovação.\n⚠️ Requisição parada *atrasa o fluxo de compra*: o planejamento de entrega depende da aprovação a tempo da necessidade.\n\n👉 Revisar e aprovar no painel (✅ Aprovação de Requisição):\n${link}\n\n_Painel Amore · alerta automático das 17h_`
   return { texto, resumo: { pendentes: lista.length, porLoja: resumoLoja } }
 }
 async function enviarAprovacaoRequisicoes(host, cfg, dest) {
@@ -282,10 +282,13 @@ export default async function handler(req, res) {
       try { fechamento = await enviarFechamentoCreditos(host, cfg, destFech) }
       catch (e) { fechamento = { error: String((e && e.message) || e) } }
     }
-    // Requisições aguardando aprovação: alerta diário aos aprovadores (só quando houver pendentes).
+    // Requisições aguardando aprovação: NÃO roda no relatório das 8h30.
+    // O alerta das 17h é feito pelo cron do VPS (req-aprovacao-17h.js). Aqui só sob demanda com ?reqaprov=1.
     let aprovReq = null
-    try { aprovReq = await enviarAprovacaoRequisicoes(host, cfg, dest) }
-    catch (e) { aprovReq = { error: String((e && e.message) || e) } }
+    if (req.query?.reqaprov === '1') {
+      try { aprovReq = await enviarAprovacaoRequisicoes(host, cfg, dest) }
+      catch (e) { aprovReq = { error: String((e && e.message) || e) } }
+    }
     // Alerta de avaliações negativas (só p/ Esdras, e só se houver negativa) — todo dia
     let alertaFb = null
     try { alertaFb = await enviarAlertaAvaliacoes(cfg, host, dia) }
