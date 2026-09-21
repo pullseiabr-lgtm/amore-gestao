@@ -88,6 +88,8 @@ const STATUS: Record<string, { label: string; cor: string; bg: string }> = {
   remanescente:         { label: '🔵 Crédito remanescente',  cor: '#1E40AF', bg: '#DBEAFE' },
   encerrado:            { label: '✅ Encerrado',             cor: '#065F46', bg: '#D1FAE5' },
   reprovado:            { label: '❌ Reprovado',             cor: '#991B1B', bg: '#FEE2E2' },
+  cancelado:            { label: '🚫 Cancelado',             cor: '#6B7280', bg: '#F3F4F6' },
+  excluido:             { label: '🗑️ Excluído',              cor: '#6B7280', bg: '#F3F4F6' },
 }
 const st = (s: string) => STATUS[s] || { label: s, cor: '#374151', bg: '#F3F4F6' }
 const finLabel = (id: string) => FINALIDADES.find(f => f.id === id)?.label || id
@@ -96,13 +98,33 @@ const fmtR$ = (v: number | null | undefined) => v == null ? '—' : `R$ ${Number
 const fmtData = (d: string | null) => { if (!d) return '—'; const [y, m, dd] = d.split('T')[0].split('-'); return `${dd}/${m}/${y}` }
 const hoje = () => new Date().toISOString().slice(0, 10)
 
+// ── Saldo disponível gerado por um crédito (fica amarrado à LOJA de origem) ──
+// Fontes do saldo: remanescente da prestação, devolução ao caixa, ou crédito
+// lançado sem aprovação (parte ainda não gasta). Ver GerarCaixaDoSaldo.
+function baseSaldoGerado(c: Credito): number {
+  if (['cancelado', 'excluido', 'reprovado', 'rascunho'].includes(c.status)) return 0
+  const p = c.prestacao || {}
+  if (c.estimativa_base?.lancamento_direto && ['disponibilizado', 'em_prestacao'].includes(c.status)) {
+    return Math.max(0, (c.valor_aprovado || 0) - (c.total_gasto || 0))
+  }
+  if (c.status === 'remanescente') return Number(p.remanescente ?? Math.abs(c.saldo || 0)) || 0
+  if (c.status === 'encerrado' && p.destino === 'devolucao') return Number(p.devolucao || 0) || 0
+  return 0
+}
+function usadoSaldo(c: Credito): number {
+  return ((c.prestacao?.saldo_usos as any[]) || []).reduce((s, u) => s + (Number(u.valor) || 0), 0)
+}
+function dispSaldo(c: Credito): number {
+  return Math.round((baseSaldoGerado(c) - usadoSaldo(c)) * 100) / 100
+}
+
 // ── Página ───────────────────────────────────────────────────
 export default function CreditosPage() {
   const { loja } = useLoja()
   const { user, can } = useAuth()
   const podeAprovar = can('financeiro', 'create') || user?.role === 'admin' || user?.role === 'super_admin'
 
-  const [tab, setTab] = useState<'solicitacoes' | 'prestacao'>('solicitacoes')
+  const [tab, setTab] = useState<'solicitacoes' | 'prestacao' | 'saldos'>('solicitacoes')
   const [creditos, setCreditos] = useState<Credito[]>([])
   const [profiles, setProfiles] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -111,6 +133,7 @@ export default function CreditosPage() {
   const [fStatus, setFStatus] = useState('')
   const [busca, setBusca] = useState('')
   const [prestacaoId, setPrestacaoId] = useState<string | null>(null)
+  const [saldoSrc, setSaldoSrc] = useState<Credito | null>(null)   // crédito origem ao gerar caixa do saldo
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -122,6 +145,8 @@ export default function CreditosPage() {
   useEffect(() => { load(); fetchProfiles().then(setProfiles).catch(() => {}) }, [load])
 
   const filtrados = useMemo(() => creditos.filter(c => {
+    // Excluídos ficam ocultos por padrão (o registro é mantido), mas aparecem ao filtrar por "Excluído".
+    if (c.status === 'excluido' && fStatus !== 'excluido') return false
     if (fUnidade && c.unidade !== fUnidade) return false
     if (fStatus && c.status !== fStatus) return false
     if (busca) {
@@ -130,6 +155,11 @@ export default function CreditosPage() {
     }
     return true
   }), [creditos, fUnidade, fStatus, busca])
+
+  // Saldos disponíveis (por loja) — crédito que gerou saldo ainda não consumido
+  const saldos = useMemo(() => creditos.filter(c => dispSaldo(c) > 0.001)
+    .sort((a, b) => (a.unidade || '').localeCompare(b.unidade || '')), [creditos])
+  const totalSaldoDisp = useMemo(() => saldos.reduce((s, c) => s + dispSaldo(c), 0), [saldos])
 
   // KPIs
   const kpi = useMemo(() => {
@@ -149,6 +179,7 @@ export default function CreditosPage() {
         <div style={{ display: 'flex', gap: 6 }}>
           <button className={`btn ${tab === 'solicitacoes' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('solicitacoes')}><Wallet size={13} /> Solicitações</button>
           <button className={`btn ${tab === 'prestacao' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('prestacao')}><FileCheck2 size={13} /> Prestação de Contas</button>
+          <button className={`btn ${tab === 'saldos' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('saldos')}><Wallet size={13} /> Saldos disponíveis{saldos.length > 0 && <span className="badge" style={{ background: '#DCFCE7', color: '#166534' }}>{saldos.length}</span>}</button>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <button className="btn bo bsm" onClick={load} title="Atualizar"><RefreshCw size={13} /></button>
@@ -164,6 +195,7 @@ export default function CreditosPage() {
         <Kpi titulo="🧾 Despesas" valor={fmtR$(kpi.gasto)} />
         <Kpi titulo="⏳ Prestações pendentes" valor={String(kpi.pendentes)} />
         <Kpi titulo="⚠️ Divergências" valor={String(kpi.divergencias)} destaque={kpi.divergencias > 0} />
+        <Kpi titulo="🏦 Saldo disponível" valor={fmtR$(totalSaldoDisp)} />
       </div>
 
       {loading ? (
@@ -194,11 +226,14 @@ export default function CreditosPage() {
             </div>
           )}
         </>
-      ) : (
+      ) : tab === 'prestacao' ? (
         <PrestacaoContas creditos={creditos} selId={prestacaoId} setSelId={setPrestacaoId} onChange={load} user={user} />
+      ) : (
+        <SaldosDisponiveis saldos={saldos} onGerar={setSaldoSrc} />
       )}
 
       {novoOpen && <NovoCredito onClose={() => setNovoOpen(false)} onSaved={load} lojaAtual={loja} profiles={profiles} user={user} />}
+      {saldoSrc && <GerarCaixaDoSaldo origem={saldoSrc} onClose={() => setSaldoSrc(null)} onSaved={load} profiles={profiles} user={user} />}
     </div>
   )
 }
@@ -265,9 +300,22 @@ function CreditoCard({ c, podeAprovar, user, onChange, onPrestar }: {
     await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: 'liberacao', valor: c.valor_aprovado, data: hoje(), obs: 'Crédito disponibilizado', created_by: user?.name || 'Painel' })
     setBusy(false); onChange()
   }
+  // Cancelar / Excluir mantendo o REGISTRO (nunca apaga do banco): grava ação, motivo e quem fez.
+  const preAprovacao = ['rascunho', 'solicitado', 'em_aprovacao'].includes(c.status)
+  const registrarAudit = async (acao: 'cancelado' | 'excluido', motivo: string) => {
+    const prest = { ...(c.prestacao || {}), cancelamento: { acao, motivo, por: user?.name || 'Painel', em: new Date().toISOString() } }
+    await sb.from('creditos').update({ status: acao, prestacao: prest, updated_at: new Date().toISOString() }).eq('id', c.id)
+    try { await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: acao, valor: 0, data: hoje(), obs: `${acao === 'excluido' ? 'Excluído' : 'Cancelado'} por ${user?.name || 'Painel'}: ${motivo}`, created_by: user?.name || 'Painel' }) } catch { /* segue */ }
+  }
+  const cancelar = async () => {
+    const motivo = prompt(`Cancelar a solicitação CRD-${c.numero}? (mantém o registro do cancelamento)\n\nMotivo:`)
+    if (!motivo) return
+    setBusy(true); await registrarAudit('cancelado', motivo); setBusy(false); onChange()
+  }
   const excluir = async () => {
-    if (!confirm(`Excluir a solicitação CRD-${c.numero}? Esta ação não pode ser desfeita.`)) return
-    await sb.from('creditos').delete().eq('id', c.id); onChange()
+    const motivo = prompt(`Excluir a solicitação CRD-${c.numero} (criada errada, sem aprovação)?\nO registro é mantido para auditoria (quem/quando/motivo).\n\nMotivo:`)
+    if (!motivo) return
+    setBusy(true); await registrarAudit('excluido', motivo); setBusy(false); onChange()
   }
 
   return (
@@ -286,6 +334,20 @@ function CreditoCard({ c, podeAprovar, user, onChange, onPrestar }: {
       </div>
       <div style={{ fontSize: 11, color: 'var(--muted)' }}>Solicitado em {fmtData(c.data_solicitacao)}{c.data_necessaria ? ` · precisa em ${fmtData(c.data_necessaria)}` : ''}</div>
       {c.reprovado_motivo && <div style={{ fontSize: 11, color: '#991B1B', background: '#FEE2E2', padding: '4px 8px', borderRadius: 6 }}>❌ {c.reprovado_motivo}</div>}
+      {c.prestacao?.cancelamento && (
+        <div style={{ fontSize: 11, color: '#6B7280', background: '#F3F4F6', padding: '6px 8px', borderRadius: 6 }}>
+          {c.prestacao.cancelamento.acao === 'excluido' ? '🗑️ Excluído' : '🚫 Cancelado'} por <b>{c.prestacao.cancelamento.por}</b> em {fmtData(c.prestacao.cancelamento.em)}{c.prestacao.cancelamento.motivo ? ` — ${c.prestacao.cancelamento.motivo}` : ''}
+        </div>
+      )}
+      {c.estimativa_base?.lancamento_direto && (
+        <div style={{ fontSize: 11, color: '#166534', background: '#D1FAE5', padding: '6px 8px', borderRadius: 6 }}>⚡ Crédito lançado direto (sem aprovação)</div>
+      )}
+      {c.estimativa_base?.origem_saldo && (
+        <div style={{ fontSize: 11, color: '#166534', background: '#DCFCE7', padding: '6px 8px', borderRadius: 6 }}>🏦 Gerado do saldo de <b>CRD-{c.estimativa_base.origem_saldo.numero}</b> ({c.estimativa_base.origem_saldo.loja})</div>
+      )}
+      {dispSaldo(c) > 0.001 && (
+        <div style={{ fontSize: 11, color: '#1E40AF', background: '#DBEAFE', padding: '6px 8px', borderRadius: 6 }}>🏦 Saldo disponível gerado: <b>{fmtR$(dispSaldo(c))}</b> · usar só na {c.unidade}</div>
+      )}
       {c.estimativa_base?.reembolso_proprio && (
         <div style={{ fontSize: 11, color: '#5B21B6', background: '#EDE9FE', padding: '6px 8px', borderRadius: 6, lineHeight: 1.5 }}>
           🔄 <b>Reembolso — recurso próprio</b><br />
@@ -317,8 +379,11 @@ function CreditoCard({ c, podeAprovar, user, onChange, onPrestar }: {
           <button className="btn bp bsm" onClick={onPrestar}><FileCheck2 size={12} /> {c.status === 'em_analise' ? 'Editar / corrigir' : 'Prestar contas'}</button>
         )}
         <a href={linkPublico} target="_blank" rel="noreferrer" className="btn bo bsm" style={{ textDecoration: 'none' }}><ExternalLink size={12} /> Ver</a>
-        {(user?.role === 'admin' || user?.role === 'super_admin') && !busy && c.total_gasto === 0 && (
-          <button className="btn bo bsm" onClick={excluir} title="Excluir" style={{ color: '#991B1B' }}><Trash2 size={12} /></button>
+        {(user?.role === 'admin' || user?.role === 'super_admin') && !busy && preAprovacao && c.total_gasto === 0 && (
+          <>
+            <button className="btn bo bsm" onClick={cancelar} title="Cancelar (mantém o registro)" style={{ color: '#B45309' }}><X size={12} /> Cancelar</button>
+            <button className="btn bo bsm" onClick={excluir} title="Excluir (mantém o registro)" style={{ color: '#991B1B' }}><Trash2 size={12} /> Excluir</button>
+          </>
         )}
       </div>
     </div>
@@ -334,6 +399,7 @@ function NovoCredito({ onClose, onSaved, lojaAtual, profiles, user }: {
     data_solicitacao: hoje(), data_necessaria: '', finalidade: 'compras_semana', subcategoria: '',
     prioridade: 'media', valor_solicitado: '', forma_recebimento: 'Pix', observacao: '',
     reembolso_proprio: false, autorizado_por: '', data_compra: hoje(), necessidade: '',
+    lancamento_direto: false,
   })
   const [anexo, setAnexo] = useState<File | null>(null)
   const [salvando, setSalvando] = useState(false)
@@ -359,18 +425,27 @@ function NovoCredito({ onClose, onSaved, lojaAtual, profiles, user }: {
       const finalidade = f.reembolso_proprio ? 'reembolso' : f.finalidade
       const finObj = FINALIDADES.find(x => x.id === finalidade)
       const centro_custo = [f.unidade, f.setor, finObj?.label.replace(/^[^ ]+ /, ''), f.subcategoria].filter(Boolean).join(' > ')
+      const direto = f.lancamento_direto && !f.reembolso_proprio
       const estimativa_base = f.reembolso_proprio
         ? { reembolso_proprio: { autorizado_por: f.autorizado_por.trim(), data_compra: f.data_compra, necessidade: f.necessidade.trim() } }
-        : null
-      await sb.from('creditos').insert({
+        : direto ? { lancamento_direto: true } : null
+      // Status: reembolso → prestação; lançamento direto → já disponibilizado (sem aprovação); senão → solicitado
+      const status = f.reembolso_proprio ? 'em_prestacao' : direto ? 'disponibilizado' : 'solicitado'
+      const { data: novo } = await sb.from('creditos').insert({
         solicitante_nome: f.solicitante_nome.trim(), solicitante_id: solId, setor: f.setor || null, unidade: f.unidade,
         data_solicitacao: f.data_solicitacao, data_necessaria: f.data_necessaria || null,
         finalidade, subcategoria: f.subcategoria || null, prioridade: f.prioridade,
-        valor_solicitado: valor, forma_recebimento: f.forma_recebimento, centro_custo, estimativa_base,
+        valor_solicitado: valor, valor_aprovado: direto ? valor : null,
+        aprovado_por: direto ? `Lançamento direto — ${user?.name || 'Painel'}` : null,
+        aprovado_em: direto ? new Date().toISOString() : null,
+        forma_recebimento: f.forma_recebimento, centro_custo, estimativa_base,
         observacao: f.observacao || null, anexo_url,
-        // Recurso próprio já foi comprado: vai direto para prestação (anexar notas e conciliar o reembolso).
-        status: f.reembolso_proprio ? 'em_prestacao' : 'solicitado', created_by: user?.name || 'Painel',
-      })
+        status, created_by: user?.name || 'Painel',
+      }).select('id').single()
+      // Lançamento direto: registra a liberação no caixa (rastreabilidade), sem passar por aprovação.
+      if (direto && novo?.id) {
+        try { await sb.from('credito_movimentos').insert({ credito_id: novo.id, tipo: 'liberacao', valor, data: hoje(), obs: `Crédito lançado direto (sem aprovação) — ${f.unidade}`, created_by: user?.name || 'Painel' }) } catch { /* segue */ }
+      }
       onSaved(); onClose()
     } catch (e: any) { alert('Falha ao salvar: ' + (e?.message || e)) }
     setSalvando(false)
@@ -382,9 +457,15 @@ function NovoCredito({ onClose, onSaved, lojaAtual, profiles, user }: {
         <div className="mhd"><b>{f.reembolso_proprio ? '🔄 Reembolso — recurso próprio' : '💳 Solicitar Crédito'}</b><button className="btn bo bsm" onClick={onClose}><X size={13} /></button></div>
         <div className="mbd" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <label className="fg" style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8, background: f.reembolso_proprio ? '#EDE9FE' : 'var(--bg2,#F8FAFC)', padding: '8px 10px', borderRadius: 8, cursor: 'pointer', margin: 0 }}>
-            <input type="checkbox" checked={f.reembolso_proprio} onChange={e => setF(o => ({ ...o, reembolso_proprio: e.target.checked, finalidade: e.target.checked ? 'reembolso' : 'compras_semana', subcategoria: '' }))} />
+            <input type="checkbox" checked={f.reembolso_proprio} onChange={e => setF(o => ({ ...o, reembolso_proprio: e.target.checked, lancamento_direto: e.target.checked ? false : o.lancamento_direto, finalidade: e.target.checked ? 'reembolso' : 'compras_semana', subcategoria: '' }))} />
             <span style={{ fontSize: 12 }}><b>🔄 Compra com recurso próprio (reembolso)</b> — o colaborador já pagou do próprio bolso e pede o valor de volta. Não é preciso solicitar crédito antes.</span>
           </label>
+          {!f.reembolso_proprio && (
+            <label className="fg" style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8, background: f.lancamento_direto ? '#D1FAE5' : 'var(--bg2,#F8FAFC)', padding: '8px 10px', borderRadius: 8, cursor: 'pointer', margin: 0 }}>
+              <input type="checkbox" checked={f.lancamento_direto} onChange={e => setF(o => ({ ...o, lancamento_direto: e.target.checked }))} />
+              <span style={{ fontSize: 12 }}><b>⚡ Crédito já disponível (sem aprovação)</b> — lança o crédito direto como disponibilizado, sem passar pela aprovação. O valor entra como saldo da loja.</span>
+            </label>
+          )}
           <div className="fg"><label className="fl">Solicitante *</label>
             <input className="inp" list="prof-list" value={f.solicitante_nome} onChange={e => set('solicitante_nome', e.target.value)} placeholder="Nome" />
             <datalist id="prof-list">{profiles.map(p => <option key={p.id} value={p.name} />)}</datalist>
@@ -711,6 +792,143 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
       {c.status === 'remanescente' && (
         <div className="card" style={{ padding: 16, background: '#DBEAFE' }}>🔵 Crédito remanescente de {fmtR$(Math.abs(saldo))} vinculado a {c.solicitante_nome}. Poderá ser usado na próxima compra autorizada.</div>
       )}
+    </div>
+  )
+}
+
+// ── Rótulo da fonte do saldo ─────────────────────────────────
+function fonteSaldo(c: Credito): string {
+  if (c.estimativa_base?.lancamento_direto) return 'Crédito lançado direto (sem aprovação)'
+  if (c.status === 'remanescente') return 'Remanescente de prestação'
+  if ((c.prestacao || {}).destino === 'devolucao') return 'Devolução ao caixa'
+  return 'Saldo'
+}
+
+// ── Aba: Saldos disponíveis (por loja) ───────────────────────
+function SaldosDisponiveis({ saldos, onGerar }: { saldos: Credito[]; onGerar: (c: Credito) => void }) {
+  if (saldos.length === 0) {
+    return <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--muted)' }}>Nenhum saldo disponível no momento. Saldos aparecem aqui quando um crédito gera remanescente, devolução ao caixa, ou é lançado direto sem aprovação.</div>
+  }
+  // agrupa por loja
+  const porLoja: Record<string, Credito[]> = {}
+  for (const c of saldos) (porLoja[c.unidade] = porLoja[c.unidade] || []).push(c)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ fontSize: 12, color: 'var(--muted)' }}>💡 O saldo fica <b>amarrado à loja que o gerou</b> e só pode virar crédito para compras da <b>mesma loja</b> (preserva a análise financeira de cada unidade).</div>
+      {Object.entries(porLoja).map(([lojaNome, lista]) => {
+        const totalLoja = lista.reduce((s, c) => s + dispSaldo(c), 0)
+        return (
+          <div key={lojaNome}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontWeight: 800, color: 'var(--bordo)' }}>🏦 {lojaNome}</span>
+              <span className="badge" style={{ background: '#DCFCE7', color: '#166534' }}>Disponível: {fmtR$(totalLoja)}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
+              {lista.map(c => {
+                const base = baseSaldoGerado(c), usado = usadoSaldo(c), disp = dispSaldo(c)
+                const usos = (c.prestacao?.saldo_usos as any[]) || []
+                return (
+                  <div key={c.id} className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontWeight: 800, color: 'var(--bordo)' }}>CRD-{c.numero}</span>
+                      <span className="badge" style={{ background: '#DBEAFE', color: '#1E40AF', fontSize: 10 }}>{fonteSaldo(c)}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>Origem: {c.solicitante_nome} · {c.unidade}{c.setor ? ' · ' + c.setor : ''}</div>
+                    <div style={{ display: 'flex', gap: 14, fontSize: 12, flexWrap: 'wrap' }}>
+                      <span>Gerado: <b>{fmtR$(base)}</b></span>
+                      {usado > 0 && <span style={{ color: '#B45309' }}>Usado: <b>{fmtR$(usado)}</b></span>}
+                      <span style={{ color: '#166534' }}>Disponível: <b>{fmtR$(disp)}</b></span>
+                    </div>
+                    {usos.length > 0 && (
+                      <div style={{ fontSize: 11, color: 'var(--muted)', background: 'var(--bg2,#F8FAFC)', padding: '6px 8px', borderRadius: 6 }}>
+                        <b>Onde foi usado:</b>
+                        {usos.map((u, i) => <div key={i}>• CRD-{u.numero} — {fmtR$(u.valor)}{u.por ? ` · ${u.por}` : ''}{u.em ? ` · ${fmtData(u.em)}` : ''}</div>)}
+                      </div>
+                    )}
+                    <button className="btn bp bsm" style={{ marginTop: 2, width: 'fit-content' }} onClick={() => onGerar(c)}><Plus size={12} /> Gerar caixa deste saldo</button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Modal: gerar caixa (crédito) consumindo um saldo existente ──
+function GerarCaixaDoSaldo({ origem, onClose, onSaved, profiles, user }: {
+  origem: Credito; onClose: () => void; onSaved: () => void; profiles: any[]; user: any
+}) {
+  const disp = dispSaldo(origem)
+  const [f, setF] = useState({ solicitante_nome: user?.name || '', setor: '', finalidade: 'compras_semana', subcategoria: '', valor: String(disp), observacao: '' })
+  const [salvando, setSalvando] = useState(false)
+  const fin = FINALIDADES.find(x => x.id === f.finalidade)
+  const set = (k: string, v: string) => setF(o => ({ ...o, [k]: v }))
+
+  const salvar = async () => {
+    const valor = Number(String(f.valor).replace(',', '.'))
+    if (!(valor > 0)) { alert('Informe um valor válido.'); return }
+    if (valor > disp + 0.001) { alert(`Valor acima do saldo disponível (${fmtR$(disp)}).`); return }
+    if (!f.solicitante_nome.trim()) { alert('Informe o solicitante.'); return }
+    setSalvando(true)
+    try {
+      const solId = profiles.find(p => p.name === f.solicitante_nome)?.id || null
+      const finObj = FINALIDADES.find(x => x.id === f.finalidade)
+      const centro_custo = [origem.unidade, f.setor, finObj?.label.replace(/^[^ ]+ /, ''), f.subcategoria].filter(Boolean).join(' > ')
+      // 1) novo crédito (caixa) já disponibilizado, financiado pelo saldo — MESMA loja da origem
+      const { data: novo } = await sb.from('creditos').insert({
+        solicitante_nome: f.solicitante_nome.trim(), solicitante_id: solId, setor: f.setor || null, unidade: origem.unidade,
+        data_solicitacao: hoje(), finalidade: f.finalidade, subcategoria: f.subcategoria || null, prioridade: 'media',
+        valor_solicitado: valor, valor_aprovado: valor,
+        aprovado_por: `Saldo CRD-${origem.numero} — ${user?.name || 'Painel'}`, aprovado_em: new Date().toISOString(),
+        forma_recebimento: null, centro_custo,
+        estimativa_base: { origem_saldo: { credito_id: origem.id, numero: origem.numero, loja: origem.unidade, colaborador: origem.solicitante_nome } },
+        observacao: f.observacao || null, status: 'disponibilizado', created_by: user?.name || 'Painel',
+      }).select('id, numero').single()
+      if (!novo?.id) throw new Error('não retornou o novo crédito')
+      // 2) movimento de entrada no novo
+      try { await sb.from('credito_movimentos').insert({ credito_id: novo.id, tipo: 'liberacao', valor, data: hoje(), obs: `Crédito gerado do saldo de CRD-${origem.numero} (${origem.unidade})`, created_by: user?.name || 'Painel' }) } catch { /* segue */ }
+      // 3) amarra na origem: registra o uso do saldo (onde foi usado) + movimento de saída
+      const usos = ((origem.prestacao?.saldo_usos as any[]) || []).concat([{ credito_id: novo.id, numero: novo.numero, loja: origem.unidade, valor, por: user?.name || 'Painel', em: new Date().toISOString() }])
+      await sb.from('creditos').update({ prestacao: { ...(origem.prestacao || {}), saldo_usos: usos }, updated_at: new Date().toISOString() }).eq('id', origem.id)
+      try { await sb.from('credito_movimentos').insert({ credito_id: origem.id, tipo: 'saldo_saida', valor, data: hoje(), obs: `Saldo usado para gerar CRD-${novo.numero} (${origem.unidade})`, created_by: user?.name || 'Painel' }) } catch { /* segue */ }
+      onSaved(); onClose()
+    } catch (e: any) { alert('Falha ao gerar: ' + (e?.message || e)) }
+    setSalvando(false)
+  }
+
+  return (
+    <div className="ov open" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+        <div className="mhd"><b>🏦 Gerar caixa do saldo — CRD-{origem.numero}</b><button className="btn bo bsm" onClick={onClose}><X size={13} /></button></div>
+        <div className="mbd" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div style={{ gridColumn: '1 / -1', fontSize: 12, color: '#166534', background: '#DCFCE7', padding: '8px 10px', borderRadius: 8 }}>
+            Usando saldo de <b>CRD-{origem.numero}</b> · {origem.solicitante_nome} · <b>{origem.unidade}</b><br />
+            Disponível: <b>{fmtR$(disp)}</b> · O novo caixa fica travado na loja <b>{origem.unidade}</b>.
+          </div>
+          <div className="fg"><label className="fl">Solicitante *</label>
+            <input className="inp" list="prof-list-saldo" value={f.solicitante_nome} onChange={e => set('solicitante_nome', e.target.value)} placeholder="Nome" />
+            <datalist id="prof-list-saldo">{profiles.map(p => <option key={p.id} value={p.name} />)}</datalist>
+          </div>
+          <div className="fg"><label className="fl">Setor</label><input className="inp" value={f.setor} onChange={e => set('setor', e.target.value)} placeholder="Cozinha, Logística…" /></div>
+          <div className="fg"><label className="fl">Finalidade *</label>
+            <select className="sel" value={f.finalidade} onChange={e => { set('finalidade', e.target.value); set('subcategoria', '') }}>{FINALIDADES.filter(x => x.id !== 'reembolso').map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select>
+          </div>
+          <div className="fg"><label className="fl">Subcategoria</label>
+            {fin && fin.subs.length > 0
+              ? <select className="sel" value={f.subcategoria} onChange={e => set('subcategoria', e.target.value)}><option value="">—</option>{fin.subs.map(s => <option key={s}>{s}</option>)}</select>
+              : <input className="inp" value={f.subcategoria} onChange={e => set('subcategoria', e.target.value)} placeholder="Opcional" />}
+          </div>
+          <div className="fg"><label className="fl">Valor a usar (R$) *</label><input className="inp" inputMode="decimal" value={f.valor} onChange={e => set('valor', e.target.value)} placeholder="0,00" /></div>
+          <div className="fg" style={{ gridColumn: '1 / -1' }}><label className="fl">Observação</label><textarea className="inp" rows={2} value={f.observacao} onChange={e => set('observacao', e.target.value)} /></div>
+        </div>
+        <div className="mft">
+          <button className="btn bo bsm" onClick={onClose}>Cancelar</button>
+          <button className="btn bp bsm" onClick={salvar} disabled={salvando}>{salvando ? <Loader className="spin" size={13} /> : <Check size={13} />} Gerar caixa</button>
+        </div>
+      </div>
     </div>
   )
 }
