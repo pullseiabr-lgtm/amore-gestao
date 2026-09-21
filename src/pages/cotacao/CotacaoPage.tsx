@@ -39,6 +39,7 @@ export default function CotacaoPage() {
   const [reqs, setReqs] = useState<Requisicao[]>([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
+  const [numReq, setNumReq] = useState('')
   const [vista, setVista] = useState<'reqs' | 'respondidas' | 'fornecedores' | 'relatorios'>('reqs')
   const [sel, setSel] = useState<Requisicao | null>(null)
   const [mNova, setMNova] = useState(false)
@@ -123,6 +124,15 @@ export default function CotacaoPage() {
     return byNum || byText
   })
 
+  // Abrir uma requisição para cotar digitando só o número (acha em qualquer loja).
+  const abrirPorNumero = () => {
+    const n = Number(String(numReq).replace(/\D/g, ''))
+    if (!n) { toast('Digite o número da requisição (ex.: 26).'); return }
+    const r = reqs.find(x => Number(x.numero) === n)
+    if (!r) { toast(`Requisição ${n} não encontrada.`, 'error' as any); return }
+    setSel(r); setNumReq('')
+  }
+
   // ── Detalhe: análise da cotação ───────────────────────────
   if (sel) {
     const st = ST[sel.status] || ST.rascunho
@@ -200,6 +210,14 @@ export default function CotacaoPage() {
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Cotação Inteligente de Compras</h2>
           <div style={{ fontSize: 13, opacity: 0.85 }}>Comparativo por item · custo real com frete · sugestão de compra · aprovação e relatório — Loja <strong>{loja}</strong></div>
         </div>
+      </div>
+
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', marginBottom: 14, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 13.5, fontWeight: 800 }}>⚡ Gerar cotação pela requisição</span>
+        <input value={numReq} onChange={e => setNumReq(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') abrirPorNumero() }}
+          placeholder="nº da requisição (ex.: 26)" style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, width: 210 }} />
+        <button className="btn" onClick={abrirPorNumero} style={{ padding: '9px 16px' }}>Abrir para cotar →</button>
+        <span style={{ fontSize: 11.5, color: 'var(--muted)', flex: 1, minWidth: 200 }}>A cotação pode ser feita <b>mesmo sem aprovação</b> — a aprovação da requisição só é exigida para gerar o <b>pedido de compra</b>.</span>
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
