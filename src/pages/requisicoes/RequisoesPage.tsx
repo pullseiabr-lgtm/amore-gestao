@@ -207,6 +207,19 @@ function useToast() {
 
 // ── Badges ────────────────────────────────────────────────────
 
+// Aprovadores da requisição — disparo AUTOMÁTICO ao enviar para aprovação (Wagner + Aline).
+const REQ_APROVADORES = [{ nome: 'Wagner', fone: '5581994135602' }, { nome: 'Aline', fone: '5581994573420' }]
+async function dispararAprovacaoReq(req: any, nItens: number, userName: string) {
+  const lojaLabel = ({ 'Amore CD': 'Amore Costa Dourada', 'Flow CD': 'Flow Costa Dourada' } as Record<string, string>)[req.loja] || req.loja
+  const num = req.numero != null ? `#${req.numero}` : (req.codigo || 'nova')
+  const link = `${siteOrigin()}/requisicao-editar.html?id=${req.id}`
+  const msg = `🧾 *Requisição para APROVAÇÃO — ${num}*\n🏪 ${lojaLabel}\n👤 Solicitante: ${req.responsavel_nome || '—'}\n📦 ${nItens} item(ns)${req.titulo ? `\n📝 ${req.titulo}` : ''}\n\nRevise, ajuste se precisar e *aprove*:\n${link}\n\n_Painel Amore_`
+  for (const a of REQ_APROVADORES) {
+    try { await enviarWhatsApp(a.fone, msg, undefined, { tipo: 'compra', modulo: 'requisicoes', titulo: `Aprovação ${num}`, loja: req.loja, created_by: userName }) } catch { /* segue */ }
+    await new Promise(r => setTimeout(r, 2500 + Math.random() * 3000))
+  }
+}
+
 function StatusBadge({ status }: { status: ReqStatus }) {
   const c = CFG_STATUS[status]
   return <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20, background:c.bg, color:c.color, whiteSpace:'nowrap' }}>{c.icon} {c.label}</span>
@@ -883,7 +896,9 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
   const handleEnviar = async () => {
     const u = await updateRequisicao(req.id, { status:'enviada' })
     await tEntry('envio',`Enviada para aprovação por ${userName}`)
-    onAtualizar(u); toast('Enviada para aprovação!'); load()
+    // Disparo AUTOMÁTICO aos aprovadores (Wagner + Aline) — restaura o comportamento anterior.
+    dispararAprovacaoReq(u, itens.length, userName).catch(() => {})
+    onAtualizar(u); toast('Enviada para aprovação — avisando os aprovadores!'); load()
   }
 
   // Enviar a requisição por WhatsApp como LINK da página no layout do painel
@@ -1995,9 +2010,13 @@ export default function RequisoesPage() {
     } else {
       await insertReqTimeline({ requisicao_id:req.id, tipo:'ajuste', descricao:`Requisição editada por ${userName} (nova versão salva)`, usuario:userName, dados:null })
     }
-    if (submit) await insertReqTimeline({ requisicao_id:req.id, tipo:'envio', descricao:`Enviada para aprovação por ${userName}`, usuario:userName, dados:null })
+    if (submit) {
+      await insertReqTimeline({ requisicao_id:req.id, tipo:'envio', descricao:`Enviada para aprovação por ${userName}`, usuario:userName, dados:null })
+      // Disparo AUTOMÁTICO aos aprovadores (Wagner + Aline) — restaura o comportamento anterior.
+      dispararAprovacaoReq(req, (itens || []).length, userName).catch(() => {})
+    }
     setReqs(p=>editando?p.map(r=>r.id===req.id?req:r):[req,...p])
-    toast(submit?'Enviada para aprovação!':(editando?'Alterações salvas (histórico preservado).':'Rascunho salvo!')); setView('lista'); setSel(null)
+    toast(submit?'Enviada para aprovação — avisando os aprovadores!':(editando?'Alterações salvas (histórico preservado).':'Rascunho salvo!')); setView('lista'); setSel(null)
   }
 
   // Regra de segurança (ponto #8): requisição NUNCA é apagada — vira "Cancelada"
