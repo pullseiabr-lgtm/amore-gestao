@@ -199,6 +199,31 @@ async function enviarFechamentoCreditos(host, cfg, dest) {
   return { ...resumo, enviados: env }
 }
 
+// ── Requisições aguardando aprovação (alerta aos aprovadores; dobrado aqui / limite Hobby=12) ──
+async function montarAprovacaoRequisicoes(host) {
+  const reqs = await sb('requisicoes?select=numero,loja,titulo,responsavel_nome,status,created_at&status=in.(enviada,em_analise)&order=created_at.asc&limit=500')
+  const lista = (reqs || []).filter(r => r && r.numero != null)
+  if (!lista.length) return { texto: null, resumo: { pendentes: 0, porLoja: {} } }
+  const porLoja = {}
+  for (const r of lista) { const l = canon(r.loja) || 'Sem loja'; (porLoja[l] = porLoja[l] || []).push(r) }
+  const blocos = Object.entries(porLoja).map(([loja, arr]) => {
+    const linhas = arr.slice(0, 10).map(r => `   • *#${r.numero}* · ${r.titulo || 'Requisição'} · ${r.responsavel_nome || '—'} _(${dDMY(r.created_at)})_`).join('\n')
+    const extra = arr.length > 10 ? `\n   … e mais ${arr.length - 10}` : ''
+    return `🏬 *${loja}* (${arr.length})\n${linhas}${extra}`
+  }).join('\n\n')
+  const link = `https://${host}/?page=requisicoes`
+  const resumoLoja = Object.fromEntries(Object.entries(porLoja).map(([l, a]) => [l, a.length]))
+  const texto = `📋 *Requisições aguardando aprovação*\n${dDMY(new Date(Date.now() - 3 * 3600e3).toISOString())}\n━━━━━━━━━━━━\n${blocos}\n━━━━━━━━━━━━\n📊 Total: *${lista.length} requisição(ões)* a validar\n\n👉 Revisar e aprovar no painel (✅ Aprovação de Requisição):\n${link}\n\n_Painel Amore · alerta automático_`
+  return { texto, resumo: { pendentes: lista.length, porLoja: resumoLoja } }
+}
+async function enviarAprovacaoRequisicoes(host, cfg, dest) {
+  const { texto, resumo } = await montarAprovacaoRequisicoes(host)
+  if (!texto) return { ...resumo, enviados: 0 }
+  let env = 0
+  for (const to of dest) { const r = await enviarEvolution(to, texto, cfg); if (r.ok) env++; await new Promise(x => setTimeout(x, 1200)) }
+  return { ...resumo, enviados: env }
+}
+
 export default async function handler(req, res) {
   const preview = req.query?.preview === '1' || req.query?.preview === 'true'
   // segurança do ENVIO (preview é liberado p/ conferência)
@@ -224,6 +249,8 @@ export default async function handler(req, res) {
   try {
     // Preview do Fechamento de Créditos (semanal): ?cred=1&preview=1
     if (preview && req.query?.cred === '1') { const f = await montarFechamentoCreditos(host); return res.status(200).json({ preview: true, tipo: 'fechamento_creditos', resumo: f.resumo, link: f.link, texto: f.texto }) }
+    // Preview das Requisições aguardando aprovação: ?reqaprov=1&preview=1
+    if (preview && req.query?.reqaprov === '1') { const a = await montarAprovacaoRequisicoes(host); return res.status(200).json({ preview: true, tipo: 'aprovacao_requisicoes', resumo: a.resumo, texto: a.texto || '(sem requisições pendentes)' }) }
     const { texto, resumo, link } = await montar(dia, loja, host)
     if (preview) return res.status(200).json({ preview: true, dia, loja: canon(loja) || 'todas', resumo, link, texto })
 
@@ -255,11 +282,15 @@ export default async function handler(req, res) {
       try { fechamento = await enviarFechamentoCreditos(host, cfg, destFech) }
       catch (e) { fechamento = { error: String((e && e.message) || e) } }
     }
+    // Requisições aguardando aprovação: alerta diário aos aprovadores (só quando houver pendentes).
+    let aprovReq = null
+    try { aprovReq = await enviarAprovacaoRequisicoes(host, cfg, dest) }
+    catch (e) { aprovReq = { error: String((e && e.message) || e) } }
     // Alerta de avaliações negativas (só p/ Esdras, e só se houver negativa) — todo dia
     let alertaFb = null
     try { alertaFb = await enviarAlertaAvaliacoes(cfg, host, dia) }
     catch (e) { alertaFb = { error: String((e && e.message) || e) } }
-    return res.status(200).json({ dia, enviados: resultados.filter(r => r.ok).length, total: dest.length, resumo, resultados, requisicao, fechamento, alertaFb })
+    return res.status(200).json({ dia, enviados: resultados.filter(r => r.ok).length, total: dest.length, resumo, resultados, requisicao, fechamento, aprovReq, alertaFb })
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Erro no relatório diário' })
   }
