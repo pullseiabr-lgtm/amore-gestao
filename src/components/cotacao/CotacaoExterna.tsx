@@ -37,6 +37,9 @@ export default function CotacaoExterna({ req, userName, toast, readOnly }: { req
   const [showNovoForn, setShowNovoForn] = useState(false)
   const [novoForn, setNovoForn] = useState({ nome: '', whatsapp: '', categorias: '' })
   const [salvandoForn, setSalvandoForn] = useState(false)
+  // envio manual (número avulso + vendedor específico, sem depender da base)
+  const [manualEnvio, setManualEnvio] = useState({ whatsapp: '', forn: '', vendedor: '' })
+  const [enviandoManual, setEnviandoManual] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -126,6 +129,35 @@ export default function CotacaoExterna({ req, userName, toast, readOnly }: { req
       setSelForns(new Set()); await load()
     } catch (e) { toast('Erro: ' + (e as Error).message, 'error') }
     finally { setBusy(false) }
+  }
+
+  // Envio MANUAL: digita WhatsApp + nome do fornecedor + nome do vendedor e manda a cotação dos itens marcados.
+  const enviarManual = async () => {
+    if (selItens.size === 0) { toast('Marque ao menos 1 produto para cotar.', 'error'); return }
+    const fone = soDig(manualEnvio.whatsapp)
+    if (fone.length < 10) { toast('Informe um WhatsApp válido com DDD (ex.: 5581999999999).', 'error'); return }
+    const nomeForn = manualEnvio.forn.trim() || 'Fornecedor'
+    const vend = manualEnvio.vendedor.trim()
+    setEnviandoManual(true)
+    try {
+      const cots = await fetchRequisicaoCotacoes(req.id).catch(() => [])
+      let cot = cots.find(c => c.fornecedor_nome === nomeForn)
+      if (!cot) cot = await insertRequisicaoCotacao({ requisicao_id: req.id, fornecedor_nome: nomeForn, status: 'enviada', total: null, prazo_entrega: null, observacoes: vend ? `Vendedor: ${vend}` : null } as never)
+      const token = gerarTokenCotacao(); const agora = new Date().toISOString()
+      const tk: CotacaoToken = {
+        token, requisicao_id: req.id, cotacao_id: cot.id, fornecedor_id: null as any, fornecedor_nome: nomeForn,
+        loja: req.loja, numero: req.numero, titulo: req.titulo, item_ids: [...selItens],
+        prazo_resposta: prazo ? new Date(prazo).toISOString() : null,
+        validade: validadeDias ? new Date(Date.now() + Number(validadeDias) * 86400000).toISOString() : null,
+        status: 'enviado', criado_por: userName, criado_em: agora, enviado_em: agora, acessos: 0, resposta: null,
+      }
+      await saveCotacaoToken(tk)
+      const saud = vend || nomeForn
+      const ok = await enviarWhatsApp(fone, msgWhats({ nome: saud }, linkDe(token), selItens.size))
+      toast(ok ? `Cotação enviada manual para ${nomeForn}${vend ? ` (${vend})` : ''}. ✅` : 'Link gerado, mas o WhatsApp falhou — copie o link no rastreio abaixo.', ok ? undefined : 'error')
+      setManualEnvio({ whatsapp: '', forn: '', vendedor: '' }); await load()
+    } catch (e) { toast('Erro: ' + (e as Error).message, 'error') }
+    finally { setEnviandoManual(false) }
   }
 
   const reenviar = async (t: CotacaoToken, foneManual?: string) => {
@@ -224,7 +256,19 @@ export default function CotacaoExterna({ req, userName, toast, readOnly }: { req
           {!readOnly && <button className="btn" onClick={enviarCotacao} disabled={busy || selItens.size === 0 || selForns.size === 0} style={{ padding: '12px 18px', fontSize: 14, fontWeight: 700, opacity: (busy || selItens.size === 0 || selForns.size === 0) ? .55 : 1 }}>
             {busy ? <Loader2 className="spin" size={16} /> : <Send size={16} />} Enviar cotação de {selItens.size} produto(s) para {selForns.size} fornecedor(es)
           </button>}
-          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8 }}>Cada fornecedor recebe um link único só com os produtos marcados (não vê os outros fornecedores nem os preços). Quem não tem WhatsApp cadastrado aparece no rastreio abaixo com um campo para você digitar o número e enviar manual, ou copiar o link.</div>
+
+          {/* Envio MANUAL — número avulso / vendedor específico (não precisa estar na base) */}
+          {!readOnly && <div style={{ borderTop: '1px dashed var(--border)', marginTop: 14, paddingTop: 12 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>✍️ Ou envie manual — número avulso / vendedor específico <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(usa os {selItens.size} produto(s) marcados)</span></div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8, alignItems: 'end' }}>
+              <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>WhatsApp (c/ DDD) *<br /><input value={manualEnvio.whatsapp} onChange={e => setManualEnvio(o => ({ ...o, whatsapp: e.target.value }))} placeholder="5581999999999" style={{ ...inp, width: '100%', marginTop: 4 }} /></label>
+              <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>Nome do fornecedor<br /><input value={manualEnvio.forn} onChange={e => setManualEnvio(o => ({ ...o, forn: e.target.value }))} placeholder="Ex.: COMAL Atacadista" style={{ ...inp, width: '100%', marginTop: 4 }} /></label>
+              <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>Nome do vendedor<br /><input value={manualEnvio.vendedor} onChange={e => setManualEnvio(o => ({ ...o, vendedor: e.target.value }))} placeholder="Ex.: João" style={{ ...inp, width: '100%', marginTop: 4 }} /></label>
+              <button className="btn" onClick={enviarManual} disabled={enviandoManual || selItens.size === 0} style={{ padding: '10px 14px', fontWeight: 700, opacity: (enviandoManual || selItens.size === 0) ? .55 : 1 }}>{enviandoManual ? <Loader2 className="spin" size={14} /> : <Send size={14} />} Enviar manual</button>
+            </div>
+          </div>}
+
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8 }}>Cada fornecedor recebe um link único só com os produtos marcados (não vê os outros fornecedores nem os preços). Quem não tem WhatsApp cadastrado aparece no rastreio abaixo com um campo para digitar o número e enviar manual, ou copiar o link.</div>
         </div>
 
         {/* RASTREIO */}
