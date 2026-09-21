@@ -248,9 +248,11 @@ export default async function handler(req, res) {
       catch (e) { requisicao = { error: String((e && e.message) || e) } }
     }
     // Fechamento de Caixas (Créditos): resumo semanal às SEGUNDAS (ou sob demanda ?cred=1).
+    // Vai para os destinatários do diário + Aline (aprovadora de reembolso), sem duplicar.
     let fechamento = null
     if (isSegunda || req.query?.cred === '1') {
-      try { fechamento = await enviarFechamentoCreditos(host, cfg, dest) }
+      const destFech = [...new Set([...dest, '5581994573420'])]
+      try { fechamento = await enviarFechamentoCreditos(host, cfg, destFech) }
       catch (e) { fechamento = { error: String((e && e.message) || e) } }
     }
     // Alerta de avaliações negativas (só p/ Esdras, e só se houver negativa) — todo dia
