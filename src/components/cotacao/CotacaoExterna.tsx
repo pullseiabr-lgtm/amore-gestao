@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link2, Send, Copy, RefreshCw, Ban, CheckCircle2, Loader2, Users, Package } from 'lucide-react'
-import { fetchFornecedores, fetchRequisicaoItens, fetchCotacaoTokens, saveCotacaoToken, gerarTokenCotacao, insertRequisicaoCotacao, fetchRequisicaoCotacoes, updateRequisicaoItem, type CotacaoToken } from '../../lib/db'
+import { fetchFornecedores, insertFornecedor, fetchRequisicaoItens, fetchCotacaoTokens, saveCotacaoToken, gerarTokenCotacao, insertRequisicaoCotacao, fetchRequisicaoCotacoes, updateRequisicaoItem, type CotacaoToken } from '../../lib/db'
 import { enviarWhatsApp } from '../../lib/notify'
 import { siteOrigin } from '../../lib/site'
 import type { Requisicao, Fornecedor, RequisicaoItem } from '../../types/database'
@@ -33,21 +33,51 @@ export default function CotacaoExterna({ req, userName, toast, readOnly }: { req
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [manualFone, setManualFone] = useState<Record<string, string>>({})
+  // cadastro rápido de fornecedor (quando não está na base)
+  const [showNovoForn, setShowNovoForn] = useState(false)
+  const [novoForn, setNovoForn] = useState({ nome: '', whatsapp: '', categorias: '' })
+  const [salvandoForn, setSalvandoForn] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     const [f, t, it] = await Promise.all([
-      fetchFornecedores(req.loja).catch(() => []),
+      fetchFornecedores().catch(() => []),   // TODOS os fornecedores (todas as lojas) — mesma demanda
       fetchCotacaoTokens(req.id).catch(() => []),
       fetchRequisicaoItens(req.id).catch(() => []),
     ])
+    // deduplica por nome (mantém o que tiver WhatsApp/telefone) — o mesmo fornecedor atende todas as lojas
+    const map = new Map<string, Fornecedor>()
+    for (const x of (f as Fornecedor[]).filter(x => x.ativo !== false)) {
+      const k = (x.nome || '').trim().toLowerCase(); if (!k) continue
+      const cur = map.get(k)
+      const sc = (soDig(x.whatsapp) || soDig(x.telefone)) ? 1 : 0
+      const curSc = cur ? ((soDig(cur.whatsapp) || soDig(cur.telefone)) ? 1 : 0) : -1
+      if (!cur || sc > curSc) map.set(k, x)
+    }
     const ativos = it.filter((i: any) => i.status !== 'cancelado')
-    setForns(f.filter(x => x.ativo !== false)); setTokens(t); setItens(ativos)
+    setForns([...map.values()].sort((a, b) => a.nome.localeCompare(b.nome))); setTokens(t); setItens(ativos)
     setSelItens(new Set(ativos.map((i: any) => i.id)))   // já marca todos os produtos
     setSelForns(new Set())
     setLoading(false)
   }, [req.id, req.loja])
   useEffect(() => { load() }, [load])
+
+  const cadastrarFornecedor = async () => {
+    const nome = novoForn.nome.trim()
+    if (!nome) { toast('Informe o nome do fornecedor.', 'error'); return }
+    setSalvandoForn(true)
+    try {
+      const novo = await insertFornecedor({
+        loja: req.loja, nome, whatsapp: soDig(novoForn.whatsapp) || null, telefone: soDig(novoForn.whatsapp) || null,
+        categorias: novoForn.categorias.trim() || null, forma_pagamento: 'À vista', prazo_pagamento: 0, ativo: true,
+      } as any)
+      toast(`Fornecedor "${nome}" cadastrado. ✅`)
+      setNovoForn({ nome: '', whatsapp: '', categorias: '' }); setShowNovoForn(false)
+      await load()
+      if (novo?.id) setSelForns(s => { const n = new Set(s); n.add(novo.id); return n })
+    } catch (e) { toast('Falha ao cadastrar: ' + (e as Error).message, 'error') }
+    finally { setSalvandoForn(false) }
+  }
 
   const jaConvidado = (nome: string) => tokens.some(t => t.fornecedor_nome === nome && t.status !== 'cancelado')
   const linkDe = (tok: string) => `${siteOrigin()}/cotacao.html?t=${tok}`
@@ -160,10 +190,20 @@ export default function CotacaoExterna({ req, userName, toast, readOnly }: { req
 
         {/* PASSO 2 — fornecedores */}
         <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
-          <div style={passoTit}><Users size={15} /> 2) Escolha os fornecedores <span style={{ fontWeight: 500, color: 'var(--muted)' }}>({selForns.size} marcado(s) · {forns.length} na loja {req.loja})</span></div>
+          <div style={passoTit}><Users size={15} /> 2) Escolha os fornecedores <span style={{ fontWeight: 500, color: 'var(--muted)' }}>({selForns.size} marcado(s) · {forns.length} disponíveis · todas as lojas)</span>
+            {!readOnly && <button onClick={() => setShowNovoForn(v => !v)} style={{ marginLeft: 'auto', ...inp, cursor: 'pointer', fontWeight: 700, color: '#4338CA' }}>➕ Cadastrar fornecedor</button>}
+          </div>
+          {showNovoForn && !readOnly && (
+            <div style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 10, marginBottom: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8, alignItems: 'end' }}>
+              <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>Nome *<br /><input value={novoForn.nome} onChange={e => setNovoForn(o => ({ ...o, nome: e.target.value }))} placeholder="Nome do fornecedor" style={{ ...inp, width: '100%', marginTop: 4 }} /></label>
+              <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>WhatsApp (c/ DDD)<br /><input value={novoForn.whatsapp} onChange={e => setNovoForn(o => ({ ...o, whatsapp: e.target.value }))} placeholder="5581999999999" style={{ ...inp, width: '100%', marginTop: 4 }} /></label>
+              <label style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>Categorias<br /><input value={novoForn.categorias} onChange={e => setNovoForn(o => ({ ...o, categorias: e.target.value }))} placeholder="Hortifruti, Carne…" style={{ ...inp, width: '100%', marginTop: 4 }} /></label>
+              <button className="btn" onClick={cadastrarFornecedor} disabled={salvandoForn} style={{ padding: '9px 14px' }}>{salvandoForn ? <Loader2 className="spin" size={14} /> : '💾'} Salvar e marcar</button>
+            </div>
+          )}
           <input value={buscaForn} onChange={e => setBuscaForn(e.target.value)} placeholder="🔍 Buscar fornecedor…" style={{ ...inp, width: '100%', marginBottom: 8 }} />
           <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
-            {fornsFiltrados.length === 0 ? <div style={{ padding: 12, color: 'var(--muted)', fontSize: 12.5 }}>Nenhum fornecedor cadastrado nesta loja.</div> : fornsFiltrados.map(f => {
+            {fornsFiltrados.length === 0 ? <div style={{ padding: 12, color: 'var(--muted)', fontSize: 12.5 }}>Nenhum fornecedor encontrado — use <b>➕ Cadastrar fornecedor</b> acima.</div> : fornsFiltrados.map(f => {
               const on = selForns.has(f.id); const temZap = !!(soDig(f.whatsapp) || soDig(f.telefone)); const conv = jaConvidado(f.nome)
               return <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 11px', borderTop: '1px solid var(--border)', cursor: 'pointer', background: on ? '#EEF2FF' : 'transparent' }}>
                 <input type="checkbox" checked={on} onChange={() => toggleForn(f.id)} style={{ width: 16, height: 16, flexShrink: 0 }} />
