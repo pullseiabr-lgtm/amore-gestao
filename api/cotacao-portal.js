@@ -118,5 +118,14 @@ export default async function handler(req, res) {
 
   tok.status = 'respondido'; tok.respondido_em = new Date().toISOString()
   await saveTok(tok)
+
+  // Amarra o status da requisição à cotação: ao receber a 1ª resposta, vira "Cotação Recebida"
+  // (só a partir dos estados de cotação — nunca rebaixa aprovação/compra/recebimento).
+  if (tok.requisicao_id) {
+    await rest('requisicoes?id=eq.' + tok.requisicao_id + '&status=in.(aguardando_cotacao,em_cotacao)', {
+      method: 'PATCH', headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ status: 'cotacao_recebida', updated_at: new Date().toISOString() }),
+    }).catch(() => {})
+  }
   return res.status(200).json({ ok: true, finalizado: true })
 }
