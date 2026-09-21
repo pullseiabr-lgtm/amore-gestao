@@ -710,14 +710,20 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
     setApBusy(false)
   }
 
-  // Opções de destino conforme saldo
-  const opcoesDestino = isReembolsoProprio
-    ? [{ id: 'reembolso', label: '🔴 Reembolsar colaborador' }]
+  // Opções de destino conforme saldo (com descrição do que cada uma faz — sem depender de digitar)
+  const opcoesDestino: { id: string; label: string; desc: string }[] = isReembolsoProprio
+    ? [{ id: 'reembolso', label: '🔴 Reembolsar colaborador', desc: 'Devolve ao colaborador o valor pago com recurso próprio.' }]
     : saldo > 0.001
-      ? [{ id: 'devolucao', label: '💵 Devolução ao caixa' }, { id: 'remanescente', label: '🔄 Crédito remanescente' }]
+      ? [
+          { id: 'devolucao', label: '💵 Devolução ao caixa', desc: 'A sobra volta em dinheiro ao caixa da loja.' },
+          { id: 'remanescente', label: '🔄 Crédito remanescente', desc: 'A sobra vira crédito da loja para a próxima compra.' },
+        ]
       : saldo < -0.001
-        ? [{ id: 'complemento', label: '➕ Complemento' }, { id: 'reembolso', label: '🔴 Reembolso ao colaborador' }]
-        : [{ id: 'zerado', label: '🟢 Crédito totalmente utilizado' }]
+        ? [
+            { id: 'complemento', label: '➕ Complemento — empresa gera crédito', desc: 'A empresa cobre o excedente gerando crédito. Conta como crédito gerado — NÃO é reembolso.' },
+            { id: 'reembolso', label: '🔴 Reembolso ao prestador', desc: 'Quem gerou o caixa pagou do próprio bolso o valor acima do crédito e recebe de volta.' },
+          ]
+        : [{ id: 'zerado', label: '🟢 Crédito totalmente utilizado', desc: '' }]
 
   const encerrar = async () => {
     if (isReembolsoProprio && totalGasto <= 0) { alert('Lance ao menos uma despesa (nota/comprovante) da compra antes de enviar o reembolso.'); return }
@@ -906,10 +912,20 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
                 {Math.abs(saldo) <= 0.001 && <span>🟢 Crédito totalmente utilizado, sem saldo.</span>}
               </div>
               {Math.abs(saldo) > 0.001 && (
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-                  {opcoesDestino.map(o => (
-                    <button key={o.id} className={`btn ${destino === o.id ? 'bp' : 'bo'} bsm`} onClick={() => setDestino(o.id)}>{o.label}</button>
-                  ))}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 8, marginBottom: 10 }}>
+                  {opcoesDestino.map(o => {
+                    const sel = destino === o.id
+                    return (
+                      <button key={o.id} onClick={() => setDestino(o.id)} style={{
+                        textAlign: 'left', cursor: 'pointer', borderRadius: 8, padding: '10px 12px',
+                        border: `2px solid ${sel ? 'var(--bordo)' : 'var(--border)'}`,
+                        background: sel ? '#FEF2F2' : 'var(--bg2,#F8FAFC)',
+                      }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: o.desc ? 4 : 0 }}>{o.label} · {fmtR$(Math.abs(saldo))}</div>
+                        {o.desc && <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.4 }}>{o.desc}</div>}
+                      </button>
+                    )
+                  })}
                 </div>
               )}
             </>
