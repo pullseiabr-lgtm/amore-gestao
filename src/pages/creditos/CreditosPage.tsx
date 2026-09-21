@@ -309,19 +309,35 @@ function CreditoCard({ c, podeAprovar, user, onChange, onPrestar }: {
     setBusy(false); onChange()
   }
   // Cancelar / Excluir mantendo o REGISTRO (nunca apaga do banco): grava ação, motivo e quem fez.
-  const preAprovacao = ['rascunho', 'solicitado', 'em_aprovacao'].includes(c.status)
-  const registrarAudit = async (acao: 'cancelado' | 'excluido', motivo: string) => {
-    const prest = { ...(c.prestacao || {}), cancelamento: { acao, motivo, por: user?.name || 'Painel', em: new Date().toISOString() } }
+  // Liberado para qualquer crédito NÃO UTILIZADO (sem despesas) e ainda não encerrado/cancelado/excluído.
+  const podeCancelar = (c.total_gasto || 0) === 0 && !['encerrado', 'cancelado', 'excluido', 'remanescente'].includes(c.status)
+  const registrarAudit = async (acao: 'cancelado' | 'excluido', motivo: string): Promise<boolean> => {
+    // Integridade do saldo: não deixa cancelar/excluir crédito cujo saldo já foi usado em outro caixa.
+    if (usadoSaldo(c) > 0.001) { alert('Este crédito já gerou saldo que foi usado em outro caixa. Estorne/cancele primeiro o caixa que usou o saldo.'); return false }
+    // Se foi financiado por um saldo de outro crédito, devolve o valor à origem (estorno).
+    const orig = c.estimativa_base?.origem_saldo
+    if (orig?.credito_id) {
+      try {
+        const { data: src } = await sb.from('creditos').select('prestacao, numero').eq('id', orig.credito_id).maybeSingle()
+        if (src) {
+          const usos = ((src.prestacao?.saldo_usos as any[]) || []).filter((u: any) => u.credito_id !== c.id)
+          await sb.from('creditos').update({ prestacao: { ...(src.prestacao || {}), saldo_usos: usos }, updated_at: new Date().toISOString() }).eq('id', orig.credito_id)
+          try { await sb.from('credito_movimentos').insert({ credito_id: orig.credito_id, tipo: 'saldo_estorno', valor: c.valor_aprovado || 0, data: hoje(), obs: `Estorno do saldo — CRD-${c.numero} ${acao}`, created_by: user?.name || 'Painel' }) } catch { /* segue */ }
+        }
+      } catch { /* segue */ }
+    }
+    const prest = { ...(c.prestacao || {}), cancelamento: { acao, motivo, por: user?.name || 'Painel', em: new Date().toISOString(), status_anterior: c.status } }
     await sb.from('creditos').update({ status: acao, prestacao: prest, updated_at: new Date().toISOString() }).eq('id', c.id)
-    try { await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: acao, valor: 0, data: hoje(), obs: `${acao === 'excluido' ? 'Excluído' : 'Cancelado'} por ${user?.name || 'Painel'}: ${motivo}`, created_by: user?.name || 'Painel' }) } catch { /* segue */ }
+    try { await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: acao, valor: 0, data: hoje(), obs: `${acao === 'excluido' ? 'Excluído' : 'Cancelado'} por ${user?.name || 'Painel'} (era ${st(c.status).label.replace(/^[^ ]+ /, '')}): ${motivo}`, created_by: user?.name || 'Painel' }) } catch { /* segue */ }
+    return true
   }
   const cancelar = async () => {
-    const motivo = prompt(`Cancelar a solicitação CRD-${c.numero}? (mantém o registro do cancelamento)\n\nMotivo:`)
+    const motivo = prompt(`Cancelar o crédito CRD-${c.numero}? (mantém o registro do cancelamento e quem fez)\n\nMotivo:`)
     if (!motivo) return
     setBusy(true); await registrarAudit('cancelado', motivo); setBusy(false); onChange()
   }
   const excluir = async () => {
-    const motivo = prompt(`Excluir a solicitação CRD-${c.numero} (criada errada, sem aprovação)?\nO registro é mantido para auditoria (quem/quando/motivo).\n\nMotivo:`)
+    const motivo = prompt(`Excluir o crédito CRD-${c.numero} (criado errado)?\nO registro é mantido para auditoria (quem/quando/motivo).\n\nMotivo:`)
     if (!motivo) return
     setBusy(true); await registrarAudit('excluido', motivo); setBusy(false); onChange()
   }
@@ -387,7 +403,7 @@ function CreditoCard({ c, podeAprovar, user, onChange, onPrestar }: {
           <button className="btn bp bsm" onClick={onPrestar}><FileCheck2 size={12} /> {c.status === 'em_analise' ? 'Editar / corrigir' : 'Prestar contas'}</button>
         )}
         <a href={linkPublico} target="_blank" rel="noreferrer" className="btn bo bsm" style={{ textDecoration: 'none' }}><ExternalLink size={12} /> Ver</a>
-        {(user?.role === 'admin' || user?.role === 'super_admin') && !busy && preAprovacao && c.total_gasto === 0 && (
+        {(podeAprovar || user?.role === 'admin' || user?.role === 'super_admin') && !busy && podeCancelar && (
           <>
             <button className="btn bo bsm" onClick={cancelar} title="Cancelar (mantém o registro)" style={{ color: '#B45309' }}><X size={12} /> Cancelar</button>
             <button className="btn bo bsm" onClick={excluir} title="Excluir (mantém o registro)" style={{ color: '#991B1B' }}><Trash2 size={12} /> Excluir</button>
