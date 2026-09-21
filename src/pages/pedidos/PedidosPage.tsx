@@ -114,7 +114,13 @@ export default function PedidosPage() {
       toast('Pedido cancelado/excluído.'); load()
     } catch { toast('Falha ao cancelar o pedido.', 'error') }
   }
-  useEffect(() => { fetchFornecedores(fLoja).then(f => setForns(f.filter(x => x.ativo !== false))).catch(() => setForns([])) }, [fLoja])
+  // Fornecedores de TODAS as lojas (deduplicados por nome) — o mesmo fornecedor atende a mesma demanda.
+  useEffect(() => { fetchFornecedores().then(f => {
+    const at = f.filter(x => x.ativo !== false)
+    const map = new Map<string, typeof at[number]>()
+    for (const x of at) { const k = (x.nome || '').trim().toLowerCase(); if (!k) continue; const cur = map.get(k); const sc = ((x.whatsapp || x.telefone || '').replace(/\D/g, '')) ? 1 : 0; const cs = cur ? (((cur.whatsapp || cur.telefone || '').replace(/\D/g, '')) ? 1 : 0) : -1; if (!cur || sc > cs) map.set(k, x) }
+    setForns([...map.values()].sort((a, b) => a.nome.localeCompare(b.nome)))
+  }).catch(() => setForns([])) }, [])
   useEffect(() => { if (!mNovo) return; fetchProdutos(fLoja, { ativo: true }).then(setProdutosLoja).catch(() => setProdutosLoja([])) }, [mNovo, fLoja])
   useEffect(() => { (async () => {
     const [{ data: fs }, { data: ps }] = await Promise.all([

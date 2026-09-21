@@ -448,9 +448,10 @@ export default function FornecedoresPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    try { setFornecedores(await fetchFornecedores(loja)) } catch {}
+    // Base compartilhada: mostra os fornecedores de TODAS as lojas (mesma demanda atende todas).
+    try { setFornecedores(await fetchFornecedores()) } catch {}
     setLoading(false)
-  }, [loja])
+  }, [])
 
   useEffect(() => { load() }, [load])
 
