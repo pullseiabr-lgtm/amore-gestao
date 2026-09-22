@@ -113,6 +113,10 @@ function fmtMoeda(n: number | null | undefined) {
   if (n == null) return '—'
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
+function contaAnexos(v: string | null | undefined): number {
+  if (!v) return 0
+  return v.split(/\n+/).map(s => s.trim()).filter(Boolean).length
+}
 function parseTags(s: string | null): string[] {
   if (!s) return []
   return s.split(/[,\s]+/).map(t => t.replace(/^#/, '').trim()).filter(Boolean)
@@ -269,6 +273,7 @@ export default function TarefasPage() {
   const [periodoPainel, setPeriodoPainel] = useState<'todos' | '7d' | '30d' | 'custom'>('todos')
   const [periodoDe, setPeriodoDe] = useState('')
   const [periodoAte, setPeriodoAte] = useState('')
+  const [pendenciaAberta, setPendenciaAberta] = useState<string | null>(null)
 
   // Modal nova tarefa
   const [showForm, setShowForm] = useState(false)
@@ -378,7 +383,7 @@ export default function TarefasPage() {
   const [novoComentTipo, setNovoComentTipo] = useState('atualizacao')
   const [novoCheckDetalhe, setNovoCheckDetalhe] = useState('')
   const [detalheSaving, setDetalheSaving] = useState(false)
-  const [abaDetalhe, setAbaDetalhe] = useState<'checklist'|'execucao'|'historico'>('checklist')
+  const [abaDetalhe, setAbaDetalhe] = useState<'checklist'|'envolvidos'|'aprovacoes'|'execucao'|'historico'>('checklist')
   // Edição de execução/resultado no detalhe
   const [resForm, setResForm] = useState({ resultado_final: '', custo_executado: '', dificuldades: '', resultado_status: '' as '' | TarefaResultado, observacao_final: '' })
   // Solicitação de mais prazo
@@ -401,6 +406,13 @@ export default function TarefasPage() {
   const [transMotivo, setTransMotivo] = useState('')
   const [transResp, setTransResp] = useState('')
   const [transPrevisao, setTransPrevisao] = useState('')
+  // Posicionamento: aceite formal do responsável (aceitar/recusar + concordar/propor novo prazo)
+  const [posicionamento, setPosicionamento] = useState<Tarefa | null>(null)
+  const [posAceite, setPosAceite] = useState<boolean | null>(null)
+  const [posPrazoConcorda, setPosPrazoConcorda] = useState<boolean | null>(null)
+  const [posPrazoProposto, setPosPrazoProposto] = useState('')
+  const [posPrazoJustificativa, setPosPrazoJustificativa] = useState('')
+  const [posMotivoRecusa, setPosMotivoRecusa] = useState('')
 
   // ── Load ─────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -610,7 +622,16 @@ export default function TarefasPage() {
     if (!detalhe || !novoComent.trim()) return
     setDetalheSaving(true)
     try {
-      await insertTarefaComentario({ tarefa_id: detalhe.id, texto: novoComent.trim(), autor_nome: user?.name || 'Usuário', tipo: novoComentTipo })
+      const texto = novoComent.trim()
+      const tipo = novoComentTipo
+      await insertTarefaComentario({ tarefa_id: detalhe.id, texto, autor_nome: user?.name || 'Usuário', tipo })
+      // Toda atualização relevante da tratativa avisa o solicitante — não só as trocas de status.
+      const phone = whatsappDoResponsavel(detalhe.solicitante_nome)
+      if (phone && (user?.name || detalhe.responsavel_nome) !== detalhe.solicitante_nome) {
+        const info = tipoAtualizacaoInfo(tipo)
+        const msg = `🔔 *Atualização da tarefa*${detalhe.numero != null ? ` #${String(detalhe.numero).padStart(4, '0')}` : ''}\n\n📋 ${detalhe.titulo}\n${info.emoji} ${info.label}: ${texto}\n👤 ${user?.name || detalhe.responsavel_nome || '—'}\n\n${linkTarefa(detalhe, 'solic')}\n_Amore Gestão_`
+        await zapPara(detalhe.solicitante_nome, phone, msg, { titulo: `Atualização: ${detalhe.titulo}`, refId: detalhe.id })
+      }
       setNovoComent('')
       setNovoComentTipo('atualizacao')
       await load()
@@ -663,20 +684,51 @@ export default function TarefasPage() {
     } finally { setDetalheSaving(false) }
   }
 
-  // ── Responsável recebe a tarefa ──────────────────────────
-  const marcarRecebida = async (t: Tarefa) => {
+  // ── Posicionamento: aceite formal do responsável (substitui o antigo "dar ciência" simples) ──
+  const abrirPosicionamento = (t: Tarefa) => {
+    setPosAceite(null); setPosPrazoConcorda(null); setPosPrazoProposto(''); setPosPrazoJustificativa(''); setPosMotivoRecusa('')
+    setPosicionamento(t)
+  }
+  const confirmarPosicionamento = async () => {
+    if (!posicionamento) return
+    const t = posicionamento
+    if (posAceite == null) { alert('Aceite ou recuse a tarefa.'); return }
+    if (posAceite && posPrazoConcorda == null) { alert('Informe se concorda com o prazo.'); return }
+    if (posAceite && posPrazoConcorda === false && (!posPrazoProposto || !posPrazoJustificativa.trim())) { alert('Informe o novo prazo e a justificativa.'); return }
+    if (!posAceite && !posMotivoRecusa.trim()) { alert('Informe o motivo da recusa.'); return }
+    const quem = user?.name || t.responsavel_nome || 'Responsável'
     setDetalheSaving(true)
     try {
-      const quem = user?.name || t.responsavel_nome || 'Responsável'
-      if (t.status === 'pendente') await updateTarefa(t.id, { status: 'recebida' })
-      await saveTV2(t, { recebido_em: new Date().toISOString(), recebido_por: quem, visualizado_em: t.visualizado_em || new Date().toISOString() })
-      await insertTarefaHistorico({ tarefa_id: t.id, acao: `Ciência dada — ${quem} recebeu a tarefa`, campo: null, valor_anterior: null, valor_novo: null, usuario_nome: quem })
-      // Dá ciência ao solicitante (SLA começa a contar a partir daqui)
-      const phone = whatsappDoResponsavel(t.solicitante_nome)
-      if (phone) {
-        const msg = `📨 *Ciência da tarefa*${t.numero != null ? ` #${String(t.numero).padStart(4, '0')}` : ''}\n\n🏪 ${t.loja}\n📋 ${t.titulo}\n👤 ${quem} recebeu e vai executar.\n\n${linkTarefa(t, 'solic')}\n_Amore Gestão_`
-        await zapPara(t.solicitante_nome, phone, msg, { titulo: `Ciência: ${t.titulo}`, refId: t.id })
+      if (posAceite) {
+        const novoPrazo = posPrazoConcorda === false ? posPrazoProposto : t.prazo
+        if (t.status === 'pendente') await updateTarefa(t.id, { status: 'recebida', prazo: novoPrazo })
+        else if (novoPrazo !== t.prazo) await updateTarefa(t.id, { prazo: novoPrazo })
+        await saveTV2(t, {
+          recebido_em: new Date().toISOString(), recebido_por: quem, visualizado_em: t.visualizado_em || new Date().toISOString(),
+          aceite_status: 'aceito', aceite_em: new Date().toISOString(), aceite_por: quem,
+          aceite_prazo_concorda: posPrazoConcorda, aceite_prazo_proposto: posPrazoConcorda === false ? posPrazoProposto : null,
+          aceite_prazo_justificativa: posPrazoConcorda === false ? posPrazoJustificativa.trim() : null,
+        })
+        const acaoTxt = posPrazoConcorda === false
+          ? `${quem} aceitou a tarefa e propôs novo prazo (${fmtData(posPrazoProposto)}): ${posPrazoJustificativa.trim()}`
+          : `${quem} aceitou a tarefa e concordou com o prazo`
+        await insertTarefaHistorico({ tarefa_id: t.id, acao: acaoTxt, campo: null, valor_anterior: null, valor_novo: null, usuario_nome: quem })
+        const phone = whatsappDoResponsavel(t.solicitante_nome)
+        if (phone) {
+          const msg = `📨 *${quem} aceitou a tarefa*${t.numero != null ? ` #${String(t.numero).padStart(4, '0')}` : ''}\n\n🏪 ${t.loja}\n📋 ${t.titulo}${posPrazoConcorda === false ? `\n📅 Novo prazo proposto: *${fmtData(posPrazoProposto)}*\n📝 ${posPrazoJustificativa.trim()}` : '\n✅ Prazo confirmado.'}\n\n${linkTarefa(t, 'solic')}\n_Amore Gestão_`
+          await zapPara(t.solicitante_nome, phone, msg, { titulo: `Aceite: ${t.titulo}`, refId: t.id })
+        }
+      } else {
+        await updateTarefa(t.id, { status: 'pendente', responsavel_nome: null })
+        await saveTV2(t, { aceite_status: 'recusado', aceite_em: new Date().toISOString(), aceite_por: quem, aceite_recusa_motivo: posMotivoRecusa.trim() })
+        await insertTarefaHistorico({ tarefa_id: t.id, acao: `${quem} recusou/devolveu a tarefa: ${posMotivoRecusa.trim()}`, campo: null, valor_anterior: null, valor_novo: null, usuario_nome: quem })
+        const phone = whatsappDoResponsavel(t.solicitante_nome)
+        if (phone) {
+          const msg = `⚠️ *Tarefa devolvida*${t.numero != null ? ` #${String(t.numero).padStart(4, '0')}` : ''}\n\n📋 ${t.titulo}\n👤 ${quem} não pôde assumir: ${posMotivoRecusa.trim()}\n\nPrecisa de um novo responsável.\n\n${linkTarefa(t, 'solic')}\n_Amore Gestão_`
+          await zapPara(t.solicitante_nome, phone, msg, { titulo: `Devolvida: ${t.titulo}`, refId: t.id })
+        }
       }
+      setPosicionamento(null)
       await load()
     } finally { setDetalheSaving(false) }
   }
@@ -1034,6 +1086,21 @@ export default function TarefasPage() {
     })
   })()
 
+  // ── Pendências que precisam de atenção AGORA (independe do filtro de período do Painel) ──
+  const ativasAgora = tarefasFiltradas.filter(t => isAtiva(t.status))
+  const pendencias = [
+    { id: 'atrasadas', emoji: '🔴', label: 'atrasada(s)', cor: '#dc2626', itens: ativasAgora.filter(t => vencido(t.prazo)) },
+    { id: 'semResp', emoji: '👤', label: 'sem responsável', cor: '#6b7280', itens: ativasAgora.filter(t => !t.responsavel_nome) },
+    { id: 'bloqueadas', emoji: '⚫', label: 'bloqueada(s) (impedimento)', cor: '#374151', itens: ativasAgora.filter(t => STATUS_IMPEDIMENTO.includes(t.status)) },
+    { id: 'semPosicionamento', emoji: '🟡', label: 'sem posicionamento do responsável', cor: '#d97706', itens: ativasAgora.filter(t => t.responsavel_nome && !t.aceite_status) },
+    { id: 'aguardValidacao', emoji: '🟡', label: 'aguardando validação do solicitante', cor: '#ca8a04', itens: ativasAgora.filter(t => t.status === 'aguardando_validacao') },
+    { id: 'aguardAprov', emoji: '💰', label: 'aguardando aprovação financeira/orçamento', cor: '#9333ea', itens: ativasAgora.filter(t => t.orcamento_status === 'aguardando') },
+    { id: 'semAtualizacao', emoji: '🟠', label: 'sem atualização há mais de 48h', cor: '#ea580c', itens: ativasAgora.filter(t => {
+      const ultimo = montaTimeline(t)[0]?.em || t.created_at
+      return (Date.now() - new Date(ultimo).getTime()) / 3600000 > 48
+    }) },
+  ].filter(p => p.itens.length > 0)
+
   const tabelaRank = (titulo: string, linhas: ReturnType<typeof agrupaTarefas>, comPontualidade: boolean) => (
     <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{titulo}</div>
@@ -1183,6 +1250,37 @@ export default function TarefasPage() {
               </button>
             </div>
           </div>
+          {/* Pendências que precisam de atenção agora */}
+          {pendencias.length > 0 && (
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>🚨 Pendências que precisam de atenção</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {pendencias.map(p => (
+                  <div key={p.id}>
+                    <button onClick={() => setPendenciaAberta(a => a === p.id ? null : p.id)}
+                      style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', cursor: 'pointer', fontSize: 12.5 }}>
+                      <span style={{ color: p.cor, fontWeight: 700 }}>{p.emoji} {p.itens.length} tarefa(s) {p.label}</span>
+                      <ChevronDown size={13} style={{ transform: pendenciaAberta === p.id ? 'rotate(180deg)' : 'none', color: 'var(--muted)' }} />
+                    </button>
+                    {pendenciaAberta === p.id && (
+                      <div style={{ padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {p.itens.slice(0, 20).map(t => (
+                          <div key={t.id} onClick={() => { setDetalhe(t); setPendenciaAberta(null) }}
+                            style={{ fontSize: 12, cursor: 'pointer', color: 'var(--bordo)', display: 'flex', gap: 6 }}>
+                            <span style={{ color: 'var(--muted)' }}>{t.numero != null ? `#${String(t.numero).padStart(4, '0')}` : ''}</span>
+                            <span>{t.titulo}</span>
+                            <span style={{ color: 'var(--muted)' }}>· {t.responsavel_nome || 'sem responsável'}</span>
+                          </div>
+                        ))}
+                        {p.itens.length > 20 && <div style={{ fontSize: 11, color: 'var(--muted)' }}>+ {p.itens.length - 20} outra(s)…</div>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
             {[
               { lbl: 'Prazo hoje', val: ger.hoje, cor: '#2563eb' },
@@ -1751,18 +1849,24 @@ export default function TarefasPage() {
                   <MessageSquare size={13} /> Reenviar ao responsável
                 </button>
               )}
-              {!detalhe.recebido_em && detalhe.status !== 'cancelado' && (
-                <button onClick={() => marcarRecebida(detalhe)} disabled={detalheSaving}
-                  style={{ padding: '7px 14px', borderRadius: 7, border: 'none', background: '#0891b2', color: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <CheckCircle2 size={13} /> Marcar como recebida
+              {!detalhe.aceite_status && detalhe.status !== 'cancelado' && (
+                <button onClick={() => abrirPosicionamento(detalhe)} disabled={detalheSaving}
+                  style={{ padding: '7px 14px', borderRadius: 7, border: 'none', background: '#0891b2', color: '#fff', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, fontWeight: 700 }}>
+                  <CheckCircle2 size={13} /> Fazer posicionamento
                 </button>
               )}
-              {detalhe.recebido_em && (() => { const sla = slaInfo(detalhe); return (
+              {detalhe.aceite_status === 'aceito' && (() => { const sla = slaInfo(detalhe); return (
                 <div style={{ fontSize: 12, color: '#0891b2', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <CheckCircle2 size={13} /> Ciência dada {detalhe.recebido_por ? `por ${detalhe.recebido_por}` : ''} em {fmtDataHora(detalhe.recebido_em)}
+                  <CheckCircle2 size={13} /> Aceita por {detalhe.aceite_por || detalhe.recebido_por} em {fmtDataHora(detalhe.aceite_em || detalhe.recebido_em || null)}
+                  {detalhe.aceite_prazo_concorda === false && <span style={{ color: '#d97706', fontWeight: 700 }}>· 📅 prazo renegociado</span>}
                   {sla && <span style={{ color: sla.cor, fontWeight: 700 }}>· ⏱ {sla.txt}</span>}
                 </div>
               ) })()}
+              {detalhe.aceite_status === 'recusado' && (
+                <div style={{ fontSize: 12, color: '#dc2626', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <AlertTriangle size={13} /> Recusada por {detalhe.aceite_por} — {detalhe.aceite_recusa_motivo}
+                </div>
+              )}
               {(detalhe.status === 'concluido' || detalhe.status === 'cancelado' || detalhe.status === 'encerrada') && (
                 <button onClick={() => reabrirTarefa(detalhe)}
                   style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -1898,12 +2002,16 @@ export default function TarefasPage() {
               </div>
             )}
 
-            {/* Abas: Checklist / Execução / Histórico (timeline única: atualizações + status + auditoria) */}
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
-              {(['checklist', 'execucao', 'historico'] as const).map(aba => (
+            {/* Abas: Checklist / Envolvidos / Aprovações / Execução / Histórico */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
+              {(['checklist', 'envolvidos', 'aprovacoes', 'execucao', 'historico'] as const).map(aba => (
                 <button key={aba} onClick={() => setAbaDetalhe(aba)}
-                  style={{ flex: 1, padding: '10px 6px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 11.5, fontWeight: abaDetalhe === aba ? 700 : 400, color: abaDetalhe === aba ? 'var(--bordo)' : 'var(--muted)', borderBottom: abaDetalhe === aba ? '2px solid var(--bordo)' : '2px solid transparent' }}>
-                  {aba === 'checklist' ? `✓ Checklist (${detalhe.checklist?.length ?? 0})` : aba === 'execucao' ? `🚀 Execução` : `📋 Histórico (${montaTimeline(detalhe).length})`}
+                  style={{ flex: '1 1 auto', minWidth: 70, padding: '10px 4px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 10.5, fontWeight: abaDetalhe === aba ? 700 : 400, color: abaDetalhe === aba ? 'var(--bordo)' : 'var(--muted)', borderBottom: abaDetalhe === aba ? '2px solid var(--bordo)' : '2px solid transparent', whiteSpace: 'nowrap' }}>
+                  {aba === 'checklist' ? `✓ Checklist (${detalhe.checklist?.length ?? 0})`
+                    : aba === 'envolvidos' ? `🤝 Envolvidos`
+                    : aba === 'aprovacoes' ? `💰 Aprovações`
+                    : aba === 'execucao' ? `🚀 Execução`
+                    : `📋 Histórico (${montaTimeline(detalhe).length})`}
                 </button>
               ))}
             </div>
@@ -1944,42 +2052,54 @@ export default function TarefasPage() {
 
 
             {/* Aba Execução */}
-            {abaDetalhe === 'execucao' && (
+            {/* Aba Envolvidos: responsável já está no cabeçalho; aqui fica quem mais foi acionado no processo */}
+            {abaDetalhe === 'envolvidos' && (
               <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-                {/* ── Período de execução ── */}
+                <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+                  <strong>Responsável:</strong> {detalhe.responsavel_nome || '— não definido —'}
+                </div>
+                {/* ── Solicitar apoio de outro setor ── */}
                 <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>⏱ PERÍODO DE EXECUÇÃO</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-                    <span style={{ color: 'var(--muted)' }}>Início real:</span>
-                    <strong>{fmtDataHora(detalhe.iniciado_em)}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-                    <span style={{ color: 'var(--muted)' }}>Conclusão:</span>
-                    <strong>{fmtDataHora(detalhe.concluido_em)}</strong>
-                  </div>
-                  {detalhe.iniciado_em && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
-                      <span style={{ color: 'var(--muted)' }}>Tempo {detalhe.concluido_em ? 'usado' : 'decorrido'}:</span>
-                      <strong style={{ color: 'var(--bordo)' }}>{periodoExecucao(detalhe.iniciado_em, detalhe.concluido_em)}</strong>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>🤝 SOLICITAR APOIO DE OUTRO SETOR</div>
+                  {detalhe.apoio_setor && (
+                    <div style={{ fontSize: 12.5, background: '#eef2ff', color: '#4338ca', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                      Apoio a <strong>{detalhe.apoio_setor}</strong>{detalhe.apoio_motivo ? ` — ${detalhe.apoio_motivo}` : ''}<div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{detalhe.apoio_por} · {fmtDataHora(detalhe.apoio_em || null)}</div>
                     </div>
                   )}
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                    {!detalhe.iniciado_em && (
-                      <button onClick={() => iniciarExecucao(detalhe)} disabled={detalheSaving}
-                        style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: 'none', background: '#2563eb', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                        ▶ Iniciar execução
-                      </button>
-                    )}
-                    {detalhe.iniciado_em && !detalhe.concluido_em && (
-                      <button onClick={() => concluirExecucao(detalhe)} disabled={detalheSaving}
-                        style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: 'none', background: '#16a34a', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                        ■ Marcar conclusão
-                      </button>
-                    )}
+                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr auto', gap: 6 }}>
+                    <select value={apoioForm.setor} onChange={e => setApoioForm(f => ({ ...f, setor: e.target.value }))}
+                      style={{ padding: '7px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }}>
+                      <option value="">Setor…</option>
+                      {SETORES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <input value={apoioForm.motivo} onChange={e => setApoioForm(f => ({ ...f, motivo: e.target.value }))}
+                      placeholder="Motivo do apoio" style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }} />
+                    <button onClick={() => solicitarApoioSetor(detalhe)} disabled={detalheSaving || !apoioForm.setor}
+                      style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: '#4338ca', color: '#fff', cursor: apoioForm.setor ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 600 }}>Solicitar</button>
                   </div>
                 </div>
+                {/* ── Desvio da tarefa (quem mudou o combinado) ── */}
+                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>↪️ DESVIO DA TAREFA</div>
+                  {detalhe.desvio_motivo && (
+                    <div style={{ fontSize: 12.5, background: '#fef2f2', color: '#b91c1c', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                      ⚠ {detalhe.desvio_motivo}<div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{detalhe.desvio_por} · {fmtDataHora(detalhe.desvio_em || null)}</div>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input value={desvioForm} onChange={e => setDesvioForm(e.target.value)}
+                      placeholder="O que mudou/desviou do combinado?"
+                      style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }} />
+                    <button onClick={() => registrarDesvio(detalhe)} disabled={detalheSaving || !desvioForm.trim()}
+                      style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: '#b91c1c', color: '#fff', cursor: desvioForm.trim() ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 600 }}>Registrar</button>
+                  </div>
+                </div>
+              </div>
+            )}
 
+            {/* Aba Aprovações: prazo e orçamento — tudo que depende de decisão de terceiros */}
+            {abaDetalhe === 'aprovacoes' && (
+              <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {/* ── Solicitação de prazo adicional ── */}
                 <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>📅 PRAZO</div>
@@ -2020,41 +2140,77 @@ export default function TarefasPage() {
                   )}
                 </div>
 
-                {/* ── Desvio da tarefa ── */}
+                {/* ── Orçamento ── */}
                 <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>↪️ DESVIO DA TAREFA</div>
-                  {detalhe.desvio_motivo && (
-                    <div style={{ fontSize: 12.5, background: '#fef2f2', color: '#b91c1c', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
-                      ⚠ {detalhe.desvio_motivo}<div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{detalhe.desvio_por} · {fmtDataHora(detalhe.desvio_em || null)}</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>💰 ORÇAMENTO</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>CUSTO PREVISTO</label>
+                      <div style={{ fontSize: 14, fontWeight: 600, padding: '8px 10px', borderRadius: 7, background: 'var(--card)', border: '1px solid var(--border)' }}>{fmtMoeda(detalhe.custo_previsto)}</div>
                     </div>
-                  )}
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input value={desvioForm} onChange={e => setDesvioForm(e.target.value)}
-                      placeholder="O que mudou/desviou do combinado?"
-                      style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }} />
-                    <button onClick={() => registrarDesvio(detalhe)} disabled={detalheSaving || !desvioForm.trim()}
-                      style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: '#b91c1c', color: '#fff', cursor: desvioForm.trim() ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 600 }}>Registrar</button>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>CUSTO EXECUTADO (R$)</label>
+                      <input type="number" step="0.01" min="0" value={resForm.custo_executado}
+                        onChange={e => setResForm(r => ({ ...r, custo_executado: e.target.value }))}
+                        placeholder="0,00"
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 14, fontWeight: 600 }} />
+                    </div>
                   </div>
+                  {detalhe.custo_previsto != null && resForm.custo_executado !== '' && (
+                    (() => {
+                      const prev = detalhe.custo_previsto ?? 0
+                      const exec = Number(resForm.custo_executado)
+                      const dif = exec - prev
+                      const acima = dif > 0
+                      return (
+                        <div style={{ fontSize: 12, color: acima ? '#dc2626' : '#16a34a', fontWeight: 600, marginTop: 8 }}>
+                          {acima ? '▲ Acima do previsto em ' : dif < 0 ? '▼ Abaixo do previsto em ' : '✓ No orçamento — '}
+                          {dif !== 0 ? fmtMoeda(Math.abs(dif)) : ''}
+                        </div>
+                      )
+                    })()
+                  )}
+                  <button onClick={salvarResultado} disabled={detalheSaving}
+                    style={{ marginTop: 10, padding: '7px 14px', borderRadius: 8, border: 'none', background: detalheSaving ? 'var(--border)' : 'var(--bordo)', color: '#fff', cursor: detalheSaving ? 'not-allowed' : 'pointer', fontSize: 12.5, fontWeight: 600 }}>
+                    Salvar custo executado
+                  </button>
                 </div>
+              </div>
+            )}
 
-                {/* ── Solicitar apoio de outro setor ── */}
+            {abaDetalhe === 'execucao' && (
+              <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                {/* ── Período de execução ── */}
                 <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>🤝 SOLICITAR APOIO DE OUTRO SETOR</div>
-                  {detalhe.apoio_setor && (
-                    <div style={{ fontSize: 12.5, background: '#eef2ff', color: '#4338ca', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
-                      Apoio a <strong>{detalhe.apoio_setor}</strong>{detalhe.apoio_motivo ? ` — ${detalhe.apoio_motivo}` : ''}<div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{detalhe.apoio_por} · {fmtDataHora(detalhe.apoio_em || null)}</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>⏱ PERÍODO DE EXECUÇÃO</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                    <span style={{ color: 'var(--muted)' }}>Início real:</span>
+                    <strong>{fmtDataHora(detalhe.iniciado_em)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                    <span style={{ color: 'var(--muted)' }}>Conclusão:</span>
+                    <strong>{fmtDataHora(detalhe.concluido_em)}</strong>
+                  </div>
+                  {detalhe.iniciado_em && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
+                      <span style={{ color: 'var(--muted)' }}>Tempo {detalhe.concluido_em ? 'usado' : 'decorrido'}:</span>
+                      <strong style={{ color: 'var(--bordo)' }}>{periodoExecucao(detalhe.iniciado_em, detalhe.concluido_em)}</strong>
                     </div>
                   )}
-                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr auto', gap: 6 }}>
-                    <select value={apoioForm.setor} onChange={e => setApoioForm(f => ({ ...f, setor: e.target.value }))}
-                      style={{ padding: '7px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }}>
-                      <option value="">Setor…</option>
-                      {SETORES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <input value={apoioForm.motivo} onChange={e => setApoioForm(f => ({ ...f, motivo: e.target.value }))}
-                      placeholder="Motivo do apoio" style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }} />
-                    <button onClick={() => solicitarApoioSetor(detalhe)} disabled={detalheSaving || !apoioForm.setor}
-                      style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: '#4338ca', color: '#fff', cursor: apoioForm.setor ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 600 }}>Solicitar</button>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    {!detalhe.iniciado_em && (
+                      <button onClick={() => iniciarExecucao(detalhe)} disabled={detalheSaving}
+                        style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: 'none', background: '#2563eb', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                        ▶ Iniciar execução
+                      </button>
+                    )}
+                    {detalhe.iniciado_em && !detalhe.concluido_em && (
+                      <button onClick={() => concluirExecucao(detalhe)} disabled={detalheSaving}
+                        style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: 'none', background: '#16a34a', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                        ■ Marcar conclusão
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -2066,35 +2222,6 @@ export default function TarefasPage() {
                     rows={3} placeholder="O que dificultou ou impediu a execução? Gargalos, faltas, dependências…"
                     style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical', lineHeight: 1.5 }} />
                 </div>
-
-                {/* ── Orçamento ── */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>💰 CUSTO PREVISTO</label>
-                    <div style={{ fontSize: 14, fontWeight: 600, padding: '8px 10px', borderRadius: 7, background: 'var(--bg)', border: '1px solid var(--border)' }}>{fmtMoeda(detalhe.custo_previsto)}</div>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>💸 CUSTO EXECUTADO (R$)</label>
-                    <input type="number" step="0.01" min="0" value={resForm.custo_executado}
-                      onChange={e => setResForm(r => ({ ...r, custo_executado: e.target.value }))}
-                      placeholder="0,00"
-                      style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 14, fontWeight: 600 }} />
-                  </div>
-                </div>
-                {detalhe.custo_previsto != null && resForm.custo_executado !== '' && (
-                  (() => {
-                    const prev = detalhe.custo_previsto ?? 0
-                    const exec = Number(resForm.custo_executado)
-                    const dif = exec - prev
-                    const acima = dif > 0
-                    return (
-                      <div style={{ fontSize: 12, color: acima ? '#dc2626' : '#16a34a', fontWeight: 600 }}>
-                        {acima ? '▲ Acima do previsto em ' : dif < 0 ? '▼ Abaixo do previsto em ' : '✓ No orçamento — '}
-                        {dif !== 0 ? fmtMoeda(Math.abs(dif)) : ''}
-                      </div>
-                    )
-                  })()
-                )}
 
                 {/* ── Retorno da execução ── */}
                 <div>
@@ -2355,6 +2482,78 @@ export default function TarefasPage() {
         )
       })()}
 
+      {/* ══════════════════════════════
+          MODAL: POSICIONAMENTO (aceite formal do responsável)
+      ══════════════════════════════ */}
+      {posicionamento && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setPosicionamento(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 14, padding: 22, width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Posicionamento</h3>
+              <button onClick={() => setPosicionamento(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={18} /></button>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 14 }}>{posicionamento.titulo}</div>
+
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Você aceita esta tarefa?</label>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              <button onClick={() => setPosAceite(true)}
+                style={{ flex: 1, padding: '9px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, border: `1px solid ${posAceite === true ? '#16a34a' : 'var(--border)'}`, background: posAceite === true ? '#16a34a' : 'var(--bg)', color: posAceite === true ? '#fff' : 'var(--text)' }}>🟢 Aceitar</button>
+              <button onClick={() => setPosAceite(false)}
+                style={{ flex: 1, padding: '9px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, border: `1px solid ${posAceite === false ? '#dc2626' : 'var(--border)'}`, background: posAceite === false ? '#dc2626' : 'var(--bg)', color: posAceite === false ? '#fff' : 'var(--text)' }}>🔴 Recusar / Devolver</button>
+            </div>
+
+            {posAceite === true && (
+              <>
+                <div style={{ fontSize: 12.5, marginBottom: 8 }}>
+                  Prazo informado pelo solicitante: <strong>{posicionamento.prazo ? fmtData(posicionamento.prazo) : 'sem prazo definido'}</strong>
+                </div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Você concorda com o prazo?</label>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                  <button onClick={() => setPosPrazoConcorda(true)}
+                    style={{ flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer', fontSize: 12.5, fontWeight: 600, border: `1px solid ${posPrazoConcorda === true ? '#16a34a' : 'var(--border)'}`, background: posPrazoConcorda === true ? '#16a34a' : 'var(--bg)', color: posPrazoConcorda === true ? '#fff' : 'var(--text)' }}>☑ Sim, concordo</button>
+                  <button onClick={() => setPosPrazoConcorda(false)}
+                    style={{ flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer', fontSize: 12.5, fontWeight: 600, border: `1px solid ${posPrazoConcorda === false ? '#d97706' : 'var(--border)'}`, background: posPrazoConcorda === false ? '#d97706' : 'var(--bg)', color: posPrazoConcorda === false ? '#fff' : 'var(--text)' }}>Preciso alterar</button>
+                </div>
+                {posPrazoConcorda === false && (
+                  <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Novo prazo</label>
+                      <input type="date" value={posPrazoProposto} onChange={e => setPosPrazoProposto(e.target.value)}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Justificativa</label>
+                      <textarea value={posPrazoJustificativa} onChange={e => setPosPrazoJustificativa(e.target.value)} rows={2}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {posAceite === false && (
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#dc2626', display: 'block', marginBottom: 4 }}>Motivo da recusa *</label>
+                <textarea value={posMotivoRecusa} onChange={e => setPosMotivoRecusa(e.target.value)} rows={2} placeholder="Ex: já estou sobrecarregado, não é da minha área…"
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }} />
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>A tarefa volta para "Solicitada" sem responsável, para reatribuição.</div>
+              </div>
+            )}
+
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8 }}>
+              📲 O solicitante <strong>{posicionamento.solicitante_nome || '—'}</strong> será notificado da sua decisão.
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+              <button onClick={() => setPosicionamento(null)} style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 13 }}>Cancelar</button>
+              <button onClick={confirmarPosicionamento} disabled={detalheSaving}
+                style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: detalheSaving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {detalheSaving ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle2 size={14} />} Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`@keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }`}</style>
     </div>
   )
@@ -2458,6 +2657,19 @@ function KanbanCard({ tarefa, onClick, onMover, colunas }: {
                 </div>
               )}
             </>
+          )
+        })()}
+
+        {/* Contadores: atualizações e anexos */}
+        {(() => {
+          const nAtualiz = (tarefa.comentarios?.length ?? 0) + (tarefa.transicoes?.length ?? 0)
+          const nAnexos = contaAnexos(tarefa.anexos) + (tarefa.transicoes || []).reduce((s, tr) => s + contaAnexos(tr.anexos), 0)
+          if (!nAtualiz && !nAnexos) return null
+          return (
+            <div style={{ display: 'flex', gap: 10, marginTop: 6, fontSize: 10.5, color: 'var(--muted)' }}>
+              {nAtualiz > 0 && <span>💬 {nAtualiz}</span>}
+              {nAnexos > 0 && <span>📎 {nAnexos}</span>}
+            </div>
           )
         })()}
 

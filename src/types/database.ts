@@ -1201,6 +1201,14 @@ export interface Tarefa {
   recebido_por?: string | null
   visualizado_em?: string | null
   token?: string | null
+  // ── Posicionamento: aceite formal do responsável + concordância de prazo ──
+  aceite_status?: 'aceito' | 'recusado' | null
+  aceite_em?: string | null
+  aceite_por?: string | null
+  aceite_prazo_concorda?: boolean | null
+  aceite_prazo_proposto?: string | null
+  aceite_prazo_justificativa?: string | null
+  aceite_recusa_motivo?: string | null
   // ── V2: validação do solicitante ──
   aval_ok?: boolean | null
   aval_nota?: number | null
