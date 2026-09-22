@@ -1229,7 +1229,8 @@ export interface Tarefa {
   apoio_em?: string | null
   apoio_por?: string | null
   // Linha do tempo de transições de status (append-only): {em, de, para, por, obs, anexos}
-  transicoes?: { em: string; de: string | null; para: string; por: string; obs?: string | null; anexos?: string | null }[]
+  // motivo/resp_resolucao/previsao: usados no impedimento estruturado (aguardando_*) e no cancelamento com motivo obrigatório
+  transicoes?: { em: string; de: string | null; para: string; por: string; obs?: string | null; anexos?: string | null; motivo?: string | null; resp_resolucao?: string | null; previsao?: string | null }[]
   created_at: string
   updated_at: string
   checklist?: TarefaChecklist[]
@@ -1252,6 +1253,7 @@ export interface TarefaComentario {
   tarefa_id: string
   texto: string
   autor_nome: string
+  tipo?: string | null
   created_at: string
 }
 

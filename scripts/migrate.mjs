@@ -19,7 +19,7 @@ function readEnv() {
   for (const f of ['.env', '.env.local', '.env_local']) {
     const p = resolve(ROOT, f)
     if (!existsSync(p)) continue
-    for (const line of readFileSync(p, 'utf8').split('\n')) {
+    for (const line of readFileSync(p, 'utf8').split(/\r?\n/)) {
       const m = line.match(/^([^#=\s][^=]*)=(.*)$/)
       if (m) env[m[1].trim()] = m[2].trim().replace(/^["']|["']$/g, '')
     }

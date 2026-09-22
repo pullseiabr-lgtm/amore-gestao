@@ -3,7 +3,7 @@ import {
   Plus, X, CheckSquare, Square, MessageSquare, Clock,
   AlertTriangle, ChevronDown, Search,
   User, Building2, Flag, RotateCcw,
-  CheckCircle2, Loader2, Trash2, History, Pencil,
+  CheckCircle2, Loader2, Trash2, History, Pencil, Store, Timer, Printer,
 } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -15,7 +15,7 @@ import {
 } from '../../lib/db'
 import { enviarWhatsApp, normalizarFoneBR } from '../../lib/notify'
 import { siteOrigin } from '../../lib/site'
-import type { Tarefa, TarefaStatus, TarefaPrioridade, TarefaResultado, TarefaChecklist, TarefaComentario, CobrancaConfig, CobrancaNivel } from '../../types/database'
+import type { Tarefa, TarefaStatus, TarefaPrioridade, TarefaResultado, TarefaChecklist, TarefaComentario, TarefaHistorico, CobrancaConfig, CobrancaNivel } from '../../types/database'
 import { AnexoUploader, AnexoLinks } from '../../components/ui/AnexoUploader'
 
 // ── Constants ────────────────────────────────────────────────
@@ -51,6 +51,27 @@ const RESULTADOS: { id: TarefaResultado; label: string; cor: string }[] = [
   { id: 'pendente_ajuste',   label: 'Pendente de ajuste', cor: '#9333ea' },
   { id: 'nao_concluido',     label: 'Não concluído',      cor: '#dc2626' },
 ]
+
+// Tipo da atualização registrada na aba Comentários (diário operacional da tarefa)
+const TIPOS_ATUALIZACAO: { id: string; label: string; emoji: string }[] = [
+  { id: 'atualizacao',   label: 'Atualização',               emoji: '🟢' },
+  { id: 'observacao',    label: 'Observação',                emoji: '💬' },
+  { id: 'impedimento',   label: 'Impedimento',                emoji: '🚧' },
+  { id: 'info',          label: 'Solicitação de informação', emoji: '❓' },
+  { id: 'fornecedor',    label: 'Contato com fornecedor',    emoji: '📞' },
+  { id: 'cliente',       label: 'Contato com cliente',       emoji: '📞' },
+  { id: 'execucao',      label: 'Execução',                   emoji: '🛠️' },
+  { id: 'custo',         label: 'Custo',                      emoji: '💰' },
+  { id: 'anexo',         label: 'Anexo',                      emoji: '📎' },
+  { id: 'feedback',      label: 'Feedback',                   emoji: '⭐' },
+  { id: 'conclusao',     label: 'Conclusão',                  emoji: '✅' },
+]
+const tipoAtualizacaoInfo = (id?: string | null) => TIPOS_ATUALIZACAO.find(t => t.id === id) || TIPOS_ATUALIZACAO[0]
+
+// Motivos estruturados de impedimento (ao entrar em Aguardando material/fornecedor) e de cancelamento
+const MOTIVOS_IMPEDIMENTO = ['Aguardando material', 'Aguardando fornecedor', 'Aguardando cliente', 'Aguardando aprovação', 'Aguardando orçamento', 'Aguardando informação', 'Problema operacional', 'Problema financeiro', 'Outro']
+const MOTIVOS_CANCELAMENTO = ['Solicitação duplicada', 'Solicitação não autorizada', 'Problema de orçamento', 'Problema operacional', 'Cliente desistiu', 'Não será mais necessário', 'Criada incorretamente', 'Outro']
+const STATUS_IMPEDIMENTO: TarefaStatus[] = ['aguardando_retorno', 'aguardando_fornecedor']
 
 const COBRANCA_PADRAO: CobrancaConfig = {
   ativo: false,
@@ -127,6 +148,15 @@ function prazoSemaforo(prazo: string | null, status?: TarefaStatus): { cor: stri
   if (dias <= 2) return { cor: '#d97706', emoji: '🟡', label: dias === 0 ? 'Vence hoje' : `Vence em ${dias}d` }
   return { cor: '#16a34a', emoji: '🟢', label: 'No prazo' }
 }
+// Indicador de saúde da tarefa: 🟢 Normal · 🟡 Atenção (prazo próximo) · 🔴 Crítica (atrasada) · ⚫ Bloqueada (impedimento)
+function saudeTarefa(t: Tarefa): { emoji: string; label: string; cor: string } | null {
+  if (t.status === 'concluido' || t.status === 'encerrada' || t.status === 'cancelado') return null
+  if (t.status === 'aguardando_retorno' || t.status === 'aguardando_fornecedor') return { emoji: '⚫', label: 'Bloqueada', cor: '#374151' }
+  if (vencido(t.prazo)) return { emoji: '🔴', label: 'Crítica', cor: '#dc2626' }
+  const sem = prazoSemaforo(t.prazo, t.status)
+  if (sem && sem.emoji === '🟡') return { emoji: '🟡', label: 'Atenção', cor: '#d97706' }
+  return { emoji: '🟢', label: 'Normal', cor: '#16a34a' }
+}
 const durH = (h: number) => h < 48 ? `${h.toFixed(0)}h` : `${(h / 24).toFixed(0)}d`
 // SLA: a contagem do prazo começa quando a tarefa é RECEBIDA (dada a ciência).
 function slaInfo(t: Tarefa): { txt: string; cor: string } | null {
@@ -145,6 +175,51 @@ function ultimaAtualizacao(t: Tarefa): string {
   const c = t.comentarios
   if (c && c.length) return [...c].sort((a, b) => b.created_at.localeCompare(a.created_at))[0].texto
   return ''
+}
+const statusLabel = (s: TarefaStatus) => COLUNAS.find(c => c.id === s)?.label || s
+// Há quanto tempo (h) a tarefa está no status ATUAL — usa a última transição para esse status, senão a criação.
+function tempoNoStatusAtual(t: Tarefa): number {
+  const trans = t.transicoes || []
+  const last = [...trans].reverse().find(tr => tr.para === t.status)
+  const desde = last ? last.em : t.created_at
+  return Math.max(0, (Date.now() - new Date(desde).getTime()) / 3600000)
+}
+// Decompõe o tempo total da tarefa em horas por status (usa a linha do tempo de transições).
+// Tarefas sem transições registradas caem inteiras no status atual (aproximação razoável).
+function tempoPorStatusDetalhe(t: Tarefa): { status: string; label: string; horas: number }[] {
+  const trans = [...(t.transicoes || [])].sort((a, b) => a.em.localeCompare(b.em))
+  const buckets: Record<string, number> = {}
+  let curStatus: string = 'pendente'
+  let curStart = t.created_at
+  for (const tr of trans) {
+    const dur = (new Date(tr.em).getTime() - new Date(curStart).getTime()) / 3600000
+    if (dur > 0) buckets[curStatus] = (buckets[curStatus] || 0) + dur
+    curStatus = tr.para
+    curStart = tr.em
+  }
+  const fim = (t.status === 'concluido' || t.status === 'encerrada' || t.status === 'cancelado')
+    ? (t.concluido_em || t.updated_at || new Date().toISOString())
+    : new Date().toISOString()
+  const durFinal = (new Date(fim).getTime() - new Date(curStart).getTime()) / 3600000
+  if (durFinal > 0) buckets[curStatus] = (buckets[curStatus] || 0) + durFinal
+  return Object.entries(buckets)
+    .map(([status, horas]) => ({ status, label: statusLabel(status as TarefaStatus), horas }))
+    .sort((a, b) => b.horas - a.horas)
+}
+
+// Timeline única da tarefa: intercala transições de status, atualizações (comentários) e demais eventos
+// de auditoria (tarefas_historico), em ordem cronológica — "diário operacional" da tarefa.
+// Descarta entradas de tarefas_historico com campo==='status': já cobertas (com mais detalhe) por transicoes.
+type TimelineEvento =
+  | { em: string; kind: 'transicao'; tr: NonNullable<Tarefa['transicoes']>[number] }
+  | { em: string; kind: 'comentario'; c: TarefaComentario }
+  | { em: string; kind: 'historico'; h: TarefaHistorico }
+function montaTimeline(t: Tarefa): TimelineEvento[] {
+  const evs: TimelineEvento[] = []
+  for (const tr of (t.transicoes || [])) evs.push({ em: tr.em, kind: 'transicao', tr })
+  for (const c of (t.comentarios || [])) evs.push({ em: c.created_at, kind: 'comentario', c })
+  for (const h of (t.historico || [])) { if (h.campo === 'status') continue; evs.push({ em: h.created_at, kind: 'historico', h }) }
+  return evs.sort((a, b) => b.em.localeCompare(a.em))
 }
 
 // ── Empty form ───────────────────────────────────────────────
@@ -190,6 +265,10 @@ export default function TarefasPage() {
   const [filtroPrio, setFiltroPrio] = useState('')
   const [filtroLoja, setFiltroLoja] = useState('')
   const [view, setView] = useState<'kanban' | 'lista' | 'gerencial'>('kanban')
+  // Período do Painel Gerencial (afeta só a aba Painel — Kanban/Lista continuam mostrando tudo)
+  const [periodoPainel, setPeriodoPainel] = useState<'todos' | '7d' | '30d' | 'custom'>('todos')
+  const [periodoDe, setPeriodoDe] = useState('')
+  const [periodoAte, setPeriodoAte] = useState('')
 
   // Modal nova tarefa
   const [showForm, setShowForm] = useState(false)
@@ -296,15 +375,15 @@ export default function TarefasPage() {
   // Modal detalhe
   const [detalhe, setDetalhe] = useState<Tarefa | null>(null)
   const [novoComent, setNovoComent] = useState('')
+  const [novoComentTipo, setNovoComentTipo] = useState('atualizacao')
   const [novoCheckDetalhe, setNovoCheckDetalhe] = useState('')
   const [detalheSaving, setDetalheSaving] = useState(false)
-  const [abaDetalhe, setAbaDetalhe] = useState<'checklist'|'comentarios'|'execucao'|'historico'>('checklist')
+  const [abaDetalhe, setAbaDetalhe] = useState<'checklist'|'execucao'|'historico'>('checklist')
   // Edição de execução/resultado no detalhe
   const [resForm, setResForm] = useState({ resultado_final: '', custo_executado: '', dificuldades: '', resultado_status: '' as '' | TarefaResultado, observacao_final: '' })
   // Solicitação de mais prazo
   const [extForm, setExtForm] = useState({ data: '', motivo: '' })
-  // Validação do solicitante (nota + feedback) e aprovação de orçamento
-  const [avalForm, setAvalForm] = useState({ nota: 0, feedback: '', ok: null as boolean | null })
+  // Aprovação de orçamento
   const [orcForm, setOrcForm] = useState({ valor: '', obs: '' })
   // Orçamento informado pelo responsável (quem recebe a tarefa)
   const [orcEntry, setOrcEntry] = useState({ valor: '', descricao: '', fornecedor: '', data: '', obs: '', anexos: '' })
@@ -318,6 +397,10 @@ export default function TarefasPage() {
   const [transicao, setTransicao] = useState<{ tarefa: Tarefa; novoStatus: TarefaStatus } | null>(null)
   const [transObs, setTransObs] = useState('')
   const [transAnexos, setTransAnexos] = useState('')
+  // Impedimento estruturado (aguardando material/fornecedor/etc) e cancelamento com motivo obrigatório
+  const [transMotivo, setTransMotivo] = useState('')
+  const [transResp, setTransResp] = useState('')
+  const [transPrevisao, setTransPrevisao] = useState('')
 
   // ── Load ─────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -347,7 +430,6 @@ export default function TarefasPage() {
       observacao_final: detalhe?.observacao_final || '',
     })
     setExtForm({ data: '', motivo: '' })
-    setAvalForm({ nota: detalhe?.aval_nota || 0, feedback: detalhe?.aval_feedback || '', ok: detalhe?.aval_ok ?? null })
     setOrcForm({ valor: detalhe?.orcamento_aprovado_valor != null ? String(detalhe.orcamento_aprovado_valor) : (detalhe?.orcamento_valor != null ? String(detalhe.orcamento_valor) : ''), obs: detalhe?.orcamento_obs_aprovacao || '' })
     setOrcEntry({ valor: '', descricao: '', fornecedor: '', data: '', obs: '', anexos: '' })
     setDesvioForm('')
@@ -439,10 +521,13 @@ export default function TarefasPage() {
   // ── Mover status = abre modal "Atualizar tarefa" (transição registrada) ──
   const abrirTransicao = (tarefa: Tarefa, novoStatus: TarefaStatus) => {
     if (!novoStatus || novoStatus === tarefa.status) return
-    setTransObs(''); setTransAnexos(''); setTransicao({ tarefa, novoStatus })
+    setTransObs(''); setTransAnexos(''); setTransMotivo(''); setTransResp(''); setTransPrevisao(''); setTransicao({ tarefa, novoStatus })
   }
+  // Motivo é obrigatório para Cancelado e para os status de impedimento (aguardando material/fornecedor/etc)
+  const transMotivoObrigatorio = !!transicao && (transicao.novoStatus === 'cancelado' || STATUS_IMPEDIMENTO.includes(transicao.novoStatus))
   const confirmarTransicao = async () => {
     if (!transicao) return
+    if (transMotivoObrigatorio && !transMotivo) { alert('Selecione o motivo antes de confirmar.'); return }
     const { tarefa, novoStatus } = transicao
     const anterior = tarefa.status
     setDetalheSaving(true)
@@ -452,11 +537,18 @@ export default function TarefasPage() {
       if ((novoStatus === 'concluido' || novoStatus === 'encerrada') && !tarefa.concluido_em) extra.concluido_em = new Date().toISOString()
       await updateTarefa(tarefa.id, extra)
       const lblNovo = COLUNAS.find(c => c.id === novoStatus)?.label || novoStatus
-      // Linha do tempo (append-only) em app_config
-      const trans = [...(tarefa.transicoes || []), { em: new Date().toISOString(), de: anterior, para: novoStatus, por: user?.name || 'Sistema', obs: transObs.trim() || null, anexos: transAnexos.trim() || null }]
+      const motivoTxt = transMotivo ? ` · Motivo: ${transMotivo}` : ''
+      // Linha do tempo (append-only) em app_config — inclui motivo/responsável/previsão quando aplicável (impedimento/cancelamento)
+      const trans = [...(tarefa.transicoes || []), {
+        em: new Date().toISOString(), de: anterior, para: novoStatus, por: user?.name || 'Sistema',
+        obs: transObs.trim() || null, anexos: transAnexos.trim() || null,
+        motivo: transMotivo || null,
+        resp_resolucao: transResp.trim() || null,
+        previsao: transPrevisao || null,
+      }]
       await saveTV2(tarefa, { transicoes: trans })
       // Auditoria imutável
-      await insertTarefaHistorico({ tarefa_id: tarefa.id, acao: `Status → ${lblNovo}${transObs.trim() ? ' · ' + transObs.trim() : ''}`, campo: 'status', valor_anterior: anterior, valor_novo: novoStatus, usuario_nome: user?.name || 'Sistema' })
+      await insertTarefaHistorico({ tarefa_id: tarefa.id, acao: `Status → ${lblNovo}${motivoTxt}${transObs.trim() ? ' · ' + transObs.trim() : ''}`, campo: 'status', valor_anterior: anterior, valor_novo: novoStatus, usuario_nome: user?.name || 'Sistema' })
       if (transObs.trim() || transAnexos.trim()) {
         await insertTarefaComentario({ tarefa_id: tarefa.id, texto: `[${lblNovo}] ${transObs.trim()}${transAnexos.trim() ? '\n' + transAnexos.trim() : ''}`, autor_nome: user?.name || 'Sistema' })
       }
@@ -518,8 +610,9 @@ export default function TarefasPage() {
     if (!detalhe || !novoComent.trim()) return
     setDetalheSaving(true)
     try {
-      await insertTarefaComentario({ tarefa_id: detalhe.id, texto: novoComent.trim(), autor_nome: user?.name || 'Usuário' })
+      await insertTarefaComentario({ tarefa_id: detalhe.id, texto: novoComent.trim(), autor_nome: user?.name || 'Usuário', tipo: novoComentTipo })
       setNovoComent('')
+      setNovoComentTipo('atualizacao')
       await load()
     } finally { setDetalheSaving(false) }
   }
@@ -610,20 +703,8 @@ export default function TarefasPage() {
     } finally { setDetalheSaving(false) }
   }
 
-  // ── Validação do solicitante (nota 1-5 + feedback) ───────
-  const validarSolicitante = async (t: Tarefa) => {
-    if (avalForm.ok == null || !avalForm.nota) { alert('Informe se o serviço foi realizado e a nota (1 a 5).'); return }
-    setDetalheSaving(true)
-    try {
-      await saveTV2(t, {
-        aval_ok: avalForm.ok, aval_nota: avalForm.nota, aval_feedback: avalForm.feedback || null,
-        aval_por: user?.name || t.solicitante_nome || 'Solicitante', aval_em: new Date().toISOString(),
-      })
-      await updateTarefa(t.id, { status: 'encerrada' })
-      await insertTarefaHistorico({ tarefa_id: t.id, acao: `Solicitante validou (${avalForm.nota}★${avalForm.ok ? ', conforme' : ', não conforme'})`, campo: 'status', valor_anterior: t.status, valor_novo: 'encerrada', usuario_nome: user?.name || t.solicitante_nome || 'Solicitante' })
-      await load()
-    } finally { setDetalheSaving(false) }
-  }
+  // Validação (nota 1-5 + feedback) é feita SÓ pelo solicitante, via o link público (tarefa.html?papel=solic) —
+  // ver enviarParaValidacao acima. O painel interno não tem mais um formulário para "validar por ele".
 
   // ── Editar campos da tarefa (com registro no histórico) ──
   const abrirEdicao = (t: Tarefa) => {
@@ -776,6 +857,65 @@ export default function TarefasPage() {
     await load()
   }
 
+  // ── Relatório individual da tarefa (abre janela de impressão → Salvar como PDF) ──
+  const gerarPdfTarefa = (t: Tarefa) => {
+    const win = window.open('', '_blank')
+    if (!win) { alert('Não foi possível abrir a janela de impressão (pop-up bloqueado).'); return }
+    const esc = (s: unknown) => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string))
+    const linhaMeta = (l: string, v: string) => `<div class="meta-item"><div class="l">${esc(l)}</div><div class="v">${esc(v)}</div></div>`
+    const numeroTxt = t.numero != null ? `#${String(t.numero).padStart(4, '0')}` : ''
+    const tempos = tempoPorStatusDetalhe(t)
+    const eventos = [
+      ...(t.transicoes || []).map(tr => ({ em: tr.em, tipo: '🔄 Status', txt: `${tr.de ? statusLabel(tr.de as TarefaStatus) + ' → ' : ''}${statusLabel(tr.para as TarefaStatus)}`, por: tr.por, obs: tr.obs })),
+      ...(t.comentarios || []).map(c => ({ em: c.created_at, tipo: `${tipoAtualizacaoInfo(c.tipo).emoji} ${tipoAtualizacaoInfo(c.tipo).label}`, txt: c.texto, por: c.autor_nome, obs: null as string | null | undefined })),
+    ].sort((a, b) => b.em.localeCompare(a.em))
+    const checklist = t.checklist || []
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relatório — Tarefa ${esc(numeroTxt)} ${esc(t.titulo)}</title>
+<style>
+  body{font-family:Arial,Helvetica,sans-serif;color:#1f2937;padding:24px;max-width:860px;margin:0 auto}
+  h1{font-size:19px;margin:0 0 2px}
+  .sub{color:#6b7280;font-size:12px;margin-bottom:16px}
+  .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:16px}
+  .meta-item .l{font-size:10px;color:#6b7280;font-weight:700}
+  .meta-item .v{font-size:13px;margin-top:2px}
+  h2{font-size:13px;border-bottom:2px solid #7c2d12;padding-bottom:4px;margin:18px 0 8px}
+  .bar-row{display:flex;align-items:center;gap:8px;font-size:11.5px;margin-bottom:4px}
+  .bar-track{flex:1;height:8px;background:#f3f4f6;border-radius:4px;overflow:hidden}
+  .bar-fill{height:100%;background:#7c2d12}
+  .evento{border-left:2px solid #e5e7eb;padding:4px 0 8px 10px;margin-left:2px;font-size:12px}
+  .evento .tipo{font-weight:700}
+  .evento .meta-ev{color:#6b7280;font-size:10.5px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  td{padding:3px 0}
+  @media print{ body{padding:8px} }
+</style></head><body>
+  <h1>${esc(numeroTxt)} ${esc(t.titulo)}</h1>
+  <div class="sub">Relatório gerado pelo Painel Amore em ${esc(fmtDataHora(new Date().toISOString()))}</div>
+  <div class="meta">
+    ${linhaMeta('Loja', t.loja)}
+    ${linhaMeta('Status', statusLabel(t.status))}
+    ${linhaMeta('Prioridade', prioLabel(t.prioridade))}
+    ${linhaMeta('Setor', t.setor)}
+    ${linhaMeta('Solicitante', t.solicitante_nome || '—')}
+    ${linhaMeta('Responsável', t.responsavel_nome || '—')}
+    ${linhaMeta('Data da solicitação', t.data_solicitacao ? fmtData(t.data_solicitacao) : fmtData(t.created_at))}
+    ${linhaMeta('Prazo', t.prazo ? fmtData(t.prazo) : 'Sem prazo')}
+    ${linhaMeta('Concluída em', t.concluido_em ? fmtDataHora(t.concluido_em) : '—')}
+  </div>
+  ${t.descricao ? `<h2>Descrição</h2><div style="font-size:12.5px;white-space:pre-wrap">${esc(t.descricao)}</div>` : ''}
+  ${checklist.length ? `<h2>Checklist (${checklist.filter(c => c.concluido).length}/${checklist.length})</h2><table>${checklist.map(c => `<tr><td>${c.concluido ? '☑' : '☐'}</td><td>${esc(c.descricao)}</td></tr>`).join('')}</table>` : ''}
+  ${tempos.length ? `<h2>Tempo por etapa</h2>${(() => { const tot = tempos.reduce((s, b) => s + b.horas, 0) || 1; return tempos.map(b => `<div class="bar-row"><div style="width:130px">${esc(b.label)}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(b.horas / tot * 100, 4)}%"></div></div><div style="width:60px;text-align:right;color:#6b7280">${fmtDur(b.horas)}</div></div>`).join('') })()}` : ''}
+  ${(t.custo_previsto || t.custo_executado) ? `<h2>Custo</h2><table><tr><td>Previsto</td><td style="text-align:right">${esc(fmtMoeda(t.custo_previsto))}</td></tr><tr><td>Executado</td><td style="text-align:right">${esc(fmtMoeda(t.custo_executado))}</td></tr></table>` : ''}
+  ${t.aval_nota != null ? `<h2>Feedback do solicitante</h2><div style="font-size:12.5px">${'★'.repeat(t.aval_nota)}${'☆'.repeat(5 - t.aval_nota)} ${t.aval_feedback ? '— ' + esc(t.aval_feedback) : ''}</div>` : ''}
+  <h2>Histórico completo</h2>
+  ${eventos.length === 0 ? '<div style="font-size:12px;color:#6b7280">Sem eventos registrados.</div>' : eventos.map(e => `<div class="evento"><div class="tipo">${esc(e.tipo)}</div>${e.txt ? `<div>${esc(e.txt)}</div>` : ''}${e.obs ? `<div>${esc(e.obs)}</div>` : ''}<div class="meta-ev">${esc(e.por || '')} · ${esc(fmtDataHora(e.em))}</div></div>`).join('')}
+</body></html>`
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+    setTimeout(() => win.print(), 300)
+  }
+
   // ── Contadores ───────────────────────────────────────────
   const counts = COLUNAS.reduce((acc, col) => {
     acc[col.id] = tarefasFiltradas.filter(t => t.status === col.id).length
@@ -797,9 +937,19 @@ export default function TarefasPage() {
   // ── Painel Gerencial (módulo 13 — Gerente Operacional) ────
   const hojeStr = new Date().toISOString().slice(0, 10)
   const noPrazo = (t: Tarefa) => !t.prazo || !t.concluido_em || String(t.concluido_em).slice(0, 10) <= String(t.prazo).slice(0, 10)
+  // Recorte de período do Painel (não afeta Kanban/Lista, só as métricas desta aba) — por data de criação.
+  const tarefasPainel = tarefasFiltradas.filter(t => {
+    if (periodoPainel === 'todos') return true
+    const d = String(t.created_at).slice(0, 10)
+    if (periodoPainel === '7d') { const lim = new Date(); lim.setDate(lim.getDate() - 7); return d >= lim.toISOString().slice(0, 10) }
+    if (periodoPainel === '30d') { const lim = new Date(); lim.setDate(lim.getDate() - 30); return d >= lim.toISOString().slice(0, 10) }
+    if (periodoPainel === 'custom') return (!periodoDe || d >= periodoDe) && (!periodoAte || d <= periodoAte)
+    return true
+  })
+  const ativasPainel = tarefasPainel.filter(t => isAtiva(t.status))
   const agrupaTarefas = (keyFn: (t: Tarefa) => string | null) => {
     const m: Record<string, { total: number; concl: number; atras: number; pontuais: number }> = {}
-    for (const t of tarefasFiltradas) {
+    for (const t of tarefasPainel) {
       const k = keyFn(t) || '—'
       if (!m[k]) m[k] = { total: 0, concl: 0, atras: 0, pontuais: 0 }
       m[k].total++
@@ -815,40 +965,74 @@ export default function TarefasPage() {
   const gerPorColab = agrupaTarefas(t => t.responsavel_nome).sort((a, b) => b.pontualidade - a.pontualidade || b.pctConcl - a.pctConcl)
   const gerPorSetor = agrupaTarefas(t => t.setor).sort((a, b) => b.pctConcl - a.pctConcl)
   const gerPorLoja = agrupaTarefas(t => t.loja).sort((a, b) => b.pctConcl - a.pctConcl)
-  const concluidas = tarefasFiltradas.filter(t => isFinal(t.status))
+  const concluidas = tarefasPainel.filter(t => isFinal(t.status))
   const temposExec = concluidas.filter(t => t.iniciado_em && t.concluido_em)
     .map(t => (new Date(t.concluido_em!).getTime() - new Date(t.iniciado_em!).getTime()) / 3600000).filter(h => h >= 0)
   const media = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
   // Tempo de resposta: solicitação → recebimento
   const refIni = (t: Tarefa) => t.data_solicitacao || t.created_at
-  const temposResposta = tarefasFiltradas.filter(t => t.recebido_em)
+  const temposResposta = tarefasPainel.filter(t => t.recebido_em)
     .map(t => (new Date(t.recebido_em!).getTime() - new Date(refIni(t)).getTime()) / 3600000).filter(h => h >= 0)
   // Avaliações do solicitante
-  const notas = tarefasFiltradas.filter(t => t.aval_nota != null).map(t => t.aval_nota as number)
+  const notas = tarefasPainel.filter(t => t.aval_nota != null).map(t => t.aval_nota as number)
   const sum = (arr: (number | null | undefined)[]) => arr.reduce<number>((a, b) => a + (b || 0), 0)
   const ger = {
-    hoje: tarefasFiltradas.filter(t => String(t.prazo || '').slice(0, 10) === hojeStr).length,
-    andamento: metricas.emAndamento,
+    hoje: tarefasPainel.filter(t => String(t.prazo || '').slice(0, 10) === hojeStr).length,
+    andamento: tarefasPainel.filter(t => t.status === 'em_andamento').length,
     concluidas: concluidas.length,
     conclAtraso: concluidas.filter(t => !noPrazo(t)).length,
-    atrasadas: metricas.atrasadas,
-    vencidas: ativas.filter(t => vencido(t.prazo)).length,
-    criticas: ativas.filter(t => t.prioridade === 'urgente').length,
-    aguardAprov: tarefasFiltradas.filter(t => t.precisa_aprovacao && isFinal(t.status) && !t.aprovado_por).length,
-    aguardValidacao: tarefasFiltradas.filter(t => t.status === 'aguardando_validacao').length,
-    impedimento: tarefasFiltradas.filter(t => t.status === 'aguardando_retorno' || t.status === 'aguardando_fornecedor').length,
-    orcAguard: tarefasFiltradas.filter(t => t.orcamento_status === 'aguardando').length,
+    atrasadas: ativasPainel.filter(t => vencido(t.prazo)).length,
+    vencidas: ativasPainel.filter(t => vencido(t.prazo)).length,
+    criticas: ativasPainel.filter(t => t.prioridade === 'urgente').length,
+    aguardAprov: tarefasPainel.filter(t => t.precisa_aprovacao && isFinal(t.status) && !t.aprovado_por).length,
+    aguardValidacao: tarefasPainel.filter(t => t.status === 'aguardando_validacao').length,
+    impedimento: tarefasPainel.filter(t => t.status === 'aguardando_retorno' || t.status === 'aguardando_fornecedor').length,
+    orcAguard: tarefasPainel.filter(t => t.orcamento_status === 'aguardando').length,
     tempoMedioH: media(temposExec),
     tempoRespostaH: media(temposResposta),
-    produtividade: metricas.pctConclusao,
+    produtividade: tarefasPainel.length ? Math.round(concluidas.length / tarefasPainel.length * 100) : 0,
     disciplina: concluidas.length ? Math.round(concluidas.filter(noPrazo).length / concluidas.length * 100) : 0,
     avalMedia: notas.length ? (sum(notas) / notas.length) : null,
     avalQtd: notas.length,
-    custoEstimado: sum(tarefasFiltradas.map(t => t.custo_previsto)),
-    custoAprovado: sum(tarefasFiltradas.map(t => t.orcamento_aprovado_valor)),
-    custoRealizado: sum(tarefasFiltradas.map(t => t.custo_executado)),
+    custoEstimado: sum(tarefasPainel.map(t => t.custo_previsto)),
+    custoAprovado: sum(tarefasPainel.map(t => t.orcamento_aprovado_valor)),
+    custoRealizado: sum(tarefasPainel.map(t => t.custo_executado)),
   }
   const fmtDur = (h: number) => h < 48 ? `${h.toFixed(1)}h` : `${(h / 24).toFixed(1)}d`
+
+  // ── Gargalo por etapa: onde as tarefas ATIVAS estão parando agora, e há quanto tempo ──
+  const gargalo = (() => {
+    const m: Record<string, number[]> = {}
+    for (const t of ativasPainel) (m[t.status] ||= []).push(tempoNoStatusAtual(t))
+    const total = ativasPainel.length
+    return Object.entries(m).map(([status, horas]) => ({
+      status, label: statusLabel(status as TarefaStatus),
+      qtd: horas.length,
+      pct: total ? Math.round(horas.length / total * 100) : 0,
+      horasMedia: horas.reduce((a, b) => a + b, 0) / horas.length,
+    })).sort((a, b) => b.qtd - a.qtd)
+  })()
+
+  // ── Evolução semanal (últimas 8 semanas, seg-a-seg): criadas × concluídas × concluídas com atraso ──
+  const evolucaoSemanal = (() => {
+    const semanaKey = (iso: string) => {
+      const d = new Date(String(iso).slice(0, 10) + 'T00:00:00')
+      const day = d.getDay() || 7
+      d.setDate(d.getDate() - day + 1)
+      return d.toISOString().slice(0, 10)
+    }
+    const semanas: string[] = []
+    for (let i = 7; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i * 7)
+      const k = semanaKey(d.toISOString())
+      if (!semanas.includes(k)) semanas.push(k)
+    }
+    return semanas.map(sem => {
+      const criadas = tarefasFiltradas.filter(t => semanaKey(t.created_at) === sem).length
+      const concl = tarefasFiltradas.filter(t => t.concluido_em && semanaKey(t.concluido_em) === sem)
+      return { semana: sem, criadas, concluidas: concl.length, atrasadas: concl.filter(t => !noPrazo(t)).length }
+    })
+  })()
 
   const tabelaRank = (titulo: string, linhas: ReturnType<typeof agrupaTarefas>, comPontualidade: boolean) => (
     <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
@@ -975,10 +1159,29 @@ export default function TarefasPage() {
             <div style={{ fontSize: 13, color: 'var(--muted)' }}>
               Cobranças automáticas por WhatsApp: <strong style={{ color: cobrancaCfg?.ativo ? '#16a34a' : '#dc2626' }}>{cobrancaCfg?.ativo ? 'ATIVAS' : 'desativadas'}</strong>
             </div>
-            <button onClick={() => setShowCobranca(true)}
-              style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-              ⚙️ Regras de cobrança
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                {([['todos', 'Tudo'], ['7d', '7 dias'], ['30d', '30 dias'], ['custom', 'Período']] as const).map(([v, lbl]) => (
+                  <button key={v} onClick={() => setPeriodoPainel(v)}
+                    style={{ padding: '6px 10px', border: 'none', cursor: 'pointer', fontSize: 12, background: periodoPainel === v ? 'var(--bordo)' : 'var(--card)', color: periodoPainel === v ? '#fff' : 'var(--text)' }}>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              {periodoPainel === 'custom' && (
+                <>
+                  <input type="date" value={periodoDe} onChange={e => setPeriodoDe(e.target.value)}
+                    style={{ padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }} />
+                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>até</span>
+                  <input type="date" value={periodoAte} onChange={e => setPeriodoAte(e.target.value)}
+                    style={{ padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }} />
+                </>
+              )}
+              <button onClick={() => setShowCobranca(true)}
+                style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                ⚙️ Regras de cobrança
+              </button>
+            </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
             {[
@@ -1008,6 +1211,54 @@ export default function TarefasPage() {
               </div>
             ))}
           </div>
+          {/* Gargalo por etapa — onde as tarefas ativas estão parando agora */}
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>🚧 Onde as tarefas ativas estão parando</div>
+            {gargalo.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Nenhuma tarefa ativa no período.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {gargalo.map(g => {
+                  const col = COLUNAS.find(c => c.id === g.status)
+                  return (
+                    <div key={g.status} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 150, fontSize: 12, flexShrink: 0 }}>{g.label}</div>
+                      <div style={{ flex: 1, height: 18, background: 'var(--bg)', borderRadius: 6, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${Math.max(g.pct, 3)}%`, background: col?.cor || '#6b7280', borderRadius: 6, transition: 'width .3s' }} />
+                      </div>
+                      <div style={{ width: 130, fontSize: 12, color: 'var(--muted)', textAlign: 'right', flexShrink: 0 }}>
+                        {g.qtd} ({g.pct}%) · média {fmtDur(g.horasMedia)}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Evolução semanal — últimas 8 semanas */}
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>📈 Evolução semanal</div>
+            <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
+              <span>🔵 criadas</span><span>🟢 concluídas</span><span>🟠 concluídas com atraso</span>
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', height: 120, overflowX: 'auto', paddingBottom: 4 }}>
+              {(() => {
+                const maxV = Math.max(1, ...evolucaoSemanal.map(s => Math.max(s.criadas, s.concluidas)))
+                return evolucaoSemanal.map(s => (
+                  <div key={s.semana} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 46 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 90 }}>
+                      <div title={`${s.criadas} criadas`} style={{ width: 10, height: `${(s.criadas / maxV) * 90}px`, background: '#2563eb', borderRadius: '3px 3px 0 0' }} />
+                      <div title={`${s.concluidas} concluídas`} style={{ width: 10, height: `${(s.concluidas / maxV) * 90}px`, background: '#16a34a', borderRadius: '3px 3px 0 0' }} />
+                      <div title={`${s.atrasadas} concluídas com atraso`} style={{ width: 10, height: `${(s.atrasadas / maxV) * 90}px`, background: '#d97706', borderRadius: '3px 3px 0 0' }} />
+                    </div>
+                    <div style={{ fontSize: 9, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{fmtData(s.semana).slice(0, 5)}</div>
+                  </div>
+                ))
+              })()}
+            </div>
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
             {tabelaRank('🏆 Pontualidade por colaborador', gerPorColab, true)}
             {tabelaRank('🏢 Desempenho por setor', gerPorSetor, false)}
@@ -1322,6 +1573,7 @@ export default function TarefasPage() {
                   <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, lineHeight: 1.3 }}>{detalhe.titulo}</h3>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => gerarPdfTarefa(detalhe)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }} title="Gerar relatório em PDF"><Printer size={15} /></button>
                   <button onClick={() => editMode ? setEditMode(false) : abrirEdicao(detalhe)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: editMode ? 'var(--bordo)' : 'var(--muted)', padding: 4 }} title="Editar"><Pencil size={15} /></button>
                   <button onClick={() => excluirTarefa(detalhe)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 4 }} title="Excluir"><Trash2 size={15} /></button>
                   <button onClick={() => setDetalhe(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }}><X size={18} /></button>
@@ -1402,6 +1654,13 @@ export default function TarefasPage() {
                   {COLUNAS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                 </select>
               </div>
+              {/* Loja */}
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>LOJA</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                  <Store size={13} style={{ color: 'var(--muted)' }} />{detalhe.loja || '—'}
+                </div>
+              </div>
               {/* Prioridade */}
               <div>
                 <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>PRIORIDADE</div>
@@ -1427,6 +1686,15 @@ export default function TarefasPage() {
                   {detalhe.prazo ? fmtData(detalhe.prazo) : 'Sem prazo'}
                 </div>
               </div>
+              {/* SLA */}
+              {slaInfo(detalhe) && (
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>SLA</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: slaInfo(detalhe)!.cor, fontWeight: 600 }}>
+                    <Timer size={13} />{slaInfo(detalhe)!.txt}
+                  </div>
+                </div>
+              )}
               {/* Setor */}
               <div>
                 <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>SETOR</div>
@@ -1606,45 +1874,36 @@ export default function TarefasPage() {
                     {detalhe.aval_feedback && <div style={{ fontSize: 13, marginTop: 4 }}>{detalhe.aval_feedback}</div>}
                     <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>por {detalhe.aval_por} · {fmtDataHora(detalhe.aval_em)}</div>
                   </div>
+                ) : detalhe.status === 'concluido' ? (
+                  <>
+                    <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 8 }}>
+                      A avaliação (★ e conforme/não conforme) só pode ser dada pelo próprio solicitante, pelo link que ele recebe — ninguém mais valida por ele aqui dentro.
+                    </div>
+                    <button onClick={() => enviarParaValidacao(detalhe)} disabled={detalheSaving}
+                      style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+                      📲 Enviar para o solicitante validar
+                    </button>
+                  </>
                 ) : (
                   <>
-                    {detalhe.status === 'concluido' && (
-                      <button onClick={() => enviarParaValidacao(detalhe)} disabled={detalheSaving}
-                        style={{ marginBottom: 10, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
-                        📲 Enviar para o solicitante validar
-                      </button>
-                    )}
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                      <button onClick={() => setAvalForm(f => ({ ...f, ok: true }))}
-                        style={{ flex: 1, padding: '7px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 600, border: `1px solid ${avalForm.ok === true ? '#16a34a' : 'var(--border)'}`, background: avalForm.ok === true ? '#16a34a' : 'var(--bg)', color: avalForm.ok === true ? '#fff' : 'var(--text)' }}>✅ Realizado conforme</button>
-                      <button onClick={() => setAvalForm(f => ({ ...f, ok: false }))}
-                        style={{ flex: 1, padding: '7px', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 600, border: `1px solid ${avalForm.ok === false ? '#dc2626' : 'var(--border)'}`, background: avalForm.ok === false ? '#dc2626' : 'var(--bg)', color: avalForm.ok === false ? '#fff' : 'var(--text)' }}>⚠️ Não conforme</button>
+                    <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 8 }}>
+                      ⏳ Aguardando o solicitante <strong>{detalhe.solicitante_nome || '—'}</strong> validar pelo link enviado no WhatsApp.
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                      <span style={{ fontSize: 12, color: 'var(--muted)' }}>Nota:</span>
-                      {[1, 2, 3, 4, 5].map(n => (
-                        <button key={n} onClick={() => setAvalForm(f => ({ ...f, nota: n }))}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, lineHeight: 1, color: n <= avalForm.nota ? '#f59e0b' : 'var(--border)', padding: 0 }}>★</button>
-                      ))}
-                    </div>
-                    <textarea value={avalForm.feedback} onChange={e => setAvalForm(f => ({ ...f, feedback: e.target.value }))} rows={2}
-                      placeholder="Feedback / observação (opcional)…"
-                      style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical', marginBottom: 8 }} />
-                    <button onClick={() => validarSolicitante(detalhe)} disabled={detalheSaving}
-                      style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#0f766e', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                      🔒 Validar e encerrar tarefa
+                    <button onClick={() => enviarParaValidacao(detalhe)} disabled={detalheSaving}
+                      style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+                      📲 Reenviar link de validação
                     </button>
                   </>
                 )}
               </div>
             )}
 
-            {/* Abas: Checklist / Comentários / Histórico */}
+            {/* Abas: Checklist / Execução / Histórico (timeline única: atualizações + status + auditoria) */}
             <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
-              {(['checklist', 'comentarios', 'execucao', 'historico'] as const).map(aba => (
+              {(['checklist', 'execucao', 'historico'] as const).map(aba => (
                 <button key={aba} onClick={() => setAbaDetalhe(aba)}
                   style={{ flex: 1, padding: '10px 6px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 11.5, fontWeight: abaDetalhe === aba ? 700 : 400, color: abaDetalhe === aba ? 'var(--bordo)' : 'var(--muted)', borderBottom: abaDetalhe === aba ? '2px solid var(--bordo)' : '2px solid transparent' }}>
-                  {aba === 'checklist' ? `✓ Checklist (${detalhe.checklist?.length ?? 0})` : aba === 'comentarios' ? `🔧 Controle (${detalhe.comentarios?.length ?? 0})` : aba === 'execucao' ? `🚀 Execução` : `📋 Histórico`}
+                  {aba === 'checklist' ? `✓ Checklist (${detalhe.checklist?.length ?? 0})` : aba === 'execucao' ? `🚀 Execução` : `📋 Histórico (${montaTimeline(detalhe).length})`}
                 </button>
               ))}
             </div>
@@ -1683,33 +1942,6 @@ export default function TarefasPage() {
               </div>
             )}
 
-            {/* Aba Comentários */}
-            {abaDetalhe === 'comentarios' && (
-              <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {(detalhe.comentarios ?? []).map((c: TarefaComentario) => (
-                  <div key={c.id} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontWeight: 600, fontSize: 12 }}>{c.autor_nome}</span>
-                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtData(c.created_at)}</span>
-                    </div>
-                    <div style={{ fontSize: 13, lineHeight: 1.5 }}>{c.texto}</div>
-                  </div>
-                ))}
-                {(detalhe.comentarios ?? []).length === 0 && (
-                  <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 13, padding: 20 }}>Nenhuma atualização registrada</div>
-                )}
-                <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                  <input value={novoComent} onChange={e => setNovoComent(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && addComentario()}
-                    placeholder="Atualização (ex: técnico acionado, material solicitado, compra aprovada…)"
-                    style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
-                  <button onClick={addComentario} disabled={detalheSaving || !novoComent.trim()}
-                    style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: 'pointer' }}>
-                    <MessageSquare size={14} />
-                  </button>
-                </div>
-              </div>
-            )}
 
             {/* Aba Execução */}
             {abaDetalhe === 'execucao' && (
@@ -1926,43 +2158,111 @@ export default function TarefasPage() {
             {/* Aba Histórico */}
             {abaDetalhe === 'historico' && (
               <div style={{ padding: 16, flex: 1 }}>
-                {/* Linha do tempo de status (transições) */}
-                {(detalhe.transicoes && detalhe.transicoes.length > 0) && (
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--bordo)', marginBottom: 8 }}>🧭 LINHA DO TEMPO DE STATUS</div>
-                    {[...detalhe.transicoes].reverse().map((tr, i) => {
-                      const col = COLUNAS.find(c => c.id === tr.para)
+                {/* Tempo parado por etapa (decompõe o tempo total da tarefa) */}
+                <div style={{ marginBottom: 16, background: 'var(--bg)', borderRadius: 8, padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>⏱ TEMPO POR ETAPA</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {tempoPorStatusDetalhe(detalhe).map(b => {
+                      const col = COLUNAS.find(c => c.id === b.status)
+                      const total = tempoPorStatusDetalhe(detalhe).reduce((s, x) => s + x.horas, 0) || 1
                       return (
-                        <div key={i} style={{ display: 'flex', gap: 10, paddingBottom: 10, borderLeft: `2px solid ${col?.cor || 'var(--border)'}`, paddingLeft: 10, marginLeft: 4 }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 12.5, fontWeight: 700, color: col?.cor }}>{col?.label || tr.para}</div>
-                            {tr.obs && <div style={{ fontSize: 12.5, marginTop: 2, whiteSpace: 'pre-wrap' }}>{tr.obs}</div>}
-                            {tr.anexos && <div style={{ marginTop: 4 }}><AnexoLinks value={tr.anexos} compact /></div>}
-                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{tr.por} · {fmtDataHora(tr.em)}</div>
+                        <div key={b.status} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 120, fontSize: 11.5, flexShrink: 0 }}>{b.label}</div>
+                          <div style={{ flex: 1, height: 8, background: 'var(--card)', borderRadius: 4, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${Math.max((b.horas / total) * 100, 4)}%`, background: col?.cor || '#6b7280', borderRadius: 4 }} />
                           </div>
+                          <div style={{ width: 50, fontSize: 11.5, color: 'var(--muted)', textAlign: 'right', flexShrink: 0 }}>{fmtDur(b.horas)}</div>
                         </div>
                       )
                     })}
-                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', margin: '14px 0 8px' }}>📋 REGISTRO COMPLETO</div>
                   </div>
-                )}
-                {(detalhe.historico ?? []).length === 0 && (
-                  <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 13, padding: 20 }}>Sem histórico</div>
-                )}
-                {[...(detalhe.historico ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)).map(h => (
-                  <div key={h.id} style={{ display: 'flex', gap: 10, paddingBottom: 12, borderBottom: '1px solid var(--border)', marginBottom: 12 }}>
-                    <History size={14} style={{ color: 'var(--muted)', flexShrink: 0, marginTop: 1 }} />
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>{h.acao}</div>
-                      {h.campo && (
-                        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                          {h.campo}: <span style={{ textDecoration: 'line-through' }}>{h.valor_anterior}</span> → <strong>{h.valor_novo}</strong>
-                        </div>
-                      )}
-                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{h.usuario_nome} · {new Date(h.created_at).toLocaleString('pt-BR')}</div>
+                </div>
+
+                {/* Registrar atualização — entra direto na timeline abaixo, sem precisar mover o card */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>📝 O QUE ACONTECEU?</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <select value={novoComentTipo} onChange={e => setNovoComentTipo(e.target.value)}
+                      style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 12 }}>
+                      {TIPOS_ATUALIZACAO.map(t => <option key={t.id} value={t.id}>{t.emoji} {t.label}</option>)}
+                    </select>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input value={novoComent} onChange={e => setNovoComent(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && addComentario()}
+                        placeholder="Ex: técnico acionado, material solicitado, compra aprovada…"
+                        style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
+                      <button onClick={addComentario} disabled={detalheSaving || !novoComent.trim()}
+                        style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: 'pointer' }}>
+                        <MessageSquare size={14} />
+                      </button>
                     </div>
                   </div>
-                ))}
+                </div>
+
+                {/* Timeline única: transições de status + atualizações + demais eventos de auditoria, em ordem cronológica */}
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--bordo)', marginBottom: 8 }}>🧭 HISTÓRICO DA TAREFA</div>
+                {montaTimeline(detalhe).length === 0 && (
+                  <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 13, padding: 20 }}>Nenhum evento registrado ainda</div>
+                )}
+                {montaTimeline(detalhe).map((ev, i) => {
+                  if (ev.kind === 'transicao') {
+                    const tr = ev.tr
+                    const col = COLUNAS.find(c => c.id === tr.para)
+                    return (
+                      <div key={'tr' + i} style={{ display: 'flex', gap: 10, paddingBottom: 12, borderLeft: `2px solid ${col?.cor || 'var(--border)'}`, paddingLeft: 10, marginLeft: 4, marginBottom: 12 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: col?.cor }}>🔄 {tr.de ? `${statusLabel(tr.de as TarefaStatus)} → ` : ''}{col?.label || tr.para}</div>
+                          {tr.motivo && (
+                            <div style={{ fontSize: 11.5, marginTop: 3, display: 'inline-block', background: tr.para === 'cancelado' ? '#fee2e2' : '#fef3c7', color: tr.para === 'cancelado' ? '#b91c1c' : '#92400e', borderRadius: 20, padding: '1px 8px', fontWeight: 600 }}>
+                              {tr.para === 'cancelado' ? '🚫' : '🚧'} {tr.motivo}
+                            </div>
+                          )}
+                          {tr.obs && <div style={{ fontSize: 12.5, marginTop: 2, whiteSpace: 'pre-wrap' }}>{tr.obs}</div>}
+                          {(tr.resp_resolucao || tr.previsao) && (
+                            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
+                              {tr.resp_resolucao && <>Resolve: <strong>{tr.resp_resolucao}</strong> </>}
+                              {tr.previsao && <>· Previsão: <strong>{fmtData(tr.previsao)}</strong></>}
+                            </div>
+                          )}
+                          {tr.anexos && <div style={{ marginTop: 4 }}><AnexoLinks value={tr.anexos} compact /></div>}
+                          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{tr.por} · {fmtDataHora(tr.em)}</div>
+                        </div>
+                      </div>
+                    )
+                  }
+                  if (ev.kind === 'comentario') {
+                    const c = ev.c
+                    return (
+                      <div key={'c' + i} style={{ display: 'flex', gap: 10, paddingBottom: 12, borderLeft: '2px solid var(--border)', paddingLeft: 10, marginLeft: 4, marginBottom: 12 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 11, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 20, padding: '1px 8px', whiteSpace: 'nowrap' }}>
+                              {tipoAtualizacaoInfo(c.tipo).emoji} {tipoAtualizacaoInfo(c.tipo).label}
+                            </span>
+                            <span style={{ fontWeight: 600, fontSize: 12 }}>{c.autor_nome}</span>
+                          </div>
+                          <div style={{ fontSize: 13, marginTop: 4, lineHeight: 1.5 }}>{c.texto}</div>
+                          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{fmtDataHora(c.created_at)}</div>
+                        </div>
+                      </div>
+                    )
+                  }
+                  const h = ev.h
+                  return (
+                    <div key={'h' + i} style={{ display: 'flex', gap: 10, paddingBottom: 12, borderLeft: '2px solid var(--border)', paddingLeft: 10, marginLeft: 4, marginBottom: 12 }}>
+                      <History size={14} style={{ color: 'var(--muted)', flexShrink: 0, marginTop: 1 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>{h.acao}</div>
+                        {h.campo && (
+                          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                            {h.campo}: <span style={{ textDecoration: 'line-through' }}>{h.valor_anterior}</span> → <strong>{h.valor_novo}</strong>
+                          </div>
+                        )}
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{h.usuario_nome} · {fmtDataHora(h.created_at)}</div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -1998,7 +2298,45 @@ export default function TarefasPage() {
                 <span style={{ margin: '0 8px', color: 'var(--muted)' }}>→</span>
                 <span style={{ background: colPara?.bg, color: colPara?.cor, borderRadius: 6, padding: '2px 8px', fontWeight: 700 }}>{colPara?.label}</span>
               </div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Observação da transição</label>
+              {/* Cancelamento: motivo obrigatório */}
+              {transicao.novoStatus === 'cancelado' && (
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: '#dc2626', display: 'block', marginBottom: 4 }}>Motivo do cancelamento *</label>
+                  <select value={transMotivo} onChange={e => setTransMotivo(e.target.value)}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${!transMotivo ? '#fca5a5' : 'var(--border)'}`, background: 'var(--bg)', fontSize: 13 }}>
+                    <option value="">Selecione...</option>
+                    {MOTIVOS_CANCELAMENTO.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+              )}
+              {/* Impedimento estruturado */}
+              {STATUS_IMPEDIMENTO.includes(transicao.novoStatus) && (
+                <div style={{ marginBottom: 10, display: 'grid', gap: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: '#d97706', display: 'block', marginBottom: 4 }}>Motivo do impedimento *</label>
+                    <select value={transMotivo} onChange={e => setTransMotivo(e.target.value)}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${!transMotivo ? '#fcd34d' : 'var(--border)'}`, background: 'var(--bg)', fontSize: 13 }}>
+                      <option value="">Selecione...</option>
+                      {MOTIVOS_IMPEDIMENTO.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Quem precisa resolver?</label>
+                      <input value={transResp} onChange={e => setTransResp(e.target.value)} placeholder="Nome / setor / fornecedor"
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Previsão de resolução</label>
+                      <input type="date" value={transPrevisao} onChange={e => setTransPrevisao(e.target.value)}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                {transMotivoObrigatorio ? 'Detalhes (opcional)' : 'Observação da transição'}
+              </label>
               <textarea value={transObs} onChange={e => setTransObs(e.target.value)} rows={3} placeholder={HINT[transicao.novoStatus] || 'Observação'}
                 style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical', marginBottom: 10 }} />
               <AnexoUploader value={transAnexos} onChange={v => setTransAnexos(v || '')} pasta="tarefas" label="📎 Evidência (foto, orçamento, NF, documento…)" />
@@ -2007,8 +2345,8 @@ export default function TarefasPage() {
               </div>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
                 <button onClick={() => setTransicao(null)} style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 13 }}>Cancelar</button>
-                <button onClick={confirmarTransicao} disabled={detalheSaving}
-                  style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: detalheSaving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button onClick={confirmarTransicao} disabled={detalheSaving || (transMotivoObrigatorio && !transMotivo)}
+                  style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: (detalheSaving || (transMotivoObrigatorio && !transMotivo)) ? 'not-allowed' : 'pointer', opacity: (transMotivoObrigatorio && !transMotivo) ? 0.6 : 1, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                   {detalheSaving ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle2 size={14} />} Registrar atualização
                 </button>
               </div>
@@ -2043,6 +2381,13 @@ function KanbanCard({ tarefa, onClick, onMover, colunas }: {
     >
       {/* Prioridade strip */}
       <div style={{ position: 'absolute', top: 0, left: 0, width: 4, height: '100%', borderRadius: '10px 0 0 10px', background: prioCor(tarefa.prioridade) }} />
+      {/* Indicador de saúde da tarefa */}
+      {(() => {
+        const saude = saudeTarefa(tarefa)
+        return saude ? (
+          <div title={saude.label} style={{ position: 'absolute', top: 10, right: 10, width: 10, height: 10, borderRadius: '50%', background: saude.cor }} />
+        ) : null
+      })()}
       <div style={{ paddingLeft: 8 }}>
         {/* Título */}
         <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4, marginBottom: 8 }}>
