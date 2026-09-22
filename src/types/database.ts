@@ -1209,6 +1209,8 @@ export interface Tarefa {
   aceite_prazo_proposto?: string | null
   aceite_prazo_justificativa?: string | null
   aceite_recusa_motivo?: string | null
+  // Colaboradores vinculados (apoio pontual, sem tirar o responsável principal)
+  colaboradores?: { tipo: string; nome: string; motivo?: string | null; adicionado_por: string; adicionado_em: string }[]
   // ── V2: validação do solicitante ──
   aval_ok?: boolean | null
   aval_nota?: number | null

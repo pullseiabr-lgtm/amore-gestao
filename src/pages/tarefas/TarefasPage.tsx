@@ -274,6 +274,7 @@ export default function TarefasPage() {
   const [periodoDe, setPeriodoDe] = useState('')
   const [periodoAte, setPeriodoAte] = useState('')
   const [pendenciaAberta, setPendenciaAberta] = useState<string | null>(null)
+  const [dragOverCol, setDragOverCol] = useState<TarefaStatus | null>(null)
 
   // Modal nova tarefa
   const [showForm, setShowForm] = useState(false)
@@ -413,6 +414,14 @@ export default function TarefasPage() {
   const [posPrazoProposto, setPosPrazoProposto] = useState('')
   const [posPrazoJustificativa, setPosPrazoJustificativa] = useState('')
   const [posMotivoRecusa, setPosMotivoRecusa] = useState('')
+  // Transferir tarefa (muda o responsável principal, preserva todo o histórico)
+  const [transferencia, setTransferencia] = useState<Tarefa | null>(null)
+  const [transfNovoResp, setTransfNovoResp] = useState('')
+  const [transfMotivo, setTransfMotivo] = useState('')
+  // Colaboradores vinculados à tarefa (apoio pontual sem tirar o responsável principal)
+  const [novoColabTipo, setNovoColabTipo] = useState('Setor')
+  const [novoColabNome, setNovoColabNome] = useState('')
+  const [novoColabMotivo, setNovoColabMotivo] = useState('')
 
   // ── Load ─────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -729,6 +738,55 @@ export default function TarefasPage() {
         }
       }
       setPosicionamento(null)
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+
+  // ── Transferir tarefa: muda o responsável principal, preserva todo o histórico ──
+  const abrirTransferencia = (t: Tarefa) => { setTransfNovoResp(''); setTransfMotivo(''); setTransferencia(t) }
+  const confirmarTransferencia = async () => {
+    if (!transferencia || !transfNovoResp.trim() || !transfMotivo.trim()) { alert('Selecione o novo responsável e informe o motivo.'); return }
+    const t = transferencia
+    const antigo = t.responsavel_nome || '—'
+    const novo = transfNovoResp.trim()
+    const quem = user?.name || 'Sistema'
+    setDetalheSaving(true)
+    try {
+      await updateTarefa(t.id, { responsavel_nome: novo })
+      // Novo responsável precisa se posicionar de novo (aceite/prazo) — nada do histórico anterior é apagado.
+      await saveTV2(t, {
+        aceite_status: null, aceite_em: null, aceite_por: null, aceite_prazo_concorda: null,
+        aceite_prazo_proposto: null, aceite_prazo_justificativa: null, aceite_recusa_motivo: null,
+        recebido_em: null, recebido_por: null,
+      })
+      await insertTarefaHistorico({ tarefa_id: t.id, acao: `${quem} transferiu a tarefa de ${antigo} para ${novo}: ${transfMotivo.trim()}`, campo: 'responsavel_nome', valor_anterior: antigo, valor_novo: novo, usuario_nome: quem })
+      await notificarTarefaWhats({ ...t, responsavel_nome: novo })
+      setTransferencia(null)
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+
+  // ── Colaboradores: outros setores/pessoas/fornecedores vinculados, sem tirar o responsável principal ──
+  const adicionarColaborador = async (t: Tarefa) => {
+    if (!novoColabNome.trim()) return
+    setDetalheSaving(true)
+    try {
+      const quem = user?.name || 'Sistema'
+      const novo = { tipo: novoColabTipo, nome: novoColabNome.trim(), motivo: novoColabMotivo.trim() || null, adicionado_por: quem, adicionado_em: new Date().toISOString() }
+      const lista = [...(t.colaboradores || []), novo]
+      await updateTarefa(t.id, { colaboradores: lista })
+      await insertTarefaHistorico({ tarefa_id: t.id, acao: `${quem} vinculou ${novoColabTipo.toLowerCase()} colaborador: ${novoColabNome.trim()}${novoColabMotivo.trim() ? ' — ' + novoColabMotivo.trim() : ''}`, campo: null, valor_anterior: null, valor_novo: null, usuario_nome: quem })
+      setNovoColabNome(''); setNovoColabMotivo('')
+      await load()
+    } finally { setDetalheSaving(false) }
+  }
+  const removerColaborador = async (t: Tarefa, idx: number) => {
+    setDetalheSaving(true)
+    try {
+      const alvo = (t.colaboradores || [])[idx]
+      const lista = (t.colaboradores || []).filter((_, i) => i !== idx)
+      await updateTarefa(t.id, { colaboradores: lista })
+      if (alvo) await insertTarefaHistorico({ tarefa_id: t.id, acao: `${user?.name || 'Sistema'} removeu colaborador: ${alvo.nome}`, campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || 'Sistema' })
       await load()
     } finally { setDetalheSaving(false) }
   }
@@ -1385,8 +1443,18 @@ export default function TarefasPage() {
                   <span style={{ background: col.cor, color: '#fff', borderRadius: 20, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}>{counts[col.id]}</span>
                 </div>
 
-                {/* Cards */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, overflowY: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
+                {/* Cards — também aceita soltar um card arrastado de outra coluna */}
+                <div
+                  onDragOver={e => { e.preventDefault(); if (dragOverCol !== col.id) setDragOverCol(col.id) }}
+                  onDragLeave={() => setDragOverCol(c => c === col.id ? null : c)}
+                  onDrop={e => {
+                    e.preventDefault()
+                    setDragOverCol(null)
+                    const id = e.dataTransfer.getData('text/plain')
+                    const t = tarefas.find(x => x.id === id)
+                    if (t && t.status !== col.id) abrirTransicao(t, col.id)
+                  }}
+                  style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, overflowY: 'auto', maxHeight: 'calc(100vh - 320px)', borderRadius: 10, outline: dragOverCol === col.id ? `2px dashed ${col.cor}` : 'none', outlineOffset: 2, transition: 'outline .1s' }}>
                   {cards.map(t => (
                     <KanbanCard
                       key={t.id}
@@ -2055,9 +2123,43 @@ export default function TarefasPage() {
             {/* Aba Envolvidos: responsável já está no cabeçalho; aqui fica quem mais foi acionado no processo */}
             {abaDetalhe === 'envolvidos' && (
               <div style={{ padding: 16, flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
-                  <strong>Responsável:</strong> {detalhe.responsavel_nome || '— não definido —'}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5, color: 'var(--muted)' }}>
+                  <span><strong>Responsável:</strong> {detalhe.responsavel_nome || '— não definido —'}</span>
+                  <button onClick={() => abrirTransferencia(detalhe)}
+                    style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', cursor: 'pointer', fontSize: 11.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <RotateCcw size={12} /> Transferir
+                  </button>
                 </div>
+
+                {/* ── Colaboradores vinculados ── */}
+                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>👥 COLABORADORES VINCULADOS</div>
+                  {(detalhe.colaboradores ?? []).length === 0 && (
+                    <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>Nenhum colaborador vinculado ainda.</div>
+                  )}
+                  {(detalhe.colaboradores ?? []).map((c, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5, background: 'var(--card)', borderRadius: 8, padding: '6px 10px', marginBottom: 6 }}>
+                      <span><strong>{c.nome}</strong> <span style={{ color: 'var(--muted)' }}>({c.tipo}){c.motivo ? ` — ${c.motivo}` : ''}</span></span>
+                      <button onClick={() => removerColaborador(detalhe, i)} disabled={detalheSaving} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626' }}><X size={13} /></button>
+                    </div>
+                  ))}
+                  <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 1fr auto', gap: 6, marginTop: 4 }}>
+                    <select value={novoColabTipo} onChange={e => setNovoColabTipo(e.target.value)}
+                      style={{ padding: '7px 6px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 11.5 }}>
+                      <option value="Setor">Setor</option>
+                      <option value="Usuário">Usuário</option>
+                      <option value="Fornecedor">Fornecedor</option>
+                      <option value="Unidade">Unidade</option>
+                    </select>
+                    <input value={novoColabNome} onChange={e => setNovoColabNome(e.target.value)}
+                      placeholder="Nome" style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }} />
+                    <input value={novoColabMotivo} onChange={e => setNovoColabMotivo(e.target.value)}
+                      placeholder="Motivo (opcional)" style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }} />
+                    <button onClick={() => adicionarColaborador(detalhe)} disabled={detalheSaving || !novoColabNome.trim()}
+                      style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: '#4338ca', color: '#fff', cursor: novoColabNome.trim() ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 600 }}>+</button>
+                  </div>
+                </div>
+
                 {/* ── Solicitar apoio de outro setor ── */}
                 <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>🤝 SOLICITAR APOIO DE OUTRO SETOR</div>
@@ -2554,6 +2656,49 @@ export default function TarefasPage() {
         </div>
       )}
 
+      {/* ══════════════════════════════
+          MODAL: TRANSFERIR TAREFA
+      ══════════════════════════════ */}
+      {transferencia && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setTransferencia(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 14, padding: 22, width: '100%', maxWidth: 420, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>🔄 Transferir tarefa</h3>
+              <button onClick={() => setTransferencia(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={18} /></button>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 14 }}>
+              {transferencia.titulo} · atualmente com <strong>{transferencia.responsavel_nome || 'ninguém'}</strong>
+            </div>
+
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Transferir para</label>
+            <select value={responsaveis.includes(transfNovoResp) ? transfNovoResp : ''} onChange={e => setTransfNovoResp(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, marginBottom: 6 }}>
+              <option value="">Selecione…</option>
+              {responsaveis.filter(n => n !== transferencia.responsavel_nome).map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+            <input value={transfNovoResp} onChange={e => setTransfNovoResp(e.target.value)}
+              placeholder="Ou digite o nome…"
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 12.5, marginBottom: 10, boxSizing: 'border-box' }} />
+
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Motivo *</label>
+            <textarea value={transfMotivo} onChange={e => setTransfMotivo(e.target.value)} rows={2}
+              placeholder="Ex: a execução pertence ao setor de Marketing…"
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }} />
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8 }}>
+              Todo o histórico permanece. O novo responsável precisa se posicionar (aceitar/recusar) de novo.
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+              <button onClick={() => setTransferencia(null)} style={{ padding: '9px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 13 }}>Cancelar</button>
+              <button onClick={confirmarTransferencia} disabled={detalheSaving || !transfNovoResp.trim() || !transfMotivo.trim()}
+                style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: (detalheSaving || !transfNovoResp.trim() || !transfMotivo.trim()) ? 'not-allowed' : 'pointer', opacity: (!transfNovoResp.trim() || !transfMotivo.trim()) ? 0.6 : 1, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {detalheSaving ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <RotateCcw size={14} />} Transferir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`@keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }`}</style>
     </div>
   )
@@ -2574,7 +2719,9 @@ function KanbanCard({ tarefa, onClick, onMover, colunas }: {
   return (
     <div
       onClick={onClick}
-      style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 12, cursor: 'pointer', transition: 'box-shadow .15s', position: 'relative' }}
+      draggable
+      onDragStart={e => { e.dataTransfer.setData('text/plain', tarefa.id); e.dataTransfer.effectAllowed = 'move' }}
+      style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 12, cursor: 'grab', transition: 'box-shadow .15s', position: 'relative' }}
       onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.1)')}
       onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
     >
@@ -2612,6 +2759,7 @@ function KanbanCard({ tarefa, onClick, onMover, colunas }: {
           {tarefa.aval_nota != null && <span style={{ background: '#fffbeb', color: '#b45309', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>{tarefa.aval_nota}★</span>}
           {tarefa.desvio_motivo && <span style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>⚠ Desvio</span>}
           {tarefa.apoio_setor && <span style={{ background: '#eef2ff', color: '#4338ca', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>🤝 {tarefa.apoio_setor}</span>}
+          {(tarefa.colaboradores?.length ?? 0) > 0 && <span style={{ background: '#eef2ff', color: '#4338ca', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>👥 {tarefa.colaboradores!.length}</span>}
           {parseTags(tarefa.tags).slice(0, 2).map(tg => (
             <span key={tg} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 6px', fontSize: 10, color: 'var(--muted)' }}>#{tg}</span>
           ))}
