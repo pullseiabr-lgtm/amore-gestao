@@ -14,6 +14,7 @@ import {
   fetchAppConfig, saveAppConfig, TAREFA_V2_KEYS,
 } from '../../lib/db'
 import { enviarWhatsApp, normalizarFoneBR } from '../../lib/notify'
+import { supabase } from '../../lib/supabase'
 import { siteOrigin } from '../../lib/site'
 import type { Tarefa, TarefaStatus, TarefaPrioridade, TarefaResultado, TarefaChecklist, TarefaComentario, TarefaHistorico, CobrancaConfig, CobrancaNivel } from '../../types/database'
 import { AnexoUploader, AnexoLinks } from '../../components/ui/AnexoUploader'
@@ -72,6 +73,14 @@ const tipoAtualizacaoInfo = (id?: string | null) => TIPOS_ATUALIZACAO.find(t => 
 const MOTIVOS_IMPEDIMENTO = ['Aguardando material', 'Aguardando fornecedor', 'Aguardando cliente', 'Aguardando aprovação', 'Aguardando orçamento', 'Aguardando informação', 'Problema operacional', 'Problema financeiro', 'Outro']
 const MOTIVOS_CANCELAMENTO = ['Solicitação duplicada', 'Solicitação não autorizada', 'Problema de orçamento', 'Problema operacional', 'Cliente desistiu', 'Não será mais necessário', 'Criada incorretamente', 'Outro']
 const STATUS_IMPEDIMENTO: TarefaStatus[] = ['aguardando_retorno', 'aguardando_fornecedor']
+
+// Finalidades de crédito (espelha o módulo Créditos & Prestação — src/pages/creditos/CreditosPage.tsx)
+const FINALIDADES_CREDITO = [
+  { id: 'compras_semana', label: '🛒 Compras da semana' },
+  { id: 'logistica', label: '🚚 Logística' },
+  { id: 'servico', label: '🔧 Prestação de serviço' },
+  { id: 'outras', label: '🧾 Outras despesas' },
+]
 
 const COBRANCA_PADRAO: CobrancaConfig = {
   ativo: false,
@@ -422,6 +431,9 @@ export default function TarefasPage() {
   const [novoColabTipo, setNovoColabTipo] = useState('Setor')
   const [novoColabNome, setNovoColabNome] = useState('')
   const [novoColabMotivo, setNovoColabMotivo] = useState('')
+  // Solicitação de crédito a partir da tarefa (integra com o módulo Créditos & Prestação)
+  const [credForm, setCredForm] = useState({ valor: '', finalidade: 'compras_semana', prioridade: 'media', observacao: '' })
+  const [enviandoCredito, setEnviandoCredito] = useState(false)
 
   // ── Load ─────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -789,6 +801,42 @@ export default function TarefasPage() {
       if (alvo) await insertTarefaHistorico({ tarefa_id: t.id, acao: `${user?.name || 'Sistema'} removeu colaborador: ${alvo.nome}`, campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || 'Sistema' })
       await load()
     } finally { setDetalheSaving(false) }
+  }
+
+  // ── Solicitar crédito a partir da tarefa (integra com o módulo Créditos & Prestação) ──
+  const solicitarCredito = async (t: Tarefa) => {
+    const valor = Number(String(credForm.valor).replace(',', '.'))
+    if (!(valor > 0)) { alert('Informe um valor válido.'); return }
+    setEnviandoCredito(true)
+    try {
+      const quem = user?.name || t.responsavel_nome || 'Painel'
+      const finLabel = FINALIDADES_CREDITO.find(f => f.id === credForm.finalidade)?.label || credForm.finalidade
+      const centro_custo = [t.loja, t.setor, `Tarefa #${t.numero ?? ''} — ${t.titulo}`].filter(Boolean).join(' > ')
+      const { data: novo, error } = await (supabase as any).from('creditos').insert({
+        solicitante_nome: t.solicitante_nome || quem, setor: t.setor || null, unidade: t.loja,
+        data_solicitacao: new Date().toISOString().slice(0, 10), data_necessaria: t.prazo || null,
+        finalidade: credForm.finalidade, prioridade: credForm.prioridade,
+        valor_solicitado: valor, forma_recebimento: 'pix',
+        centro_custo, observacao: `${credForm.observacao.trim() ? credForm.observacao.trim() + ' — ' : ''}Vinculado à tarefa #${t.numero ?? ''} (${t.titulo}).`,
+        status: 'em_aprovacao', created_by: quem,
+      }).select('id, numero').single()
+      if (error || !novo) { alert('Falha ao criar a solicitação de crédito: ' + (error?.message || '')); return }
+
+      const registro = { credito_id: novo.id, numero: novo.numero, valor_solicitado: valor, status: 'em_aprovacao', solicitado_por: quem, solicitado_em: new Date().toISOString() }
+      await updateTarefa(t.id, { creditos_vinculados: [...(t.creditos_vinculados || []), registro] })
+      await insertTarefaHistorico({ tarefa_id: t.id, acao: `${quem} solicitou crédito CRD-${novo.numero} (${fmtMoeda(valor)}) — ${finLabel}`, campo: null, valor_anterior: null, valor_novo: null, usuario_nome: quem })
+
+      // Notifica os aprovadores (mesmo padrão do módulo Créditos: Wagner + Aline)
+      const aprovadores = [{ nome: 'Wagner', fone: '5581994135602' }, { nome: 'Aline', fone: '5581994573420' }]
+      const linkCredito = `${siteOrigin()}/credito.html?id=${novo.id}`
+      const msg = `💳 *Solicitação de crédito — ${t.loja}*\n\nCRD-${novo.numero} · ${t.solicitante_nome || quem}\nFinalidade: ${finLabel}\nValor solicitado: *${fmtMoeda(valor)}*\nVinculado à tarefa #${t.numero ?? ''}: ${t.titulo}\n\nAprovar no link:\n${linkCredito}`
+      for (const a of aprovadores) {
+        await zapPara(a.nome, a.fone, msg, { titulo: `Crédito CRD-${novo.numero}`, refId: t.id, tipo: 'compra' })
+        await new Promise(r => setTimeout(r, 2500 + Math.random() * 2500))
+      }
+      setCredForm({ valor: '', finalidade: 'compras_semana', prioridade: 'media', observacao: '' })
+      await load()
+    } finally { setEnviandoCredito(false) }
   }
 
   // ── Enviar para validação do solicitante ─────────────────
@@ -2275,6 +2323,36 @@ export default function TarefasPage() {
                   <button onClick={salvarResultado} disabled={detalheSaving}
                     style={{ marginTop: 10, padding: '7px 14px', borderRadius: 8, border: 'none', background: detalheSaving ? 'var(--border)' : 'var(--bordo)', color: '#fff', cursor: detalheSaving ? 'not-allowed' : 'pointer', fontSize: 12.5, fontWeight: 600 }}>
                     Salvar custo executado
+                  </button>
+                </div>
+
+                {/* ── Solicitar crédito (integra com Créditos & Prestação) ── */}
+                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>💳 SOLICITAR CRÉDITO</div>
+                  {(detalhe.creditos_vinculados ?? []).map((c, i) => (
+                    <a key={i} href={`${siteOrigin()}/credito.html?id=${c.credito_id}`} target="_blank" rel="noreferrer"
+                      style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, background: 'var(--card)', borderRadius: 8, padding: '6px 10px', marginBottom: 6, textDecoration: 'none', color: 'var(--text)' }}>
+                      <span>CRD-{c.numero} · {fmtMoeda(c.valor_solicitado)}</span>
+                      <span style={{ color: 'var(--bordo)', fontWeight: 600 }}>{c.status === 'aprovado' ? '🟢 Aprovado' : c.status === 'reprovado' ? '🔴 Reprovado' : '🟠 Em aprovação'} ↗</span>
+                    </a>
+                  ))}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }}>
+                    <input type="number" step="0.01" min="0" value={credForm.valor} onChange={e => setCredForm(f => ({ ...f, valor: e.target.value }))}
+                      placeholder="Valor (R$)" style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12.5 }} />
+                    <select value={credForm.prioridade} onChange={e => setCredForm(f => ({ ...f, prioridade: e.target.value }))}
+                      style={{ padding: '7px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12.5 }}>
+                      {PRIORIDADES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    </select>
+                    <select value={credForm.finalidade} onChange={e => setCredForm(f => ({ ...f, finalidade: e.target.value }))}
+                      style={{ gridColumn: '1 / -1', padding: '7px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12.5 }}>
+                      {FINALIDADES_CREDITO.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+                    </select>
+                    <input value={credForm.observacao} onChange={e => setCredForm(f => ({ ...f, observacao: e.target.value }))}
+                      placeholder="Observação (opcional)" style={{ gridColumn: '1 / -1', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12.5 }} />
+                  </div>
+                  <button onClick={() => solicitarCredito(detalhe)} disabled={enviandoCredito || !credForm.valor}
+                    style={{ marginTop: 8, padding: '7px 14px', borderRadius: 8, border: 'none', background: '#166534', color: '#fff', cursor: (enviandoCredito || !credForm.valor) ? 'not-allowed' : 'pointer', fontSize: 12.5, fontWeight: 600 }}>
+                    {enviandoCredito ? 'Enviando…' : 'Solicitar e enviar para aprovação'}
                   </button>
                 </div>
               </div>

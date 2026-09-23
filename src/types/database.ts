@@ -1211,6 +1211,8 @@ export interface Tarefa {
   aceite_recusa_motivo?: string | null
   // Colaboradores vinculados (apoio pontual, sem tirar o responsável principal)
   colaboradores?: { tipo: string; nome: string; motivo?: string | null; adicionado_por: string; adicionado_em: string }[]
+  // Créditos solicitados a partir da tarefa (vinculados à tabela `creditos`)
+  creditos_vinculados?: { credito_id: string; numero: number; valor_solicitado: number; status: string; solicitado_por: string; solicitado_em: string }[]
   // ── V2: validação do solicitante ──
   aval_ok?: boolean | null
   aval_nota?: number | null
