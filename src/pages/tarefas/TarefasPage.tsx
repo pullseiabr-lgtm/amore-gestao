@@ -404,7 +404,7 @@ export default function TarefasPage() {
   const [orcEntry, setOrcEntry] = useState({ valor: '', descricao: '', fornecedor: '', data: '', obs: '', anexos: '' })
   // Monitoramento da execução: desvio e apoio de outro setor
   const [desvioForm, setDesvioForm] = useState('')
-  const [apoioForm, setApoioForm] = useState({ setor: '', motivo: '' })
+  const [apoioForm, setApoioForm] = useState({ setor: '', usuario: '', motivo: '' })
   // Edição dos campos da tarefa (gera registro no histórico)
   const [editMode, setEditMode] = useState(false)
   const [editForm, setEditForm] = useState<any>(null)
@@ -466,7 +466,7 @@ export default function TarefasPage() {
     setOrcForm({ valor: detalhe?.orcamento_aprovado_valor != null ? String(detalhe.orcamento_aprovado_valor) : (detalhe?.orcamento_valor != null ? String(detalhe.orcamento_valor) : ''), obs: detalhe?.orcamento_obs_aprovacao || '' })
     setOrcEntry({ valor: '', descricao: '', fornecedor: '', data: '', obs: '', anexos: '' })
     setDesvioForm('')
-    setApoioForm({ setor: '', motivo: '' })
+    setApoioForm({ setor: '', usuario: '', motivo: '' })
     setEditMode(false)
   }, [detalhe?.id]) // eslint-disable-line
 
@@ -912,13 +912,22 @@ export default function TarefasPage() {
 
   // ── Solicitar apoio de outro setor (marca impedimento) ───
   const solicitarApoioSetor = async (t: Tarefa) => {
-    if (!apoioForm.setor) return
+    if (!apoioForm.usuario) { alert('Selecione o usuário que vai receber o pedido de apoio.'); return }
     setDetalheSaving(true)
     try {
-      await saveTV2(t, { apoio_setor: apoioForm.setor, apoio_motivo: apoioForm.motivo || null, apoio_em: new Date().toISOString(), apoio_por: user?.name || null })
+      const quem = user?.name || 'Sistema'
+      await saveTV2(t, { apoio_setor: apoioForm.setor || null, apoio_usuario: apoioForm.usuario, apoio_motivo: apoioForm.motivo || null, apoio_em: new Date().toISOString(), apoio_por: quem })
       if (isAtiva(t.status) && t.status !== 'aguardando_retorno') await updateTarefa(t.id, { status: 'aguardando_retorno' })
-      await insertTarefaHistorico({ tarefa_id: t.id, acao: `Apoio solicitado ao setor ${apoioForm.setor}`, campo: null, valor_anterior: null, valor_novo: apoioForm.motivo || null, usuario_nome: user?.name || 'Sistema' })
-      setApoioForm({ setor: '', motivo: '' })
+      await insertTarefaHistorico({ tarefa_id: t.id, acao: `${quem} solicitou apoio de ${apoioForm.usuario}${apoioForm.setor ? ' (' + apoioForm.setor + ')' : ''}`, campo: null, valor_anterior: null, valor_novo: apoioForm.motivo || null, usuario_nome: quem })
+      // Dispara mesmo — apoio sem WhatsApp pro usuário certo não serve de nada.
+      const phone = whatsappDoResponsavel(apoioForm.usuario)
+      if (phone) {
+        const msg = `🤝 *Pedido de apoio*${t.numero != null ? ` — tarefa #${String(t.numero).padStart(4, '0')}` : ''}\n\n🏪 ${t.loja}\n📋 ${t.titulo}${apoioForm.setor ? `\n🏷 Setor: ${apoioForm.setor}` : ''}${apoioForm.motivo ? `\n📝 ${apoioForm.motivo}` : ''}\n👤 Pedido por: ${quem}\n\n${linkTarefa(t, 'resp')}\n_Amore Gestão_`
+        await zapPara(apoioForm.usuario, phone, msg, { titulo: `Apoio: ${t.titulo}`, refId: t.id })
+      } else {
+        alert(`Apoio registrado, mas ${apoioForm.usuario} não tem WhatsApp cadastrado — avise por outro canal.`)
+      }
+      setApoioForm({ setor: '', usuario: '', motivo: '' })
       await load()
     } finally { setDetalheSaving(false) }
   }
@@ -2208,26 +2217,6 @@ export default function TarefasPage() {
                   </div>
                 </div>
 
-                {/* ── Solicitar apoio de outro setor ── */}
-                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>🤝 SOLICITAR APOIO DE OUTRO SETOR</div>
-                  {detalhe.apoio_setor && (
-                    <div style={{ fontSize: 12.5, background: '#eef2ff', color: '#4338ca', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
-                      Apoio a <strong>{detalhe.apoio_setor}</strong>{detalhe.apoio_motivo ? ` — ${detalhe.apoio_motivo}` : ''}<div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{detalhe.apoio_por} · {fmtDataHora(detalhe.apoio_em || null)}</div>
-                    </div>
-                  )}
-                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr auto', gap: 6 }}>
-                    <select value={apoioForm.setor} onChange={e => setApoioForm(f => ({ ...f, setor: e.target.value }))}
-                      style={{ padding: '7px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }}>
-                      <option value="">Setor…</option>
-                      {SETORES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <input value={apoioForm.motivo} onChange={e => setApoioForm(f => ({ ...f, motivo: e.target.value }))}
-                      placeholder="Motivo do apoio" style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }} />
-                    <button onClick={() => solicitarApoioSetor(detalhe)} disabled={detalheSaving || !apoioForm.setor}
-                      style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: '#4338ca', color: '#fff', cursor: apoioForm.setor ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 600 }}>Solicitar</button>
-                  </div>
-                </div>
                 {/* ── Desvio da tarefa (quem mudou o combinado) ── */}
                 <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>↪️ DESVIO DA TAREFA</div>
@@ -2242,6 +2231,36 @@ export default function TarefasPage() {
                       style={{ flex: 1, padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }} />
                     <button onClick={() => registrarDesvio(detalhe)} disabled={detalheSaving || !desvioForm.trim()}
                       style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: '#b91c1c', color: '#fff', cursor: desvioForm.trim() ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 600 }}>Registrar</button>
+                  </div>
+                </div>
+
+                {/* ── Solicitar apoio de outro setor — por último: só depois que o responsável já se posicionou e tratou a tarefa ── */}
+                <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>🤝 SOLICITAR APOIO DE OUTRO SETOR</div>
+                  {detalhe.apoio_usuario && (
+                    <div style={{ fontSize: 12.5, background: '#eef2ff', color: '#4338ca', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                      Apoio pedido a <strong>{detalhe.apoio_usuario}</strong>{detalhe.apoio_setor ? ` (${detalhe.apoio_setor})` : ''}{detalhe.apoio_motivo ? ` — ${detalhe.apoio_motivo}` : ''}<div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{detalhe.apoio_por} · {fmtDataHora(detalhe.apoio_em || null)}</div>
+                    </div>
+                  )}
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <select value={apoioForm.usuario} onChange={e => setApoioForm(f => ({ ...f, usuario: e.target.value }))}
+                      style={{ padding: '7px 8px', borderRadius: 7, border: `1px solid ${!apoioForm.usuario ? 'var(--border)' : 'var(--border)'}`, background: 'var(--card)', fontSize: 12 }}>
+                      <option value="">Selecionar usuário…</option>
+                      {responsaveis.map(nome => <option key={nome} value={nome}>{nome}</option>)}
+                    </select>
+                    <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: 6 }}>
+                      <select value={apoioForm.setor} onChange={e => setApoioForm(f => ({ ...f, setor: e.target.value }))}
+                        style={{ padding: '7px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }}>
+                        <option value="">Setor (opcional)…</option>
+                        {SETORES.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      <input value={apoioForm.motivo} onChange={e => setApoioForm(f => ({ ...f, motivo: e.target.value }))}
+                        placeholder="Motivo do apoio" style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 12 }} />
+                    </div>
+                    <button onClick={() => solicitarApoioSetor(detalhe)} disabled={detalheSaving || !apoioForm.usuario}
+                      style={{ padding: '7px 12px', borderRadius: 7, border: 'none', background: '#4338ca', color: '#fff', cursor: apoioForm.usuario ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 600 }}>
+                      📲 Solicitar e avisar no WhatsApp
+                    </button>
                   </div>
                 </div>
               </div>
@@ -2836,7 +2855,7 @@ function KanbanCard({ tarefa, onClick, onMover, colunas }: {
           {tarefa.orcamento_status === 'reprovado' && <span style={{ background: '#fee2e2', color: '#b91c1c', borderRadius: 4, padding: '1px 6px', fontSize: 10 }}>💰 Reprovado</span>}
           {tarefa.aval_nota != null && <span style={{ background: '#fffbeb', color: '#b45309', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>{tarefa.aval_nota}★</span>}
           {tarefa.desvio_motivo && <span style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>⚠ Desvio</span>}
-          {tarefa.apoio_setor && <span style={{ background: '#eef2ff', color: '#4338ca', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>🤝 {tarefa.apoio_setor}</span>}
+          {(tarefa.apoio_usuario || tarefa.apoio_setor) && <span style={{ background: '#eef2ff', color: '#4338ca', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>🤝 {tarefa.apoio_usuario || tarefa.apoio_setor}</span>}
           {(tarefa.colaboradores?.length ?? 0) > 0 && <span style={{ background: '#eef2ff', color: '#4338ca', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>👥 {tarefa.colaboradores!.length}</span>}
           {parseTags(tarefa.tags).slice(0, 2).map(tg => (
             <span key={tg} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 6px', fontSize: 10, color: 'var(--muted)' }}>#{tg}</span>
@@ -2869,7 +2888,7 @@ function KanbanCard({ tarefa, onClick, onMover, colunas }: {
           const sla = slaInfo(tarefa)
           const upd = ultimaAtualizacao(tarefa)
           let info = ''
-          if (tarefa.status === 'aguardando_retorno' || tarefa.status === 'aguardando_fornecedor') info = tarefa.apoio_setor ? `Apoio: ${tarefa.apoio_setor}${tarefa.apoio_motivo ? ' — ' + tarefa.apoio_motivo : ''}` : 'Aguardando retorno'
+          if (tarefa.status === 'aguardando_retorno' || tarefa.status === 'aguardando_fornecedor') info = tarefa.apoio_usuario ? `Apoio: ${tarefa.apoio_usuario}${tarefa.apoio_motivo ? ' — ' + tarefa.apoio_motivo : ''}` : tarefa.apoio_setor ? `Apoio: ${tarefa.apoio_setor}${tarefa.apoio_motivo ? ' — ' + tarefa.apoio_motivo : ''}` : 'Aguardando retorno'
           else if (tarefa.status === 'aguardando_validacao') info = `Aguardando validação${tarefa.solicitante_nome ? ' de ' + tarefa.solicitante_nome : ''}`
           else if (tarefa.status === 'encerrada' && tarefa.aval_nota != null) info = `Encerrada · ${tarefa.aval_nota}★`
           else if (tarefa.desvio_motivo) info = `Desvio: ${tarefa.desvio_motivo}`

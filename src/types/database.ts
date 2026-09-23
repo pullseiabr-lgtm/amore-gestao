@@ -1237,6 +1237,7 @@ export interface Tarefa {
   desvio_em?: string | null
   desvio_por?: string | null
   apoio_setor?: string | null
+  apoio_usuario?: string | null
   apoio_motivo?: string | null
   apoio_em?: string | null
   apoio_por?: string | null

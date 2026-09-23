@@ -2175,7 +2175,7 @@ export const TAREFA_V2_KEYS = [
   'gera_custo', 'orcamento_descricao', 'orcamento_fornecedor', 'orcamento_valor',
   'orcamento_anexos', 'orcamento_data', 'orcamento_obs', 'orcamento_status',
   'orcamento_aprovado_valor', 'orcamento_aprovado_por', 'orcamento_aprovado_em', 'orcamento_obs_aprovacao',
-  'desvio_motivo', 'desvio_em', 'desvio_por', 'apoio_setor', 'apoio_motivo', 'apoio_em', 'apoio_por',
+  'desvio_motivo', 'desvio_em', 'desvio_por', 'apoio_setor', 'apoio_usuario', 'apoio_motivo', 'apoio_em', 'apoio_por',
   'transicoes',
 ] as const
 function stripTarefaV2<T extends Record<string, any>>(o: T): Record<string, any> {
