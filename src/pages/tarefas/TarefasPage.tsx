@@ -2780,6 +2780,12 @@ function KanbanCard({ tarefa, onClick, onMover, colunas }: {
           )
         })()}
 
+        {/* Solicitante + data da solicitação */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10.5, color: 'var(--muted)', marginTop: 3 }}>
+          <span>🙋 {tarefa.solicitante_nome || '—'}</span>
+          <span>{fmtData(tarefa.data_solicitacao || tarefa.created_at)}</span>
+        </div>
+
         {/* SLA (conta a partir do recebimento) + andamento por status */}
         {(() => {
           const sla = slaInfo(tarefa)
