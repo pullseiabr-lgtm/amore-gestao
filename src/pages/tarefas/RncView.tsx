@@ -151,8 +151,8 @@ async function carregarPC(p: { id?: string | null; chave?: string | null; numero
 // ── Datas sempre em dia/mês/ano (o <input type=date> do navegador segue o idioma do Windows/Chrome) ──
 const normData = (v: any): string | null => {
   const t = String(v ?? '').trim(); if (!t) return null
-  let m = t.match(/^(d{4})-(d{2})-(d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`
-  m = t.match(/^(d{1,2})[/.-](d{1,2})[/.-](d{4})/); if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`
+  m = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/); if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
   return null
 }
 const isoParaBR = (v: any) => { const n = normData(v); return n ? `${n.slice(8, 10)}/${n.slice(5, 7)}/${n.slice(0, 4)}` : '' }
@@ -160,7 +160,7 @@ function DataBR({ value, onChange, style }: { value: any; onChange: (iso: string
   const [t, setT] = useState(isoParaBR(value))
   useEffect(() => { setT(isoParaBR(value)) }, [value])
   return <input inputMode="numeric" placeholder="dd/mm/aaaa" maxLength={10} style={style} value={t} onChange={e => {
-    const d = e.target.value.replace(/D/g, '').slice(0, 8)
+    const d = e.target.value.replace(/\D/g, '').slice(0, 8)
     const mask = d.length > 4 ? `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}` : d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d
     setT(mask)
     if (!d) onChange('')
