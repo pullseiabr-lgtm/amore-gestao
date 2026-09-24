@@ -168,6 +168,24 @@ function DataBR({ value, onChange, style }: { value: any; onChange: (iso: string
   }} />
 }
 
+// ── Modais estáveis: não fecham ao clicar/arrastar a barra de rolagem e a página de trás não rola ──
+const RNC_CSS = '.rnc-scroll{overscroll-behavior:contain;scrollbar-width:auto;scrollbar-color:#8b1a2b rgba(128,128,128,.2)}.rnc-scroll::-webkit-scrollbar{width:14px}.rnc-scroll::-webkit-scrollbar-track{background:rgba(128,128,128,.18);border-radius:10px}.rnc-scroll::-webkit-scrollbar-thumb{background:#8b1a2b;border-radius:10px;border:3px solid transparent;background-clip:content-box}.rnc-scroll::-webkit-scrollbar-thumb:hover{background:#6b1220;background-clip:content-box}'
+function useTravaScroll() {
+  useEffect(() => {
+    const ant = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = ant }
+  }, [])
+}
+// Fecha só se o clique começou E terminou no fundo escuro (arrastar a barra de rolagem e soltar fora não fecha)
+function useFundoFecha(onClose: () => void) {
+  const [ini, setIni] = useState(false)
+  return {
+    onMouseDown: (e: any) => setIni(e.target === e.currentTarget),
+    onMouseUp: (e: any) => { if (ini && e.target === e.currentTarget) onClose(); setIni(false) },
+  }
+}
+
 // Miniaturas clicáveis: imagem abre em tela cheia, PDF/outros abrem em nova aba
 function Galeria({ itens }: { itens: { url: string; rotulo?: string }[] }) {
   const [aberta, setAberta] = useState<string | null>(null)
@@ -557,6 +575,7 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
   const [evTipo, setEvTipo] = useState(EVID_TIPOS[0]); const [evDesc, setEvDesc] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [erros, setErros] = useState<string[]>([])
+  useTravaScroll()
 
   const buscarPC = async () => {
     if (busca.trim().length < 2) return
@@ -648,8 +667,9 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
   const grid2: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 780, maxHeight: '94vh', overflowY: 'auto' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+      <style>{RNC_CSS}</style>
+      <div className="rnc-scroll" style={{ background: 'var(--card)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 780, maxHeight: '94vh', overflowY: 'scroll' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0, fontSize: 16 }}>+ Abrir nova RNC</h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={18} /></button>
@@ -761,6 +781,8 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
 // ══════════════════════════════════════════════════════════════
 function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, onChanged }: any) {
   const [aba, setAba] = useState('resumo')
+  useTravaScroll()
+  const fundo = useFundoFecha(onClose)
   const [ed, setEd] = useState<any>(r)
   const [busy, setBusy] = useState(false)
   const [evids, setEvids] = useState<any[]>([])
@@ -953,8 +975,9 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
   const proximos = STATUS.filter(s => s.id !== r.status && s.id !== 'encerrada')
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', justifyContent: 'flex-end' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', width: '100%', maxWidth: 680, height: '100vh', overflowY: 'auto', boxShadow: '-4px 0 24px rgba(0,0,0,.2)' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', justifyContent: 'flex-end' }} {...fundo}>
+      <style>{RNC_CSS}</style>
+      <div className="rnc-scroll" style={{ background: 'var(--card)', width: '100%', maxWidth: 680, height: '100vh', overflowY: 'scroll', boxShadow: '-4px 0 24px rgba(0,0,0,.2)' }}>
         <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--card)', zIndex: 2 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
             <div>
