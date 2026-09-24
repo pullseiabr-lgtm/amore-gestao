@@ -577,7 +577,7 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
     if (!f.tratativa_obs.trim()) faltas.push('Ação imediata (seção 6)')
     if (!f.responsavel) faltas.push('Disparar para: escolha o usuário (seção 7)')
     setErros(faltas)
-    if (faltas.length) return
+    if (faltas.length) { setTimeout(() => document.getElementById('rnc-erros')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); return }
     if (!f.responsavel_area) f.responsavel_area = todosUsuarios(profiles, '').find(u => u.nome === f.responsavel)?.setor || 'Geral'
     setSalvando(true)
     try {
@@ -622,6 +622,7 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
     } catch (e: any) { console.error(e); setErros(['Erro ao salvar: ' + (e?.message || e)]) } finally { setSalvando(false) }
   }
 
+  const bad = (t: string) => erros.some(e => e.startsWith(t)) ? { border: '2px solid #dc2626', background: '#fef2f2' } : {}
   const sec = (t: string) => <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--bordo)', margin: '14px 0 8px', borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>{t}</div>
   const F = (k: string, label: string, type = 'text', ph = '') => <div><label style={lbl}>{label}</label><input type={type} style={inp} value={f[k] ?? ''} onChange={e => set(k, e.target.value)} placeholder={ph} /></div>
   const grid2: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }
@@ -642,7 +643,7 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
           {F('centro_custo', 'Centro de custo')}
         </div>
         <label style={{ ...lbl, marginTop: 10 }}>Tipo de ocorrência * (marque um ou mais)</label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 4 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 4, ...(bad('Tipo de ocorrência').border ? { border: '2px solid #dc2626', borderRadius: 8, padding: 6 } : {}) }}>
           {TIPOS.map(t => <label key={t} style={{ fontSize: 12.5, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.tipos.includes(t)} onChange={() => toggle('tipos', t)} />{t}</label>)}
         </div>
 
@@ -672,7 +673,7 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
           <div><label style={lbl}>O que foi recebido?</label><input style={inp} value={f.recebido_txt} onChange={e => set('recebido_txt', e.target.value)} placeholder="Ex.: 20 un. Produto Z" /></div>
         </div>
         <label style={{ ...lbl, marginTop: 8 }}>Qual foi o desvio? *</label>
-        <textarea style={{ ...inp, resize: 'vertical' }} rows={3} value={f.desvio_txt} onChange={e => set('desvio_txt', e.target.value)} placeholder="Ex.: Pedido solicita 100 un. do produto X, lote Y. No recebimento foram identificadas 20 un. do produto Z…" />
+        <textarea style={{ ...inp, ...bad('Qual foi o desvio'), resize: 'vertical' }} rows={3} value={f.desvio_txt} onChange={e => set('desvio_txt', e.target.value)} placeholder="Ex.: Pedido solicita 100 un. do produto X, lote Y. No recebimento foram identificadas 20 un. do produto Z…" />
         <pre style={{ fontSize: 12, background: 'var(--bg)', borderRadius: 8, padding: 8, margin: '8px 0 0', whiteSpace: 'pre-wrap' }}>{resumo}</pre>
 
         {sec('4 · EVIDÊNCIAS')}
@@ -701,7 +702,7 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
           {TRATATIVAS.map(t => <label key={t} style={{ fontSize: 12.5, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.tratativas.includes(t)} onChange={() => toggle('tratativas', t)} />{t}</label>)}
         </div>
         <label style={{ ...lbl, marginTop: 8 }}>Ação imediata * (o que foi feito agora no recebimento e por quê)</label>
-        <textarea style={{ ...inp, resize: 'vertical' }} rows={2} value={f.tratativa_obs} onChange={e => set('tratativa_obs', e.target.value)} />
+        <textarea style={{ ...inp, ...bad('Ação imediata'), resize: 'vertical' }} rows={2} value={f.tratativa_obs} onChange={e => set('tratativa_obs', e.target.value)} />
         <label style={{ ...lbl, marginTop: 8 }}>Ação corretiva (o que será feito para resolver o problema atual)</label>
         <textarea style={{ ...inp, resize: 'vertical' }} rows={2} value={f.acao_corretiva} onChange={e => set('acao_corretiva', e.target.value)} />
         <label style={{ ...lbl, marginTop: 8 }}>Ação preventiva (o que será feito para não voltar a acontecer)</label>
@@ -711,7 +712,7 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
         <div style={grid2}>
           <div><label style={lbl}>Setor competente</label><select style={inp} value={f.responsavel_area} onChange={e => set('responsavel_area', e.target.value)}><option value="">Selecionar…</option>{listaSetores(profiles).map(a => <option key={a}>{a}</option>)}</select></div>
           <div><label style={lbl}>Disparar para (usuário cadastrado) *</label>
-            <select style={inp} value={f.responsavel} onChange={e => { const u = todosUsuarios(profiles, '').find(x => x.nome === e.target.value); setF((o: any) => ({ ...o, responsavel: e.target.value, responsavel_area: o.responsavel_area || u?.setor || '' })) }}>
+            <select style={{ ...inp, ...bad('Disparar para') }} value={f.responsavel} onChange={e => { const u = todosUsuarios(profiles, '').find(x => x.nome === e.target.value); setF((o: any) => ({ ...o, responsavel: e.target.value, responsavel_area: o.responsavel_area || u?.setor || '' })) }}>
               <option value="">Selecionar usuário…</option>
               {todosUsuarios(profiles, f.responsavel_area).map(u => <option key={u.nome} value={u.nome}>{rotuloUsuario(u)}</option>)}
             </select>
@@ -721,7 +722,7 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
         <label style={{ fontSize: 12.5, display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }}><input type="checkbox" checked={!!f.avisarSetor} onChange={e => set('avisarSetor', e.target.checked)} /> Avisar também os outros usuários do setor</label>
 
         {erros.length > 0 && (
-          <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 8, background: '#fee2e2', border: '1px solid #dc2626', color: '#991b1b', fontSize: 12.5 }}>
+          <div id="rnc-erros" style={{ marginTop: 14, padding: '10px 12px', borderRadius: 8, background: '#fee2e2', border: '1px solid #dc2626', color: '#991b1b', fontSize: 12.5 }}>
             <b>Não foi possível abrir a RNC — falta:</b>
             <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>{erros.map(x => <li key={x}>{x}</li>)}</ul>
           </div>
@@ -768,7 +769,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
   const pick = (keys: string[]) => Object.fromEntries(keys.map(k => [k, NUM_KEYS.has(k) ? (ed[k] === '' || ed[k] == null ? null : Number(String(ed[k]).replace(',', '.'))) : (ed[k] === '' ? null : ed[k])]))
   const salvar = async (patch: any, acao: string, depois?: () => Promise<void>) => {
     const diffs = Object.keys(patch).filter(k => JSON.stringify(patch[k] ?? null) !== JSON.stringify(r[k] ?? null)).map(k => `${LABELS[k] || k}: ${fmtVal(r[k])} → ${fmtVal(patch[k])}`)
-    if (!diffs.length) return
+    if (!diffs.length) { alert('Nenhuma alteração para salvar.'); return }
     setBusy(true)
     try {
       await sb.from('rnc').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', r.id)
@@ -861,7 +862,10 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
     if (r.aberto_por && r.aberto_por !== userName) await notificar(r.aberto_por, `👁️ *Ciência da ${r.numero}*\n${userName} tomou ciência e tem até ${fmtD(prazoNovo)} (${PRAZO_DIAS_UTEIS} dias úteis) para tratar.\n\n${link}\n_Amore Gestão_`, `RNC ${r.numero}`, r.id)
   }
   const encerrar = async () => {
-    if (!tudoOk) return
+    if (!tudoOk) { alert('Não é possível encerrar — falta:
+
+' + checks.filter(c => !c.ok).map(c => '• ' + c.txt).join('
+')); return }
     const agora = new Date().toISOString()
     await salvar({ status: 'encerrada', encerrado_por: userName, encerrado_em: agora, fechamento_disparo_em: agora }, 'RNC encerrada', async () => {
       // Disparo de fechamento: quem abriu, responsável, quem recebeu e usuários do setor Compras
@@ -881,7 +885,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
   // ── evidências ──
   const [evFile, setEvFile] = useState<File | null>(null); const [evTipo, setEvTipo] = useState(EVID_TIPOS[0]); const [evDesc, setEvDesc] = useState('')
   const addEvid = async () => {
-    if (!evFile) return
+    if (!evFile) { alert('Falta escolher o arquivo (foto ou PDF) da evidência.'); return }
     setBusy(true)
     try {
       const url = await uploadAnexo(evFile, 'rnc')
@@ -908,7 +912,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
   // ── ações → Central de Tarefas ──
   const [ac, setAc] = useState({ titulo: '', tipo: 'Corretiva', responsavel: '', prazo: '' })
   const enviarTarefa = async () => {
-    if (!ac.titulo.trim() || !ac.responsavel || !ac.prazo) { alert('Informe ação, responsável e prazo.'); return }
+    if (!ac.titulo.trim() || !ac.responsavel || !ac.prazo) { alert('Falta preencher: ' + [!ac.titulo.trim() && 'Ação', !ac.responsavel && 'Responsável', !ac.prazo && 'Prazo'].filter(Boolean).join(', ')); return }
     setBusy(true)
     try {
       const t = await insertTarefa({
@@ -1023,7 +1027,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
                 <div><label style={lbl}>Descrição</label><input style={inp} value={evDesc} onChange={e => setEvDesc(e.target.value)} /></div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <label style={{ ...btn('#6b7280'), display: 'inline-block' }}>{evFile ? '✓ ' + evFile.name.slice(0, 12) : 'Arquivo'}<input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={e => setEvFile(e.target.files?.[0] || null)} /></label>
-                  <button onClick={addEvid} disabled={!evFile || busy} style={btn('var(--bordo)', !evFile || busy)}>+ Adicionar</button>
+                  <button onClick={addEvid} disabled={busy} style={btn('var(--bordo)', busy)}>+ Adicionar</button>
                 </div>
               </div>
               {evids.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Nenhuma evidência anexada.</div>}
@@ -1162,8 +1166,8 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
                   </div>
                 ) : (
                   <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                    {r.status !== 'resolvida' && <button onClick={() => mudarStatus('resolvida')} disabled={busy || !(r.solucao || '').trim()} style={btn('#16a34a', busy || !(r.solucao || '').trim())}>🟢 Marcar como Resolvida (aguarda validação)</button>}
-                    <button onClick={encerrar} disabled={busy || !tudoOk} style={btn('#374151', busy || !tudoOk)}>⚫ ENCERRAR RNC</button>
+                    {r.status !== 'resolvida' && <button onClick={() => { if (!(r.solucao || '').trim()) { alert('Falta preencher e SALVAR o campo "Solução aplicada" antes de marcar como Resolvida.'); return } mudarStatus('resolvida') }} disabled={busy} style={btn('#16a34a', busy)}>🟢 Marcar como Resolvida (aguarda validação)</button>}
+                    <button onClick={encerrar} disabled={busy} style={btn('#374151', busy)}>⚫ ENCERRAR RNC</button>
                   </div>
                 )}
               </div>
