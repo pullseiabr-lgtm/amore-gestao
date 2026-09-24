@@ -80,6 +80,101 @@ const diasAberto = (r: any) => Math.max(0, Math.floor(((r.encerrado_em ? new Dat
 const temDevolucao = (r: any) => !!r.devolucao || (r.tratativas || []).includes('Produto devolvido')
 const fmtVal = (v: any) => v == null || v === '' ? '—' : Array.isArray(v) ? (v.join(', ') || '—') : typeof v === 'boolean' ? (v ? 'sim' : 'não') : typeof v === 'object' ? 'atualizado' : String(v).slice(0, 140)
 
+// Prazo de tratativa: 4 dias úteis (seg–sex) contados a partir da ciência do responsável
+const PRAZO_DIAS_UTEIS = 4
+const addDiasUteis = (base: Date, n: number) => {
+  const d = new Date(base.getFullYear(), base.getMonth(), base.getDate())
+  let falta = n
+  while (falta > 0) { d.setDate(d.getDate() + 1); const w = d.getDay(); if (w !== 0 && w !== 6) falta-- }
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+const isImg = (u: string) => /\.(jpe?g|png|gif|webp|bmp|heic|avif)(\?|$)/i.test(u) || u.startsWith('blob:')
+const splitUrls = (v?: string | null) => String(v || '').split(/\n+/).map(s => s.trim()).filter(s => /^https?:\/\//.test(s))
+
+// Pedido de compra completo (cabeçalho + itens + entrega + quem recebeu) — vira "snapshot" dentro da RNC
+async function carregarPC(p: { id: string; numero?: string }) {
+  const [{ data: cab }, { data: itens }] = await Promise.all([
+    sb.from('pedidos_compra').select('*').eq('id', p.id).single(),
+    sb.from('pedido_compra_itens').select('*').eq('pedido_id', p.id).order('created_at'),
+  ])
+  let blob: any = {}
+  if (cab?.app_config_chave) {
+    const { data } = await sb.from('app_config').select('valor').eq('chave', cab.app_config_chave).maybeSingle()
+    blob = data?.valor || {}
+  }
+  const { data: ents } = await sb.from('entregas_agendadas').select('data_prevista,chegada_em,recebido_por,status,pedido_numero,pedido_ref').or(`pedido_numero.eq.${cab?.numero || p.numero},pedido_ref.eq.${String(cab?.app_config_chave || '').replace(/^pedido_/, '')}`).limit(1)
+  const ent = (ents || [])[0] || null
+  const dataEntrega = (ent?.chegada_em ? String(ent.chegada_em).slice(0, 10) : null) || ent?.data_prevista || blob.janela_entrega || blob.data || null
+  const recebedor = ent?.recebido_por || blob.recebimento_responsavel || null
+  return {
+    numero: cab?.numero || p.numero, fornecedor: cab?.fornecedor || blob.fornecedor || null, loja: cab?.loja || blob.loja || null,
+    data_pedido: blob.data || (cab?.created_at ? String(cab.created_at).slice(0, 10) : null), data_entrega: dataEntrega, horario_recebimento: blob.horario_recebimento || null,
+    recebedor, pagamento: blob.pagamento || null, criado_por: cab?.criado_por || blob.created_by || null, total: Number(cab?.total ?? blob.total ?? 0),
+    itens: (itens || []).map((it: any) => ({ produto: it.produto_nome, un: it.unidade, qtd: Number(it.qtd_pedida), qtd_recebida: Number(it.qtd_recebida), preco: it.preco != null ? Number(it.preco) : null })),
+  }
+}
+
+// Miniaturas clicáveis: imagem abre em tela cheia, PDF/outros abrem em nova aba
+function Galeria({ itens }: { itens: { url: string; rotulo?: string }[] }) {
+  const [aberta, setAberta] = useState<string | null>(null)
+  if (!itens.length) return null
+  return (
+    <>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {itens.map((it, i) => isImg(it.url) ? (
+          <button key={i} type="button" onClick={() => setAberta(it.url)} title={it.rotulo || 'Abrir foto'} style={{ padding: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', cursor: 'zoom-in', background: 'var(--bg)', width: 96, height: 96 }}>
+            <img src={it.url} alt={it.rotulo || 'evidência'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          </button>
+        ) : (
+          <a key={i} href={it.url} target="_blank" rel="noreferrer" style={{ width: 96, height: 96, border: '1px solid var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontSize: 11, color: 'var(--bordo)', fontWeight: 700, textDecoration: 'none', padding: 6, boxSizing: 'border-box' }}>📄 {it.rotulo || 'Abrir arquivo'}</a>
+        ))}
+      </div>
+      {aberta && (
+        <div onClick={() => setAberta(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.88)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, cursor: 'zoom-out' }}>
+          <img src={aberta} alt="evidência" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }} />
+          <a href={aberta} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 14, right: 60, color: '#fff', fontSize: 13, fontWeight: 700 }}>Abrir original ↗</a>
+          <button onClick={() => setAberta(null)} style={{ position: 'absolute', top: 10, right: 14, background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}><X size={26} /></button>
+        </div>
+      )}
+    </>
+  )
+}
+
+// Bloco com todos os dados do pedido de compra que originou a RNC
+function PedidoBloco({ pc, abertoPor, direcionadoA, setor }: { pc: any; abertoPor?: string | null; direcionadoA?: string | null; setor?: string | null }) {
+  if (!pc) return null
+  return (
+    <div style={{ ...card, fontSize: 12.5 }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--bordo)', marginBottom: 6 }}>📦 PEDIDO DE COMPRA {pc.numero || ''}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 6 }}>
+        <div><b>Fornecedor:</b> {pc.fornecedor || '—'}</div>
+        <div><b>Unidade:</b> {pc.loja || '—'}</div>
+        <div><b>Data do pedido:</b> {fmtD(pc.data_pedido)}</div>
+        <div><b>Data da entrega:</b> {fmtD(pc.data_entrega)}{pc.horario_recebimento ? ` · ${pc.horario_recebimento}` : ''}</div>
+        <div><b>Quem recebeu:</b> {pc.recebedor || '—'}</div>
+        <div><b>Pagamento:</b> {pc.pagamento || '—'}</div>
+        <div><b>Pedido feito por:</b> {pc.criado_por || '—'}</div>
+        <div><b>Valor do pedido:</b> {brl(pc.total)}</div>
+        {abertoPor && <div><b>RNC aberta por:</b> {abertoPor}</div>}
+        {direcionadoA && <div><b>Direcionada para tratar:</b> {direcionadoA}{setor ? ` (${setor})` : ''}</div>}
+      </div>
+      {(pc.itens || []).length > 0 && (
+        <div style={{ overflowX: 'auto', marginTop: 8 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead><tr style={{ color: 'var(--muted)', textAlign: 'left' }}>{['Produto', 'Un.', 'Qtd pedida', 'Qtd recebida', 'Preço un.', 'Subtotal'].map(h => <th key={h} style={{ padding: '3px 6px' }}>{h}</th>)}</tr></thead>
+            <tbody>{pc.itens.map((it: any, i: number) => (
+              <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: '4px 6px', fontWeight: 600 }}>{it.produto}</td><td>{it.un || '—'}</td><td>{it.qtd}</td><td>{it.qtd_recebida || '—'}</td>
+                <td>{it.preco != null ? brl(it.preco) : '—'}</td><td>{it.preco != null ? brl(it.preco * it.qtd) : '—'}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const inp: CSSProperties = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, boxSizing: 'border-box' }
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 3 }
 const card: CSSProperties = { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }
@@ -119,6 +214,7 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
   const [selId, setSelId] = useState<string | null>(initialId || null)
   const [showNova, setShowNova] = useState(false)
   const [showGraf, setShowGraf] = useState(true)
+  const [vista, setVista] = useState<'painel' | 'banco'>('painel')
   const [f, setF] = useState({ unidade: '', fornecedor: '', status: '', responsavel: '', categoria: '', tipo: '', de: '', ate: '', atrasadas: false, comDevolucao: false, busca: '' })
   const setFiltro = (patch: Partial<typeof f>) => setF(o => ({ ...o, ...patch }))
 
@@ -213,6 +309,13 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
         <button onClick={() => setShowNova(true)} style={{ ...btn(), display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', fontSize: 13 }}><Plus size={14} /> Abrir nova RNC</button>
       </div>
 
+      <div style={{ display: 'flex', gap: 6 }}>
+        {([['painel', '📋 Painel de RNCs'], ['banco', '🗄️ Banco de dados (respondidas)']] as const).map(([id, nome]) => (
+          <button key={id} onClick={() => setVista(id)} style={{ padding: '7px 14px', borderRadius: 20, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', border: '1px solid var(--bordo)', background: vista === id ? 'var(--bordo)' : 'transparent', color: vista === id ? '#fff' : 'var(--bordo)' }}>{nome}</button>
+        ))}
+      </div>
+      {vista === 'banco' && <BancoRnc rncs={rncs} loading={loading} onOpen={(id: string) => setSelId(id)} />}
+      {vista === 'painel' && <>
       {/* Indicadores clicáveis */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
         {kpis.map(k => (
@@ -313,9 +416,66 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
         )}
       </div>
 
+      </>}
+
       {showNova && <NovaRnc profiles={profiles} responsaveis={responsaveis} lojas={lojas} lojaAtual={loja} userName={userName} notificar={notificar}
         onClose={() => setShowNova(false)} onSaved={(id: string) => { setShowNova(false); load(); setSelId(id) }} />}
       {selecionada && <RncDetalhe r={selecionada} profiles={profiles} responsaveis={responsaveis} userName={userName} notificar={notificar} onClose={() => setSelId(null)} onChanged={load} />}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+// BANCO DE DADOS — todas as RNCs respondidas/tratadas, com exportação CSV
+// ══════════════════════════════════════════════════════════════
+const respondida = (r: any) => r.status === 'encerrada' || r.status === 'resolvida' || !!(r.fornecedor_resposta || '').trim() || !!(r.devolutiva_final || '').trim()
+const diasTratativa = (r: any) => r.ciencia_em ? Math.max(0, Math.round(((r.encerrado_em ? new Date(r.encerrado_em).getTime() : Date.now()) - new Date(r.ciencia_em).getTime()) / 86400000)) : null
+function BancoRnc({ rncs, loading, onOpen }: { rncs: any[]; loading: boolean; onOpen: (id: string) => void }) {
+  const [busca, setBusca] = useState(''); const [forn, setForn] = useState(''); const [so, setSo] = useState<'todas' | 'encerradas'>('todas')
+  const base = useMemo(() => rncs.filter(respondida), [rncs])
+  const lista = useMemo(() => base.filter(r => {
+    if (so === 'encerradas' && r.status !== 'encerrada') return false
+    if (forn && r.fornecedor !== forn) return false
+    if (busca) { const b = busca.toLowerCase(); if (![r.numero, r.fornecedor, r.produto, r.pedido_numero, r.nf_numero, r.desvio_txt, r.devolutiva_final, r.responsavel].some(x => String(x || '').toLowerCase().includes(b))) return false }
+    return true
+  }), [base, busca, forn, so])
+  const noPrazo = (r: any) => r.prazo && r.encerrado_em ? String(r.encerrado_em).slice(0, 10) <= String(r.prazo).slice(0, 10) : null
+  const exportar = () => {
+    const cab = ['RNC', 'Abertura', 'Unidade', 'Fornecedor', 'PC', 'NF', 'Data entrega', 'Quem recebeu', 'Produto', 'Qtd solicitada', 'Qtd recebida', 'Desvio', 'Categoria', 'Gravidade', 'Aberta por', 'Responsável', 'Setor', 'Ciência em', 'Prazo', 'Ação imediata', 'Ação corretiva', 'Ação preventiva', 'Resposta do fornecedor', 'Tratativa de Compras', 'Devolutiva final', 'Solução', 'Resultado', 'Status', 'Encerrada em', 'Dias de tratativa', 'No prazo']
+    const q = (v: any) => '"' + String(v ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ') + '"'
+    const linhas = lista.map(r => [r.numero, fmtD(r.created_at), r.loja, r.fornecedor, r.pedido_numero, r.nf_numero, fmtD(r.data_entrega || r.data_recebimento), r.recebedor, r.produto, r.qtd_solicitada, r.qtd_recebida, r.desvio_txt, r.categoria, gravInfo(r.gravidade).label, r.aberto_por, r.responsavel, r.responsavel_area, fmtDH(r.ciencia_em), fmtD(r.prazo), r.acao_imediata || r.tratativa_obs, r.acao_corretiva, r.acao_preventiva, r.fornecedor_resposta, r.compras_tratativa, r.devolutiva_final, r.solucao, RESULTADOS.find(x => x.id === r.resultado)?.label, statusInfo(r.status).label, fmtDH(r.encerrado_em), diasTratativa(r), noPrazo(r) == null ? '' : noPrazo(r) ? 'Sim' : 'Não'].map(q).join(';'))
+    const blob = new Blob(['\ufeff' + [cab.map(q).join(';'), ...linhas].join('\r\n')], { type: 'text/csv;charset=utf-8' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'banco-rnc-' + new Date().toISOString().slice(0, 10) + '.csv'; a.click()
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ ...card, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, alignItems: 'end' }}>
+        <div><label style={lbl}>Busca</label><input style={inp} value={busca} onChange={e => setBusca(e.target.value)} placeholder="RNC, fornecedor, produto, devolutiva…" /></div>
+        <div><label style={lbl}>Fornecedor</label><select style={inp} value={forn} onChange={e => setForn(e.target.value)}><option value="">Todos</option>{Array.from(new Set(base.map(r => r.fornecedor).filter(Boolean))).sort().map((x: any) => <option key={x}>{x}</option>)}</select></div>
+        <div><label style={lbl}>Mostrar</label><select style={inp} value={so} onChange={e => setSo(e.target.value as any)}><option value="todas">Respondidas (fornecedor/devolutiva/encerradas)</option><option value="encerradas">Somente encerradas</option></select></div>
+        <button onClick={exportar} disabled={!lista.length} style={btn('#166534', !lista.length)}>⬇️ Exportar CSV ({lista.length})</button>
+      </div>
+      <div style={{ ...card, padding: 0, overflowX: 'auto' }}>
+        {loading ? <div style={{ padding: 24, textAlign: 'center' }}><Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /></div> : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead><tr style={{ background: 'var(--bg)', color: 'var(--muted)', textAlign: 'left' }}>
+              {['RNC', 'Abertura', 'Fornecedor', 'PC', 'Produto', 'Responsável', 'Resposta do fornecedor', 'Devolutiva final', 'Encerramento', 'Dias', 'No prazo'].map(h => <th key={h} style={{ padding: '8px 10px', fontSize: 11.5, whiteSpace: 'nowrap' }}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {lista.map(r => { const np = noPrazo(r); return (
+                <tr key={r.id} onClick={() => onOpen(r.id)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer', verticalAlign: 'top' }}>
+                  <td style={{ padding: '7px 10px', fontWeight: 700, color: 'var(--bordo)', whiteSpace: 'nowrap' }}>{r.numero}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{fmtD(r.created_at)}</td><td>{r.fornecedor || '—'}</td><td>{r.pedido_numero || '—'}</td><td>{r.produto || '—'}</td><td>{r.responsavel || '—'}</td>
+                  <td style={{ maxWidth: 220 }}>{(r.fornecedor_resposta || '—').slice(0, 120)}</td><td style={{ maxWidth: 220 }}>{(r.devolutiva_final || '—').slice(0, 120)}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{r.encerrado_em ? fmtD(r.encerrado_em) : statusInfo(r.status).label}</td><td>{diasTratativa(r) ?? '—'}</td>
+                  <td>{np == null ? '—' : np ? '✅' : '❌'}</td>
+                </tr>
+              ) })}
+              {lista.length === 0 && <tr><td colSpan={11} style={{ padding: 24, textAlign: 'center', color: 'var(--muted)' }}>Nenhuma RNC respondida ainda.</td></tr>}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }
@@ -329,8 +489,9 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
     loja: lojaAtual && lojaAtual !== 'Todas as Lojas' ? lojaAtual : (lojasOk[0] || ''), setor: 'Recebimento', centro_custo: '', tipos: [] as string[],
     pedido_id: null, pedido_numero: '', fornecedor: '', produto: '', unidade: '', qtd_solicitada: '', valor_produto: '',
     nf_numero: '', nf_data: '', data_recebimento: new Date().toISOString().slice(0, 10), local_recebimento: '', recebedor: userName, transportadora: '', lote: '', qtd_recebida: '',
-    solicitado_txt: '', recebido_txt: '', desvio_txt: '', categoria: 'Produto', gravidade: 'media', tratativas: [] as string[], tratativa_obs: '', responsavel: '', responsavel_area: '', prazo: '',
+    solicitado_txt: '', recebido_txt: '', desvio_txt: '', categoria: 'Produto', gravidade: 'media', tratativas: [] as string[], tratativa_obs: '', acao_corretiva: '', acao_preventiva: '', responsavel: '', responsavel_area: '',
   })
+  const [pcSnap, setPcSnap] = useState<any>(null)
   const set = (k: string, v: any) => setF((o: any) => ({ ...o, [k]: v }))
   const toggle = (k: string, v: string) => setF((o: any) => ({ ...o, [k]: o[k].includes(v) ? o[k].filter((x: string) => x !== v) : [...o[k], v] }))
   const [busca, setBusca] = useState(''); const [achados, setAchados] = useState<any[]>([]); const [itens, setItens] = useState<any[]>([])
@@ -348,6 +509,11 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
     setAchados([])
     const { data } = await sb.from('pedido_compra_itens').select('*').eq('pedido_id', p.id).order('created_at')
     setItens(data || [])
+    try {
+      const snap = await carregarPC(p)
+      setPcSnap(snap)
+      setF((o: any) => ({ ...o, fornecedor: snap.fornecedor || o.fornecedor, data_recebimento: snap.data_entrega || o.data_recebimento, recebedor: snap.recebedor || o.recebedor }))
+    } catch (e) { console.error(e) }
   }
   const escolherItem = (it: any) => setF((o: any) => ({
     ...o, produto: it.produto_nome, unidade: it.unidade || '', qtd_solicitada: String(it.qtd_pedida ?? ''), valor_produto: it.preco != null && it.qtd_pedida != null ? String(Number(it.preco) * Number(it.qtd_pedida)) : o.valor_produto,
@@ -360,7 +526,7 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
     if (!f.tipos.length) { alert('Marque ao menos um tipo de ocorrência.'); return }
     if (!f.desvio_txt.trim()) { alert('Descreva o desvio.'); return }
     if (!f.tratativa_obs.trim()) { alert('A observação da tratativa é obrigatória.'); return }
-    if (!f.responsavel_area || !f.responsavel || !f.prazo) { alert('Direcione a RNC: escolha o setor, o usuário e o prazo.'); return }
+    if (!f.responsavel_area || !f.responsavel) { alert('Direcione a RNC: escolha o setor e o usuário que vai tratar.'); return }
     setSalvando(true)
     try {
       const num = (k: string) => f[k] === '' || f[k] == null ? null : Number(String(f[k]).replace(',', '.'))
@@ -371,13 +537,15 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
         produto: f.produto || null, lote: f.lote || null, unidade: f.unidade || null, qtd_solicitada: num('qtd_solicitada'), qtd_recebida: num('qtd_recebida'), valor_produto: num('valor_produto'),
         valor_total_afetado: num('valor_produto'),
         solicitado_txt: f.solicitado_txt || (f.qtd_solicitada ? `${f.qtd_solicitada} ${f.unidade} — ${f.produto}` : null), recebido_txt: f.recebido_txt || (f.qtd_recebida ? `${f.qtd_recebida} ${f.unidade} — ${f.produto}` : null),
-        desvio_txt: f.desvio_txt.trim(), tratativas: f.tratativas, tratativa_obs: f.tratativa_obs.trim(), responsavel: f.responsavel, responsavel_area: f.responsavel_area || null, prazo: f.prazo, aberto_por: userName,
+        desvio_txt: f.desvio_txt.trim(), tratativas: f.tratativas, tratativa_obs: f.tratativa_obs.trim(), acao_imediata: f.tratativa_obs.trim(), acao_corretiva: f.acao_corretiva.trim() || null, acao_preventiva: f.acao_preventiva.trim() || null,
+        responsavel: f.responsavel, responsavel_area: f.responsavel_area || null, prazo: null, aberto_por: userName,
+        data_entrega: pcSnap?.data_entrega || null, pedido_snapshot: pcSnap || null,
       }
       const { data: nova, error } = await sb.from('rnc').insert(row).select('id, numero').single()
       if (error || !nova) { alert('Falha ao abrir a RNC: ' + (error?.message || '')); setSalvando(false); return }
       const log = (acao: string, detalhe?: string) => sb.from('rnc_historico').insert({ rnc_id: nova.id, acao, detalhe: detalhe || null, usuario: userName })
       await log('RNC aberta', `${f.categoria} · gravidade ${gravInfo(f.gravidade).label} · ${f.desvio_txt.trim()}`)
-      await log('Responsável designado', `${f.responsavel} · prazo ${fmtD(f.prazo)}`)
+      await log('Responsável designado', `${f.responsavel} (${f.responsavel_area}) · prazo de ${PRAZO_DIAS_UTEIS} dias úteis após a ciência`)
       await log('Tratativa imediata registrada', `${f.tratativas.join(', ') || 'sem opção marcada'} — ${f.tratativa_obs.trim()}`)
       for (const ev of evid) {
         try {
@@ -387,7 +555,7 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
         } catch (e) { console.error(e) }
       }
       const linkR = `${siteOrigin()}/?page=tarefas&rnc=${nova.id}`
-      const corpo = `${nova.numero} · ${f.loja}\nSetor: ${f.responsavel_area}\nFornecedor: ${f.fornecedor || '—'}\nProduto: ${f.produto || '—'}${f.nf_numero ? `\nNF: ${f.nf_numero}` : ''}${f.lote ? `\nLote: ${f.lote}` : ''}\nDesvio: ${f.desvio_txt.trim()}\nGravidade: ${gravInfo(f.gravidade).emoji} ${gravInfo(f.gravidade).label}\nPrazo: ${fmtD(f.prazo)}\nAberta por: ${userName}`
+      const corpo = `${nova.numero} · ${f.loja}\nSetor: ${f.responsavel_area}\nPC: ${f.pedido_numero || '—'}\nFornecedor: ${f.fornecedor || '—'}${pcSnap?.data_entrega ? `\nEntrega: ${fmtD(pcSnap.data_entrega)}` : ''}${f.recebedor ? `\nRecebido por: ${f.recebedor}` : ''}\nProduto: ${f.produto || '—'}${f.nf_numero ? `\nNF: ${f.nf_numero}` : ''}${f.lote ? `\nLote: ${f.lote}` : ''}\nDesvio: ${f.desvio_txt.trim()}\nGravidade: ${gravInfo(f.gravidade).emoji} ${gravInfo(f.gravidade).label}\nPrazo: ${PRAZO_DIAS_UTEIS} dias úteis após sua ciência\nAberta por: ${userName}`
       const ok1 = await notificar(f.responsavel, `🔴 *Nova RNC direcionada a você*\n\n${corpo}\n\n${linkR}\n_Amore Gestão_`, `RNC ${nova.numero}`, nova.id)
       await log('Disparo WhatsApp', ok1 ? `Aviso enviado a ${f.responsavel} (${f.responsavel_area})` : `Não foi possível avisar ${f.responsavel} (sem WhatsApp cadastrado?)`)
       if (f.avisarSetor) {
@@ -432,7 +600,8 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
           <button onClick={buscarPC} style={btn()}>Buscar PC</button>
         </div>
         {achados.map(p => <div key={p.id} onClick={() => escolherPC(p)} style={{ fontSize: 12.5, padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, cursor: 'pointer' }}>{p.numero} · {p.fornecedor || '—'} · {p.loja} · {brl(p.total)}</div>)}
-        {f.pedido_numero && <div style={{ fontSize: 12.5, marginTop: 6, color: '#166534' }}>✅ PC vinculado: <b>{f.pedido_numero}</b> — {f.fornecedor}</div>}
+        {f.pedido_numero && <div style={{ fontSize: 12.5, marginTop: 6, color: '#166534' }}>✅ PC vinculado: <b>{f.pedido_numero}</b> — {f.fornecedor} (dados do pedido trazidos abaixo)</div>}
+        {pcSnap && <div style={{ marginTop: 8 }}><PedidoBloco pc={pcSnap} abertoPor={userName} direcionadoA={f.responsavel} setor={f.responsavel_area} /></div>}
         {itens.length > 0 && (
           <div style={{ marginTop: 6 }}>
             <label style={lbl}>Produto do pedido (clique pra preencher o que foi solicitado)</label>
@@ -459,7 +628,12 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
           <div><label style={lbl}>Descrição</label><input style={inp} value={evDesc} onChange={e => setEvDesc(e.target.value)} placeholder="Ex.: lote identificado no recebimento" /></div>
           <label style={{ ...btn(), display: 'inline-block' }}>+ Arquivo<input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={e => { const fl = e.target.files?.[0]; if (fl) setEvid(v => [...v, { file: fl, tipo: evTipo, descricao: evDesc }]); setEvDesc(''); e.target.value = '' }} /></label>
         </div>
-        {evid.map((e, i) => <div key={i} style={{ fontSize: 12, marginTop: 4 }}>📎 {e.file.name} · {e.tipo}{e.descricao ? ' — ' + e.descricao : ''} <button onClick={() => setEvid(v => v.filter((_, j) => j !== i))} style={{ border: 'none', background: 'none', color: '#dc2626', cursor: 'pointer' }}>remover</button></div>)}
+        {evid.map((e, i) => (
+          <div key={i} style={{ fontSize: 12, marginTop: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Galeria itens={[{ url: URL.createObjectURL(e.file), rotulo: e.file.name }]} />
+            <div>📎 {e.file.name} · {e.tipo}{e.descricao ? ' — ' + e.descricao : ''} <button onClick={() => setEvid(v => v.filter((_, j) => j !== i))} style={{ border: 'none', background: 'none', color: '#dc2626', cursor: 'pointer' }}>remover</button></div>
+          </div>
+        ))}
 
         {sec('5 · CLASSIFICAÇÃO')}
         <div style={grid2}>
@@ -469,12 +643,16 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
           </div>
         </div>
 
-        {sec('6 · TRATATIVA IMEDIATA')}
+        {sec('6 · AÇÃO IMEDIATA, CORRETIVA E PREVENTIVA')}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 4 }}>
           {TRATATIVAS.map(t => <label key={t} style={{ fontSize: 12.5, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.tratativas.includes(t)} onChange={() => toggle('tratativas', t)} />{t}</label>)}
         </div>
-        <label style={{ ...lbl, marginTop: 8 }}>Observação da tratativa * (explique a decisão)</label>
+        <label style={{ ...lbl, marginTop: 8 }}>Ação imediata * (o que foi feito agora no recebimento e por quê)</label>
         <textarea style={{ ...inp, resize: 'vertical' }} rows={2} value={f.tratativa_obs} onChange={e => set('tratativa_obs', e.target.value)} />
+        <label style={{ ...lbl, marginTop: 8 }}>Ação corretiva (o que será feito para resolver o problema atual)</label>
+        <textarea style={{ ...inp, resize: 'vertical' }} rows={2} value={f.acao_corretiva} onChange={e => set('acao_corretiva', e.target.value)} />
+        <label style={{ ...lbl, marginTop: 8 }}>Ação preventiva (o que será feito para não voltar a acontecer)</label>
+        <textarea style={{ ...inp, resize: 'vertical' }} rows={2} value={f.acao_preventiva} onChange={e => set('acao_preventiva', e.target.value)} />
 
         {sec('7 · DIRECIONAMENTO — setor + usuário cadastrado (dispara WhatsApp)')}
         <div style={grid2}>
@@ -488,8 +666,8 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
               <div style={{ fontSize: 11, color: '#b45309', marginTop: 3 }}>Nenhum usuário cadastrado neste setor. <button onClick={() => set('mostrarTodos', true)} style={{ border: 'none', background: 'none', color: 'var(--bordo)', cursor: 'pointer', textDecoration: 'underline', fontSize: 11 }}>ver todos os usuários</button></div>
             )}
           </div>
-          {F('prazo', 'Data limite *', 'date')}
         </div>
+        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>⏱ O prazo de tratativa é de <b>{PRAZO_DIAS_UTEIS} dias úteis</b>, contados a partir da ciência do responsável.</div>
         {f.mostrarTodos && (
           <div style={{ marginTop: 6 }}><label style={lbl}>Todos os usuários</label>
             <select style={inp} value={f.responsavel} onChange={e => set('responsavel', e.target.value)}><option value="">Selecionar…</option>{usuariosDoSetor(profiles, '').map(u => <option key={u.nome} value={u.nome}>{u.nome}{u.fone ? '' : ' (sem WhatsApp)'}</option>)}</select>
@@ -522,6 +700,12 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
     sb.from('rnc_evidencias').select('*').eq('rnc_id', r.id).order('created_at', { ascending: false }).then((x: any) => setEvids(x.data || []))
     sb.from('rnc_historico').select('*').eq('rnc_id', r.id).order('created_at', { ascending: false }).then((x: any) => setHist(x.data || []))
   }, [r.id, reload, r.updated_at])
+  const [pcLive, setPcLive] = useState<any>(null)
+  useEffect(() => {
+    setPcLive(null)
+    if (!r.pedido_snapshot && r.pedido_id) carregarPC({ id: r.pedido_id, numero: r.pedido_numero }).then(setPcLive).catch(() => {})
+  }, [r.id, r.pedido_id, r.pedido_snapshot])
+  const pc = r.pedido_snapshot || pcLive
   const ids: string[] = Array.isArray(r.tarefa_ids) ? r.tarefa_ids : []
   useEffect(() => {
     if (!ids.length) { setTarefas([]); return }
@@ -569,12 +753,34 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
     { ok: !(alta || r.resultado === 'parcial' || r.resultado === 'nao_resolvido') || !!(r.acao_corretiva || '').trim(), txt: 'Ação corretiva registrada quando necessária' },
     { ok: !(r.tratativas || []).includes('Produto devolvido') || (!!dev.data_devolucao && !!dev.nf_devolucao), txt: 'Devolução concluída quando aplicável (data + NF de devolução)' },
     { ok: !(r.tratativas || []).includes('Crédito/abatimento solicitado') || Number(r.valor_credito) > 0 || Number(r.valor_abatimento) > 0, txt: 'Crédito/abatimento registrado quando aplicável' },
+    { ok: !!(r.devolutiva_final || '').trim(), txt: 'Devolutiva final registrada pelo setor responsável' },
     { ok: !!(r.solucao || '').trim() && !!r.resultado && r.eficaz != null && r.necessita_preventiva != null, txt: 'Solução validada (solução, resultado, eficácia e necessidade preventiva)' },
   ]
   const tudoOk = checks.every(c => c.ok)
+  const semCiencia = !r.ciencia_em && r.status !== 'encerrada'
+  const darCiencia = async () => {
+    const agora = new Date()
+    const prazoNovo = addDiasUteis(agora, PRAZO_DIAS_UTEIS)
+    await salvar({ ciencia_por: userName, ciencia_em: agora.toISOString(), prazo: prazoNovo, ...(r.status === 'aberta' ? { status: 'em_analise' } : {}) },
+      'Ciência registrada', async () => { await log('Prazo de tratativa definido', `${PRAZO_DIAS_UTEIS} dias úteis após a ciência → ${fmtD(prazoNovo)}`) })
+    if (r.aberto_por && r.aberto_por !== userName) await notificar(r.aberto_por, `👁️ *Ciência da ${r.numero}*\n${userName} tomou ciência e tem até ${fmtD(prazoNovo)} (${PRAZO_DIAS_UTEIS} dias úteis) para tratar.\n\n${link}\n_Amore Gestão_`, `RNC ${r.numero}`, r.id)
+  }
   const encerrar = async () => {
     if (!tudoOk) return
-    await salvar({ status: 'encerrada', encerrado_por: userName, encerrado_em: new Date().toISOString() }, 'RNC encerrada')
+    const agora = new Date().toISOString()
+    await salvar({ status: 'encerrada', encerrado_por: userName, encerrado_em: agora, fechamento_disparo_em: agora }, 'RNC encerrada', async () => {
+      // Disparo de fechamento: quem abriu, responsável, quem recebeu e usuários do setor Compras
+      const nomes = new Set<string>()
+      ;[r.aberto_por, r.responsavel, r.recebedor, pc?.recebedor].forEach(n => { if (n && String(n).trim()) nomes.add(String(n).trim()) })
+      usuariosDoSetor(profiles, 'Compras').forEach(u => nomes.add(u.nome))
+      const resumoFim = `✅ *${r.numero} ENCERRADA*\n\n${r.loja} · ${r.fornecedor || '—'}${pc?.numero ? ` · PC ${pc.numero}` : ''}\nProduto: ${r.produto || '—'}\nDesvio: ${r.desvio_txt || '—'}\n\n*Solução:* ${r.solucao || '—'}\n*Devolutiva final:* ${r.devolutiva_final || '—'}\nResultado: ${RESULTADOS.find(x => x.id === r.resultado)?.label || '—'} · Encerrada por ${userName}\n\n${link}\n_Amore Gestão_`
+      let enviados = 0
+      for (const n of nomes) {
+        if (await notificar(n, resumoFim, `RNC ${r.numero}`, r.id)) enviados++
+        await new Promise(res => setTimeout(res, 2500 + Math.random() * 2500))
+      }
+      await log('Disparo de fechamento', `${enviados}/${nomes.size} envio(s): ${Array.from(nomes).join(', ')}`)
+    })
   }
 
   // ── evidências ──
@@ -627,7 +833,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
     } catch (e: any) { alert('Falha ao criar tarefa: ' + (e?.message || e)) } finally { setBusy(false) }
   }
 
-  const ABAS = [['resumo', 'Resumo'], ['recebimento', 'Recebimento'], ['desvio', 'Desvio'], ['evidencias', `Evidências (${evids.length})`], ['tratativa', 'Tratativa'], ['causa', 'Causa'], ['acoes', `Ações (${ids.length})`], ['devolucao', 'Devolução'], ['encerramento', 'Encerramento'], ['historico', `Histórico (${hist.length})`]]
+  const ABAS = [['resumo', 'Resumo'], ['recebimento', 'Recebimento'], ['desvio', 'Desvio'], ['evidencias', `Evidências (${evids.length})`], ['tratativa', 'Tratativa'], ['fornecedor', 'Fornecedor/Compras'], ['causa', 'Causa'], ['acoes', `Ações (${ids.length})`], ['devolucao', 'Devolução'], ['encerramento', 'Encerramento'], ['historico', `Histórico (${hist.length})`]]
   const proximos = STATUS.filter(s => s.id !== r.status && s.id !== 'encerrada')
 
   return (
@@ -657,8 +863,16 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
         </div>
 
         <div style={{ padding: '30px 18px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {semCiencia && (
+            <div style={{ ...card, background: '#fef3c7', borderColor: '#f59e0b', fontSize: 12.5 }}>
+              👁️ <b>Aguardando ciência{r.responsavel ? ` de ${r.responsavel}` : ''}.</b> O prazo de tratativa é de {PRAZO_DIAS_UTEIS} dias úteis e só começa a contar depois da ciência.
+              <div><button onClick={darCiencia} disabled={busy} style={{ ...btn('#b45309', busy), marginTop: 8 }}>👁️ Dar ciência e iniciar prazo de {PRAZO_DIAS_UTEIS} dias úteis</button></div>
+            </div>
+          )}
+          {r.ciencia_em && <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>👁️ Ciência de <b>{r.ciencia_por}</b> em {fmtDH(r.ciencia_em)} · prazo até <b>{fmtD(r.prazo)}</b> ({PRAZO_DIAS_UTEIS} dias úteis)</div>}
           {aba === 'resumo' && (
             <>
+              <PedidoBloco pc={pc} abertoPor={r.aberto_por} direcionadoA={r.responsavel} setor={r.responsavel_area} />
               <div style={{ ...card, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: 12.5 }}>
                 <div><b>Fornecedor:</b> {r.fornecedor || '—'}</div><div><b>PC:</b> {r.pedido_numero || '—'}</div>
                 <div><b>NF:</b> {r.nf_numero || '—'}</div><div><b>Produto:</b> {r.produto || '—'}</div>
@@ -718,10 +932,13 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
               </div>
               {evids.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Nenhuma evidência anexada.</div>}
               {evids.map(e => (
-                <div key={e.id} style={{ ...card, padding: 10, fontSize: 12.5 }}>
-                  <a href={e.arquivo_url} target="_blank" rel="noreferrer" style={{ color: 'var(--bordo)', fontWeight: 700 }}>📎 {String(e.arquivo_url).split('/').pop()}</a>
+                <div key={e.id} style={{ ...card, padding: 10, fontSize: 12.5, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <Galeria itens={[{ url: e.arquivo_url, rotulo: e.tipo }]} />
+                  <div>
+                  <a href={e.arquivo_url} target="_blank" rel="noreferrer" style={{ color: 'var(--bordo)', fontWeight: 700 }}>📎 Abrir {String(e.arquivo_url).split('/').pop()}</a>
                   <div>{e.tipo}{e.descricao ? ' — ' + e.descricao : ''}</div>
                   <div style={{ fontSize: 11, color: 'var(--muted)' }}>{e.usuario} · {fmtDH(e.created_at)}</div>
+                  </div>
                 </div>
               ))}
             </>
@@ -731,8 +948,10 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
             <>
               <label style={lbl}>O que foi feito no recebimento?</label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 4 }}>{TRATATIVAS.map(t => <label key={t} style={{ fontSize: 12.5, display: 'flex', gap: 6 }}><input type="checkbox" checked={(ed.tratativas || []).includes(t)} onChange={() => toggleArr('tratativas', t)} />{t}</label>)}</div>
-              {T('tratativa_obs', 'Observação da tratativa * (obrigatória)', 3)}
-              {salvarBtn(['tratativas', 'tratativa_obs'], 'Tratativa atualizada')}
+              {T('tratativa_obs', 'Ação imediata * (o que foi feito agora e por quê)', 3)}
+              {T('acao_corretiva', 'Ação corretiva — o que será feito para solucionar o problema atual?', 2)}
+              {T('acao_preventiva', 'Ação preventiva — o que será feito para não voltar a acontecer?', 2)}
+              {salvarBtn(['tratativas', 'tratativa_obs', 'acao_corretiva', 'acao_preventiva'], 'Tratativa e plano de ação atualizados', async () => { if (ed.tratativa_obs !== r.tratativa_obs) await sb.from('rnc').update({ acao_imediata: ed.tratativa_obs }).eq('id', r.id) })}
               <div style={{ ...card }}>
                 <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>💬 Comunicação com o fornecedor / registro</div>
                 <textarea style={{ ...inp, resize: 'vertical' }} rows={2} value={nota} onChange={e => setNota(e.target.value)} placeholder="Ex.: fornecedor confirmou a substituição / solicitou fotos…" />
@@ -744,6 +963,31 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
             </>
           )}
 
+          {aba === 'fornecedor' && (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--bordo)' }}>🏭 RESPOSTA DO FORNECEDOR À TRATATIVA</div>
+              {r.fornecedor_resposta_em && <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>Registrada por {r.fornecedor_resposta_por} em {fmtDH(r.fornecedor_resposta_em)}</div>}
+              {T('fornecedor_resposta', 'O que ' + (r.fornecedor || 'o fornecedor') + ' respondeu / propôs (substituição, crédito, devolução…)', 3)}
+              <div><label style={lbl}>Anexos da resposta (e-mail, foto, NF de devolução…)</label><AnexoUploader value={ed.fornecedor_resposta_anexos ?? null} onChange={v => setEd((o: any) => ({ ...o, fornecedor_resposta_anexos: v }))} pasta="rnc" label="" /></div>
+              <Galeria itens={splitUrls(ed.fornecedor_resposta_anexos).map(u => ({ url: u, rotulo: 'Resposta do fornecedor' }))} />
+              {salvarBtn(['fornecedor_resposta', 'fornecedor_resposta_anexos'], 'Resposta do fornecedor registrada', async () => {
+                await sb.from('rnc').update({ fornecedor_resposta_por: userName, fornecedor_resposta_em: new Date().toISOString(), ...(r.status === 'aguardando_fornecedor' || r.status === 'aberta' || r.status === 'em_analise' ? { status: 'em_tratativa' } : {}) }).eq('id', r.id)
+                if (r.responsavel && r.responsavel !== userName) await notificar(r.responsavel, '📩 *Resposta do fornecedor na ' + r.numero + '*\n\n' + (r.fornecedor || '') + ' — ' + String(ed.fornecedor_resposta || '').slice(0, 300) + '\n\n' + link + '\n_Amore Gestão_', 'RNC ' + r.numero, r.id)
+              })}
+
+              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--bordo)', marginTop: 10 }}>🛒 TRATATIVA DE COMPRAS</div>
+              {r.compras_em && <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>Registrada por {r.compras_por} em {fmtDH(r.compras_em)}</div>}
+              {T('compras_tratativa', 'Negociação e encaminhamento de Compras com o fornecedor', 3)}
+              {salvarBtn(['compras_tratativa'], 'Tratativa de Compras registrada', async () => { await sb.from('rnc').update({ compras_por: userName, compras_em: new Date().toISOString() }).eq('id', r.id) })}
+
+              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--bordo)', marginTop: 10 }}>✅ DEVOLUTIVA FINAL DO SETOR RESPONSÁVEL{r.responsavel_area ? ' (' + r.responsavel_area + ')' : ''}</div>
+              {r.devolutiva_em && <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>Registrada por {r.devolutiva_por} em {fmtDH(r.devolutiva_em)}</div>}
+              {T('devolutiva_final', 'Parecer final: como a RNC foi tratada e resolvida', 3)}
+              {salvarBtn(['devolutiva_final'], 'Devolutiva final registrada', async () => { await sb.from('rnc').update({ devolutiva_por: userName, devolutiva_em: new Date().toISOString() }).eq('id', r.id) })}
+              <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>Depois da devolutiva, feche a RNC na aba <b>Encerramento</b> — o fechamento dispara um aviso no WhatsApp e a RNC entra no Banco de dados.</div>
+            </>
+          )}
+
           {aba === 'causa' && (r.status === 'aberta' ? (
             <div style={{ ...card, fontSize: 12.5 }}>A análise da causa aparece quando a RNC avança para análise.
               <div><button onClick={() => mudarStatus('em_analise')} disabled={busy} style={{ ...btn('#ea580c', busy), marginTop: 8 }}>🟠 Avançar para "Em análise"</button></div>
@@ -752,8 +996,8 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
             <>
               {T('causa_provavel', 'Causa provável', 2)}{T('causa_raiz', 'Causa raiz', 2)}{S('causa_area', 'Área responsável pela causa', AREAS)}
               <div><label style={lbl}>Evidências da causa (anexos)</label><AnexoUploader value={ed.causa_evidencias ?? null} onChange={v => setEd((o: any) => ({ ...o, causa_evidencias: v }))} pasta="rnc" label="" /></div>
-              {T('acao_corretiva', 'Ação corretiva — o que será feito para solucionar o problema atual?', 2)}{T('acao_preventiva', 'Ação preventiva — o que será feito para não voltar a acontecer?', 2)}
-              {salvarBtn(['causa_provavel', 'causa_raiz', 'causa_area', 'causa_evidencias', 'acao_corretiva', 'acao_preventiva'], 'Análise de causa atualizada')}
+              <Galeria itens={splitUrls(ed.causa_evidencias).map(u => ({ url: u, rotulo: 'Evidência da causa' }))} />
+              {salvarBtn(['causa_provavel', 'causa_raiz', 'causa_area', 'causa_evidencias'], 'Análise de causa atualizada')}
             </>
           ))}
 
@@ -799,6 +1043,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
                 <div><label style={lbl}>Necessita ação preventiva? *</label><select style={inp} value={ed.necessita_preventiva == null ? '' : String(ed.necessita_preventiva)} onChange={e => setEd((o: any) => ({ ...o, necessita_preventiva: e.target.value === '' ? null : e.target.value === 'true' }))}><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></div>
               </div>
               <div><label style={lbl}>Evidência da solução</label><AnexoUploader value={ed.evidencia_solucao ?? null} onChange={v => setEd((o: any) => ({ ...o, evidencia_solucao: v }))} pasta="rnc" label="" /></div>
+              <Galeria itens={splitUrls(ed.evidencia_solucao).map(u => ({ url: u, rotulo: 'Evidência da solução' }))} />
               {T('obs_final', 'Observações finais', 2)}
               {salvarBtn(['valor_total_afetado', 'valor_devolvido', 'valor_credito', 'valor_abatimento', 'custo_adicional', 'perda', 'solucao', 'resultado', 'eficaz', 'necessita_preventiva', 'evidencia_solucao', 'obs_final'], 'Financeiro/encerramento atualizado')}
 

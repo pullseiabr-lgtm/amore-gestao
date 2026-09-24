@@ -10,13 +10,17 @@ const hoje = (() => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getT
 const dias = d => Math.round((new Date(String(d).slice(0, 10) + 'T00:00:00') - new Date(hoje + 'T00:00:00')) / 86400000);
 const link = id => 'https://painel.amorefood.com.br/?page=tarefas&rnc=' + id;
 (async () => {
-  const rncs = await j('rnc?status=neq.encerrada&select=id,numero,fornecedor,produto,responsavel,aberto_por,prazo,status');
+  const rncs = await j('rnc?status=neq.encerrada&select=id,numero,fornecedor,produto,responsavel,aberto_por,prazo,status,ciencia_em');
   if (!Array.isArray(rncs)) { console.log('erro', JSON.stringify(rncs)); return; }
   const profiles = await j('profiles?select=name,permissions_override');
   const fone = n => { const p = profiles.find(x => (x.name || '').trim().toLowerCase() === (n || '').trim().toLowerCase()); return ((p && p.permissions_override && p.permissions_override.__perfil__ && p.permissions_override.__perfil__.whatsapp) || '').replace(/\D/g, ''); };
   const fila = [];
   for (const r of rncs) {
     if (r.status === 'resolvida') { if (r.aberto_por) fila.push([r.aberto_por, `🔵 *${r.numero}* aguarda sua validação para encerramento.\n${r.fornecedor || ''} · ${r.produto || ''}\n\n${link(r.id)}`]); continue; }
+    if (!r.ciencia_em && r.responsavel) { fila.push([r.responsavel, `👁️ *${r.numero}* aguarda a sua ciência — o prazo de 4 dias úteis só começa a contar depois dela.
+${r.fornecedor || ''} · ${r.produto || ''}
+
+${link(r.id)}`]); continue; }
     if (!r.prazo || !r.responsavel) continue;
     const d = dias(r.prazo);
     if (d === 1) fila.push([r.responsavel, `⚠️ *${r.numero}* vence amanhã.\n${r.fornecedor || ''} · ${r.produto || ''}\n\n${link(r.id)}`]);
