@@ -47,6 +47,21 @@ const LABELS: Record<string, string> = {
 }
 const NUM_KEYS = new Set(['qtd_solicitada', 'qtd_recebida', 'valor_produto', 'valor_total_afetado', 'valor_devolvido', 'valor_credito', 'valor_abatimento', 'custo_adicional', 'perda'])
 
+// ── Direcionamento: setor + usuário já cadastrados (perfil.__perfil__ = { setor, whatsapp, cargo }) ──
+const perfilDe = (p: any) => (p?.permissions_override as any)?.__perfil__ || {}
+const setorDe = (p: any) => String(perfilDe(p).setor || '').trim()
+const foneOk = (p: any) => !!String(perfilDe(p).whatsapp || '').replace(/\D/g, '')
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+const listaSetores = (profiles: any[]) => {
+  const m = new Map<string, string>()
+  for (const s of [...AREAS, ...profiles.map(setorDe)]) if (s && !m.has(s.toLowerCase())) m.set(s.toLowerCase(), cap(s))
+  return Array.from(m.values()).sort((a, b) => a.localeCompare(b))
+}
+const usuariosDoSetor = (profiles: any[], setor: string) => profiles
+  .filter(p => (p.name || '').trim() && (!setor || setorDe(p).toLowerCase() === setor.toLowerCase()))
+  .map(p => ({ nome: (p.name as string).trim(), fone: foneOk(p) }))
+  .sort((a, b) => a.nome.localeCompare(b.nome))
+
 // ── Helpers ──────────────────────────────────────────────────
 const hoje0 = () => new Date(new Date().toDateString()).getTime()
 const fmtD = (s?: string | null) => { if (!s) return '—'; const m = String(s).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}/${m[2]}/${m[1]}` : '—' }
@@ -300,7 +315,7 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
 
       {showNova && <NovaRnc profiles={profiles} responsaveis={responsaveis} lojas={lojas} lojaAtual={loja} userName={userName} notificar={notificar}
         onClose={() => setShowNova(false)} onSaved={(id: string) => { setShowNova(false); load(); setSelId(id) }} />}
-      {selecionada && <RncDetalhe r={selecionada} responsaveis={responsaveis} userName={userName} notificar={notificar} onClose={() => setSelId(null)} onChanged={load} />}
+      {selecionada && <RncDetalhe r={selecionada} profiles={profiles} responsaveis={responsaveis} userName={userName} notificar={notificar} onClose={() => setSelId(null)} onChanged={load} />}
     </div>
   )
 }
@@ -308,7 +323,7 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
 // ══════════════════════════════════════════════════════════════
 // NOVA RNC
 // ══════════════════════════════════════════════════════════════
-function NovaRnc({ responsaveis, lojas, lojaAtual, userName, notificar, onClose, onSaved }: any) {
+function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onSaved }: any) {
   const lojasOk: string[] = lojas.filter((l: string) => l && l !== 'Todas as Lojas')
   const [f, setF] = useState<any>({
     loja: lojaAtual && lojaAtual !== 'Todas as Lojas' ? lojaAtual : (lojasOk[0] || ''), setor: 'Recebimento', centro_custo: '', tipos: [] as string[],
@@ -345,7 +360,7 @@ function NovaRnc({ responsaveis, lojas, lojaAtual, userName, notificar, onClose,
     if (!f.tipos.length) { alert('Marque ao menos um tipo de ocorrência.'); return }
     if (!f.desvio_txt.trim()) { alert('Descreva o desvio.'); return }
     if (!f.tratativa_obs.trim()) { alert('A observação da tratativa é obrigatória.'); return }
-    if (!f.responsavel || !f.prazo) { alert('Defina o responsável pela tratativa e o prazo.'); return }
+    if (!f.responsavel_area || !f.responsavel || !f.prazo) { alert('Direcione a RNC: escolha o setor, o usuário e o prazo.'); return }
     setSalvando(true)
     try {
       const num = (k: string) => f[k] === '' || f[k] == null ? null : Number(String(f[k]).replace(',', '.'))
@@ -371,8 +386,17 @@ function NovaRnc({ responsaveis, lojas, lojaAtual, userName, notificar, onClose,
           await log('Evidência anexada', `${ev.tipo}${ev.descricao ? ' — ' + ev.descricao : ''}`)
         } catch (e) { console.error(e) }
       }
-      if (f.responsavel && f.responsavel !== userName) {
-        await notificar(f.responsavel, `🔴 *Nova RNC atribuída a você*\n\n${nova.numero} · ${f.loja}\nFornecedor: ${f.fornecedor || '—'}\nProduto: ${f.produto || '—'}\nDesvio: ${f.desvio_txt.trim()}\nGravidade: ${gravInfo(f.gravidade).emoji} ${gravInfo(f.gravidade).label}\nPrazo: ${fmtD(f.prazo)}\n\n${siteOrigin()}/?page=tarefas&rnc=${nova.id}\n_Amore Gestão_`, `RNC ${nova.numero}`, nova.id)
+      const linkR = `${siteOrigin()}/?page=tarefas&rnc=${nova.id}`
+      const corpo = `${nova.numero} · ${f.loja}\nSetor: ${f.responsavel_area}\nFornecedor: ${f.fornecedor || '—'}\nProduto: ${f.produto || '—'}${f.nf_numero ? `\nNF: ${f.nf_numero}` : ''}${f.lote ? `\nLote: ${f.lote}` : ''}\nDesvio: ${f.desvio_txt.trim()}\nGravidade: ${gravInfo(f.gravidade).emoji} ${gravInfo(f.gravidade).label}\nPrazo: ${fmtD(f.prazo)}\nAberta por: ${userName}`
+      const ok1 = await notificar(f.responsavel, `🔴 *Nova RNC direcionada a você*\n\n${corpo}\n\n${linkR}\n_Amore Gestão_`, `RNC ${nova.numero}`, nova.id)
+      await log('Disparo WhatsApp', ok1 ? `Aviso enviado a ${f.responsavel} (${f.responsavel_area})` : `Não foi possível avisar ${f.responsavel} (sem WhatsApp cadastrado?)`)
+      if (f.avisarSetor) {
+        for (const u of usuariosDoSetor(profiles, f.responsavel_area)) {
+          if (!u.fone || u.nome === f.responsavel || u.nome === userName) continue
+          await notificar(u.nome, `📣 *RNC direcionada ao setor ${f.responsavel_area}*\n\nResponsável: ${f.responsavel}\n${corpo}\n\n${linkR}\n_Amore Gestão_`, `RNC ${nova.numero}`, nova.id)
+          await new Promise(r => setTimeout(r, 2500 + Math.random() * 2500))
+        }
+        await log('Disparo WhatsApp', `Setor ${f.responsavel_area} avisado`)
       }
       onSaved(nova.id)
     } finally { setSalvando(false) }
@@ -402,7 +426,7 @@ function NovaRnc({ responsaveis, lojas, lojaAtual, userName, notificar, onClose,
           {TIPOS.map(t => <label key={t} style={{ fontSize: 12.5, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.tipos.includes(t)} onChange={() => toggle('tipos', t)} />{t}</label>)}
         </div>
 
-        {sec('2 · PEDIDO DE COMPRA → RECEBIMENTO (rastreabilidade PC → NF → Recebimento → Estoque → RNC)')}
+        {sec('2 · DADOS DO RECEBIMENTO — informados manualmente por quem está gerando a RNC (NF e lote não precisam estar vinculados; buscar o PC é opcional)')}
         <div style={{ display: 'flex', gap: 6 }}>
           <input style={inp} value={busca} onChange={e => setBusca(e.target.value)} onKeyDown={e => e.key === 'Enter' && buscarPC()} placeholder="Buscar Pedido de Compra pelo número (ex.: PED-0033)" />
           <button onClick={buscarPC} style={btn()}>Buscar PC</button>
@@ -452,12 +476,26 @@ function NovaRnc({ responsaveis, lojas, lojaAtual, userName, notificar, onClose,
         <label style={{ ...lbl, marginTop: 8 }}>Observação da tratativa * (explique a decisão)</label>
         <textarea style={{ ...inp, resize: 'vertical' }} rows={2} value={f.tratativa_obs} onChange={e => set('tratativa_obs', e.target.value)} />
 
-        {sec('7 · RESPONSÁVEL E PRAZO')}
+        {sec('7 · DIRECIONAMENTO — setor + usuário cadastrado (dispara WhatsApp)')}
         <div style={grid2}>
-          <div><label style={lbl}>Responsável pela tratativa *</label><select style={inp} value={f.responsavel} onChange={e => set('responsavel', e.target.value)}><option value="">Selecionar…</option>{responsaveis.map((n: string) => <option key={n}>{n}</option>)}</select></div>
-          <div><label style={lbl}>Área</label><select style={inp} value={f.responsavel_area} onChange={e => set('responsavel_area', e.target.value)}><option value="">—</option>{AREAS.map(a => <option key={a}>{a}</option>)}</select></div>
+          <div><label style={lbl}>Setor competente *</label><select style={inp} value={f.responsavel_area} onChange={e => { set('responsavel_area', e.target.value); set('responsavel', '') }}><option value="">Selecionar…</option>{listaSetores(profiles).map(a => <option key={a}>{a}</option>)}</select></div>
+          <div><label style={lbl}>Usuário responsável *</label>
+            <select style={inp} value={f.responsavel} onChange={e => set('responsavel', e.target.value)}>
+              <option value="">{f.responsavel_area ? 'Selecionar usuário…' : 'Escolha o setor primeiro'}</option>
+              {(f.responsavel_area ? usuariosDoSetor(profiles, f.responsavel_area) : []).map(u => <option key={u.nome} value={u.nome}>{u.nome}{u.fone ? '' : ' (sem WhatsApp)'}</option>)}
+            </select>
+            {f.responsavel_area && usuariosDoSetor(profiles, f.responsavel_area).length === 0 && (
+              <div style={{ fontSize: 11, color: '#b45309', marginTop: 3 }}>Nenhum usuário cadastrado neste setor. <button onClick={() => set('mostrarTodos', true)} style={{ border: 'none', background: 'none', color: 'var(--bordo)', cursor: 'pointer', textDecoration: 'underline', fontSize: 11 }}>ver todos os usuários</button></div>
+            )}
+          </div>
           {F('prazo', 'Data limite *', 'date')}
         </div>
+        {f.mostrarTodos && (
+          <div style={{ marginTop: 6 }}><label style={lbl}>Todos os usuários</label>
+            <select style={inp} value={f.responsavel} onChange={e => set('responsavel', e.target.value)}><option value="">Selecionar…</option>{usuariosDoSetor(profiles, '').map(u => <option key={u.nome} value={u.nome}>{u.nome}{u.fone ? '' : ' (sem WhatsApp)'}</option>)}</select>
+          </div>
+        )}
+        <label style={{ fontSize: 12.5, display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }}><input type="checkbox" checked={!!f.avisarSetor} onChange={e => set('avisarSetor', e.target.checked)} /> Avisar também os outros usuários do setor</label>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button onClick={onClose} style={{ ...btn('#6b7280') }}>Cancelar</button>
@@ -471,7 +509,7 @@ function NovaRnc({ responsaveis, lojas, lojaAtual, userName, notificar, onClose,
 // ══════════════════════════════════════════════════════════════
 // PÁGINA INDIVIDUAL DA RNC
 // ══════════════════════════════════════════════════════════════
-function RncDetalhe({ r, responsaveis, userName, notificar, onClose, onChanged }: any) {
+function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, onChanged }: any) {
   const [aba, setAba] = useState('resumo')
   const [ed, setEd] = useState<any>(r)
   const [busy, setBusy] = useState(false)
@@ -506,6 +544,12 @@ function RncDetalhe({ r, responsaveis, userName, notificar, onClose, onChanged }
   }
   const mudarStatus = async (novo: string, extra: any = {}) => { await salvar({ status: novo, ...extra }, `Status → ${statusInfo(novo).label}`) }
   const link = `${siteOrigin()}/?page=tarefas&rnc=${r.id}`
+  const avisar = async (nome: string, setor: string, prazo: string) => {
+    const ok = await notificar(nome, `🔴 *RNC direcionada a você*\n\n${r.numero} · ${r.loja}\nSetor: ${setor || '—'}\nFornecedor: ${r.fornecedor || '—'}\nProduto: ${r.produto || '—'}${r.nf_numero ? `\nNF: ${r.nf_numero}` : ''}${r.lote ? `\nLote: ${r.lote}` : ''}\nDesvio: ${r.desvio_txt || '—'}\nPrazo: ${fmtD(prazo)}\n\n${link}\n_Amore Gestão_`, `RNC ${r.numero}`, r.id)
+    await log('Disparo WhatsApp', ok ? `Aviso enviado a ${nome}${setor ? ' (' + setor + ')' : ''}` : `Não foi possível avisar ${nome} (sem WhatsApp cadastrado?)`)
+    setReload(x => x + 1)
+    if (!ok) alert(`${nome} não tem WhatsApp cadastrado — avise por outro canal.`)
+  }
 
   const F = (k: string, label: string, type = 'text') => <div><label style={lbl}>{label}</label><input type={type} style={inp} value={ed[k] ?? ''} onChange={e => setEd((o: any) => ({ ...o, [k]: e.target.value }))} /></div>
   const T = (k: string, label: string, rows = 3, ph = '') => <div><label style={lbl}>{label}</label><textarea style={{ ...inp, resize: 'vertical' }} rows={rows} placeholder={ph} value={ed[k] ?? ''} onChange={e => setEd((o: any) => ({ ...o, [k]: e.target.value }))} /></div>
@@ -626,15 +670,22 @@ function RncDetalhe({ r, responsaveis, userName, notificar, onClose, onChanged }
                 ⏱ <b>{diasAberto(r)}</b> dia(s) em aberto · {r.prazo ? (atraso > 0 ? <span style={{ color: '#dc2626', fontWeight: 700 }}>{atraso} dia(s) em atraso</span> : rest != null && !encerradaOuResolvida(r) ? <span><b>{rest}</b> dia(s) restantes (prazo {fmtD(r.prazo)})</span> : `prazo ${fmtD(r.prazo)}`) : 'sem prazo'}
               </div>
               <div style={grid}>
-                <div><label style={lbl}>Responsável</label><select style={inp} value={ed.responsavel ?? ''} onChange={e => setEd((o: any) => ({ ...o, responsavel: e.target.value }))}><option value="">—</option>{responsaveis.map((n: string) => <option key={n}>{n}</option>)}</select></div>
-                {S('responsavel_area', 'Área', AREAS)}{F('prazo', 'Data limite', 'date')}
+                <div><label style={lbl}>Setor competente</label><select style={inp} value={ed.responsavel_area ?? ''} onChange={e => setEd((o: any) => ({ ...o, responsavel_area: e.target.value, responsavel: '' }))}><option value="">—</option>{listaSetores(profiles).map(a => <option key={a}>{a}</option>)}</select></div>
+                <div><label style={lbl}>Usuário responsável</label><select style={inp} value={ed.responsavel ?? ''} onChange={e => setEd((o: any) => ({ ...o, responsavel: e.target.value }))}>
+                  <option value="">—</option>
+                  {(usuariosDoSetor(profiles, ed.responsavel_area || '').length ? usuariosDoSetor(profiles, ed.responsavel_area || '') : usuariosDoSetor(profiles, '')).map(u => <option key={u.nome} value={u.nome}>{u.nome}{u.fone ? '' : ' (sem WhatsApp)'}</option>)}
+                </select></div>
+                {F('prazo', 'Data limite', 'date')}
                 {S('categoria', 'Categoria', CATEGORIAS)}
                 <div><label style={lbl}>Gravidade</label><select style={inp} value={ed.gravidade ?? 'media'} onChange={e => setEd((o: any) => ({ ...o, gravidade: e.target.value }))}>{GRAVIDADES.map(g => <option key={g.id} value={g.id}>{g.emoji} {g.label}</option>)}</select></div>
               </div>
-              {salvarBtn(['responsavel', 'responsavel_area', 'prazo', 'categoria', 'gravidade'], 'Responsável/prazo/classificação atualizados', async () => {
-                if (ed.responsavel && ed.responsavel !== r.responsavel && ed.responsavel !== userName)
-                  await notificar(ed.responsavel, `🔴 *RNC atribuída a você*\n\n${r.numero} · ${r.fornecedor || ''} · ${r.produto || ''}\nPrazo: ${fmtD(ed.prazo)}\n\n${link}\n_Amore Gestão_`, `RNC ${r.numero}`, r.id)
-              })}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {salvarBtn(['responsavel', 'responsavel_area', 'prazo', 'categoria', 'gravidade'], 'Direcionamento/prazo/classificação atualizados', async () => {
+                  if (ed.responsavel && ed.responsavel !== r.responsavel)
+                    await avisar(ed.responsavel, ed.responsavel_area, ed.prazo)
+                })}
+                {r.responsavel && <button onClick={() => avisar(r.responsavel, r.responsavel_area, r.prazo)} disabled={busy} style={{ ...btn('#166534', busy), marginTop: 10 }}>📲 Reenviar aviso ao responsável</button>}
+              </div>
             </>
           )}
 
