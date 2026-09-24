@@ -536,6 +536,7 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
   const [evid, setEvid] = useState<{ file: File; tipo: string; descricao: string }[]>([])
   const [evTipo, setEvTipo] = useState(EVID_TIPOS[0]); const [evDesc, setEvDesc] = useState('')
   const [salvando, setSalvando] = useState(false)
+  const [erros, setErros] = useState<string[]>([])
 
   const buscarPC = async () => {
     if (busca.trim().length < 2) return
@@ -569,11 +570,14 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
   const resumo = `Solicitado: ${f.qtd_solicitada || '?'} ${f.unidade} ${f.produto || '—'}\nRecebido: ${f.recebido_txt || (f.qtd_recebida ? `${f.qtd_recebida} ${f.unidade} ${f.produto}` : '—')}\nDesvio: ${f.categoria}${f.tipos.length ? ' — ' + f.tipos.join(' + ') : ''}`
 
   const salvar = async () => {
-    if (!f.loja) { alert('Selecione a unidade.'); return }
-    if (!f.tipos.length) { alert('Marque ao menos um tipo de ocorrência.'); return }
-    if (!f.desvio_txt.trim()) { alert('Descreva o desvio.'); return }
-    if (!f.tratativa_obs.trim()) { alert('A observação da tratativa é obrigatória.'); return }
-    if (!f.responsavel) { alert('Direcione a RNC: escolha o usuário que vai receber e tratar.'); return }
+    const faltas: string[] = []
+    if (!f.loja) faltas.push('Unidade')
+    if (!f.tipos.length) faltas.push('Tipo de ocorrência (marque ao menos um — seção 1)')
+    if (!f.desvio_txt.trim()) faltas.push('Qual foi o desvio? (seção 3)')
+    if (!f.tratativa_obs.trim()) faltas.push('Ação imediata (seção 6)')
+    if (!f.responsavel) faltas.push('Disparar para: escolha o usuário (seção 7)')
+    setErros(faltas)
+    if (faltas.length) return
     if (!f.responsavel_area) f.responsavel_area = todosUsuarios(profiles, '').find(u => u.nome === f.responsavel)?.setor || 'Geral'
     setSalvando(true)
     try {
@@ -590,7 +594,7 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
         data_entrega: pcSnap?.data_entrega || null, pedido_snapshot: pcSnap || null,
       }
       const { data: nova, error } = await sb.from('rnc').insert(row).select('id, numero').single()
-      if (error || !nova) { alert('Falha ao abrir a RNC: ' + (error?.message || '')); setSalvando(false); return }
+      if (error || !nova) { setErros(['Falha ao gravar a RNC: ' + (error?.message || 'sem resposta do servidor')]); return }
       const log = (acao: string, detalhe?: string) => sb.from('rnc_historico').insert({ rnc_id: nova.id, acao, detalhe: detalhe || null, usuario: userName })
       await log('RNC aberta', `${f.categoria} · gravidade ${gravInfo(f.gravidade).label} · ${f.desvio_txt.trim()}`)
       await log('Responsável designado', `${f.responsavel} (${f.responsavel_area}) · prazo de ${PRAZO_DIAS_UTEIS} dias úteis após a ciência`)
@@ -615,7 +619,7 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
         await log('Disparo WhatsApp', `Setor ${f.responsavel_area} avisado`)
       }
       onSaved(nova.id)
-    } finally { setSalvando(false) }
+    } catch (e: any) { console.error(e); setErros(['Erro ao salvar: ' + (e?.message || e)]) } finally { setSalvando(false) }
   }
 
   const sec = (t: string) => <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--bordo)', margin: '14px 0 8px', borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>{t}</div>
@@ -716,6 +720,12 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
         <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>⏱ O prazo de tratativa é de <b>{PRAZO_DIAS_UTEIS} dias úteis</b>, contados a partir da ciência do responsável.</div>
         <label style={{ fontSize: 12.5, display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }}><input type="checkbox" checked={!!f.avisarSetor} onChange={e => set('avisarSetor', e.target.checked)} /> Avisar também os outros usuários do setor</label>
 
+        {erros.length > 0 && (
+          <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 8, background: '#fee2e2', border: '1px solid #dc2626', color: '#991b1b', fontSize: 12.5 }}>
+            <b>Não foi possível abrir a RNC — falta:</b>
+            <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>{erros.map(x => <li key={x}>{x}</li>)}</ul>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button onClick={onClose} style={{ ...btn('#6b7280') }}>Cancelar</button>
           <button onClick={salvar} disabled={salvando} style={btn('var(--bordo)', salvando)}>{salvando ? 'Abrindo…' : 'Abrir RNC'}</button>
