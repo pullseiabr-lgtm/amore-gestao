@@ -91,26 +91,50 @@ const addDiasUteis = (base: Date, n: number) => {
 const isImg = (u: string) => /\.(jpe?g|png|gif|webp|bmp|heic|avif)(\?|$)/i.test(u) || u.startsWith('blob:')
 const splitUrls = (v?: string | null) => String(v || '').split(/\n+/).map(s => s.trim()).filter(s => /^https?:\/\//.test(s))
 
-// Pedido de compra completo (cabeçalho + itens + entrega + quem recebeu) — vira "snapshot" dentro da RNC
-async function carregarPC(p: { id: string; numero?: string }) {
-  const [{ data: cab }, { data: itens }] = await Promise.all([
-    sb.from('pedidos_compra').select('*').eq('id', p.id).single(),
-    sb.from('pedido_compra_itens').select('*').eq('pedido_id', p.id).order('created_at'),
+// Busca pedidos nas DUAS fontes: tabela relacional pedidos_compra e blobs legados app_config (pedido_*).
+// A maioria dos pedidos só existe no app_config — por isso a busca antiga não achava/preenchia.
+async function buscarPedidos(q: string) {
+  const t = q.trim().replace(/[,()*%]/g, ' ').trim()
+  if (t.length < 2) return []
+  const [rel, leg] = await Promise.all([
+    sb.from('pedidos_compra').select('id,numero,fornecedor,loja,total,created_at,app_config_chave').or(`numero.ilike.*${t}*,fornecedor.ilike.*${t}*`).order('created_at', { ascending: false }).limit(15),
+    sb.from('app_config').select('chave,valor').like('chave', 'pedido_%').or(`chave.ilike.*${t}*,valor->>numero_pedido.ilike.*${t}*,valor->>fornecedor.ilike.*${t}*`).limit(30),
   ])
-  let blob: any = {}
-  if (cab?.app_config_chave) {
-    const { data } = await sb.from('app_config').select('valor').eq('chave', cab.app_config_chave).maybeSingle()
-    blob = data?.valor || {}
+  const out: any[] = (rel.data || []).map((c: any) => ({ id: c.id, chave: c.app_config_chave, numero: c.numero, fornecedor: c.fornecedor, loja: c.loja, total: c.total, data: String(c.created_at).slice(0, 10) }))
+  const chaves = new Set(out.map(o => o.chave).filter(Boolean))
+  for (const r of (leg.data || [])) {
+    if (chaves.has(r.chave)) continue
+    const v = r.valor || {}
+    out.push({ id: null, chave: r.chave, numero: v.numero_pedido || null, fornecedor: v.fornecedor, loja: v.loja, total: v.total, data: v.data || String(v.em || '').slice(0, 10) })
   }
-  const { data: ents } = await sb.from('entregas_agendadas').select('data_prevista,chegada_em,recebido_por,status,pedido_numero,pedido_ref').or(`pedido_numero.eq.${cab?.numero || p.numero},pedido_ref.eq.${String(cab?.app_config_chave || '').replace(/^pedido_/, '')}`).limit(1)
-  const ent = (ents || [])[0] || null
+  return out.sort((a, b) => String(b.data || '').localeCompare(String(a.data || ''))).slice(0, 20)
+}
+
+// Pedido de compra completo (cabeçalho + itens + entrega + quem recebeu) — vira "snapshot" dentro da RNC
+async function carregarPC(p: { id?: string | null; chave?: string | null; numero?: string | null }) {
+  let cab: any = null
+  if (p.id) cab = (await sb.from('pedidos_compra').select('*').eq('id', p.id).maybeSingle()).data
+  else if (p.numero) cab = (await sb.from('pedidos_compra').select('*').eq('numero', p.numero).maybeSingle()).data
+  const chave: string | null = cab?.app_config_chave || p.chave || null
+  let blob: any = {}
+  if (chave) blob = (await sb.from('app_config').select('valor').eq('chave', chave).maybeSingle()).data?.valor || {}
+  let rel: any[] = []
+  if (cab?.id) rel = (await sb.from('pedido_compra_itens').select('*').eq('pedido_id', cab.id).order('created_at')).data || []
+  const itensRel = rel.map((it: any) => ({ produto: it.produto_nome, un: it.unidade, qtd: Number(it.qtd_pedida) || 0, qtd_recebida: Number(it.qtd_recebida) || 0, preco: it.preco != null ? Number(it.preco) : null }))
+  const itensBlob = (blob.itens || []).map((it: any) => ({ produto: it.produto, un: it.un, qtd: Number(it.qtd) || 0, qtd_recebida: Number(it.qtd_recebida ?? it.recebido ?? 0) || 0, preco: it.preco != null ? Number(it.preco) : null }))
+  const itens = itensRel.length ? itensRel : itensBlob
+  const numero = cab?.numero || blob.numero_pedido || p.numero || (chave ? chave.replace(/^pedido_/, '') : null)
+  const ref = chave ? chave.replace(/^pedido_/, '') : ''
+  const filtros = [numero && !String(numero).includes(',') ? `pedido_numero.eq.${numero}` : '', ref ? `pedido_ref.eq.${ref}` : ''].filter(Boolean).join(',')
+  const ent = filtros ? ((await sb.from('entregas_agendadas').select('data_prevista,chegada_em,recebido_por,status').or(filtros).limit(1)).data || [])[0] || null : null
   const dataEntrega = (ent?.chegada_em ? String(ent.chegada_em).slice(0, 10) : null) || ent?.data_prevista || blob.janela_entrega || blob.data || null
-  const recebedor = ent?.recebido_por || blob.recebimento_responsavel || null
+  const totalItens = itens.reduce((s: number, it: any) => s + (it.preco != null ? it.preco * it.qtd : 0), 0)
   return {
-    numero: cab?.numero || p.numero, fornecedor: cab?.fornecedor || blob.fornecedor || null, loja: cab?.loja || blob.loja || null,
+    numero, chave, fornecedor: cab?.fornecedor || blob.fornecedor || null, loja: cab?.loja || blob.loja || null,
     data_pedido: blob.data || (cab?.created_at ? String(cab.created_at).slice(0, 10) : null), data_entrega: dataEntrega, horario_recebimento: blob.horario_recebimento || null,
-    recebedor, pagamento: blob.pagamento || null, criado_por: cab?.criado_por || blob.created_by || null, total: Number(cab?.total ?? blob.total ?? 0),
-    itens: (itens || []).map((it: any) => ({ produto: it.produto_nome, un: it.unidade, qtd: Number(it.qtd_pedida), qtd_recebida: Number(it.qtd_recebida), preco: it.preco != null ? Number(it.preco) : null })),
+    recebedor: ent?.recebido_por || blob.recebimento_responsavel || null, pagamento: blob.pagamento || null, criado_por: cab?.criado_por || blob.created_by || null,
+    total: Number(cab?.total ?? blob.total ?? totalItens) || totalItens, frete: blob.frete != null ? Number(blob.frete) : null, obs: cab?.observacoes || blob.obs || null,
+    status: blob.status || cab?.status || null, requisicao_numero: blob.requisicao_numero || null, itens,
   }
 }
 
@@ -154,7 +178,10 @@ function PedidoBloco({ pc, abertoPor, direcionadoA, setor }: { pc: any; abertoPo
         <div><b>Quem recebeu:</b> {pc.recebedor || '—'}</div>
         <div><b>Pagamento:</b> {pc.pagamento || '—'}</div>
         <div><b>Pedido feito por:</b> {pc.criado_por || '—'}</div>
-        <div><b>Valor do pedido:</b> {brl(pc.total)}</div>
+        <div><b>Valor do pedido:</b> {brl(pc.total)}{pc.frete ? ` (inclui frete ${brl(pc.frete)})` : ''}</div>
+        {pc.status && <div><b>Situação do pedido:</b> {pc.status}</div>}
+        {pc.requisicao_numero && <div><b>Requisição:</b> nº {pc.requisicao_numero}</div>}
+        {pc.obs && <div style={{ gridColumn: '1 / -1' }}><b>Obs. do pedido:</b> {pc.obs}</div>}
         {abertoPor && <div><b>RNC aberta por:</b> {abertoPor}</div>}
         {direcionadoA && <div><b>Direcionada para tratar:</b> {direcionadoA}{setor ? ` (${setor})` : ''}</div>}
       </div>
@@ -495,25 +522,27 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
   const set = (k: string, v: any) => setF((o: any) => ({ ...o, [k]: v }))
   const toggle = (k: string, v: string) => setF((o: any) => ({ ...o, [k]: o[k].includes(v) ? o[k].filter((x: string) => x !== v) : [...o[k], v] }))
   const [busca, setBusca] = useState(''); const [achados, setAchados] = useState<any[]>([]); const [itens, setItens] = useState<any[]>([])
+  const [buscando, setBuscando] = useState(false); const [semAchado, setSemAchado] = useState(false)
   const [evid, setEvid] = useState<{ file: File; tipo: string; descricao: string }[]>([])
   const [evTipo, setEvTipo] = useState(EVID_TIPOS[0]); const [evDesc, setEvDesc] = useState('')
   const [salvando, setSalvando] = useState(false)
 
   const buscarPC = async () => {
     if (busca.trim().length < 2) return
-    const { data } = await sb.from('pedidos_compra').select('id,numero,fornecedor,loja,total,created_at').ilike('numero', `%${busca.trim()}%`).order('created_at', { ascending: false }).limit(10)
-    setAchados(data || [])
+    setBuscando(true); setSemAchado(false)
+    try { const r = await buscarPedidos(busca); setAchados(r); setSemAchado(r.length === 0) } finally { setBuscando(false) }
   }
   const escolherPC = async (p: any) => {
-    setF((o: any) => ({ ...o, pedido_id: p.id, pedido_numero: p.numero, fornecedor: p.fornecedor || o.fornecedor, loja: lojasOk.includes(p.loja) ? p.loja : o.loja }))
+    setF((o: any) => ({ ...o, pedido_id: p.id || null, pedido_numero: p.numero || (p.chave ? String(p.chave).replace(/^pedido_/, '') : ''), fornecedor: p.fornecedor || o.fornecedor, loja: lojasOk.includes(p.loja) ? p.loja : o.loja }))
     setAchados([])
-    const { data } = await sb.from('pedido_compra_itens').select('*').eq('pedido_id', p.id).order('created_at')
-    setItens(data || [])
     try {
       const snap = await carregarPC(p)
       setPcSnap(snap)
-      setF((o: any) => ({ ...o, fornecedor: snap.fornecedor || o.fornecedor, data_recebimento: snap.data_entrega || o.data_recebimento, recebedor: snap.recebedor || o.recebedor }))
-    } catch (e) { console.error(e) }
+      const lista = snap.itens.map((it: any, i: number) => ({ id: i, produto_nome: it.produto, unidade: it.un, qtd_pedida: it.qtd, preco: it.preco }))
+      setItens(lista)
+      setF((o: any) => ({ ...o, pedido_numero: snap.numero || o.pedido_numero, fornecedor: snap.fornecedor || o.fornecedor, data_recebimento: snap.data_entrega || o.data_recebimento, recebedor: snap.recebedor || o.recebedor, nf_numero: o.nf_numero }))
+      if (lista.length === 1) escolherItem(lista[0])
+    } catch (e) { console.error(e); alert('Não consegui carregar os dados do pedido.') }
   }
   const escolherItem = (it: any) => setF((o: any) => ({
     ...o, produto: it.produto_nome, unidade: it.unidade || '', qtd_solicitada: String(it.qtd_pedida ?? ''), valor_produto: it.preco != null && it.qtd_pedida != null ? String(Number(it.preco) * Number(it.qtd_pedida)) : o.valor_produto,
@@ -596,10 +625,11 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
 
         {sec('2 · DADOS DO RECEBIMENTO — informados manualmente por quem está gerando a RNC (NF e lote não precisam estar vinculados; buscar o PC é opcional)')}
         <div style={{ display: 'flex', gap: 6 }}>
-          <input style={inp} value={busca} onChange={e => setBusca(e.target.value)} onKeyDown={e => e.key === 'Enter' && buscarPC()} placeholder="Buscar Pedido de Compra pelo número (ex.: PED-0033)" />
-          <button onClick={buscarPC} style={btn()}>Buscar PC</button>
+          <input style={inp} value={busca} onChange={e => setBusca(e.target.value)} onKeyDown={e => e.key === 'Enter' && buscarPC()} placeholder="Buscar Pedido de Compra por número ou fornecedor (ex.: PED-0033, Casa do Queijo)" />
+          <button onClick={buscarPC} style={btn()}>{buscando ? 'Buscando…' : 'Buscar PC'}</button>
         </div>
-        {achados.map(p => <div key={p.id} onClick={() => escolherPC(p)} style={{ fontSize: 12.5, padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, cursor: 'pointer' }}>{p.numero} · {p.fornecedor || '—'} · {p.loja} · {brl(p.total)}</div>)}
+        {semAchado && <div style={{ fontSize: 12, color: '#b45309', marginTop: 4 }}>Nenhum pedido encontrado. Tente o nome do fornecedor ou preencha manualmente abaixo.</div>}
+        {achados.map((p, i) => <div key={p.chave || p.id || i} onClick={() => escolherPC(p)} style={{ fontSize: 12.5, padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 8, marginTop: 4, cursor: 'pointer' }}>{p.numero || 'sem nº'} · {p.fornecedor || '—'} · {p.loja} · {fmtD(p.data)} · {brl(p.total)}</div>)}
         {f.pedido_numero && <div style={{ fontSize: 12.5, marginTop: 6, color: '#166534' }}>✅ PC vinculado: <b>{f.pedido_numero}</b> — {f.fornecedor} (dados do pedido trazidos abaixo)</div>}
         {pcSnap && <div style={{ marginTop: 8 }}><PedidoBloco pc={pcSnap} abertoPor={userName} direcionadoA={f.responsavel} setor={f.responsavel_area} /></div>}
         {itens.length > 0 && (
@@ -703,9 +733,9 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
   const [pcLive, setPcLive] = useState<any>(null)
   useEffect(() => {
     setPcLive(null)
-    if (!r.pedido_snapshot && r.pedido_id) carregarPC({ id: r.pedido_id, numero: r.pedido_numero }).then(setPcLive).catch(() => {})
-  }, [r.id, r.pedido_id, r.pedido_snapshot])
-  const pc = r.pedido_snapshot || pcLive
+    if (!(r.pedido_snapshot?.itens || []).length && (r.pedido_id || r.pedido_numero)) carregarPC({ id: r.pedido_id, numero: r.pedido_numero }).then(setPcLive).catch(() => {})
+  }, [r.id, r.pedido_id, r.pedido_numero, r.pedido_snapshot])
+  const pc = (r.pedido_snapshot?.itens || []).length ? r.pedido_snapshot : (pcLive || r.pedido_snapshot)
   const ids: string[] = Array.isArray(r.tarefa_ids) ? r.tarefa_ids : []
   useEffect(() => {
     if (!ids.length) { setTarefas([]); return }
@@ -757,6 +787,50 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
     { ok: !!(r.solucao || '').trim() && !!r.resultado && r.eficaz != null && r.necessita_preventiva != null, txt: 'Solução validada (solução, resultado, eficácia e necessidade preventiva)' },
   ]
   const tudoOk = checks.every(c => c.ok)
+  // ── Fechamento: consolida todas as informações da RNC num relatório enviável ao solicitante ──
+  const fechamentoTexto = () => {
+    const L: string[] = []
+    const add = (t: string, v?: any) => { if (v != null && String(v).trim() !== '' && String(v) !== '—') L.push(t + ': ' + String(v).trim()) }
+    L.push('*FECHAMENTO DA ' + r.numero + '*', '')
+    add('Unidade', r.loja); add('Aberta por', r.aberto_por ? r.aberto_por + ' em ' + fmtDH(r.created_at) : ''); add('Tratada por', r.responsavel ? r.responsavel + (r.responsavel_area ? ' (' + r.responsavel_area + ')' : '') : '')
+    add('Status', statusInfo(r.status).label); add('Gravidade', gravInfo(r.gravidade).label); add('Categoria', r.categoria)
+    L.push('', '*PEDIDO DE COMPRA*')
+    add('PC', pc?.numero || r.pedido_numero); add('Fornecedor', pc?.fornecedor || r.fornecedor); add('Data da entrega', fmtD(pc?.data_entrega || r.data_entrega || r.data_recebimento)); add('Recebido por', pc?.recebedor || r.recebedor)
+    add('NF', r.nf_numero); add('Lote', r.lote); add('Valor do pedido', pc?.total ? brl(pc.total) : '')
+    for (const it of (pc?.itens || [])) L.push('• ' + it.qtd + ' ' + (it.un || '') + ' — ' + it.produto + (it.preco != null ? ' · ' + brl(it.preco) + ' un.' : ''))
+    if (!(pc?.itens || []).length) add('Produto', r.produto)
+    L.push('', '*NÃO CONFORMIDADE*')
+    add('Solicitado', r.solicitado_txt); add('Recebido', r.recebido_txt); add('Tipo', (r.tipos || []).join(' + ')); add('Desvio', r.desvio_txt)
+    L.push('', '*TRATATIVA*')
+    add('Ação imediata', r.acao_imediata || r.tratativa_obs); add('Ação corretiva', r.acao_corretiva); add('Ação preventiva', r.acao_preventiva); add('Causa raiz', r.causa_raiz)
+    add('Resposta do fornecedor', r.fornecedor_resposta); add('Tratativa de Compras', r.compras_tratativa)
+    L.push('', '*DEVOLUTIVA E ENCERRAMENTO*')
+    add('Devolutiva final', r.devolutiva_final); add('Solução aplicada', r.solucao); add('Resultado', RESULTADOS.find(x => x.id === r.resultado)?.label)
+    add('Foi eficaz', r.eficaz == null ? '' : r.eficaz ? 'sim' : 'não')
+    const rec = (Number(r.valor_devolvido) || 0) + (Number(r.valor_credito) || 0) + (Number(r.valor_abatimento) || 0); const imp = (Number(r.perda) || 0) + (Number(r.custo_adicional) || 0)
+    if (rec) add('Recuperado (devolução/crédito/abatimento)', brl(rec)); if (imp) add('Impacto (perda + custo adicional)', brl(imp))
+    L.push('')
+    add('Ciência em', r.ciencia_em ? fmtDH(r.ciencia_em) : ''); add('Prazo (4 dias úteis)', fmtD(r.prazo)); add('Encerrada', r.encerrado_em ? fmtDH(r.encerrado_em) + ' por ' + (r.encerrado_por || '') : '')
+    add('Evidências anexadas', evids.length ? String(evids.length) : '')
+    L.push('', link, '_Amore Gestão_')
+    return L.join('\n')
+  }
+  const enviarFechamento = async () => {
+    if (!r.aberto_por) { alert('Esta RNC não tem solicitante registrado.'); return }
+    setBusy(true)
+    try {
+      const ok = await notificar(r.aberto_por, fechamentoTexto(), 'Fechamento ' + r.numero, r.id)
+      await log('Fechamento enviado ao solicitante', ok ? 'Enviado a ' + r.aberto_por : 'Não foi possível enviar a ' + r.aberto_por + ' (sem WhatsApp cadastrado?)')
+      setReload(x => x + 1)
+      alert(ok ? 'Fechamento enviado a ' + r.aberto_por + ' pelo WhatsApp.' : r.aberto_por + ' não tem WhatsApp cadastrado — copie o texto e envie por outro canal.')
+    } finally { setBusy(false) }
+  }
+  const imprimirFechamento = () => {
+    const w = window.open('', '_blank'); if (!w) return
+    const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    w.document.write('<html><head><title>Fechamento ' + r.numero + '</title></head><body style="font-family:Arial,sans-serif;max-width:800px;margin:24px auto;font-size:14px"><h2>Amore Gestão — Fechamento de RNC</h2><pre style="white-space:pre-wrap;font-family:inherit;line-height:1.5">' + esc(fechamentoTexto().replace(/\*/g, '').replace(/_Amore Gestão_/, '')) + '</pre></body></html>')
+    w.document.close(); w.focus(); setTimeout(() => w.print(), 400)
+  }
   const semCiencia = !r.ciencia_em && r.status !== 'encerrada'
   const darCiencia = async () => {
     const agora = new Date()
@@ -776,7 +850,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
       const resumoFim = `✅ *${r.numero} ENCERRADA*\n\n${r.loja} · ${r.fornecedor || '—'}${pc?.numero ? ` · PC ${pc.numero}` : ''}\nProduto: ${r.produto || '—'}\nDesvio: ${r.desvio_txt || '—'}\n\n*Solução:* ${r.solucao || '—'}\n*Devolutiva final:* ${r.devolutiva_final || '—'}\nResultado: ${RESULTADOS.find(x => x.id === r.resultado)?.label || '—'} · Encerrada por ${userName}\n\n${link}\n_Amore Gestão_`
       let enviados = 0
       for (const n of nomes) {
-        if (await notificar(n, resumoFim, `RNC ${r.numero}`, r.id)) enviados++
+        if (await notificar(n, n === r.aberto_por ? fechamentoTexto() : resumoFim, `RNC ${r.numero}`, r.id)) enviados++
         await new Promise(res => setTimeout(res, 2500 + Math.random() * 2500))
       }
       await log('Disparo de fechamento', `${enviados}/${nomes.size} envio(s): ${Array.from(nomes).join(', ')}`)
@@ -1046,6 +1120,16 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
               <Galeria itens={splitUrls(ed.evidencia_solucao).map(u => ({ url: u, rotulo: 'Evidência da solução' }))} />
               {T('obs_final', 'Observações finais', 2)}
               {salvarBtn(['valor_total_afetado', 'valor_devolvido', 'valor_credito', 'valor_abatimento', 'custo_adicional', 'perda', 'solucao', 'resultado', 'eficaz', 'necessita_preventiva', 'evidencia_solucao', 'obs_final'], 'Financeiro/encerramento atualizado')}
+
+              <div style={{ ...card, marginTop: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--bordo)', marginBottom: 6 }}>📄 FECHAMENTO DA RNC <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(reúne tudo o que foi salvo — salve os campos acima antes)</span></div>
+                <pre style={{ fontSize: 12, background: 'var(--bg)', borderRadius: 8, padding: 10, margin: 0, whiteSpace: 'pre-wrap', maxHeight: 320, overflowY: 'auto' }}>{fechamentoTexto().replace(/[*]/g, '').replace(/_Amore Gestão_/, '')}</pre>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                  <button onClick={enviarFechamento} disabled={busy || !r.aberto_por} style={btn('#166534', busy || !r.aberto_por)}>📲 Enviar fechamento ao solicitante{r.aberto_por ? ' (' + r.aberto_por + ')' : ''}</button>
+                  <button onClick={() => { navigator.clipboard?.writeText(fechamentoTexto()); alert('Texto copiado.') }} style={btn('#6b7280')}>📋 Copiar</button>
+                  <button onClick={imprimirFechamento} style={btn('#374151')}>🖨️ Imprimir / PDF</button>
+                </div>
+              </div>
 
               <div style={{ ...card, marginTop: 6 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>🔵 VALIDAÇÃO ANTES DE ENCERRAR <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(salve os campos acima para atualizar)</span></div>
