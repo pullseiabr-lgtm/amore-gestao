@@ -18,6 +18,7 @@ import { supabase } from '../../lib/supabase'
 import { siteOrigin } from '../../lib/site'
 import type { Tarefa, TarefaStatus, TarefaPrioridade, TarefaResultado, TarefaChecklist, TarefaComentario, TarefaHistorico, CobrancaConfig, CobrancaNivel } from '../../types/database'
 import { AnexoUploader, AnexoLinks } from '../../components/ui/AnexoUploader'
+import RncView from './RncView'
 
 // ── Constants ────────────────────────────────────────────────
 
@@ -277,7 +278,8 @@ export default function TarefasPage() {
   const [filtroSetor, setFiltroSetor] = useState('')
   const [filtroPrio, setFiltroPrio] = useState('')
   const [filtroLoja, setFiltroLoja] = useState('')
-  const [view, setView] = useState<'kanban' | 'lista' | 'gerencial'>('kanban')
+  const rncDoLink = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('rnc') : null
+  const [view, setView] = useState<'kanban' | 'lista' | 'gerencial' | 'rnc'>(rncDoLink ? 'rnc' : 'kanban')
   // Período do Painel Gerencial (afeta só a aba Painel — Kanban/Lista continuam mostrando tudo)
   const [periodoPainel, setPeriodoPainel] = useState<'todos' | '7d' | '30d' | 'custom'>('todos')
   const [periodoDe, setPeriodoDe] = useState('')
@@ -1261,7 +1263,7 @@ export default function TarefasPage() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-            {([['kanban', '⊞ Kanban'], ['lista', '☰ Lista'], ['gerencial', '📊 Painel']] as const).map(([v, lbl]) => (
+            {([['kanban', '⊞ Kanban'], ['lista', '☰ Lista'], ['gerencial', '📊 Painel'], ['rnc', '🚫 RNC']] as const).map(([v, lbl]) => (
               <button key={v} onClick={() => setView(v)}
                 style={{ padding: '8px 12px', border: 'none', cursor: 'pointer', fontSize: 13, background: view === v ? 'var(--bordo)' : 'var(--card)', color: view === v ? '#fff' : 'var(--text)' }}>
                 {lbl}
@@ -1277,8 +1279,10 @@ export default function TarefasPage() {
         </div>
       </div>
 
+      {view === 'rnc' && <RncView initialId={rncDoLink} />}
+
       {/* ── Métricas de gestão ── */}
-      {!loading && (
+      {!loading && view !== 'rnc' && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {[
             { lbl: 'Total', val: metricas.total, cor: '#6b7280' },
@@ -1296,7 +1300,7 @@ export default function TarefasPage() {
       )}
 
       {/* ── Filtros ── */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: view === 'rnc' ? 'none' : 'flex', gap: 8, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
           <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar tarefa ou responsável..."
