@@ -530,7 +530,15 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
   const buscarPC = async () => {
     if (busca.trim().length < 2) return
     setBuscando(true); setSemAchado(false)
-    try { const r = await buscarPedidos(busca); setAchados(r); setSemAchado(r.length === 0) } finally { setBuscando(false) }
+    try {
+      const r = await buscarPedidos(busca)
+      setSemAchado(r.length === 0)
+      // Achou um único pedido (ou o número digitado bate exato): já preenche tudo, sem exigir novo clique
+      const q = busca.trim().toLowerCase()
+      const exato = r.filter(p => String(p.numero || '').toLowerCase() === q)
+      const unico = r.length === 1 ? r[0] : exato.length === 1 ? exato[0] : null
+      if (unico) { setAchados([]); await escolherPC(unico) } else setAchados(r)
+    } finally { setBuscando(false) }
   }
   const escolherPC = async (p: any) => {
     setF((o: any) => ({ ...o, pedido_id: p.id || null, pedido_numero: p.numero || (p.chave ? String(p.chave).replace(/^pedido_/, '') : ''), fornecedor: p.fornecedor || o.fornecedor, loja: lojasOk.includes(p.loja) ? p.loja : o.loja }))
@@ -907,7 +915,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
     } catch (e: any) { alert('Falha ao criar tarefa: ' + (e?.message || e)) } finally { setBusy(false) }
   }
 
-  const ABAS = [['resumo', 'Resumo'], ['recebimento', 'Recebimento'], ['desvio', 'Desvio'], ['evidencias', `Evidências (${evids.length})`], ['tratativa', 'Tratativa'], ['fornecedor', 'Fornecedor/Compras'], ['causa', 'Causa'], ['acoes', `Ações (${ids.length})`], ['devolucao', 'Devolução'], ['encerramento', 'Encerramento'], ['historico', `Histórico (${hist.length})`]]
+  const ABAS = [['resumo', 'Resumo'], ['recebimento', 'Recebimento'], ['desvio', 'Desvio'], ['evidencias', `Evidências (${evids.length})`], ['tratativa', 'Tratativa'], ['fornecedor', 'Fornecedor/Compras'], ['causa', 'Causa'], ['acoes', `Ações (${ids.length})`], ['devolucao', 'Devolução'], ['encerramento', '✅ Encerramento / Fechamento'], ['historico', `Histórico (${hist.length})`]]
   const proximos = STATUS.filter(s => s.id !== r.status && s.id !== 'encerrada')
 
   return (
