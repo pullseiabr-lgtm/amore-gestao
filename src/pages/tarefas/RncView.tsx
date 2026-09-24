@@ -31,7 +31,7 @@ const STATUS: { id: string; label: string; emoji: string; cor: string }[] = [
   { id: 'encerrada', label: 'Encerrada', emoji: '⚫', cor: '#374151' },
 ]
 const EVID_TIPOS = ['Foto do produto', 'Foto da embalagem', 'Foto da etiqueta/lote', 'Nota Fiscal', 'Pedido de Compra', 'Documento complementar']
-const AREAS = ['Compras', 'Recebimento', 'Estoque', 'Cozinha', 'Produção', 'Financeiro', 'Administrativo', 'Operação', 'Qualidade', 'Diretoria', 'Geral']
+const AREAS = ['Compras', 'Recebimento', 'Estoque', 'Cozinha', 'Salão', 'Atendimento', 'Gerência', 'Manutenção', 'Produção', 'Financeiro', 'Administrativo', 'Operação', 'Qualidade', 'Diretoria', 'Geral']
 const RESULTADOS = [{ id: 'resolvido', label: 'Resolvido' }, { id: 'parcial', label: 'Resolvido parcialmente' }, { id: 'nao_resolvido', label: 'Não resolvido' }]
 
 const LABELS: Record<string, string> = {
@@ -61,6 +61,16 @@ const usuariosDoSetor = (profiles: any[], setor: string) => profiles
   .filter(p => (p.name || '').trim() && (!setor || setorDe(p).toLowerCase() === setor.toLowerCase()))
   .map(p => ({ nome: (p.name as string).trim(), fone: foneOk(p) }))
   .sort((a, b) => a.nome.localeCompare(b.nome))
+
+// Todos os usuários cadastrados, independente de setor (os do setor escolhido aparecem primeiro)
+const todosUsuarios = (profiles: any[], setor: string) => {
+  const doSetor = (u: { setor: string }) => Number(!!setor && u.setor.toLowerCase() === setor.toLowerCase())
+  return profiles
+    .filter(p => (p.name || '').trim())
+    .map(p => ({ nome: (p.name as string).trim(), fone: foneOk(p), setor: setorDe(p) }))
+    .sort((a, b) => (doSetor(b) - doSetor(a)) || a.nome.localeCompare(b.nome))
+}
+const rotuloUsuario = (u: { nome: string; fone: boolean; setor: string }) => `${u.nome}${u.setor ? ' · ' + u.setor : ''}${u.fone ? '' : ' (sem WhatsApp)'}`
 
 // ── Helpers ──────────────────────────────────────────────────
 const hoje0 = () => new Date(new Date().toDateString()).getTime()
@@ -563,7 +573,8 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
     if (!f.tipos.length) { alert('Marque ao menos um tipo de ocorrência.'); return }
     if (!f.desvio_txt.trim()) { alert('Descreva o desvio.'); return }
     if (!f.tratativa_obs.trim()) { alert('A observação da tratativa é obrigatória.'); return }
-    if (!f.responsavel_area || !f.responsavel) { alert('Direcione a RNC: escolha o setor e o usuário que vai tratar.'); return }
+    if (!f.responsavel) { alert('Direcione a RNC: escolha o usuário que vai receber e tratar.'); return }
+    if (!f.responsavel_area) f.responsavel_area = todosUsuarios(profiles, '').find(u => u.nome === f.responsavel)?.setor || 'Geral'
     setSalvando(true)
     try {
       const num = (k: string) => f[k] === '' || f[k] == null ? null : Number(String(f[k]).replace(',', '.'))
@@ -694,23 +705,15 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
 
         {sec('7 · DIRECIONAMENTO — setor + usuário cadastrado (dispara WhatsApp)')}
         <div style={grid2}>
-          <div><label style={lbl}>Setor competente *</label><select style={inp} value={f.responsavel_area} onChange={e => { set('responsavel_area', e.target.value); set('responsavel', '') }}><option value="">Selecionar…</option>{listaSetores(profiles).map(a => <option key={a}>{a}</option>)}</select></div>
-          <div><label style={lbl}>Usuário responsável *</label>
-            <select style={inp} value={f.responsavel} onChange={e => set('responsavel', e.target.value)}>
-              <option value="">{f.responsavel_area ? 'Selecionar usuário…' : 'Escolha o setor primeiro'}</option>
-              {(f.responsavel_area ? usuariosDoSetor(profiles, f.responsavel_area) : []).map(u => <option key={u.nome} value={u.nome}>{u.nome}{u.fone ? '' : ' (sem WhatsApp)'}</option>)}
+          <div><label style={lbl}>Setor competente</label><select style={inp} value={f.responsavel_area} onChange={e => set('responsavel_area', e.target.value)}><option value="">Selecionar…</option>{listaSetores(profiles).map(a => <option key={a}>{a}</option>)}</select></div>
+          <div><label style={lbl}>Disparar para (usuário cadastrado) *</label>
+            <select style={inp} value={f.responsavel} onChange={e => { const u = todosUsuarios(profiles, '').find(x => x.nome === e.target.value); setF((o: any) => ({ ...o, responsavel: e.target.value, responsavel_area: o.responsavel_area || u?.setor || '' })) }}>
+              <option value="">Selecionar usuário…</option>
+              {todosUsuarios(profiles, f.responsavel_area).map(u => <option key={u.nome} value={u.nome}>{rotuloUsuario(u)}</option>)}
             </select>
-            {f.responsavel_area && usuariosDoSetor(profiles, f.responsavel_area).length === 0 && (
-              <div style={{ fontSize: 11, color: '#b45309', marginTop: 3 }}>Nenhum usuário cadastrado neste setor. <button onClick={() => set('mostrarTodos', true)} style={{ border: 'none', background: 'none', color: 'var(--bordo)', cursor: 'pointer', textDecoration: 'underline', fontSize: 11 }}>ver todos os usuários</button></div>
-            )}
           </div>
         </div>
         <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>⏱ O prazo de tratativa é de <b>{PRAZO_DIAS_UTEIS} dias úteis</b>, contados a partir da ciência do responsável.</div>
-        {f.mostrarTodos && (
-          <div style={{ marginTop: 6 }}><label style={lbl}>Todos os usuários</label>
-            <select style={inp} value={f.responsavel} onChange={e => set('responsavel', e.target.value)}><option value="">Selecionar…</option>{usuariosDoSetor(profiles, '').map(u => <option key={u.nome} value={u.nome}>{u.nome}{u.fone ? '' : ' (sem WhatsApp)'}</option>)}</select>
-          </div>
-        )}
         <label style={{ fontSize: 12.5, display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }}><input type="checkbox" checked={!!f.avisarSetor} onChange={e => set('avisarSetor', e.target.checked)} /> Avisar também os outros usuários do setor</label>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
@@ -936,6 +939,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
           {r.status !== 'encerrada' && (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>Mover para:</span>
+              <button onClick={() => setAba('encerramento')} style={{ padding: '3px 9px', borderRadius: 20, border: '1px solid #374151', background: '#374151', color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>✅ Encerrar / Fechamento</button>
               {proximos.map(s => <button key={s.id} onClick={() => mudarStatus(s.id)} disabled={busy} style={{ padding: '3px 9px', borderRadius: 20, border: `1px solid ${s.cor}`, background: 'transparent', color: s.cor, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>{s.emoji} {s.label}</button>)}
             </div>
           )}
@@ -966,10 +970,10 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
                 ⏱ <b>{diasAberto(r)}</b> dia(s) em aberto · {r.prazo ? (atraso > 0 ? <span style={{ color: '#dc2626', fontWeight: 700 }}>{atraso} dia(s) em atraso</span> : rest != null && !encerradaOuResolvida(r) ? <span><b>{rest}</b> dia(s) restantes (prazo {fmtD(r.prazo)})</span> : `prazo ${fmtD(r.prazo)}`) : 'sem prazo'}
               </div>
               <div style={grid}>
-                <div><label style={lbl}>Setor competente</label><select style={inp} value={ed.responsavel_area ?? ''} onChange={e => setEd((o: any) => ({ ...o, responsavel_area: e.target.value, responsavel: '' }))}><option value="">—</option>{listaSetores(profiles).map(a => <option key={a}>{a}</option>)}</select></div>
-                <div><label style={lbl}>Usuário responsável</label><select style={inp} value={ed.responsavel ?? ''} onChange={e => setEd((o: any) => ({ ...o, responsavel: e.target.value }))}>
+                <div><label style={lbl}>Setor competente</label><select style={inp} value={ed.responsavel_area ?? ''} onChange={e => setEd((o: any) => ({ ...o, responsavel_area: e.target.value }))}><option value="">—</option>{listaSetores(profiles).map(a => <option key={a}>{a}</option>)}</select></div>
+                <div><label style={lbl}>Usuário responsável (todos os cadastrados)</label><select style={inp} value={ed.responsavel ?? ''} onChange={e => setEd((o: any) => ({ ...o, responsavel: e.target.value }))}>
                   <option value="">—</option>
-                  {(usuariosDoSetor(profiles, ed.responsavel_area || '').length ? usuariosDoSetor(profiles, ed.responsavel_area || '') : usuariosDoSetor(profiles, '')).map(u => <option key={u.nome} value={u.nome}>{u.nome}{u.fone ? '' : ' (sem WhatsApp)'}</option>)}
+                  {todosUsuarios(profiles, ed.responsavel_area || '').map(u => <option key={u.nome} value={u.nome}>{rotuloUsuario(u)}</option>)}
                 </select></div>
                 {F('prazo', 'Data limite', 'date')}
                 {S('categoria', 'Categoria', CATEGORIAS)}
