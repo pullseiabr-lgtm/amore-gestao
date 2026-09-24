@@ -115,7 +115,7 @@ async function buscarPedidos(q: string) {
   for (const r of (leg.data || [])) {
     if (chaves.has(r.chave)) continue
     const v = r.valor || {}
-    out.push({ id: null, chave: r.chave, numero: v.numero_pedido || null, fornecedor: v.fornecedor, loja: v.loja, total: v.total, data: v.data || String(v.em || '').slice(0, 10) })
+    out.push({ id: null, chave: r.chave, numero: v.numero_pedido || null, fornecedor: v.fornecedor, loja: v.loja, total: v.total, data: normData(v.data) || String(v.em || '').slice(0, 10) })
   }
   return out.sort((a, b) => String(b.data || '').localeCompare(String(a.data || ''))).slice(0, 20)
 }
@@ -137,15 +137,35 @@ async function carregarPC(p: { id?: string | null; chave?: string | null; numero
   const ref = chave ? chave.replace(/^pedido_/, '') : ''
   const filtros = [numero && !String(numero).includes(',') ? `pedido_numero.eq.${numero}` : '', ref ? `pedido_ref.eq.${ref}` : ''].filter(Boolean).join(',')
   const ent = filtros ? ((await sb.from('entregas_agendadas').select('data_prevista,chegada_em,recebido_por,status').or(filtros).limit(1)).data || [])[0] || null : null
-  const dataEntrega = (ent?.chegada_em ? String(ent.chegada_em).slice(0, 10) : null) || ent?.data_prevista || blob.janela_entrega || blob.data || null
+  const dataEntrega = normData(ent?.chegada_em) || normData(ent?.data_prevista) || normData(blob.janela_entrega) || normData(blob.data) || null
   const totalItens = itens.reduce((s: number, it: any) => s + (it.preco != null ? it.preco * it.qtd : 0), 0)
   return {
     numero, chave, fornecedor: cab?.fornecedor || blob.fornecedor || null, loja: cab?.loja || blob.loja || null,
-    data_pedido: blob.data || (cab?.created_at ? String(cab.created_at).slice(0, 10) : null), data_entrega: dataEntrega, horario_recebimento: blob.horario_recebimento || null,
+    data_pedido: normData(blob.data) || (cab?.created_at ? String(cab.created_at).slice(0, 10) : null), data_entrega: dataEntrega, horario_recebimento: blob.horario_recebimento || null,
     recebedor: ent?.recebido_por || blob.recebimento_responsavel || null, pagamento: blob.pagamento || null, criado_por: cab?.criado_por || blob.created_by || null,
     total: Number(cab?.total ?? blob.total ?? totalItens) || totalItens, frete: blob.frete != null ? Number(blob.frete) : null, obs: cab?.observacoes || blob.obs || null,
     status: blob.status || cab?.status || null, requisicao_numero: blob.requisicao_numero || null, itens,
   }
+}
+
+// ── Datas sempre em dia/mês/ano (o <input type=date> do navegador segue o idioma do Windows/Chrome) ──
+const normData = (v: any): string | null => {
+  const t = String(v ?? '').trim(); if (!t) return null
+  let m = t.match(/^(d{4})-(d{2})-(d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`
+  m = t.match(/^(d{1,2})[/.-](d{1,2})[/.-](d{4})/); if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+  return null
+}
+const isoParaBR = (v: any) => { const n = normData(v); return n ? `${n.slice(8, 10)}/${n.slice(5, 7)}/${n.slice(0, 4)}` : '' }
+function DataBR({ value, onChange, style }: { value: any; onChange: (iso: string) => void; style?: CSSProperties }) {
+  const [t, setT] = useState(isoParaBR(value))
+  useEffect(() => { setT(isoParaBR(value)) }, [value])
+  return <input inputMode="numeric" placeholder="dd/mm/aaaa" maxLength={10} style={style} value={t} onChange={e => {
+    const d = e.target.value.replace(/D/g, '').slice(0, 8)
+    const mask = d.length > 4 ? `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}` : d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d
+    setT(mask)
+    if (!d) onChange('')
+    else if (d.length === 8) { const iso = normData(mask); const dt = iso ? new Date(iso + 'T00:00:00') : null; if (iso && dt && !isNaN(dt.getTime()) && dt.toISOString().slice(0, 10) === iso) onChange(iso) }
+  }} />
 }
 
 // Miniaturas clicáveis: imagem abre em tela cheia, PDF/outros abrem em nova aba
@@ -418,8 +438,8 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
         <div><label style={lbl}>Responsável</label><select style={inp} value={f.responsavel} onChange={e => setFiltro({ responsavel: e.target.value })}><option value="">Todos</option>{Array.from(new Set(rncs.map(r => r.responsavel).filter(Boolean))).sort().map((x: any) => <option key={x}>{x}</option>)}</select></div>
         <div><label style={lbl}>Categoria</label><select style={inp} value={f.categoria} onChange={e => setFiltro({ categoria: e.target.value })}><option value="">Todas</option>{CATEGORIAS.map(c => <option key={c}>{c}</option>)}</select></div>
         <div><label style={lbl}>Tipo</label><select style={inp} value={f.tipo} onChange={e => setFiltro({ tipo: e.target.value })}><option value="">Todos</option>{TIPOS.map(c => <option key={c}>{c}</option>)}</select></div>
-        <div><label style={lbl}>De</label><input type="date" style={inp} value={f.de} onChange={e => setFiltro({ de: e.target.value })} /></div>
-        <div><label style={lbl}>Até</label><input type="date" style={inp} value={f.ate} onChange={e => setFiltro({ ate: e.target.value })} /></div>
+        <div><label style={lbl}>De</label><DataBR style={inp} value={f.de} onChange={v => setFiltro({ de: v })} /></div>
+        <div><label style={lbl}>Até</label><DataBR style={inp} value={f.ate} onChange={v => setFiltro({ ate: v })} /></div>
         <label style={{ fontSize: 12, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.atrasadas} onChange={e => setFiltro({ atrasadas: e.target.checked })} /> Atrasadas</label>
         <label style={{ fontSize: 12, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.comDevolucao} onChange={e => setFiltro({ comDevolucao: e.target.checked })} /> Com devolução</label>
         {(filtroAtivo || f.unidade || f.fornecedor || f.responsavel || f.categoria || f.tipo || f.de || f.ate || f.busca) && (
@@ -559,7 +579,7 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
       setPcSnap(snap)
       const lista = snap.itens.map((it: any, i: number) => ({ id: i, produto_nome: it.produto, unidade: it.un, qtd_pedida: it.qtd, preco: it.preco }))
       setItens(lista)
-      setF((o: any) => ({ ...o, pedido_numero: snap.numero || o.pedido_numero, fornecedor: snap.fornecedor || o.fornecedor, data_recebimento: snap.data_entrega || o.data_recebimento, recebedor: snap.recebedor || o.recebedor, nf_numero: o.nf_numero }))
+      setF((o: any) => ({ ...o, pedido_numero: snap.numero || o.pedido_numero, fornecedor: snap.fornecedor || o.fornecedor, data_recebimento: normData(snap.data_entrega) || o.data_recebimento, recebedor: snap.recebedor || o.recebedor, nf_numero: o.nf_numero }))
       if (lista.length === 1) escolherItem(lista[0])
     } catch (e) { console.error(e); alert('Não consegui carregar os dados do pedido.') }
   }
@@ -584,14 +604,14 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
       const num = (k: string) => f[k] === '' || f[k] == null ? null : Number(String(f[k]).replace(',', '.'))
       const row: any = {
         loja: f.loja, setor: f.setor || null, centro_custo: f.centro_custo || null, tipos: f.tipos, categoria: f.categoria, gravidade: f.gravidade, status: 'aberta',
-        pedido_id: f.pedido_id, pedido_numero: f.pedido_numero || null, fornecedor: f.fornecedor || null, nf_numero: f.nf_numero || null, nf_data: f.nf_data || null,
-        data_recebimento: f.data_recebimento || null, local_recebimento: f.local_recebimento || null, recebedor: f.recebedor || null, transportadora: f.transportadora || null,
+        pedido_id: f.pedido_id, pedido_numero: f.pedido_numero || null, fornecedor: f.fornecedor || null, nf_numero: f.nf_numero || null, nf_data: normData(f.nf_data),
+        data_recebimento: normData(f.data_recebimento), local_recebimento: f.local_recebimento || null, recebedor: f.recebedor || null, transportadora: f.transportadora || null,
         produto: f.produto || null, lote: f.lote || null, unidade: f.unidade || null, qtd_solicitada: num('qtd_solicitada'), qtd_recebida: num('qtd_recebida'), valor_produto: num('valor_produto'),
         valor_total_afetado: num('valor_produto'),
         solicitado_txt: f.solicitado_txt || (f.qtd_solicitada ? `${f.qtd_solicitada} ${f.unidade} — ${f.produto}` : null), recebido_txt: f.recebido_txt || (f.qtd_recebida ? `${f.qtd_recebida} ${f.unidade} — ${f.produto}` : null),
         desvio_txt: f.desvio_txt.trim(), tratativas: f.tratativas, tratativa_obs: f.tratativa_obs.trim(), acao_imediata: f.tratativa_obs.trim(), acao_corretiva: f.acao_corretiva.trim() || null, acao_preventiva: f.acao_preventiva.trim() || null,
         responsavel: f.responsavel, responsavel_area: f.responsavel_area || null, prazo: null, aberto_por: userName,
-        data_entrega: pcSnap?.data_entrega || null, pedido_snapshot: pcSnap || null,
+        data_entrega: normData(pcSnap?.data_entrega), pedido_snapshot: pcSnap || null,
       }
       const { data: nova, error } = await sb.from('rnc').insert(row).select('id, numero').single()
       if (error || !nova) { setErros(['Falha ao gravar a RNC: ' + (error?.message || 'sem resposta do servidor')]); return }
@@ -624,7 +644,7 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
 
   const bad = (t: string) => erros.some(e => e.startsWith(t)) ? { border: '2px solid #dc2626', background: '#fef2f2' } : {}
   const sec = (t: string) => <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--bordo)', margin: '14px 0 8px', borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>{t}</div>
-  const F = (k: string, label: string, type = 'text', ph = '') => <div><label style={lbl}>{label}</label><input type={type} style={inp} value={f[k] ?? ''} onChange={e => set(k, e.target.value)} placeholder={ph} /></div>
+  const F = (k: string, label: string, type = 'text', ph = '') => type === 'date' ? <div><label style={lbl}>{label}</label><DataBR style={inp} value={f[k]} onChange={v => set(k, v)} /></div> : <div><label style={lbl}>{label}</label><input type={type} style={inp} value={f[k] ?? ''} onChange={e => set(k, e.target.value)} placeholder={ph} /></div>
   const grid2: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }
 
   return (
@@ -787,7 +807,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
     if (!ok) alert(`${nome} não tem WhatsApp cadastrado — avise por outro canal.`)
   }
 
-  const F = (k: string, label: string, type = 'text') => <div><label style={lbl}>{label}</label><input type={type} style={inp} value={ed[k] ?? ''} onChange={e => setEd((o: any) => ({ ...o, [k]: e.target.value }))} /></div>
+  const F = (k: string, label: string, type = 'text') => type === 'date' ? <div><label style={lbl}>{label}</label><DataBR style={inp} value={ed[k]} onChange={v => setEd((o: any) => ({ ...o, [k]: v }))} /></div> : <div><label style={lbl}>{label}</label><input type={type} style={inp} value={ed[k] ?? ''} onChange={e => setEd((o: any) => ({ ...o, [k]: e.target.value }))} /></div>
   const T = (k: string, label: string, rows = 3, ph = '') => <div><label style={lbl}>{label}</label><textarea style={{ ...inp, resize: 'vertical' }} rows={rows} placeholder={ph} value={ed[k] ?? ''} onChange={e => setEd((o: any) => ({ ...o, [k]: e.target.value }))} /></div>
   const S = (k: string, label: string, opts: string[]) => <div><label style={lbl}>{label}</label><select style={inp} value={ed[k] ?? ''} onChange={e => setEd((o: any) => ({ ...o, [k]: e.target.value }))}><option value="">—</option>{opts.map(o => <option key={o}>{o}</option>)}</select></div>
   const grid: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }
@@ -1116,7 +1136,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
                 <div style={grid}>
                   <select style={inp} value={ac.tipo} onChange={e => setAc(a => ({ ...a, tipo: e.target.value }))}><option>Corretiva</option><option>Preventiva</option></select>
                   <select style={inp} value={ac.responsavel} onChange={e => setAc(a => ({ ...a, responsavel: e.target.value }))}><option value="">Responsável…</option>{responsaveis.map((n: string) => <option key={n}>{n}</option>)}</select>
-                  <input type="date" style={inp} value={ac.prazo} onChange={e => setAc(a => ({ ...a, prazo: e.target.value }))} />
+                  <DataBR style={inp} value={ac.prazo} onChange={v => setAc(a => ({ ...a, prazo: v }))} />
                 </div>
                 <button onClick={enviarTarefa} disabled={busy} style={btn('#166534', busy)}>Enviar para Central de Tarefas</button>
               </div>
@@ -1199,7 +1219,7 @@ function DevolucaoForm({ r, busy, onSave }: { r: any; busy: boolean; onSave: (d:
   useEffect(() => { setD(r.devolucao || { produto: r.produto || '', lote: r.lote || '' }) }, [r.devolucao, r.produto, r.lote])
   const [on, setOn] = useState(habilitada)
   const set = (k: string, v: any) => setD((o: any) => ({ ...o, [k]: v }))
-  const fld = (k: string, label: string, type = 'text') => <div><label style={lbl}>{label}</label><input type={type} style={inp} value={d[k] ?? ''} onChange={e => set(k, e.target.value)} /></div>
+  const fld = (k: string, label: string, type = 'text') => type === 'date' ? <div><label style={lbl}>{label}</label><DataBR style={inp} value={d[k]} onChange={v => set(k, v)} /></div> : <div><label style={lbl}>{label}</label><input type={type} style={inp} value={d[k] ?? ''} onChange={e => set(k, e.target.value)} /></div>
   if (!on) return <div style={{ ...card, fontSize: 12.5 }}>Esta RNC não tem devolução. <button onClick={() => setOn(true)} style={{ ...btn('#7c3aed'), marginLeft: 8 }}>↩️ Registrar devolução</button></div>
   return (
     <>
