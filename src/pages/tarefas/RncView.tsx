@@ -882,10 +882,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
     if (r.aberto_por && r.aberto_por !== userName) await notificar(r.aberto_por, `👁️ *Ciência da ${r.numero}*\n${userName} tomou ciência e tem até ${fmtD(prazoNovo)} (${PRAZO_DIAS_UTEIS} dias úteis) para tratar.\n\n${link}\n_Amore Gestão_`, `RNC ${r.numero}`, r.id)
   }
   const encerrar = async () => {
-    if (!tudoOk) { alert('Não é possível encerrar — falta:
-
-' + checks.filter(c => !c.ok).map(c => '• ' + c.txt).join('
-')); return }
+    if (!tudoOk) { alert('Não é possível encerrar — falta:\n\n' + checks.filter(c => !c.ok).map(c => '• ' + c.txt).join('\n')); return }
     const agora = new Date().toISOString()
     await salvar({ status: 'encerrada', encerrado_por: userName, encerrado_em: agora, fechamento_disparo_em: agora }, 'RNC encerrada', async () => {
       // Disparo de fechamento: quem abriu, responsável, quem recebeu e usuários do setor Compras
