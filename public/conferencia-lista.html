@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Conferência de Compra — Amore</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--v:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--okbg:#DCFCE7;--bad:#B91C1C;--badbg:#FEE2E2;--warn:#B45309;--shadow:0 1px 2px rgba(80,20,25,.05),0 8px 24px -12px rgba(80,20,25,.12)}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c;--okbg:#0f2a18;--badbg:#340f10}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:var(--text);padding:14px;line-height:1.45;font-variant-numeric:tabular-nums}
+.wrap{max-width:1000px;margin:0 auto}
+.top{border-bottom:2px solid var(--v);padding-bottom:12px;margin-bottom:14px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--v);font-weight:700}
+h1{font-size:21px;margin-top:4px}.sub{color:var(--muted);font-size:13px;margin-top:3px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:14px 0 18px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:11px 13px;box-shadow:var(--shadow)}
+.kpi .kn{font-size:21px;font-weight:800}.kpi .kl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-top:2px}
+.kpi.ok .kn{color:var(--ok)}.kpi.bad .kn{color:var(--bad)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px;box-shadow:var(--shadow)}
+.rhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.rhead b{font-size:14.5px}.rhead .meta{font-size:12px;color:var(--muted)}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:520px}
+thead th{text-align:left;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:7px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody td{padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+.qt{text-align:right;white-space:nowrap;font-weight:700;width:60px}.un{color:var(--muted);white-space:nowrap;width:44px}.prod{font-weight:600}
+.obs{font-size:11.5px;color:var(--warn);font-weight:500}
+.st{display:flex;gap:4px;flex-wrap:nowrap}
+.stbtn{border:1px solid var(--border);background:var(--card);color:var(--muted);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit}
+.stbtn.on-comprado{background:var(--okbg);border-color:var(--ok);color:var(--ok)}
+.stbtn.on-nao{background:var(--badbg);border-color:var(--bad);color:var(--bad)}
+.obsin{width:100%;min-width:110px;border:1px solid var(--border);border-radius:7px;padding:5px 7px;font:inherit;font-size:12px;background:var(--bg);color:var(--text)}
+.msg{text-align:center;padding:60px 20px;color:var(--muted)}
+.foot{margin-top:20px;color:var(--muted);font-size:12px;text-align:center}
+.savetag{font-size:10.5px;color:var(--ok);margin-left:6px;opacity:0;transition:opacity .3s}
+.savetag.show{opacity:1}
+@media(max-width:640px){
+  table{min-width:0}thead{display:none}
+  tbody tr{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px 10px;border-bottom:1px solid var(--border);padding:9px 0}
+  td{padding:0;border:none}td.prod{flex:1 1 100%;order:1}td.qt{order:2}td.un{order:3;width:auto}td.st{order:4;flex:1 1 100%}td.obscell{order:5;flex:1 1 100%}
+}
+@media print{.stbtn,.obsin{border:none}body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Carregando conferência…</div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+const q=new URLSearchParams(location.search);
+const LOJA=(q.get('loja')||'').trim();
+const DE=(q.get('de')||'').trim();
+const ATE=(q.get('ate')||'').trim();
+const g=async p=>{try{return await (await fetch(SB+'/rest/v1/'+p,{headers:H})).json()}catch(e){return []}};
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const nf=v=>Number.isInteger(v)?String(v):(Math.round(v*100)/100).toLocaleString('pt-BR');
+const un=u=>({'Unidade(s)':'un','Quilograma(s)':'kg','Caixa(s)':'cx','Pacote(s)':'pct','Litro(s)':'L','Grama(s)':'g'}[u]||u||'');
+const dDMY=s=>{if(!s)return '';const p=String(s).slice(0,10).split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s};
+const LOGO_FLOW='<svg viewBox="0 0 300 60" xmlns="http://www.w3.org/2000/svg" style="height:24px;width:auto" role="img" aria-label="Flow"><text x="0" y="46" font-family="system-ui,Segoe UI,sans-serif" font-weight="800" font-size="50" letter-spacing="-2" fill="#2E7D34">FLO</text><path d="M118 12 C142 12 134 46 158 46 C182 46 174 12 198 12 C222 12 214 46 238 46 C262 46 266 14 278 14" fill="none" stroke="#2E7D34" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+function pintaKpis(itens){
+  const comprados=itens.filter(i=>i.comprado===true).length;
+  const nao=itens.filter(i=>i.comprado===false).length;
+  const pend=itens.length-comprados-nao;
+  document.getElementById('kpis').innerHTML=
+    `<div class="kpi"><div class="kn">${itens.length}</div><div class="kl">Itens no período</div></div>`+
+    `<div class="kpi ok"><div class="kn">${comprados}</div><div class="kl">Comprados</div></div>`+
+    `<div class="kpi bad"><div class="kn">${nao}</div><div class="kl">Não comprados</div></div>`+
+    `<div class="kpi"><div class="kn">${pend}</div><div class="kl">Pendentes</div></div>`;
+}
+
+async function salvarItem(id, patch, tagEl){
+  try{
+    await fetch(SB+'/rest/v1/requisicao_itens?id=eq.'+id,{method:'PATCH',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify(patch)});
+    if(tagEl){tagEl.classList.add('show');setTimeout(()=>tagEl.classList.remove('show'),1200);}
+  }catch(e){ alert('Não foi possível salvar. Confira sua internet e tente de novo.'); }
+}
+
+function cicloEstado(atual){ return atual===null?true:(atual===true?false:null); }
+function labelEstado(v){ return v===true?'✅ Comprado':(v===false?'❌ Não comprado':'❔ Marcar'); }
+function classeEstado(v){ return v===true?'on-comprado':(v===false?'on-nao':''); }
+
+async function run(){
+  if(!LOJA){document.getElementById('app').innerHTML='<div class="msg">Informe a loja na URL (?loja=...).</div>';return;}
+  const flow=/flow/i.test(LOJA);
+  if(flow) document.documentElement.style.setProperty('--v','#2E7D34');
+  const lojaLabel={'Amore CD':'Amore Costa Dourada','Amore Paiva':'Amore Paiva','Flow CD':'Flow Costa Dourada'}[LOJA]||LOJA;
+
+  let filtroData=`loja=eq.${encodeURIComponent(LOJA)}`;
+  if(DE) filtroData+=`&created_at=gte.${DE}T00:00:00`;
+  if(ATE){ const d=new Date(ATE+'T00:00:00'); d.setDate(d.getDate()+1); filtroData+=`&created_at=lt.${d.toISOString().slice(0,10)}T00:00:00`; }
+
+  const reqs=await g(`requisicoes?${filtroData}&select=id,numero,titulo,responsavel_nome,status,created_at&order=created_at.asc`);
+  if(!reqs.length){document.getElementById('app').innerHTML=`<div class="msg">Nenhuma requisição de <b>${esc(lojaLabel)}</b> encontrada no período.</div>`;return;}
+  const ids=reqs.map(r=>r.id);
+  const itens=await g(`requisicao_itens?requisicao_id=in.(${ids.join(',')})&select=id,requisicao_id,produto_nome,categoria,quantidade,unidade,observacoes,comprado,comprado_obs&order=produto_nome.asc`);
+  const porReq={}; itens.forEach(i=>{(porReq[i.requisicao_id]=porReq[i.requisicao_id]||[]).push(i);});
+
+  const periodoTxt=(DE&&ATE)?`${dDMY(DE)} a ${dDMY(ATE)}`:(DE?`desde ${dDMY(DE)}`:(ATE?`até ${dDMY(ATE)}`:'todo o período'));
+
+  document.getElementById('app').innerHTML=
+    `<header class="top"><div>`+
+      (flow?`<div style="margin-bottom:6px">${LOGO_FLOW}</div>`:'')+
+      `<div class="eyebrow">Conferência de Compra</div>`+
+      `<h1>${esc(lojaLabel)}</h1>`+
+      `<div class="sub">${reqs.length} requisições · ${periodoTxt} · marque o que foi comprado, o botão salva na hora</div>`+
+    `</div><button class="stbtn" style="padding:10px 16px" onclick="window.print()">🖨 Imprimir</button></header>`+
+    `<div class="kpis" id="kpis"></div>`+
+    `<div id="reqs"></div>`+
+    `<div class="foot">Conferência gerada no Painel ${flow?'Flow':'Amore'} · ${esc(lojaLabel)} · ${new Date().toLocaleString('pt-BR')}</div>`;
+
+  pintaKpis(itens);
+
+  const reqsEl=document.getElementById('reqs');
+  reqs.forEach(r=>{
+    const seus=(porReq[r.id]||[]).sort((a,b)=>a.produto_nome.localeCompare(b.produto_nome));
+    if(!seus.length) return;
+    const num='REQ-'+String(r.numero||0).padStart(4,'0');
+    const card=document.createElement('div'); card.className='card';
+    card.innerHTML=
+      `<div class="rhead"><b>${num} · ${esc(r.titulo||'Sem título')}</b>`+
+      `<span class="meta">${esc(r.responsavel_nome||'—')} · ${dDMY(r.created_at)}</span></div>`+
+      `<div class="tw"><table><thead><tr><th class="qt">Qtd</th><th>Un</th><th>Produto</th><th>Comprado?</th><th>Observação</th></tr></thead>`+
+      `<tbody>${seus.map(i=>`<tr data-id="${i.id}">`+
+        `<td class="qt">${nf(Number(i.quantidade)||0)}</td>`+
+        `<td class="un">${esc(un(i.unidade))}</td>`+
+        `<td class="prod">${esc(i.produto_nome)}${i.observacoes?`<div class="obs">${esc(i.observacoes)}</div>`:''}</td>`+
+        `<td class="st"><button type="button" class="stbtn ${classeEstado(i.comprado)}" data-v="${i.comprado===null?'':i.comprado}">${labelEstado(i.comprado)}</button><span class="savetag">salvo ✓</span></td>`+
+        `<td class="obscell"><input class="obsin" placeholder="ex.: troquei a marca" value="${esc(i.comprado_obs||'')}"></td>`+
+      `</tr>`).join('')}</tbody></table></div>`;
+    reqsEl.appendChild(card);
+  });
+
+  // Toggle de estado (indefinido → comprado → não comprado → indefinido), auto-salva
+  reqsEl.addEventListener('click', async e=>{
+    const btn=e.target.closest('.stbtn'); if(!btn) return;
+    const tr=btn.closest('tr'); const id=tr.dataset.id;
+    const atual=btn.dataset.v===''?null:(btn.dataset.v==='true');
+    const novo=cicloEstado(atual);
+    btn.dataset.v=novo===null?'':novo;
+    btn.className='stbtn '+classeEstado(novo);
+    btn.textContent=labelEstado(novo);
+    const item=itens.find(i=>i.id===id); if(item) item.comprado=novo;
+    pintaKpis(itens);
+    await salvarItem(id,{comprado:novo,comprado_em:new Date().toISOString()},btn.nextElementSibling);
+  });
+  // Observação: salva ao sair do campo
+  reqsEl.addEventListener('focusout', async e=>{
+    if(!e.target.classList.contains('obsin')) return;
+    const tr=e.target.closest('tr'); const id=tr.dataset.id;
+    await salvarItem(id,{comprado_obs:e.target.value||null},null);
+  });
+}
+run().catch(function(e){document.getElementById('app').innerHTML='<div class="msg">Erro ao carregar: '+esc(e&&e.message||e)+'</div>';});
+</script>
+</body>
+</html>
