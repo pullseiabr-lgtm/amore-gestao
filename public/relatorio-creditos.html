@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Relatório de Crédito e Prestação de Contas — Amore</title>
+<style>
+:root{--vinho:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--bad:#B91C1C;--shadow:0 1px 2px rgba(80,20,25,.05),0 8px 24px -12px rgba(80,20,25,.12)}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6)}}
+body.flow{--vinho:#2E7D34}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5;font-variant-numeric:tabular-nums}
+.wrap{max-width:1120px;margin:0 auto;padding:22px 16px 60px}
+header.top{border-bottom:2px solid var(--vinho);padding-bottom:12px;margin-bottom:12px}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
+h1{font-size:22px;margin:6px 0 4px}.sub{color:var(--muted);font-size:13.5px}
+h2{font-size:16px;margin:26px 0 10px;color:var(--vinho)}h2 .h2s{font-size:12px;font-weight:500;color:var(--muted)}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:13px;box-shadow:var(--shadow);padding:14px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.chip{border:1px solid var(--border);background:var(--card);color:var(--muted);border-radius:20px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.chip.on{background:var(--vinho);color:#fff;border-color:var(--vinho)}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
+.fgrid label{display:flex;flex-direction:column;gap:3px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+select,input[type=date],input[type=text],input[type=tel]{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:10px;padding:9px 10px;font-size:13px;font-weight:600;width:100%}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.btn{border:1px solid var(--vinho);background:var(--vinho);color:#fff;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.btn.alt{background:var(--card);color:var(--vinho)}.btn.wa{background:#15803D;border-color:#15803D}
+.btn[disabled]{opacity:.55;cursor:wait}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:11px;margin:14px 0}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:12px 14px;box-shadow:var(--shadow);border-left:4px solid var(--vinho)}
+.kpi.ok{border-left-color:var(--ok)}.kpi.warn{border-left-color:var(--warn)}.kpi.bad{border-left-color:var(--bad)}.kpi.log{border-left-color:#7C3AED}
+.kpi .kn{font-size:20px;font-weight:800}.kpi .kl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-top:2px}.kpi .ks{font-size:11.5px;color:var(--muted)}
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:13px;box-shadow:var(--shadow);background:var(--card)}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
+thead th{text-align:left;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:9px 11px;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody td,tfoot td{padding:8px 11px;border-bottom:1px solid var(--border);vertical-align:top}
+tfoot td{font-weight:800;background:color-mix(in srgb,var(--vinho) 5%,var(--card))}
+.num{text-align:right;white-space:nowrap}.mut{color:var(--muted)}a{color:var(--vinho);font-weight:700}
+.badge{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;background:#f1eef0;color:#6f656a}
+.badge.ok{background:#DCFCE7;color:#15803D}.badge.bad{background:#FEE2E2;color:#B91C1C}.badge.warn{background:#FEF3C7;color:#B45309}.badge.info{background:#E0F2FE;color:#0369A1}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.two>div,.aud>div{min-width:0}@media(max-width:760px){.two{grid-template-columns:1fr}}
+.aud{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:12px}
+.aud .panel h3{margin:0 0 6px;font-size:13.5px;display:flex;justify-content:space-between;gap:8px}
+.aud ul{list-style:none;margin:0;padding:0;font-size:12.5px}.aud li{padding:4px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:10px}.aud li:last-child{border:none}
+.msg{padding:50px 0;text-align:center;color:var(--muted)}
+.modal{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center;padding:14px;z-index:50}.modal.on{display:flex}
+.mbox{background:var(--card);border-radius:14px;padding:18px;width:100%;max-width:460px;max-height:92vh;overflow:auto}
+.mbox h3{margin:0 0 4px;color:var(--vinho)}.mbox .rc{display:flex;gap:8px;align-items:center;padding:6px 0;font-size:14px}
+.note{font-size:11.5px;color:var(--muted);margin-top:6px}
+.foot{margin-top:30px;font-size:11.5px;color:var(--muted);text-align:center}
+@media print{.noprint{display:none!important}body{background:#fff}.tw,.kpi,.panel{box-shadow:none}.wrap{padding:0}h2{break-after:avoid}.tw{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow" id="eyebrow">Amore Gestão · Financeiro</div>
+    <h1>Relatório de Crédito e Prestação de Contas</h1>
+    <div class="sub" id="sub">Carregando…</div>
+  </header>
+
+  <div class="panel noprint" id="filtros">
+    <div class="chips" id="chips"></div>
+    <div class="fgrid">
+      <label>De<input type="date" id="f-de"></label>
+      <label>Até<input type="date" id="f-ate"></label>
+      <label>Período por
+        <select id="f-base"><option value="sol">Data da solicitação</option><option value="desp">Data da despesa</option></select></label>
+      <label>Loja<select id="f-loja"></select></label>
+      <label>Status<select id="f-status"></select></label>
+      <label>Finalidade<select id="f-fin"></select></label>
+      <label>Solicitante<select id="f-sol"></select></label>
+      <label>Categoria da despesa<select id="f-cat"></select></label>
+      <label>Fornecedor<select id="f-forn"></select></label>
+    </div>
+    <div class="actions">
+      <button class="btn alt" id="b-limpar">Limpar filtros</button>
+      <button class="btn alt" id="b-link">🔗 Copiar link</button>
+      <button class="btn alt" id="b-print">🖨️ Imprimir</button>
+      <button class="btn" id="b-pdf">⬇️ Baixar PDF</button>
+      <button class="btn wa" id="b-wa">📲 Enviar por WhatsApp</button>
+    </div>
+    <div class="note">O link guarda o período e os filtros escolhidos — quem abrir vê exatamente este relatório.</div>
+  </div>
+
+  <div id="app"><div class="msg">Consolidando créditos e prestações…</div></div>
+  <div class="foot">Amore Gestão · gerado em <span id="gerado"></span></div>
+</div>
+
+<div class="modal" id="m-wa"><div class="mbox">
+  <h3>📲 Enviar relatório por WhatsApp</h3>
+  <div class="note" id="wa-resumo"></div>
+  <div style="margin:12px 0 4px;font-weight:700;font-size:13px">Formato</div>
+  <label class="rc"><input type="radio" name="wa-fmt" value="pdf" checked> PDF do relatório (anexo)</label>
+  <label class="rc"><input type="radio" name="wa-fmt" value="link"> Somente o link do relatório</label>
+  <div style="margin:12px 0 4px;font-weight:700;font-size:13px">Destinatários</div>
+  <div id="wa-dest"></div>
+  <input type="tel" id="wa-outro" placeholder="Outro número com DDD (ex.: 81 99999-9999)" style="margin-top:8px">
+  <div class="note" id="wa-status"></div>
+  <div class="actions"><button class="btn alt" id="wa-cancel">Cancelar</button><button class="btn wa" id="wa-go">Enviar</button></div>
+</div></div>
+
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY};
+const SITE='https://painel.amorefood.com.br';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const dBR=s=>{if(!s)return '—';const p=String(s).slice(0,10).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:s};
+const norm=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const hojeD=new Date();const HOJE=ymd(hojeD);
+const addDias=(n)=>{const d=new Date(hojeD);d.setDate(d.getDate()+n);return ymd(d)};
+
+const STATUS={rascunho:'Rascunho',solicitado:'Solicitado',em_aprovacao:'Em aprovação',aprovado:'Aprovado',disponibilizado:'Disponibilizado',em_prestacao:'Em prestação',em_analise:'Em análise',prestacao_pendente:'Prestação pendente',divergencia:'Divergência',aguardando_devolucao:'Aguardando devolução',remanescente:'Remanescente',encerrado:'Encerrado',reprovado:'Reprovado',cancelado:'Cancelado',excluido:'Excluído'};
+const FIN={compras_semana:'Compras da semana',logistica:'Logística',servico:'Serviço',outras:'Outras',reembolso:'Reembolso'};
+const stLabel=s=>STATUS[s]||s||'—';
+const finLabel=s=>FIN[s]||s||'—';
+const stCls=s=>({encerrado:'ok',aprovado:'ok',disponibilizado:'info',em_prestacao:'info',em_analise:'warn',em_aprovacao:'warn',solicitado:'info',divergencia:'bad',reprovado:'bad',cancelado:'bad',excluido:'bad',prestacao_pendente:'bad'})[s]||'';
+
+let DB={cred:[],desp:[],mov:[],dest:[]};
+const F={de:'',ate:'',base:'sol',loja:'',status:'',fin:'',sol:'',cat:'',forn:''};
+let M=null; // modelo calculado
+
+// ── URL ↔ filtros ──
+const KEYS=['de','ate','base','loja','status','fin','sol','cat','forn'];
+function lerURL(){const q=new URLSearchParams(location.search);KEYS.forEach(k=>{if(q.has(k))F[k]=q.get(k)||''});
+  if(F.loja==='Amore Costa Dourada')F.loja='Amore CD';if(F.loja==='Flow Paiva')F.loja='Flow CD';
+  if(!q.has('de')&&!q.has('ate')&&!q.has('periodo')){F.de=addDias(-29);F.ate=HOJE}
+  if(q.get('periodo')==='tudo'){F.de='';F.ate=''}}
+function urlFiltros(){const q=new URLSearchParams();KEYS.forEach(k=>{if(F[k]&&!(k==='base'&&F[k]==='sol'))q.set(k,F[k])});if(!F.de&&!F.ate)q.set('periodo','tudo');return SITE+'/relatorio-creditos.html?'+q.toString()}
+function gravarURL(){try{history.replaceState(null,'',urlFiltros().replace(SITE,''))}catch(e){}}
+
+// ── carga ──
+async function get(path){const r=await fetch(SB+'/rest/v1/'+path,{headers:H});if(!r.ok)throw new Error(path+' '+r.status);return r.json()}
+async function carregar(){
+  const [cred,desp,mov,cfg]=await Promise.all([
+    get('creditos?select=*&order=numero.desc&limit=5000'),
+    get('credito_despesas?select=*&order=data.asc&limit=20000'),
+    get('credito_movimentos?select=*&limit=20000'),
+    get('app_config?chave=eq.credito_aprovadores&select=valor').catch(()=>[])]);
+  DB.cred=cred;DB.desp=desp;DB.mov=mov;DB.dest=(cfg[0]&&cfg[0].valor&&cfg[0].valor.lista)||[];
+}
+
+// ── classificação de logística ──
+function tipoLog(d,c){
+  const t=norm((d.categoria||'')+' '+(d.descricao||'')+' '+((c&&c.subcategoria)||''));
+  if(/pedagi/.test(t))return 'Pedágio';
+  if(/combust|gasolin|diesel|etanol|abasteci/.test(t))return 'Combustível';
+  if(/frete|entrega|motoboy|uber|transporte|carreto/.test(t))return 'Frete / transporte';
+  if(norm(d.categoria)==='logistica')return 'Outros (logística)';
+  return null;
+}
+
+// ── cálculo ──
+function calcular(){
+  const porCred={};DB.desp.forEach(d=>{(porCred[d.credito_id]=porCred[d.credito_id]||[]).push(d)});
+  const movPor={};DB.mov.forEach(m=>{(movPor[m.credito_id]=movPor[m.credito_id]||[]).push(m)});
+  const noPeriodo=(dt)=>(!F.de||String(dt||'').slice(0,10)>=F.de)&&(!F.ate||String(dt||'').slice(0,10)<=F.ate);
+  const despFiltroAtivo=!!(F.cat||F.forn)||F.base==='desp';
+  const dOk=d=>(!F.cat||d.categoria===F.cat)&&(!F.forn||d.fornecedor===F.forn)&&(F.base!=='desp'||noPeriodo(d.data));
+  const linhas=[];
+  DB.cred.forEach(c=>{
+    if(!F.status&&(c.status==='excluido'||c.status==='cancelado'))return;
+    if(F.loja&&c.unidade!==F.loja)return;
+    if(F.status&&c.status!==F.status)return;
+    if(F.fin&&c.finalidade!==F.fin)return;
+    if(F.sol&&c.solicitante_nome!==F.sol)return;
+    if(F.base==='sol'&&!noPeriodo(c.data_solicitacao))return;
+    const ds=(porCred[c.id]||[]).filter(dOk);
+    if(despFiltroAtivo&&!ds.length)return;
+    const ms=(movPor[c.id]||[]);
+    linhas.push({c,ds,ms,gasto:ds.reduce((s,d)=>s+(Number(d.valor)||0),0)});
+  });
+  const m={linhas,n:linhas.length};
+  const ativo=l=>l.c.status!=='excluido'&&l.c.status!=='cancelado';
+  const soma=(arr,f)=>arr.reduce((s,x)=>s+(Number(f(x))||0),0);
+  const A=linhas.filter(ativo);
+  m.solicitado=soma(A,l=>l.c.valor_solicitado);
+  m.aprovado=soma(A,l=>l.c.valor_aprovado);
+  m.liberado=soma(A,l=>soma(l.ms.filter(x=>x.tipo==='liberacao'),x=>x.valor));
+  m.gasto=soma(A,l=>l.gasto);
+  const aberto=l=>l.c.status!=='encerrado'&&l.c.saldo!=null&&l.c.destino_saldo!=null;
+  m.aDevolver=soma(A.filter(l=>aberto(l)&&Number(l.c.saldo)>0),l=>l.c.saldo);
+  m.aReembolsar=soma(A.filter(l=>aberto(l)&&Number(l.c.saldo)<0),l=>-Number(l.c.saldo));
+  m.semPrestacao=soma(A.filter(l=>['aprovado','disponibilizado'].includes(l.c.status)),l=>l.c.valor_aprovado);
+  m.emAnalise=A.filter(l=>l.c.status==='em_analise').length;
+  m.diverg=A.filter(l=>l.c.status==='divergencia').length;
+  m.reprovados=linhas.filter(l=>l.c.status==='reprovado').length;
+  m.encerrados=A.filter(l=>l.c.status==='encerrado').length;
+  m.nDesp=soma(A,l=>l.ds.length);
+  m.ticket=m.n?m.gasto/Math.max(1,A.length):0;
+  // por loja
+  const grp=(keyFn,init)=>{const o={};A.forEach(l=>{const k=keyFn(l)||'—';o[k]=o[k]||init();const x=o[k];x.n++;x.sol+=Number(l.c.valor_solicitado)||0;x.apr+=Number(l.c.valor_aprovado)||0;x.gasto+=l.gasto;x.saldo+=Number(l.c.saldo)||0});return o};
+  const mk=()=>({n:0,sol:0,apr:0,gasto:0,saldo:0});
+  m.porLoja=grp(l=>l.c.unidade,mk);m.porFin=grp(l=>finLabel(l.c.finalidade),mk);m.porStatus=grp(l=>stLabel(l.c.status),mk);m.porSol=grp(l=>l.c.solicitante_nome,mk);
+  // despesas
+  const allD=[];A.forEach(l=>l.ds.forEach(d=>allD.push({d,c:l.c})));
+  m.despesas=allD;
+  const gd=(fn)=>{const o={};allD.forEach(({d,c})=>{const k=fn(d,c)||'—';o[k]=o[k]||{n:0,v:0};o[k].n++;o[k].v+=Number(d.valor)||0});return o};
+  m.porCat=gd(d=>d.categoria);m.porForn=gd(d=>d.fornecedor);
+  // logística
+  const lg={};const lgLoja={};
+  allD.forEach(({d,c})=>{const t=tipoLog(d,c);if(!t)return;lg[t]=(lg[t]||0)+(Number(d.valor)||0);const lk=c.unidade;lgLoja[lk]=lgLoja[lk]||{};lgLoja[lk][t]=(lgLoja[lk][t]||0)+(Number(d.valor)||0)});
+  m.log=lg;m.logLoja=lgLoja;m.logTotal=Object.values(lg).reduce((s,v)=>s+v,0);
+  // custo por loja: compras / logística / outros
+  m.custoLoja={};allD.forEach(({d,c})=>{const k=c.unidade||'—';const o=m.custoLoja[k]=m.custoLoja[k]||{compra:0,log:0,outros:0,total:0};const v=Number(d.valor)||0;const t=tipoLog(d,c);if(t)o.log+=v;else if(norm(d.categoria)==='compra')o.compra+=v;else o.outros+=v;o.total+=v});
+  // movimentos
+  m.movTipos={};A.forEach(l=>l.ms.forEach(x=>{const o=m.movTipos[x.tipo]=m.movTipos[x.tipo]||{n:0,v:0};o.n++;o.v+=Number(x.valor)||0}));
+  // auditoria
+  const dias=(dt)=>dt?Math.floor((Date.now()-new Date(dt).getTime())/864e5):0;
+  m.aud={
+    semComprovante:allD.filter(({d})=>!d.comprovante_url&&!d.nf),
+    semPrestacao:A.filter(l=>['aprovado','disponibilizado'].includes(l.c.status)).map(l=>({l,dias:dias(l.c.aprovado_em||l.c.data_solicitacao)})).sort((a,b)=>b.dias-a.dias),
+    parados:A.filter(l=>l.c.status==='em_analise').map(l=>({l,dias:dias(l.c.updated_at)})).sort((a,b)=>b.dias-a.dias),
+    divergencias:A.filter(l=>l.c.status==='divergencia'),
+    estouro:A.filter(l=>Number(l.c.saldo)<0&&l.c.status!=='encerrado'),
+    saldoAberto:A.filter(l=>aberto(l)&&Number(l.c.saldo)>0),
+  };
+  return m;
+}
+
+// ── filtros UI ──
+function opts(sel,vals,cur,todos){sel.innerHTML='<option value="">'+todos+'</option>'+vals.map(([v,t])=>'<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(t)+'</option>').join('')}
+function montarFiltros(){
+  const uniq=(arr)=>[...new Set(arr.filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'pt-BR'));
+  opts($('f-loja'),uniq(DB.cred.map(c=>c.unidade)).map(v=>[v,v]),F.loja,'Todas as lojas');
+  opts($('f-status'),Object.keys(STATUS).filter(s=>DB.cred.some(c=>c.status===s)).map(s=>[s,STATUS[s]]),F.status,'Todos (exceto excluídos)');
+  opts($('f-fin'),uniq(DB.cred.map(c=>c.finalidade)).map(v=>[v,finLabel(v)]),F.fin,'Todas');
+  opts($('f-sol'),uniq(DB.cred.map(c=>c.solicitante_nome)).map(v=>[v,v]),F.sol,'Todos');
+  opts($('f-cat'),uniq(DB.desp.map(d=>d.categoria)).map(v=>[v,v]),F.cat,'Todas');
+  opts($('f-forn'),uniq(DB.desp.map(d=>d.fornecedor)).map(v=>[v,v]),F.forn,'Todos');
+  $('f-de').value=F.de;$('f-ate').value=F.ate;$('f-base').value=F.base;
+  const pres=[['hoje','Hoje'],['7','7 dias'],['30','30 dias'],['mes','Mês atual'],['mesant','Mês anterior'],['tudo','Todo o período']];
+  $('chips').innerHTML=pres.map(([k,t])=>'<button class="chip '+(presetAtivo()===k?'on':'')+'" data-p="'+k+'">'+t+'</button>').join('');
+  $('chips').querySelectorAll('.chip').forEach(b=>b.onclick=()=>{preset(b.dataset.p)});
+}
+function presetAtivo(){
+  const d=hojeD,pm=ymd(new Date(d.getFullYear(),d.getMonth(),1)),pa=ymd(new Date(d.getFullYear(),d.getMonth()-1,1)),ua=ymd(new Date(d.getFullYear(),d.getMonth(),0));
+  if(!F.de&&!F.ate)return 'tudo';
+  if(F.de===HOJE&&F.ate===HOJE)return 'hoje';
+  if(F.ate===HOJE&&F.de===addDias(-6))return '7';
+  if(F.ate===HOJE&&F.de===addDias(-29))return '30';
+  if(F.de===pm&&F.ate===HOJE)return 'mes';
+  if(F.de===pa&&F.ate===ua)return 'mesant';
+  return '';
+}
+function preset(k){
+  const d=hojeD;
+  if(k==='hoje'){F.de=HOJE;F.ate=HOJE}
+  else if(k==='7'){F.de=addDias(-6);F.ate=HOJE}
+  else if(k==='30'){F.de=addDias(-29);F.ate=HOJE}
+  else if(k==='mes'){F.de=ymd(new Date(d.getFullYear(),d.getMonth(),1));F.ate=HOJE}
+  else if(k==='mesant'){F.de=ymd(new Date(d.getFullYear(),d.getMonth()-1,1));F.ate=ymd(new Date(d.getFullYear(),d.getMonth(),0))}
+  else {F.de='';F.ate=''}
+  atualizar();
+}
+function lerCampos(){F.de=$('f-de').value;F.ate=$('f-ate').value;F.base=$('f-base').value;F.loja=$('f-loja').value;F.status=$('f-status').value;F.fin=$('f-fin').value;F.sol=$('f-sol').value;F.cat=$('f-cat').value;F.forn=$('f-forn').value;atualizar()}
+
+function descFiltros(){
+  const p=[];
+  p.push((F.de||F.ate)?('Período: '+(F.de?dBR(F.de):'início')+' a '+(F.ate?dBR(F.ate):'hoje')+' ('+(F.base==='desp'?'data da despesa':'data da solicitação')+')'):'Período: todo o histórico');
+  if(F.loja)p.push('Loja: '+F.loja);if(F.status)p.push('Status: '+stLabel(F.status));if(F.fin)p.push('Finalidade: '+finLabel(F.fin));
+  if(F.sol)p.push('Solicitante: '+F.sol);if(F.cat)p.push('Categoria: '+F.cat);if(F.forn)p.push('Fornecedor: '+F.forn);
+  return p;
+}
+
+// ── render ──
+const kpi=(n,l,cls,s)=>'<div class="kpi '+(cls||'')+'"><div class="kn">'+n+'</div><div class="kl">'+l+'</div>'+(s?'<div class="ks">'+s+'</div>':'')+'</div>';
+function tabelaGrupo(titulo,obj,cols){
+  const ks=Object.keys(obj).sort((a,b)=>(obj[b].gasto||obj[b].v||0)-(obj[a].gasto||obj[a].v||0));
+  if(!ks.length)return '';
+  const tot=ks.reduce((t,k)=>{cols.forEach(c=>t[c.k]=(t[c.k]||0)+(obj[k][c.k]||0));return t},{});
+  return '<div class="tw"><table><thead><tr><th>'+titulo+'</th>'+cols.map(c=>'<th class="num">'+c.t+'</th>').join('')+'</tr></thead><tbody>'+
+    ks.map(k=>'<tr><td>'+esc(k)+'</td>'+cols.map(c=>'<td class="num">'+(c.n?obj[k][c.k]:brl(obj[k][c.k]))+'</td>').join('')+'</tr>').join('')+
+    '</tbody><tfoot><tr><td>Total</td>'+cols.map(c=>'<td class="num">'+(c.n?tot[c.k]:brl(tot[c.k]))+'</td>').join('')+'</tr></tfoot></table></div>';
+}
+function render(){
+  const m=M;
+  $('sub').innerHTML=descFiltros().map(esc).join(' · ');
+  $('eyebrow').textContent='Amore Gestão · Financeiro'+(F.loja?' · '+F.loja:'');
+  document.body.classList.toggle('flow',F.loja==='Flow CD');
+  if(!m.n){$('app').innerHTML='<div class="msg">Nenhum crédito encontrado para este período e filtros.</div>';return}
+  const taxa=m.liberado?Math.round(m.gasto/m.liberado*1000)/10:null;
+  let h='<div class="kpis">'+
+    kpi(m.n,'Créditos no período','',m.encerrados+' encerrado(s)')+
+    kpi(brl(m.solicitado),'Solicitado')+
+    kpi(brl(m.aprovado),'Aprovado','ok')+
+    kpi(brl(m.liberado),'Liberado (caixa)','ok')+
+    kpi(brl(m.gasto),'Utilizado / prestado','',m.nDesp+' despesa(s)'+(taxa!=null?' · '+taxa.toLocaleString('pt-BR')+'% do liberado':''))+
+    kpi(brl(m.semPrestacao),'Liberado sem prestação','warn')+
+    kpi(brl(m.aDevolver),'Saldo a devolver','warn')+
+    kpi(brl(m.aReembolsar),'A reembolsar','bad')+
+    kpi(brl(m.logTotal),'Custo logístico','log','Pedágio, combustível, frete')+
+    kpi(m.emAnalise,'Prestações em análise','warn')+
+    kpi(m.diverg,'Divergências',m.diverg?'bad':'ok')+'</div>';
+
+  h+='<h2>Comparativo por loja</h2>';
+  const lojas=Object.keys(m.porLoja);
+  h+='<div class="tw"><table><thead><tr><th>Loja</th><th class="num">Créditos</th><th class="num">Solicitado</th><th class="num">Aprovado</th><th class="num">Compras</th><th class="num">Logística</th><th class="num">Outros</th><th class="num">Utilizado</th><th class="num">Saldo</th></tr></thead><tbody>'+
+    lojas.sort((a,b)=>m.porLoja[b].gasto-m.porLoja[a].gasto).map(k=>{const p=m.porLoja[k],c=m.custoLoja[k]||{compra:0,log:0,outros:0};return '<tr><td><b>'+esc(k)+'</b></td><td class="num">'+p.n+'</td><td class="num">'+brl(p.sol)+'</td><td class="num">'+brl(p.apr)+'</td><td class="num">'+brl(c.compra)+'</td><td class="num">'+brl(c.log)+'</td><td class="num">'+brl(c.outros)+'</td><td class="num"><b>'+brl(p.gasto)+'</b></td><td class="num">'+brl(p.saldo)+'</td></tr>'}).join('')+
+    '</tbody><tfoot><tr><td>Total</td><td class="num">'+lojas.reduce((s,k)=>s+m.porLoja[k].n,0)+'</td><td class="num">'+brl(m.solicitado)+'</td><td class="num">'+brl(m.aprovado)+'</td><td class="num">'+brl(lojas.reduce((s,k)=>s+((m.custoLoja[k]||{}).compra||0),0))+'</td><td class="num">'+brl(m.logTotal)+'</td><td class="num">'+brl(lojas.reduce((s,k)=>s+((m.custoLoja[k]||{}).outros||0),0))+'</td><td class="num">'+brl(m.gasto)+'</td><td class="num">'+brl(lojas.reduce((s,k)=>s+m.porLoja[k].saldo,0))+'</td></tr></tfoot></table></div>';
+  h+='<div class="note">Saldo = aprovado − utilizado (negativo = gasto acima do crédito, a reembolsar). Logística é identificada pela categoria e pela descrição (pedágio, combustível, frete).</div>';
+
+  const cG=[{k:'n',t:'Créditos',n:1},{k:'apr',t:'Aprovado'},{k:'gasto',t:'Utilizado'},{k:'saldo',t:'Saldo'}];
+  h+='<div class="two"><div><h2>Por finalidade</h2>'+tabelaGrupo('Finalidade',m.porFin,cG)+'</div><div><h2>Por status</h2>'+tabelaGrupo('Status',m.porStatus,cG)+'</div></div>';
+  h+='<h2>Por solicitante</h2>'+tabelaGrupo('Solicitante',m.porSol,cG);
+
+  h+='<h2>Custo logístico <span class="h2s">pedágio · combustível · frete</span></h2>';
+  const lk=Object.keys(m.log);
+  if(lk.length){const tipos=['Pedágio','Combustível','Frete / transporte','Outros (logística)'].filter(t=>m.log[t]);
+    h+='<div class="tw"><table><thead><tr><th>Loja</th>'+tipos.map(t=>'<th class="num">'+t+'</th>').join('')+'<th class="num">Total</th></tr></thead><tbody>'+
+    Object.keys(m.logLoja).map(k=>{const o=m.logLoja[k];return '<tr><td>'+esc(k)+'</td>'+tipos.map(t=>'<td class="num">'+brl(o[t])+'</td>').join('')+'<td class="num"><b>'+brl(Object.values(o).reduce((s,v)=>s+v,0))+'</b></td></tr>'}).join('')+
+    '</tbody><tfoot><tr><td>Total</td>'+tipos.map(t=>'<td class="num">'+brl(m.log[t])+'</td>').join('')+'<td class="num">'+brl(m.logTotal)+'</td></tr></tfoot></table></div>';
+  }else h+='<div class="msg" style="padding:14px">Nenhuma despesa de logística no período.</div>';
+
+  h+='<div class="two"><div><h2>Despesas por categoria</h2>'+tabelaGrupo('Categoria',m.porCat,[{k:'n',t:'Lançam.',n:1},{k:'v',t:'Valor'}])+'</div>'+
+     '<div><h2>Fornecedores <span class="h2s">top 12</span></h2>'+tabelaGrupo('Fornecedor',Object.fromEntries(Object.entries(m.porForn).sort((a,b)=>b[1].v-a[1].v).slice(0,12)),[{k:'n',t:'Lançam.',n:1},{k:'v',t:'Valor'}])+'</div></div>';
+
+  h+='<h2>Créditos do período <span class="h2s">'+m.linhas.length+'</span></h2><div class="tw"><table><thead><tr><th>Nº</th><th>Data</th><th>Loja</th><th>Solicitante</th><th>Finalidade</th><th>Status</th><th class="num">Solicitado</th><th class="num">Aprovado</th><th class="num">Utilizado</th><th class="num">Saldo</th><th></th></tr></thead><tbody>'+
+    m.linhas.map(l=>{const c=l.c;return '<tr><td><b>CRD-'+c.numero+'</b></td><td>'+dBR(c.data_solicitacao)+'</td><td>'+esc(c.unidade)+'</td><td>'+esc(c.solicitante_nome)+'</td><td>'+esc(finLabel(c.finalidade))+'</td><td><span class="badge '+stCls(c.status)+'">'+esc(stLabel(c.status))+'</span></td><td class="num">'+brl(c.valor_solicitado)+'</td><td class="num">'+(c.valor_aprovado!=null?brl(c.valor_aprovado):'—')+'</td><td class="num">'+brl(l.gasto)+'</td><td class="num">'+(c.saldo!=null?brl(c.saldo):'—')+'</td><td><a href="/credito.html?id='+c.id+'" target="_blank">abrir</a></td></tr>'}).join('')+'</tbody></table></div>';
+
+  h+='<h2>Despesas lançadas <span class="h2s">'+m.despesas.length+' · comprovantes</span></h2><div class="tw"><table><thead><tr><th>Data</th><th>CRD</th><th>Loja</th><th>Descrição</th><th>Categoria</th><th>Fornecedor</th><th class="num">Valor</th><th>Comprovante</th></tr></thead><tbody>'+
+    m.despesas.slice().sort((a,b)=>String(a.d.data).localeCompare(String(b.d.data))).map(({d,c})=>'<tr><td>'+dBR(d.data)+'</td><td>CRD-'+c.numero+'</td><td>'+esc(c.unidade)+'</td><td>'+esc(d.descricao)+'</td><td>'+esc(d.categoria||'—')+'</td><td>'+esc(d.fornecedor||'—')+'</td><td class="num">'+brl(d.valor)+'</td><td>'+(d.comprovante_url?'<a href="'+esc(d.comprovante_url)+'" target="_blank">ver</a>':'<span class="badge bad">sem</span>')+'</td></tr>').join('')+
+    '</tbody><tfoot><tr><td colspan="6">Total</td><td class="num">'+brl(m.gasto)+'</td><td></td></tr></tfoot></table></div>';
+
+  const mt=Object.keys(m.movTipos);
+  if(mt.length)h+='<h2>Movimentos financeiros</h2>'+tabelaGrupo('Tipo',Object.fromEntries(mt.map(k=>[k,m.movTipos[k]])),[{k:'n',t:'Qtde',n:1},{k:'v',t:'Valor'}]);
+
+  const a=m.aud;
+  const lst=(arr,fn,vazio)=>arr.length?'<ul>'+arr.slice(0,12).map(fn).join('')+(arr.length>12?'<li class="mut">… e mais '+(arr.length-12)+'</li>':'')+'</ul>':'<div class="mut" style="font-size:12.5px">'+vazio+'</div>';
+  const crd=l=>'<a href="/credito.html?id='+l.c.id+'" target="_blank">CRD-'+l.c.numero+'</a> '+esc(l.c.unidade);
+  h+='<h2>Auditoria</h2><div class="aud">'+
+    '<div class="panel"><h3>Despesas sem comprovante <span class="badge '+(a.semComprovante.length?'bad':'ok')+'">'+a.semComprovante.length+'</span></h3>'+lst(a.semComprovante,({d,c})=>'<li><span>CRD-'+c.numero+' · '+esc(d.descricao)+'</span><b>'+brl(d.valor)+'</b></li>','Todas as despesas têm comprovante.')+'</div>'+
+    '<div class="panel"><h3>Liberado sem prestação <span class="badge '+(a.semPrestacao.length?'warn':'ok')+'">'+a.semPrestacao.length+'</span></h3>'+lst(a.semPrestacao,x=>'<li><span>'+crd(x.l)+' · '+x.dias+' dia(s)</span><b>'+brl(x.l.c.valor_aprovado)+'</b></li>','Nenhum crédito aguardando prestação.')+'</div>'+
+    '<div class="panel"><h3>Prestações em análise <span class="badge '+(a.parados.length?'warn':'ok')+'">'+a.parados.length+'</span></h3>'+lst(a.parados,x=>'<li><span>'+crd(x.l)+' · parada há '+x.dias+' dia(s)</span><b>'+brl(x.l.gasto)+'</b></li>','Nenhuma prestação em análise.')+'</div>'+
+    '<div class="panel"><h3>Divergências <span class="badge '+(a.divergencias.length?'bad':'ok')+'">'+a.divergencias.length+'</span></h3>'+lst(a.divergencias,l=>'<li><span>'+crd(l)+'</span><b>'+brl(l.gasto)+'</b></li>','Nenhuma divergência.')+'</div>'+
+    '<div class="panel"><h3>Gasto acima do crédito (a reembolsar) <span class="badge '+(a.estouro.length?'bad':'ok')+'">'+a.estouro.length+'</span></h3>'+lst(a.estouro,l=>'<li><span>'+crd(l)+'</span><b>'+brl(-Number(l.c.saldo))+'</b></li>','Nenhum estouro de crédito.')+'</div>'+
+    '<div class="panel"><h3>Saldos a devolver em aberto <span class="badge '+(a.saldoAberto.length?'warn':'ok')+'">'+a.saldoAberto.length+'</span></h3>'+lst(a.saldoAberto,l=>'<li><span>'+crd(l)+'</span><b>'+brl(l.c.saldo)+'</b></li>','Nenhum saldo em aberto.')+'</div>'+
+    '</div>';
+  $('app').innerHTML=h;
+}
+
+function atualizar(){M=calcular();montarFiltros();render();gravarURL();$('gerado').textContent=new Date().toLocaleString('pt-BR')}
+
+// ── PDF ──
+const loadScript=src=>new Promise((res,rej)=>{if(document.querySelector('script[src="'+src+'"]'))return res();const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('Falha ao carregar '+src));document.head.appendChild(s)});
+async function montarPDF(){
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+  const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:'pt',format:'a4'});
+  const m=M,W=doc.internal.pageSize.getWidth();const cor=F.loja==='Flow CD'?[46,125,52]:[139,18,18];
+  doc.setFillColor(...cor);doc.rect(0,0,W,6,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...cor);doc.text('AMORE GESTÃO · FINANCEIRO',36,30);
+  doc.setFontSize(16);doc.setTextColor(30,20,22);doc.text('Relatório de Crédito e Prestação de Contas',36,50);
+  doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(100,90,95);
+  const fl=doc.splitTextToSize(descFiltros().join('  ·  '),W-72);doc.text(fl,36,64);
+  let y=64+fl.length*11+6;
+  const B=v=>brl(v).replace(/ /g,' ');
+  const kp=[['Créditos',String(m.n)],['Solicitado',B(m.solicitado)],['Aprovado',B(m.aprovado)],['Liberado',B(m.liberado)],['Utilizado',B(m.gasto)],['Sem prestação',B(m.semPrestacao)],['Saldo a devolver',B(m.aDevolver)],['A reembolsar',B(m.aReembolsar)],['Custo logístico',B(m.logTotal)],['Em análise',String(m.emAnalise)],['Divergências',String(m.diverg)],['Despesas',String(m.nDesp)]];
+  doc.autoTable({startY:y,head:[kp.slice(0,6).map(x=>x[0])],body:[kp.slice(0,6).map(x=>x[1]),kp.slice(6).map(x=>x[0]),kp.slice(6).map(x=>x[1])],theme:'grid',styles:{fontSize:8.5,halign:'center',cellPadding:4},headStyles:{fillColor:cor},margin:{left:36,right:36},didParseCell:d=>{if(d.section==='body'&&d.row.index===1){d.cell.styles.fillColor=cor;d.cell.styles.textColor=255;d.cell.styles.fontStyle='bold'}}});
+  const T=(titulo,head,body,foot,extra)=>{
+    if(!body.length)return;
+    const yy=doc.lastAutoTable.finalY+16;doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...cor);
+    if(yy>770){doc.addPage();doc.lastAutoTable.finalY=20}
+    doc.text(titulo,36,doc.lastAutoTable.finalY+16);
+    doc.autoTable(Object.assign({startY:doc.lastAutoTable.finalY+22,head:[head],body,foot:foot?[foot]:undefined,theme:'striped',styles:{fontSize:7.5,cellPadding:3},headStyles:{fillColor:cor},footStyles:{fillColor:[240,236,237],textColor:30,fontStyle:'bold'},margin:{left:36,right:36},didParseCell:d=>{const cs=(extra&&extra.columnStyles&&extra.columnStyles[d.column.index])||null;if(cs&&cs.halign&&d.section!=='body')d.cell.styles.halign=cs.halign}},extra||{}));
+  };
+  const lojas=Object.keys(m.porLoja).sort((a,b)=>m.porLoja[b].gasto-m.porLoja[a].gasto);
+  const sumC=k=>lojas.reduce((s,l)=>s+((m.custoLoja[l]||{})[k]||0),0);
+  T('Comparativo por loja',['Loja','Créd.','Solicitado','Aprovado','Compras','Logística','Outros','Utilizado','Saldo'],
+    lojas.map(k=>{const p=m.porLoja[k],c=m.custoLoja[k]||{compra:0,log:0,outros:0};return [k,p.n,B(p.sol),B(p.apr),B(c.compra),B(c.log),B(c.outros),B(p.gasto),B(p.saldo)]}),
+    ['Total',lojas.reduce((s,k)=>s+m.porLoja[k].n,0),B(m.solicitado),B(m.aprovado),B(sumC('compra')),B(m.logTotal),B(sumC('outros')),B(m.gasto),B(lojas.reduce((s,k)=>s+m.porLoja[k].saldo,0))],
+    {columnStyles:{0:{cellWidth:70},1:{halign:'right'},2:{halign:'right'},3:{halign:'right'},4:{halign:'right'},5:{halign:'right'},6:{halign:'right'},7:{halign:'right'},8:{halign:'right'}}});
+  const grp=(o,tit)=>T(tit,[tit.replace('Por ','').replace(/^./,c=>c.toUpperCase()),'Créd.','Aprovado','Utilizado','Saldo'],Object.keys(o).sort((a,b)=>o[b].gasto-o[a].gasto).map(k=>[k,o[k].n,B(o[k].apr),B(o[k].gasto),B(o[k].saldo)]),null,{columnStyles:{1:{halign:'right'},2:{halign:'right'},3:{halign:'right'},4:{halign:'right'}}});
+  grp(m.porFin,'Por finalidade');grp(m.porStatus,'Por status');grp(m.porSol,'Por solicitante');
+  const lgT=['Pedágio','Combustível','Frete / transporte','Outros (logística)'].filter(t=>m.log[t]);
+  T('Custo logístico',['Loja',...lgT,'Total'],Object.keys(m.logLoja).map(k=>[k,...lgT.map(t=>B(m.logLoja[k][t]||0)),B(Object.values(m.logLoja[k]).reduce((s,v)=>s+v,0))]),['Total',...lgT.map(t=>B(m.log[t])),B(m.logTotal)],{});
+  T('Despesas por categoria',['Categoria','Lançam.','Valor'],Object.entries(m.porCat).sort((a,b)=>b[1].v-a[1].v).map(([k,x])=>[k,x.n,B(x.v)]),null,{columnStyles:{1:{halign:'right'},2:{halign:'right'}}});
+  T('Principais fornecedores',['Fornecedor','Lançam.','Valor'],Object.entries(m.porForn).sort((a,b)=>b[1].v-a[1].v).slice(0,15).map(([k,x])=>[k,x.n,B(x.v)]),null,{columnStyles:{1:{halign:'right'},2:{halign:'right'}}});
+  T('Créditos do período',['Nº','Data','Loja','Solicitante','Finalidade','Status','Solicit.','Aprov.','Utiliz.','Saldo'],
+    m.linhas.map(l=>{const c=l.c;return ['CRD-'+c.numero,dBR(c.data_solicitacao),c.unidade,c.solicitante_nome,finLabel(c.finalidade),stLabel(c.status),B(c.valor_solicitado),c.valor_aprovado!=null?B(c.valor_aprovado):'-',B(l.gasto),c.saldo!=null?B(c.saldo):'-']}),null,
+    {styles:{fontSize:6.8,cellPadding:2.5},columnStyles:{6:{halign:'right'},7:{halign:'right'},8:{halign:'right'},9:{halign:'right'}}});
+  T('Despesas lançadas',['Data','CRD','Loja','Descrição','Categoria','Fornecedor','Valor','Comprov.'],
+    m.despesas.slice().sort((a,b)=>String(a.d.data).localeCompare(String(b.d.data))).map(({d,c})=>[dBR(d.data),'CRD-'+c.numero,c.unidade,d.descricao||'',d.categoria||'-',d.fornecedor||'-',B(d.valor),d.comprovante_url?'sim':'NÃO']),['Total','','','','','',B(m.gasto),''],
+    {styles:{fontSize:6.8,cellPadding:2.5},columnStyles:{6:{halign:'right'}}});
+  const a=m.aud;
+  T('Auditoria — resumo',['Item','Qtde','Valor'],[
+    ['Despesas sem comprovante',a.semComprovante.length,B(a.semComprovante.reduce((s,x)=>s+(Number(x.d.valor)||0),0))],
+    ['Créditos liberados sem prestação',a.semPrestacao.length,B(a.semPrestacao.reduce((s,x)=>s+(Number(x.l.c.valor_aprovado)||0),0))],
+    ['Prestações em análise',a.parados.length,B(a.parados.reduce((s,x)=>s+x.l.gasto,0))],
+    ['Divergências',a.divergencias.length,B(a.divergencias.reduce((s,l)=>s+l.gasto,0))],
+    ['Gasto acima do crédito (a reembolsar)',a.estouro.length,B(m.aReembolsar)],
+    ['Saldos a devolver em aberto',a.saldoAberto.length,B(m.aDevolver)]],null,{columnStyles:{1:{halign:'right'},2:{halign:'right'}}});
+  const n=doc.internal.getNumberOfPages();
+  for(let i=1;i<=n;i++){doc.setPage(i);doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(130,120,125);doc.text('Amore Gestão · gerado em '+new Date().toLocaleString('pt-BR')+' · página '+i+' de '+n,36,doc.internal.pageSize.getHeight()-18)}
+  return doc;
+}
+function nomePDF(){return 'relatorio-creditos-'+(F.de||'inicio')+'_a_'+(F.ate||HOJE)+'.pdf'}
+async function baixarPDF(){const b=$('b-pdf');b.disabled=true;const t=b.textContent;b.textContent='Gerando PDF…';try{const doc=await montarPDF();doc.save(nomePDF())}catch(e){alert('Não foi possível gerar o PDF: '+e.message)}finally{b.disabled=false;b.textContent=t}}
+
+// ── WhatsApp ──
+function abrirWA(){
+  $('wa-resumo').textContent=descFiltros().join(' · ')+' — '+M.n+' crédito(s).';
+  const lista=DB.dest.filter(d=>d.fone);
+  $('wa-dest').innerHTML=lista.length?lista.map((d,i)=>'<label class="rc"><input type="checkbox" class="wa-ck" value="'+esc(d.fone)+'"> '+esc(d.nome)+' <span class="mut">('+esc(d.fone)+')</span></label>').join(''):'<div class="note">Nenhum destinatário cadastrado — informe o número abaixo.</div>';
+  $('wa-outro').value='';$('wa-status').textContent='';$('wa-go').disabled=false;$('m-wa').classList.add('on');
+}
+const soNum=s=>{let d=String(s||'').replace(/\D/g,'').replace(/^0+/,'');if(!d)return '';if(d.startsWith('55')&&d.length>=12)return d;if(d.length===10||d.length===11)return '55'+d;return d};
+async function enviarWA(){
+  const fones=[...document.querySelectorAll('.wa-ck:checked')].map(x=>x.value);const o=soNum($('wa-outro').value);if(o)fones.push(o);
+  const ls=[...new Set(fones.map(soNum).filter(f=>f.length>=12))];
+  if(!ls.length){$('wa-status').textContent='Escolha ao menos um destinatário.';return}
+  const fmt=document.querySelector('input[name=wa-fmt]:checked').value;
+  if(!confirm('Enviar o relatório ('+(fmt==='pdf'?'PDF':'link')+') para '+ls.length+' destinatário(s)?'))return;
+  $('wa-go').disabled=true;
+  const link=urlFiltros();
+  const msg='📊 *Relatório de Crédito e Prestação de Contas*\n'+descFiltros().join('\n')+'\n\n'+M.n+' crédito(s) · Aprovado '+brl(M.aprovado)+' · Utilizado '+brl(M.gasto)+(M.semPrestacao?'\n⚠️ Liberado sem prestação: '+brl(M.semPrestacao):'')+'\n\nRelatório completo:\n'+link+'\n— Amore Gestão';
+  try{
+    let url=null;
+    if(fmt==='pdf'){
+      $('wa-status').textContent='Gerando o PDF…';
+      const doc=await montarPDF();const blob=doc.output('blob');
+      const path='relatorios/'+Date.now()+'-'+Math.random().toString(36).slice(2,7)+'.pdf';
+      const up=await fetch(SB+'/storage/v1/object/anexos/'+path,{method:'POST',headers:{...H,'Content-Type':'application/pdf'},body:blob});
+      if(!up.ok)throw new Error('upload do PDF falhou ('+up.status+')');
+      url=SB+'/storage/v1/object/public/anexos/'+path;
+    }
+    let ok=0;const falhas=[];
+    for(let i=0;i<ls.length;i++){
+      $('wa-status').textContent='Enviando '+(i+1)+' de '+ls.length+'…';
+      const body=fmt==='pdf'?{phone:ls[i],document:url,fileName:nomePDF(),caption:msg}:{phone:ls[i],message:msg};
+      const r=await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(r.ok)ok++;else falhas.push(ls[i]);
+      if(i<ls.length-1)await new Promise(r=>setTimeout(r,3500+Math.random()*3000));
+    }
+    $('wa-status').textContent=ok+' de '+ls.length+' enviado(s).'+(falhas.length?' Falhou: '+falhas.join(', '):'');
+  }catch(e){$('wa-status').textContent='Erro: '+e.message}
+  finally{$('wa-go').disabled=false}
+}
+
+// ── eventos ──
+['f-de','f-ate','f-base','f-loja','f-status','f-fin','f-sol','f-cat','f-forn'].forEach(id=>$(id).addEventListener('change',lerCampos));
+$('b-limpar').onclick=()=>{KEYS.forEach(k=>F[k]='');F.base='sol';F.de=addDias(-29);F.ate=HOJE;atualizar()};
+$('b-link').onclick=async()=>{const l=urlFiltros();try{await navigator.clipboard.writeText(l);$('b-link').textContent='✅ Link copiado'}catch(e){prompt('Copie o link:',l)}setTimeout(()=>$('b-link').textContent='🔗 Copiar link',2000)};
+$('b-print').onclick=()=>window.print();
+$('b-pdf').onclick=baixarPDF;
+$('b-wa').onclick=abrirWA;
+$('wa-cancel').onclick=()=>$('m-wa').classList.remove('on');
+$('wa-go').onclick=enviarWA;
+$('m-wa').addEventListener('mousedown',e=>{if(e.target===$('m-wa'))$('m-wa').classList.remove('on')});
+
+(async()=>{lerURL();try{await carregar();atualizar()}catch(e){$('app').innerHTML='<div class="msg">Não foi possível carregar os dados ('+esc(e.message)+').</div>'}})();
+</script>
+</body>
+</html>

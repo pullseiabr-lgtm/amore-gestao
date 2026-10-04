@@ -68,16 +68,20 @@ export default async function handler(req, res) {
     }
   }
 
-  const { phone, message, image, caption } = body || {}
+  const { phone, message, image, caption, document, fileName } = body || {}
   if (!phone) return res.status(400).json({ error: 'Informe o número (phone).' })
-  // Aceita: só texto (message), só imagem (image), ou imagem+legenda (image+caption/message).
-  if (!message && !image) return res.status(400).json({ error: 'Envie message e/ou image.' })
+  // Aceita: só texto (message), imagem (image[+caption]) ou documento PDF por URL pública (document+fileName[+caption]).
+  if (!message && !image && !document) return res.status(400).json({ error: 'Envie message, image ou document.' })
 
   const fone = String(phone).replace(/\D/g, '')
 
   try {
     let endpoint, payload
-    if (image) {
+    if (document) {
+      // Documento (PDF) — URL pública. Legenda = caption || message.
+      endpoint = `${url}/message/sendMedia/${instance}`
+      payload = { number: fone, mediatype: 'document', mimetype: 'application/pdf', media: document, caption: caption || message || '', fileName: fileName || 'relatorio.pdf' }
+    } else if (image) {
       // Envio de mídia (imagem) — aceita URL pública ou base64. Legenda = caption || message.
       endpoint = `${url}/message/sendMedia/${instance}`
       payload = { number: fone, mediatype: 'image', mimetype: 'image/jpeg', media: image, caption: caption || message || '', fileName: 'flyer.jpg' }

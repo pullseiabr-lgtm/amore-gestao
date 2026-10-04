@@ -226,6 +226,7 @@ export default function CreditosPage() {
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <button className="btn bo bsm" onClick={load} title="Atualizar"><RefreshCw size={13} /></button>
+          <a className="btn bo bsm" style={{ textDecoration: 'none' }} target="_blank" rel="noreferrer" title="Relatório com filtros e período — link, PDF e WhatsApp" href={`${location.origin}/relatorio-creditos.html${loja && loja !== 'Todas as Lojas' ? '?loja=' + encodeURIComponent(loja) : ''}`}><BarChart3 size={13} /> Relatório</a>
           {tab === 'solicitacoes' && <button className="btn bp bsm" onClick={() => setNovoOpen(true)}><Plus size={13} /> Solicitar Crédito</button>}
         </div>
       </div>
