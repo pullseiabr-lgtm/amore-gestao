@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Transferência entre Unidades — Amore</title>
+<style>
+:root{--v:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;
+  --ok:#15803D;--okbg:#DCFCE7;--warn:#B45309;--warnbg:#FEF3C7;--bad:#B91C1C;--badbg:#FEE2E2;
+  --shadow:0 1px 2px rgba(80,20,25,.05),0 10px 30px -14px rgba(80,20,25,.16)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c;--okbg:#14351f;--warnbg:#3a2c10;--badbg:#3a1616}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;padding:16px;font-variant-numeric:tabular-nums}
+.wrap{max-width:860px;margin:0 auto}
+.top{border-bottom:2px solid var(--v);padding-bottom:14px;margin-bottom:14px}
+.brand{display:flex;align-items:center;gap:9px}.brand img{height:24px}.brand b{font-size:18px;font-weight:800;color:var(--v)}
+.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--v);font-weight:800;margin-top:8px}
+h1{font-size:clamp(19px,3.6vw,25px);margin-top:2px}
+.sub{color:var(--muted);font-size:13px;margin-top:4px}
+.badge{display:inline-block;font-size:11px;font-weight:800;padding:3px 11px;border-radius:20px;margin-top:8px;margin-right:6px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+.card .h{padding:11px 16px;border-bottom:1px solid var(--border);font-weight:700;font-size:13px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.pad{padding:14px 16px}
+.btn{border:none;border-radius:10px;padding:11px 16px;font:inherit;font-weight:800;font-size:13.5px;color:#fff;cursor:pointer}
+.btn.ok{background:var(--ok)}.btn.bad{background:var(--bad)}.btn.g{background:#0369A1}
+.btn:disabled{opacity:.5}
+.row{display:flex;gap:14px;flex-wrap:wrap;font-size:13px}
+.kv{background:color-mix(in srgb,var(--v) 4%,var(--card));border:1px solid var(--border);border-radius:10px;padding:8px 12px}
+.kv b{display:block;font-size:15px}.kv span{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;color:var(--muted);font-size:10.5px;text-transform:uppercase;padding:8px 12px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--v) 4%,var(--card))}
+td{padding:7px 12px;border-bottom:1px solid var(--border)}
+td.n,th.n{text-align:right;white-space:nowrap}td.n{font-weight:700}
+.msg{padding:11px 14px;border-radius:10px;margin:10px 0;font-size:13.5px;display:none}
+.msg.ok{background:var(--okbg);color:var(--ok);display:block}.msg.err{background:var(--badbg);color:var(--bad);display:block}
+.empty{padding:26px;text-align:center;color:var(--muted)}
+.aprv{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+select{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:10px;font:inherit;font-size:14px;background:var(--bg);color:var(--text)}
+.done{text-align:center;padding:40px 16px}.done .big{font-size:34px;font-weight:800;margin-bottom:8px}
+.tl{display:flex;gap:10px;font-size:12.5px;padding:6px 0;border-bottom:1px dashed var(--border)}.tl .d{min-width:105px;color:var(--muted)}
+@media print{.noprint{display:none!important}body{background:#fff;padding:0}.card{box-shadow:none}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="card"><div class="empty">Carregando transferência…</div></div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+const el=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const brl=n=>'R$ '+(Number(n)||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+const num=n=>n==null?'—':Number(n).toLocaleString('pt-BR',{maximumFractionDigits:3});
+const dt=s=>{if(!s)return '';const d=new Date(s);return isNaN(d)?'':d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});};
+const ID=(new URLSearchParams(location.search).get('id')||'').trim();
+let T=null, IT=[], TL=[];
+const STA={
+  solicitada:{l:'🔵 Aguardando aprovação',c:'#1E40AF',b:'#DBEAFE'},em_analise:{l:'🕓 Em análise',c:'#9A3412',b:'#FFEDD5'},
+  aprovada:{l:'🟢 Aprovada',c:'#166534',b:'#DCFCE7'},separacao:{l:'📦 Em separação',c:'#3730A3',b:'#E0E7FF'},
+  enviada:{l:'🚚 Enviada',c:'#5B21B6',b:'#EDE9FE'},recebida:{l:'✅ Recebida',c:'#065F46',b:'#D1FAE5'},
+  reprovada:{l:'❌ Reprovada',c:'#991B1B',b:'#FEE2E2'},cancelada:{l:'🚫 Cancelada',c:'#6B7280',b:'#F3F4F6'}};
+const FONTE={prestacao_contas:'Prestação de contas',cadastro_estoque:'Cadastro de estoque',manual:'Informado manualmente'};
+const get=async p=>(await fetch(SB+'/rest/v1/'+p,{headers:H})).json();
+
+async function load(){
+  if(!ID){ el('app').innerHTML='<div class="card"><div class="empty">Link inválido — falta o id da transferência.</div></div>'; return; }
+  const r=await get('transferencias?id=eq.'+encodeURIComponent(ID)+'&select=*'); T=r&&r[0];
+  if(!T){ el('app').innerHTML='<div class="card"><div class="empty">Transferência não encontrada.</div></div>'; return; }
+  IT=await get('transferencia_itens?transferencia_id=eq.'+encodeURIComponent(ID)+'&select=*&order=created_at')||[];
+  TL=await get('transferencia_timeline?transferencia_id=eq.'+encodeURIComponent(ID)+'&select=*&order=quando.desc')||[];
+  render();
+}
+
+function render(){
+  const flow=/flow/i.test(T.unidade_origem||'')&&/flow/i.test(T.unidade_destino||''); document.documentElement.style.setProperty('--v',flow?'#2E7D34':'#8B1212');
+  const venda=T.tipo==='venda', s=STA[T.status]||{l:T.status,c:'#374151',b:'#F3F4F6'};
+  const podeAprovar=T.status==='solicitada'||T.status==='em_analise';
+  const env=!['solicitada','em_analise'].includes(T.status), rec=T.status==='recebida';
+  const linhas=IT.map(i=>{const q=Number(i.qtd_solicitada)||0,c=Number(i.custo_compra_unit||i.preco_unitario)||0;
+    const dv=rec&&(i.qtd_enviada||0)!==(i.qtd_recebida||0);
+    return `<tr><td>${esc(i.produto_nome)}${i.produto_origem_id?'':' <span style="font-size:10px;color:var(--warn);font-weight:700">(manual)</span>'}<div style="font-size:10.5px;color:var(--muted)">${esc(FONTE[i.custo_fonte]||'')}${i.fornecedor?' · '+esc(i.fornecedor):''}${i.nota_fiscal?' · NF '+esc(i.nota_fiscal):''}</div></td>
+      <td class="n">${num(q)} ${esc(i.unidade)}</td><td class="n">${brl(c)}</td><td class="n">${brl(q*c)}</td>
+      ${env?`<td class="n">${num(i.qtd_enviada)}</td>`:''}${rec?`<td class="n" style="color:${dv?'var(--bad)':'var(--ok)'}">${num(i.qtd_recebida)}${dv?' ⚠':''}</td>`:''}</tr>`}).join('');
+  el('app').innerHTML=`
+    <div class="top">
+      <div class="brand"><img src="logo-amore-red.png" alt="Amore" onerror="this.style.display='none'"><b>${flow?'Flow':'Amore'}</b></div>
+      <div class="eyebrow">Estoque · ${venda?'Venda entre Lojas':'Transferência entre Unidades'}</div>
+      <h1>TR-${esc(T.numero)} · ${esc(T.unidade_origem)} → ${esc(T.unidade_destino)}</h1>
+      <div class="sub">Solicitante: ${esc(T.solicitante_nome||'—')} · ${dt(T.created_at)}${T.motivo?' · Motivo: '+esc(T.motivo):''}</div>
+      <span class="badge" style="color:${s.c};background:${s.b}">${s.l}</span>
+      ${venda?'<span class="badge" style="color:#92400E;background:#FEF3C7">💰 Venda interna</span>':'<span class="badge" style="color:#374151;background:#F3F4F6">🔄 Transferência</span>'}
+      ${T.tem_divergencia?'<span class="badge" style="color:#991B1B;background:#FEE2E2">⚠ Divergência</span>':''}
+    </div>
+    <div class="card"><div class="pad row">
+      <div class="kv"><b>${brl(T.valor_produtos)}</b><span>Valor dos produtos</span></div>
+      <div class="kv"><b>${brl(T.custo_logistico)}</b><span>Logística</span></div>
+      <div class="kv"><b style="color:var(--v)">${brl(T.valor_total)}</b><span>Total da operação</span></div>
+      ${venda?`<div class="kv"><b>${esc(T.unidade_destino)} paga a ${esc(T.unidade_origem)}</b><span>Financeiro${T.financeiro_status==='quitado'?' · quitado':T.financeiro_status==='a_receber'?' · a receber':''}</span></div>`:''}
+      ${T.aprovado_por?`<div class="kv"><b>${esc(T.aprovado_por)}</b><span>Aprovado · ${dt(T.aprovado_em)}</span></div>`:''}
+    </div></div>
+    ${T.reprovado_motivo?`<div class="card"><div class="pad" style="color:var(--bad)">❌ Reprovada: ${esc(T.reprovado_motivo)}</div></div>`:''}
+    <div class="card"><div class="h">Itens <span style="color:var(--muted)">${IT.length}</span></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Produto</th><th class="n">Qtd</th><th class="n">Custo un.</th><th class="n">Subtotal</th>${env?'<th class="n">Enviado</th>':''}${rec?'<th class="n">Recebido</th>':''}</tr></thead><tbody>${linhas||'<tr><td colspan="4" class="empty">Sem itens.</td></tr>'}</tbody></table></div></div>
+    ${podeAprovar?`
+    <div class="card noprint"><div class="pad">
+      <div style="font-weight:700;margin-bottom:10px">Autorização — aprovar esta ${venda?'venda':'transferência'}?</div>
+      <div class="aprv" style="margin-bottom:10px"><select id="quem" style="max-width:220px"><option value="">Quem está autorizando…</option><option>Wagner</option><option>Aline</option><option>Esdras Santana</option></select></div>
+      <div class="aprv"><button class="btn ok" onclick="aprovar()">✅ Aprovar</button><button class="btn bad" onclick="reprovar()">❌ Reprovar</button></div>
+      <div class="msg" id="msg"></div>
+    </div></div>`:''}
+    <div class="card"><div class="h">Histórico</div><div class="pad">${TL.length?TL.map(e=>`<div class="tl"><div class="d">${dt(e.quando)}</div><div><b>${esc(e.evento)}</b>${e.quem?' · '+esc(e.quem):''}${e.descricao?' — <span style="color:var(--muted)">'+esc(e.descricao)+'</span>':''}</div></div>`).join(''):'<div style="color:var(--muted)">Sem eventos.</div>'}</div></div>
+    <div class="noprint" style="text-align:center"><button class="btn g" onclick="window.print()">🖨 Imprimir / salvar PDF</button></div>`;
+}
+function show(m,ok){const e=el('msg');if(!e)return;e.textContent=m;e.className='msg '+(ok?'ok':'err');}
+async function patch(path,body){const r=await fetch(SB+'/rest/v1/'+path,{method:'PATCH',headers:Object.assign({},H,{Prefer:'return=representation'}),body:JSON.stringify(body)});return r.json();}
+async function tl(evento,descricao,quem){await fetch(SB+'/rest/v1/transferencia_timeline',{method:'POST',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify({transferencia_id:ID,evento,descricao,quem})});}
+
+async function aprovar(){
+  const quem=el('quem').value; if(!quem){show('Selecione quem está autorizando.',false);return;}
+  if(!confirm('Aprovar TR-'+T.numero+' ('+brl(T.valor_total)+')?'))return;
+  try{
+    // só aprova se ainda estiver pendente (evita decisão dupla Wagner/Aline)
+    const r=await patch('transferencias?id=eq.'+ID+'&status=in.(solicitada,em_analise)',{status:'aprovada',aprovado_por:quem,aprovado_em:new Date().toISOString(),updated_at:new Date().toISOString()});
+    if(!Array.isArray(r)||!r.length){ show('Esta transferência já foi decidida por outra pessoa. Recarregue a página.',false); return; }
+    for(const i of IT) await patch('transferencia_itens?id=eq.'+i.id,{qtd_aprovada:i.qtd_aprovada??i.qtd_solicitada});
+    await tl('aprovada','Aprovada pelo link (WhatsApp)',quem);
+    el('app').innerHTML='<div class="done"><div class="big" style="color:var(--ok)">✅ Aprovada!</div><p>TR-'+esc(T.numero)+' autorizada por <b>'+esc(quem)+'</b>. A loja de origem já pode separar e enviar.</p></div>';
+  }catch(e){show('Erro ao aprovar.',false);}
+}
+async function reprovar(){
+  const quem=el('quem').value; if(!quem){show('Selecione quem está analisando.',false);return;}
+  const motivo=(prompt('Motivo da reprovação:')||'').trim(); if(!motivo)return;
+  try{
+    const r=await patch('transferencias?id=eq.'+ID+'&status=in.(solicitada,em_analise)',{status:'reprovada',reprovado_motivo:motivo,updated_at:new Date().toISOString()});
+    if(!Array.isArray(r)||!r.length){ show('Esta transferência já foi decidida por outra pessoa. Recarregue a página.',false); return; }
+    await tl('reprovada',motivo,quem);
+    el('app').innerHTML='<div class="done"><div class="big" style="color:var(--bad)">❌ Reprovada</div><p>Por <b>'+esc(quem)+'</b>: '+esc(motivo)+'</p></div>';
+  }catch(e){show('Erro ao reprovar.',false);}
+}
+load();
+</script>
+</body>
+</html>

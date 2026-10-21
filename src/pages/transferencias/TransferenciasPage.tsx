@@ -122,6 +122,31 @@ function ratear(itens: { qtd: number; custo: number }[], logistica: number): num
   })
 }
 
+// ── WhatsApp: aprovadores + link do relatório (mesmo padrão de Caixas/Créditos) ──
+async function getAprovadores(): Promise<{ nome: string; fone: string }[]> {
+  try {
+    const { data } = await sb.from('app_config').select('valor').eq('chave', 'credito_aprovadores').maybeSingle()
+    const lista = data?.valor?.lista
+    if (Array.isArray(lista) && lista.length) return lista
+  } catch { /* usa fallback */ }
+  return [{ nome: 'Wagner', fone: '5581994135602' }, { nome: 'Aline', fone: '5581994573420' }]
+}
+const linkTransf = (id: string) => `https://painel.amorefood.com.br/transferencia.html?id=${id}`
+function msgTransf(t: { numero: number; tipo: string; unidade_origem: string; unidade_destino: string; valor_total: number; solicitante_nome: string; motivo: string | null; status: string; id: string }, nItens: number, pedirAprovacao: boolean) {
+  const venda = t.tipo === 'venda'
+  return `${venda ? '💰 *Venda entre lojas*' : '🔄 *Transferência entre unidades*'} — TR-${t.numero}\n${t.unidade_origem} ➜ ${t.unidade_destino}\n📦 ${nItens} item(ns) · Total: ${fmtR$(t.valor_total)}\n👤 Solicitante: ${t.solicitante_nome}${t.motivo ? `\n📝 Motivo: ${t.motivo}` : ''}\n📌 Status: ${st(t.status).label.replace(/^[^ ]+ /, '')}\n\n${pedirAprovacao ? '👉 Abrir o relatório e *aprovar / reprovar*:' : '📄 Relatório completo:'}\n${linkTransf(t.id)}`
+}
+async function enviarWhats(destinos: { nome: string; fone: string }[], message: string): Promise<number> {
+  let ok = 0
+  for (const d of destinos) {
+    try {
+      const r = await fetch('/api/evolution-send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: d.fone, message }) })
+      if (r.ok) ok++
+    } catch { /* segue */ }
+  }
+  return ok
+}
+
 // ── Página ───────────────────────────────────────────────────
 export default function TransferenciasPage() {
   const { loja } = useLoja()
@@ -383,6 +408,11 @@ function NovaTransf({ onClose, onSaved, lojaAtual, user, tipoInicial }: { onClos
       const { error: e2 } = await sb.from('transferencia_itens').insert(rows)
       if (e2) throw e2
       await sb.from('transferencia_timeline').insert({ transferencia_id: tid, evento: 'solicitada', descricao: `${tipoLabel({ tipo })} · ${itens.length} item(ns) · ${origem} → ${destino} · total ${fmtR$(total)}`, quem: user?.name || 'Painel' })
+      // pede autorização: manda o relatório (link) por WhatsApp para os aprovadores
+      const aprovadores = await getAprovadores()
+      const ok = await enviarWhats(aprovadores, msgTransf({ id: tid, numero: tData.numero, tipo, unidade_origem: origem, unidade_destino: destino, valor_total: total, solicitante_nome: user?.name || 'Painel', motivo: motivo || null, status: 'solicitada' }, itens.length, true))
+      await sb.from('transferencia_timeline').insert({ transferencia_id: tid, evento: 'whatsapp', descricao: ok > 0 ? `Relatório enviado por WhatsApp a ${aprovadores.map(a => a.nome).join(', ')} para autorização` : 'Falha no envio por WhatsApp aos aprovadores', quem: user?.name || 'Painel' })
+      if (ok === 0) alert('⚠ Solicitação salva, mas o aviso no WhatsApp falhou. Abra a transferência e use "Enviar por WhatsApp".')
       onSaved(); onClose()
     } catch (e: any) { alert('Falha ao salvar: ' + (e?.message || e)) }
     setSalvando(false)
@@ -703,6 +733,22 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
     setBusy(false); await load(); onChange()
   }
 
+  // Reenvio/compartilhamento manual do relatório por WhatsApp (aprovadores ou número avulso)
+  const enviarRelatorio = async () => {
+    const aprovadores = await getAprovadores()
+    const extra = prompt(`Enviar o relatório TR-${t.numero} por WhatsApp.\n\nDestinatários: ${aprovadores.map(a => a.nome).join(', ')}.\nSe quiser incluir outro número (com DDD, ex: 5581999999999), digite abaixo; senão deixe em branco:`)
+    if (extra === null) return
+    const destinos = [...aprovadores]
+    const f = extra.replace(/\D/g, '')
+    if (f.length >= 10) destinos.push({ nome: f, fone: f.startsWith('55') ? f : '55' + f })
+    setBusy(true)
+    const pendente = ['solicitada', 'em_analise'].includes(t.status)
+    const ok = await enviarWhats(destinos, msgTransf({ ...t, id }, itens.length, pendente))
+    await registrarTimeline('whatsapp', ok > 0 ? `Relatório enviado por WhatsApp a ${destinos.map(d => d.nome).join(', ')}` : 'Falha no envio por WhatsApp')
+    setBusy(false); await load()
+    alert(ok > 0 ? `✅ Enviado a ${ok} destinatário(s).` : '⚠ Falha no envio (VPS/Evolution).')
+  }
+
   // colunas visíveis por fase
   const mostrarEnvio = t.status === 'separacao'
   const mostrarReceb = t.status === 'enviada'
@@ -783,6 +829,8 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
         {/* Ações do fluxo */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14, borderTop: '1px dashed var(--border)', paddingTop: 12 }}>
           {busy && <Loader className="spin" size={16} />}
+          {!busy && <a className="btn bo bsm" href={linkTransf(id)} target="_blank" rel="noreferrer">📄 Relatório</a>}
+          {!busy && <button className="btn bo bsm" onClick={enviarRelatorio}>📲 Enviar por WhatsApp</button>}
           {!busy && (t.status === 'solicitada' || t.status === 'em_analise') && podeGerir && (
             <>
               <button className="btn bp bsm" onClick={aprovar}><Check size={12} /> Aprovar</button>
