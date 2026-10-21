@@ -86,7 +86,7 @@ const r2 = (v: number) => Math.round(v * 100) / 100
 const num = (v: any) => Number(String(v ?? '').replace(',', '.')) || 0
 const isVenda = (t: { tipo?: string }) => t.tipo === 'venda'
 const tipoLabel = (t: { tipo?: string }) => isVenda(t) ? '💰 Venda interna' : '🔄 Transferência'
-const FONTE: Record<string, string> = { prestacao_contas: 'Prestação de contas', cadastro_estoque: 'Entrada/cadastro de estoque' }
+const FONTE: Record<string, string> = { prestacao_contas: 'Prestação de contas', cadastro_estoque: 'Entrada/cadastro de estoque', manual: 'Informado manualmente' }
 
 // Último custo de compra: prestação de contas (caixa_itens da loja, mesma unidade) → fallback preço do cadastro de estoque
 interface CustoInfo { custo: number; fonte: string; data: string | null; fornecedor: string | null; nf: string | null }
@@ -276,7 +276,8 @@ function TransfCard({ t, onAbrir }: { t: Transf; onAbrir: () => void }) {
 
 // ── Modal: nova transferência / venda interna ────────────────
 interface ProdOrig { id: string; nome: string; gramatura: string; nivel_atual: number; preco_unitario: number; categoria: string; fornecedor_nome: string | null }
-interface ItemNovo { produto_origem_id: string; produto_nome: string; unidade: string; qtd: string; saldo: number; custo: CustoInfo }
+// produto_origem_id nulo = item digitado manualmente (sem cadastro/saldo na origem); key identifica a linha na lista
+interface ItemNovo { key: string; produto_origem_id: string | null; produto_nome: string; unidade: string; qtd: string; saldo: number | null; custo: CustoInfo }
 function NovaTransf({ onClose, onSaved, lojaAtual, user, tipoInicial }: { onClose: () => void; onSaved: () => void; lojaAtual: string; user: any; tipoInicial: 'transferencia' | 'venda' }) {
   const [tipo, setTipo] = useState<'transferencia' | 'venda'>(tipoInicial)
   const [origem, setOrigem] = useState('')
@@ -291,6 +292,10 @@ function NovaTransf({ onClose, onSaved, lojaAtual, user, tipoInicial }: { onClos
   const [qtd, setQtd] = useState('')
   const [custoSel, setCustoSel] = useState<CustoInfo | null | 'carregando'>(null)
   const [salvando, setSalvando] = useState(false)
+  const [modo, setModo] = useState<'estoque' | 'manual'>('estoque')
+  const [mNome, setMNome] = useState('')
+  const [mUn, setMUn] = useState('un')
+  const [mCusto, setMCusto] = useState('')
 
   useEffect(() => {
     if (!origem) { setProds([]); return }
@@ -324,11 +329,24 @@ function NovaTransf({ onClose, onSaved, lojaAtual, user, tipoInicial }: { onClos
     if (!custoSel || custoSel === 'carregando') {
       alert('Este produto não tem compra válida registrada (prestação de contas ou cadastro de estoque com preço). Regularize o cadastro antes de movimentar.'); return
     }
-    if (itens.some(i => i.produto_origem_id === prodSel.id)) { alert('Produto já adicionado.'); return }
-    setItens(o => [...o, { produto_origem_id: prodSel.id, produto_nome: prodSel.nome, unidade: prodSel.gramatura, qtd: String(q), saldo: prodSel.nivel_atual, custo: custoSel }])
+    if (itens.some(i => i.key === prodSel.id)) { alert('Produto já adicionado.'); return }
+    setItens(o => [...o, { key: prodSel.id, produto_origem_id: prodSel.id, produto_nome: prodSel.nome, unidade: prodSel.gramatura, qtd: String(q), saldo: prodSel.nivel_atual, custo: custoSel }])
     setSel(''); setQtd('')
   }
-  const removeItem = (id: string) => setItens(o => o.filter(i => i.produto_origem_id !== id))
+  const addManual = () => {
+    const nome = mNome.trim()
+    if (!nome) { alert('Informe o nome do produto.'); return }
+    const un = mUn.trim() || 'un'
+    const q = num(qtd)
+    if (!(q > 0)) { alert('Informe a quantidade.'); return }
+    const c = num(mCusto)
+    if (!(c > 0)) { alert('Informe o custo unitário (R$) do produto.'); return }
+    const key = 'manual:' + nome.toLowerCase() + '|' + un.toLowerCase()
+    if (itens.some(i => i.key === key)) { alert('Produto já adicionado.'); return }
+    setItens(o => [...o, { key, produto_origem_id: null, produto_nome: nome, unidade: un, qtd: String(q), saldo: null, custo: { custo: r2(c), fonte: 'manual', data: null, fornecedor: null, nf: null } }])
+    setMNome(''); setQtd(''); setMCusto('')
+  }
+  const removeItem = (key: string) => setItens(o => o.filter(i => i.key !== key))
 
   const log = num(logistica)
   const rateio = useMemo(() => ratear(itens.map(i => ({ qtd: num(i.qtd), custo: i.custo.custo })), log), [itens, log])
@@ -340,7 +358,7 @@ function NovaTransf({ onClose, onSaved, lojaAtual, user, tipoInicial }: { onClos
     if (origem === destino) { alert('Origem e destino devem ser diferentes.'); return }
     if (itens.length === 0) { alert('Adicione ao menos um produto.'); return }
     if (log < 0) { alert('Custo logístico inválido.'); return }
-    if (itens.some(i => num(i.qtd) > i.saldo)) { alert('Há item acima do saldo disponível.'); return }
+    if (itens.some(i => i.saldo != null && num(i.qtd) > i.saldo)) { alert('Há item acima do saldo disponível.'); return }
     setSalvando(true)
     try {
       const { data: tData, error } = await sb.from('transferencias').insert({
@@ -397,8 +415,27 @@ function NovaTransf({ onClose, onSaved, lojaAtual, user, tipoInicial }: { onClos
           <div className="fg"><label className="fl">Observações / motivo</label><input className="inp" value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Necessidade operacional…" /></div>
 
           <div style={{ borderTop: '1px dashed var(--border)', marginTop: 8, paddingTop: 10 }}>
-            <label className="fl">Produtos com saldo {origem && `em ${origem}`}</label>
-            {!origem ? (
+            <label className="fl">Produtos</label>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+              <button className={`btn ${modo === 'estoque' ? 'bp' : 'bo'} bsm`} onClick={() => setModo('estoque')}>📦 Do estoque {origem ? `de ${origem}` : 'da loja'}</button>
+              <button className={`btn ${modo === 'manual' ? 'bp' : 'bo'} bsm`} onClick={() => setModo('manual')}>✍️ Inserir manualmente</button>
+            </div>
+            {modo === 'manual' ? (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 8, alignItems: 'end' }}>
+                  <div className="fg" style={{ margin: 0, gridColumn: 'span 2' }}><label className="fl">Produto *</label>
+                    <input className="inp" placeholder="Nome do produto" value={mNome} onChange={e => setMNome(e.target.value)} /></div>
+                  <div className="fg" style={{ margin: 0 }}><label className="fl">Unidade</label>
+                    <input className="inp" placeholder="un, kg, cx…" value={mUn} onChange={e => setMUn(e.target.value)} /></div>
+                  <div className="fg" style={{ margin: 0 }}><label className="fl">Qtd *</label>
+                    <input className="inp" inputMode="decimal" placeholder="0" value={qtd} onChange={e => setQtd(e.target.value)} /></div>
+                  <div className="fg" style={{ margin: 0 }}><label className="fl">Custo unit. (R$) *</label>
+                    <input className="inp" inputMode="decimal" placeholder="0,00" value={mCusto} onChange={e => setMCusto(e.target.value)} /></div>
+                  <button className="btn bp bsm" onClick={addManual}><Plus size={12} /> Adicionar</button>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Item fora do estoque da origem: ao enviar, o sistema dá entrada manual no estoque da origem e em seguida registra a saída; ao receber, entra no destino.</div>
+              </>
+            ) : !origem ? (
               <div style={{ fontSize: 12, color: 'var(--muted)' }}>Escolha a loja de origem para listar os produtos disponíveis.</div>
             ) : loadingProds ? <Loader className="spin" size={14} /> : (
               <>
@@ -409,6 +446,12 @@ function NovaTransf({ onClose, onSaved, lojaAtual, user, tipoInicial }: { onClos
                       <option value="">Selecione o produto…</option>
                       {prodsFiltrados.map(p => <option key={p.id} value={p.id}>{p.nome} — saldo {fmtNum(p.nivel_atual)} {p.gramatura}</option>)}
                     </select>
+                    {prodsFiltrados.length === 0 && (
+                      <div style={{ fontSize: 11.5, color: '#B45309', marginTop: 4 }}>
+                        {prods.length === 0 ? `Nenhum produto com saldo em ${origem}.` : 'Nenhum produto encontrado nesse filtro.'}{' '}
+                        <a href="#" onClick={e => { e.preventDefault(); setMNome(busca.trim()); setModo('manual') }} style={{ fontWeight: 700 }}>Inserir manualmente</a>
+                      </div>
+                    )}
                   </div>
                   <div className="fg" style={{ margin: 0 }}>
                     <input className="inp" inputMode="decimal" placeholder={`Qtd${prodSel ? ' (' + prodSel.gramatura + ')' : ''}`} value={qtd} onChange={e => setQtd(e.target.value)} />
@@ -434,14 +477,14 @@ function NovaTransf({ onClose, onSaved, lojaAtual, user, tipoInicial }: { onClos
                 <tbody>{itens.map((i, k) => {
                   const q = num(i.qtd)
                   return (
-                    <tr key={i.produto_origem_id} style={{ borderTop: '1px solid var(--border)' }}>
-                      <td style={{ padding: 6 }}>{i.produto_nome}</td>
+                    <tr key={i.key} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: 6 }}>{i.produto_nome}{i.produto_origem_id == null && <span style={{ fontSize: 10, fontWeight: 700, color: '#92400E', background: '#FEF3C7', padding: '1px 6px', borderRadius: 99, marginLeft: 6 }}>manual</span>}</td>
                       <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtNum(q)} {i.unidade}</td>
                       <td style={{ textAlign: 'right' }}>{fmtR$(i.custo.custo)}</td>
                       <td style={{ textAlign: 'right' }}>{fmtR$(r2(q * i.custo.custo))}</td>
                       <td style={{ textAlign: 'right' }}>{fmtR$(rateio[k])}</td>
                       <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtR$(r2(i.custo.custo + (q > 0 ? rateio[k] / q : 0)))}</td>
-                      <td style={{ textAlign: 'right' }}><button className="btn bo bsm" style={{ color: '#991B1B', padding: '2px 6px' }} onClick={() => removeItem(i.produto_origem_id)}><Trash2 size={11} /></button></td>
+                      <td style={{ textAlign: 'right' }}><button className="btn bo bsm" style={{ color: '#991B1B', padding: '2px 6px' }} onClick={() => removeItem(i.key)}><Trash2 size={11} /></button></td>
                     </tr>
                   )
                 })}</tbody>
@@ -564,6 +607,27 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
       if (!ok) { setBusy(false); alert('Esta operação já foi processada por outro usuário/aba. Atualizando…'); await load(); return }
       for (const { it, qtd } of envios) {
         if (qtd <= 0) { await sb.from('transferencia_itens').update({ qtd_enviada: 0 }).eq('id', it.id); continue }
+        if (!it.produto_origem_id) {
+          // item manual: dá entrada no estoque da origem (cria o produto se não existir) para a saída ficar registrada e rastreável
+          const { data: ex } = await sb.from('estoque_produtos').select('id, nivel_atual').ilike('nome', it.produto_nome.trim()).eq('loja', t.unidade_origem).eq('ativo', true).maybeSingle()
+          let pid: string | null = ex?.id ?? null
+          const base = Number(ex?.nivel_atual ?? 0)
+          if (pid) await sb.from('estoque_produtos').update({ nivel_atual: base + qtd, updated_at: nowISO() }).eq('id', pid)
+          else {
+            const { data: np } = await sb.from('estoque_produtos').insert({
+              loja: t.unidade_origem, nome: it.produto_nome, gramatura: it.unidade || 'un', categoria: 'Entrada manual',
+              nivel_atual: qtd, preco_unitario: it.custo_compra_unit || it.preco_unitario || 0, ativo: true,
+            }).select('id').single()
+            pid = np?.id ?? null
+          }
+          await sb.from('estoque_movimentacoes').insert({
+            loja: t.unidade_origem, produto_id: pid, produto_nome: it.produto_nome, tipo: 'entrada_manual', quantidade: qtd, unidade: it.unidade,
+            saldo_antes: base, saldo_depois: base + qtd, motivo: `Entrada manual p/ ${rotulo} TR-${t.numero} → ${t.unidade_destino}`, created_by: user?.name || 'Painel',
+          })
+          it.produto_origem_id = pid
+          if (pid) await sb.from('transferencia_itens').update({ produto_origem_id: pid }).eq('id', it.id)
+          saldos[it.id] = base + qtd
+        }
         const antes = saldos[it.id] ?? 0
         const depois = Math.max(0, antes - qtd)
         if (it.produto_origem_id) await sb.from('estoque_produtos').update({ nivel_atual: depois, updated_at: nowISO() }).eq('id', it.produto_origem_id)
