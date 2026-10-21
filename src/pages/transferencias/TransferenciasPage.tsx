@@ -30,6 +30,12 @@ interface Transf {
   obs_aprovacao: string | null
   obs_recebimento: string | null
   valor_total: number
+  tipo: string
+  valor_produtos: number
+  custo_logistico: number
+  financeiro_status: string | null
+  quitado_por: string | null
+  quitado_em: string | null
   created_by: string | null
   created_at: string
 }
@@ -47,6 +53,13 @@ interface TransfItem {
   saldo_origem_no_pedido: number | null
   preco_unitario: number
   lote: string | null
+  custo_compra_unit: number
+  custo_fonte: string | null
+  ultima_compra_data: string | null
+  fornecedor: string | null
+  nota_fiscal: string | null
+  logistica_rateada: number
+  custo_unit_final: number
 }
 interface TimelineEv { id: string; evento: string; descricao: string | null; quem: string | null; quando: string; meta: any }
 
@@ -69,6 +82,45 @@ const fmtNum = (v: number | null | undefined) => v == null ? '—' : Number(v).t
 const fmtR$ = (v: number | null | undefined) => v == null ? '—' : `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtDataH = (d: string | null) => { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }
 const nowISO = () => new Date().toISOString()
+const r2 = (v: number) => Math.round(v * 100) / 100
+const num = (v: any) => Number(String(v ?? '').replace(',', '.')) || 0
+const isVenda = (t: { tipo?: string }) => t.tipo === 'venda'
+const tipoLabel = (t: { tipo?: string }) => isVenda(t) ? '💰 Venda interna' : '🔄 Transferência'
+const FONTE: Record<string, string> = { prestacao_contas: 'Prestação de contas', cadastro_estoque: 'Entrada/cadastro de estoque' }
+
+// Último custo de compra: prestação de contas (caixa_itens da loja, mesma unidade) → fallback preço do cadastro de estoque
+interface CustoInfo { custo: number; fonte: string; data: string | null; fornecedor: string | null; nf: string | null }
+async function buscarUltimoCusto(loja: string, nome: string, unidade: string, precoCadastro: number, fornCadastro: string | null): Promise<CustoInfo | null> {
+  const un = (unidade || '').trim().toLowerCase()
+  try {
+    const { data } = await sb.from('caixa_itens')
+      .select('descricao, quantidade, unidade, valor, data, fornecedor, documento, caixas!inner(loja, data_ref)')
+      .eq('caixas.loja', loja).ilike('descricao', nome.trim().replace(/[%_]/g, ' ')).gt('quantidade', 0).gt('valor', 0).limit(30)
+    const rows = ((data as any[]) || [])
+      .filter(r => (r.unidade || '').trim().toLowerCase() === un)
+      .map(r => ({ ...r, dt: r.data || r.caixas?.data_ref || '' }))
+      .sort((a, b) => String(b.dt).localeCompare(String(a.dt)))
+    if (rows[0]) {
+      const r = rows[0]
+      return { custo: r2(Number(r.valor) / Number(r.quantidade)), fonte: 'prestacao_contas', data: r.dt || null, fornecedor: r.fornecedor || null, nf: r.documento || null }
+    }
+  } catch { /* cai no fallback */ }
+  if (precoCadastro > 0) return { custo: precoCadastro, fonte: 'cadastro_estoque', data: null, fornecedor: fornCadastro, nf: null }
+  return null
+}
+// Rateio proporcional ao valor de cada item (ou à quantidade, se não houver valor); o último item absorve o arredondamento
+function ratear(itens: { qtd: number; custo: number }[], logistica: number): number[] {
+  const base = itens.map(i => i.qtd * i.custo)
+  let pesos = base
+  let tot = base.reduce((a, b) => a + b, 0)
+  if (!(tot > 0)) { pesos = itens.map(i => i.qtd); tot = pesos.reduce((a, b) => a + b, 0) }
+  if (!(tot > 0) || !(logistica > 0)) return itens.map(() => 0)
+  let acum = 0
+  return itens.map((_, k) => {
+    if (k === itens.length - 1) return r2(logistica - acum)
+    const v = r2(logistica * pesos[k] / tot); acum += v; return v
+  })
+}
 
 // ── Página ───────────────────────────────────────────────────
 export default function TransferenciasPage() {
@@ -76,7 +128,9 @@ export default function TransferenciasPage() {
   const { user, can } = useAuth()
   const podeGerir = can('estoque', 'create') || user?.role === 'admin' || user?.role === 'super_admin'
 
-  const [tab, setTab] = useState<'pendentes' | 'transito' | 'historico' | 'dashboard'>('pendentes')
+  const [tab, setTab] = useState<'pendentes' | 'transito' | 'historico' | 'dashboard' | 'relatorios'>('pendentes')
+  const [novoTipo, setNovoTipo] = useState<'transferencia' | 'venda'>('transferencia')
+  const [fTipo, setFTipo] = useState('')
   const [transfs, setTransfs] = useState<Transf[]>([])
   const [loading, setLoading] = useState(true)
   const [novoOpen, setNovoOpen] = useState(false)
@@ -96,6 +150,7 @@ export default function TransferenciasPage() {
   const emTransito = useMemo(() => transfs.filter(t => ['aprovada', 'separacao', 'enviada'].includes(t.status)), [transfs])
 
   const filtrar = (lista: Transf[]) => lista.filter(t => {
+    if (fTipo && (t.tipo || 'transferencia') !== fTipo) return false
     if (fUnidade && t.unidade_origem !== fUnidade && t.unidade_destino !== fUnidade) return false
     if (busca) {
       const q = busca.toLowerCase()
@@ -113,6 +168,8 @@ export default function TransferenciasPage() {
       recebidas: transfs.filter(t => t.status === 'recebida').length,
       divergencia: transfs.filter(t => t.tem_divergencia).length,
       valorMes: doMes.reduce((s, t) => s + (t.valor_total || 0), 0),
+      aReceber: transfs.filter(t => isVenda(t) && t.status === 'recebida' && t.financeiro_status === 'a_receber').reduce((s, t) => s + (t.valor_total || 0), 0),
+      logisticaMes: doMes.filter(t => t.status === 'recebida').reduce((s, t) => s + (t.custo_logistico || 0), 0),
       qtdMes: doMes.length,
     }
   }, [transfs])
@@ -130,14 +187,18 @@ export default function TransferenciasPage() {
           <button className={`btn ${tab === 'transito' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('transito')}><Truck size={13} /> Em Trânsito {emTransito.length > 0 && <span className="badge" style={{ background: '#EDE9FE', color: '#5B21B6' }}>{emTransito.length}</span>}</button>
           <button className={`btn ${tab === 'historico' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('historico')}><History size={13} /> Histórico</button>
           <button className={`btn ${tab === 'dashboard' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('dashboard')}><ArrowLeftRight size={13} /> Dashboard</button>
+          <button className={`btn ${tab === 'relatorios' ? 'bp' : 'bo'} bsm`} onClick={() => setTab('relatorios')}>📊 Relatórios</button>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <button className="btn bo bsm" onClick={load} title="Atualizar"><RefreshCw size={13} /></button>
-          <button className="btn bp bsm" onClick={() => setNovoOpen(true)}><Plus size={13} /> Nova Transferência</button>
+          <button className="btn bo bsm" onClick={() => { setNovoTipo('venda'); setNovoOpen(true) }}><Plus size={13} /> Nova Venda entre Lojas</button>
+          <button className="btn bp bsm" onClick={() => { setNovoTipo('transferencia'); setNovoOpen(true) }}><Plus size={13} /> Nova Transferência</button>
         </div>
       </div>
 
-      {tab === 'dashboard' ? (
+      {tab === 'relatorios' ? (
+        <RelatoriosTransf transfs={transfs} onAbrir={setSelId} />
+      ) : tab === 'dashboard' ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10 }}>
           <Kpi titulo="⏳ Pendentes de aprovação" valor={String(kpi.pendAprov)} />
           <Kpi titulo="🚚 Em trânsito" valor={String(kpi.transito)} />
@@ -145,6 +206,8 @@ export default function TransferenciasPage() {
           <Kpi titulo="⚠️ Com divergência" valor={String(kpi.divergencia)} destaque={kpi.divergencia > 0} />
           <Kpi titulo="🔄 Transferências no mês" valor={String(kpi.qtdMes)} />
           <Kpi titulo="💰 Valor movimentado (mês)" valor={fmtR$(kpi.valorMes)} />
+          <Kpi titulo="🧾 Vendas internas a receber" valor={fmtR$(kpi.aReceber)} destaque={kpi.aReceber > 0} />
+          <Kpi titulo="🚛 Logística (mês, concluídas)" valor={fmtR$(kpi.logisticaMes)} />
         </div>
       ) : (
         <>
@@ -153,6 +216,11 @@ export default function TransferenciasPage() {
             <select className="sel" value={fUnidade} onChange={e => setFUnidade(e.target.value)} style={{ maxWidth: 180 }}>
               <option value="">Todas as unidades</option>
               {LOJAS.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+            <select className="sel" value={fTipo} onChange={e => setFTipo(e.target.value)} style={{ maxWidth: 190 }}>
+              <option value="">Vendas e transferências</option>
+              <option value="venda">💰 Só vendas internas</option>
+              <option value="transferencia">🔄 Só transferências</option>
             </select>
             <input className="inp" placeholder="Buscar nº, solicitante, unidade…" value={busca} onChange={e => setBusca(e.target.value)} style={{ flex: 1, minWidth: 180 }} />
           </div>
@@ -171,7 +239,7 @@ export default function TransferenciasPage() {
         </>
       )}
 
-      {novoOpen && <NovaTransf onClose={() => setNovoOpen(false)} onSaved={load} lojaAtual={loja} user={user} />}
+      {novoOpen && <NovaTransf onClose={() => setNovoOpen(false)} onSaved={load} lojaAtual={loja} user={user} tipoInicial={novoTipo} />}
     </div>
   )
 }
@@ -193,6 +261,7 @@ function TransfCard({ t, onAbrir }: { t: Transf; onAbrir: () => void }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontWeight: 800, color: 'var(--bordo)' }}>TR-{t.numero}</span>
         <span className="badge" style={{ background: s.bg, color: s.cor, padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{s.label}</span>
+        {isVenda(t) && <span style={{ fontSize: 10.5, fontWeight: 700, color: '#92400E', background: '#FEF3C7', padding: '2px 7px', borderRadius: 99 }}>💰 Venda</span>}
         {t.tem_divergencia && <span style={{ marginLeft: 'auto', fontSize: 10, color: '#DC2626', fontWeight: 700 }}><AlertTriangle size={11} style={{ verticalAlign: -1 }} /> Divergência</span>}
       </div>
       <div style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -205,61 +274,97 @@ function TransfCard({ t, onAbrir }: { t: Transf; onAbrir: () => void }) {
   )
 }
 
-// ── Modal: nova transferência ────────────────────────────────
-interface ProdOrig { id: string; nome: string; gramatura: string; nivel_atual: number; preco_unitario: number; categoria: string }
-function NovaTransf({ onClose, onSaved, lojaAtual, user }: { onClose: () => void; onSaved: () => void; lojaAtual: string; user: any }) {
+// ── Modal: nova transferência / venda interna ────────────────
+interface ProdOrig { id: string; nome: string; gramatura: string; nivel_atual: number; preco_unitario: number; categoria: string; fornecedor_nome: string | null }
+interface ItemNovo { produto_origem_id: string; produto_nome: string; unidade: string; qtd: string; saldo: number; custo: CustoInfo }
+function NovaTransf({ onClose, onSaved, lojaAtual, user, tipoInicial }: { onClose: () => void; onSaved: () => void; lojaAtual: string; user: any; tipoInicial: 'transferencia' | 'venda' }) {
+  const [tipo, setTipo] = useState<'transferencia' | 'venda'>(tipoInicial)
   const [origem, setOrigem] = useState('')
   const [destino, setDestino] = useState(LOJAS.includes(lojaAtual) ? lojaAtual : 'Amore CD')
   const [motivo, setMotivo] = useState('')
+  const [logistica, setLogistica] = useState('')
   const [prods, setProds] = useState<ProdOrig[]>([])
   const [loadingProds, setLoadingProds] = useState(false)
-  const [itens, setItens] = useState<{ produto_origem_id: string; produto_nome: string; unidade: string; qtd: string; saldo: number; preco: number }[]>([])
+  const [itens, setItens] = useState<ItemNovo[]>([])
   const [sel, setSel] = useState('')
+  const [busca, setBusca] = useState('')
   const [qtd, setQtd] = useState('')
+  const [custoSel, setCustoSel] = useState<CustoInfo | null | 'carregando'>(null)
   const [salvando, setSalvando] = useState(false)
 
-  // carrega produtos da origem quando escolhida
   useEffect(() => {
     if (!origem) { setProds([]); return }
     setLoadingProds(true)
-    sb.from('estoque_produtos').select('id, nome, gramatura, nivel_atual, preco_unitario, categoria')
-      .eq('loja', origem).eq('ativo', true).order('nome')
+    sb.from('estoque_produtos').select('id, nome, gramatura, nivel_atual, preco_unitario, categoria, fornecedor_nome')
+      .eq('loja', origem).eq('ativo', true).gt('nivel_atual', 0).order('nome')
       .then(({ data }: any) => { setProds((data as ProdOrig[]) || []); setLoadingProds(false) })
   }, [origem])
 
   const prodSel = prods.find(p => p.id === sel)
+  // ao escolher o produto, busca o último custo de compra automaticamente
+  useEffect(() => {
+    if (!prodSel) { setCustoSel(null); return }
+    let vivo = true
+    setCustoSel('carregando')
+    buscarUltimoCusto(origem, prodSel.nome, prodSel.gramatura, Number(prodSel.preco_unitario) || 0, prodSel.fornecedor_nome)
+      .then(c => { if (vivo) setCustoSel(c) })
+    return () => { vivo = false }
+  }, [sel]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const prodsFiltrados = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    return q ? prods.filter(p => p.nome.toLowerCase().includes(q)) : prods
+  }, [prods, busca])
+
   const addItem = () => {
     if (!prodSel) { alert('Escolha um produto.'); return }
-    const q = Number(String(qtd).replace(',', '.'))
+    const q = num(qtd)
     if (!(q > 0)) { alert('Informe a quantidade.'); return }
-    if (q > prodSel.nivel_atual) { if (!confirm(`Quantidade (${q}) maior que o saldo da origem (${prodSel.nivel_atual}). Continuar mesmo assim?`)) return }
+    if (q > prodSel.nivel_atual) { alert(`Quantidade (${fmtNum(q)}) maior que o saldo disponível (${fmtNum(prodSel.nivel_atual)} ${prodSel.gramatura}).`); return }
+    if (!custoSel || custoSel === 'carregando') {
+      alert('Este produto não tem compra válida registrada (prestação de contas ou cadastro de estoque com preço). Regularize o cadastro antes de movimentar.'); return
+    }
     if (itens.some(i => i.produto_origem_id === prodSel.id)) { alert('Produto já adicionado.'); return }
-    setItens(o => [...o, { produto_origem_id: prodSel.id, produto_nome: prodSel.nome, unidade: prodSel.gramatura, qtd: String(q), saldo: prodSel.nivel_atual, preco: prodSel.preco_unitario }])
+    setItens(o => [...o, { produto_origem_id: prodSel.id, produto_nome: prodSel.nome, unidade: prodSel.gramatura, qtd: String(q), saldo: prodSel.nivel_atual, custo: custoSel }])
     setSel(''); setQtd('')
   }
   const removeItem = (id: string) => setItens(o => o.filter(i => i.produto_origem_id !== id))
+
+  const log = num(logistica)
+  const rateio = useMemo(() => ratear(itens.map(i => ({ qtd: num(i.qtd), custo: i.custo.custo })), log), [itens, log])
+  const valorProdutos = r2(itens.reduce((s, i) => s + num(i.qtd) * i.custo.custo, 0))
+  const total = r2(valorProdutos + log)
 
   const salvar = async () => {
     if (!origem || !destino) { alert('Escolha as unidades de origem e destino.'); return }
     if (origem === destino) { alert('Origem e destino devem ser diferentes.'); return }
     if (itens.length === 0) { alert('Adicione ao menos um produto.'); return }
+    if (log < 0) { alert('Custo logístico inválido.'); return }
+    if (itens.some(i => num(i.qtd) > i.saldo)) { alert('Há item acima do saldo disponível.'); return }
     setSalvando(true)
     try {
-      const valor_total = itens.reduce((s, i) => s + Number(i.qtd) * (i.preco || 0), 0)
       const { data: tData, error } = await sb.from('transferencias').insert({
-        unidade_origem: origem, unidade_destino: destino,
+        unidade_origem: origem, unidade_destino: destino, tipo,
         solicitante_nome: user?.name || 'Painel', solicitante_id: null,
         motivo: motivo || null, status: 'solicitada',
-        valor_total: Math.round(valor_total * 100) / 100, created_by: user?.name || 'Painel',
+        valor_produtos: valorProdutos, custo_logistico: log, valor_total: total,
+        created_by: user?.name || 'Painel',
       }).select('id, numero').single()
       if (error) throw error
       const tid = tData.id
-      const rows = itens.map(i => ({
-        transferencia_id: tid, produto_origem_id: i.produto_origem_id, produto_nome: i.produto_nome,
-        unidade: i.unidade, qtd_solicitada: Number(i.qtd), saldo_origem_no_pedido: i.saldo, preco_unitario: i.preco || 0,
-      }))
-      await sb.from('transferencia_itens').insert(rows)
-      await sb.from('transferencia_timeline').insert({ transferencia_id: tid, evento: 'solicitada', descricao: `${itens.length} item(ns) · ${origem} → ${destino}`, quem: user?.name || 'Painel' })
+      const rows = itens.map((i, k) => {
+        const q = num(i.qtd)
+        return {
+          transferencia_id: tid, produto_origem_id: i.produto_origem_id, produto_nome: i.produto_nome,
+          unidade: i.unidade, qtd_solicitada: q, saldo_origem_no_pedido: i.saldo, preco_unitario: i.custo.custo,
+          custo_compra_unit: i.custo.custo, custo_fonte: i.custo.fonte, ultima_compra_data: i.custo.data,
+          fornecedor: i.custo.fornecedor, nota_fiscal: i.custo.nf,
+          logistica_rateada: rateio[k], custo_unit_final: r2(i.custo.custo + (q > 0 ? rateio[k] / q : 0)),
+        }
+      })
+      const { error: e2 } = await sb.from('transferencia_itens').insert(rows)
+      if (e2) throw e2
+      await sb.from('transferencia_timeline').insert({ transferencia_id: tid, evento: 'solicitada', descricao: `${tipoLabel({ tipo })} · ${itens.length} item(ns) · ${origem} → ${destino} · total ${fmtR$(total)}`, quem: user?.name || 'Painel' })
       onSaved(); onClose()
     } catch (e: any) { alert('Falha ao salvar: ' + (e?.message || e)) }
     setSalvando(false)
@@ -267,63 +372,94 @@ function NovaTransf({ onClose, onSaved, lojaAtual, user }: { onClose: () => void
 
   return (
     <div className="ov open" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 620 }}>
-        <div className="mhd"><b>🔄 Nova Transferência</b><button className="btn bo bsm" onClick={onClose}><X size={13} /></button></div>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 720 }}>
+        <div className="mhd"><b>{tipo === 'venda' ? '💰 Nova Venda entre Lojas' : '🔄 Nova Transferência'}</b><button className="btn bo bsm" onClick={onClose}><X size={13} /></button></div>
         <div className="mbd">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div className="fg"><label className="fl">Unidade de origem *</label>
-              <select className="sel" value={origem} onChange={e => { setOrigem(e.target.value); setItens([]) }}>
+          <div className="fg"><label className="fl">Tipo de operação</label>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button className={`btn ${tipo === 'venda' ? 'bp' : 'bo'} bsm`} onClick={() => setTipo('venda')}>💰 Venda de produtos para outra loja</button>
+              <button className={`btn ${tipo === 'transferencia' ? 'bp' : 'bo'} bsm`} onClick={() => setTipo('transferencia')}>🔄 Transferência sem venda</button>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+              {tipo === 'venda' ? 'Vendida pelo custo da última compra, sem margem; gera valor a pagar/receber entre as lojas.' : 'Apenas move o estoque; não gera venda nem receita de mercadoria.'}
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10 }}>
+            <div className="fg"><label className="fl">Loja de origem *</label>
+              <select className="sel" value={origem} onChange={e => { setOrigem(e.target.value); setItens([]); setSel('') }}>
                 <option value="">Selecione…</option>{LOJAS.map(l => <option key={l} value={l}>{l}</option>)}
               </select>
             </div>
-            <div className="fg"><label className="fl">Unidade de destino *</label>
+            <div className="fg"><label className="fl">Loja de destino *</label>
               <select className="sel" value={destino} onChange={e => setDestino(e.target.value)}>{LOJAS.map(l => <option key={l} value={l}>{l}</option>)}</select>
             </div>
           </div>
-          <div className="fg"><label className="fl">Motivo</label><input className="inp" value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Necessidade operacional…" /></div>
+          <div className="fg"><label className="fl">Observações / motivo</label><input className="inp" value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Necessidade operacional…" /></div>
 
-          {/* Adicionar produto */}
           <div style={{ borderTop: '1px dashed var(--border)', marginTop: 8, paddingTop: 10 }}>
-            <label className="fl">Produtos da origem {origem && `(${origem})`}</label>
+            <label className="fl">Produtos com saldo {origem && `em ${origem}`}</label>
             {!origem ? (
-              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Escolha a unidade de origem para listar os produtos com saldo.</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Escolha a loja de origem para listar os produtos disponíveis.</div>
             ) : loadingProds ? <Loader className="spin" size={14} /> : (
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 8, alignItems: 'end' }}>
-                <div className="fg" style={{ margin: 0 }}>
-                  <select className="sel" value={sel} onChange={e => setSel(e.target.value)}>
-                    <option value="">Selecione o produto…</option>
-                    {prods.map(p => <option key={p.id} value={p.id}>{p.nome} — saldo {fmtNum(p.nivel_atual)} {p.gramatura}</option>)}
-                  </select>
+              <>
+                <input className="inp" placeholder="Filtrar produto…" value={busca} onChange={e => setBusca(e.target.value)} style={{ marginBottom: 6 }} />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8, alignItems: 'end' }}>
+                  <div className="fg" style={{ margin: 0, gridColumn: 'span 2' }}>
+                    <select className="sel" value={sel} onChange={e => setSel(e.target.value)}>
+                      <option value="">Selecione o produto…</option>
+                      {prodsFiltrados.map(p => <option key={p.id} value={p.id}>{p.nome} — saldo {fmtNum(p.nivel_atual)} {p.gramatura}</option>)}
+                    </select>
+                  </div>
+                  <div className="fg" style={{ margin: 0 }}>
+                    <input className="inp" inputMode="decimal" placeholder={`Qtd${prodSel ? ' (' + prodSel.gramatura + ')' : ''}`} value={qtd} onChange={e => setQtd(e.target.value)} />
+                  </div>
+                  <button className="btn bp bsm" onClick={addItem}><Plus size={12} /> Adicionar</button>
                 </div>
-                <div className="fg" style={{ margin: 0 }}>
-                  <input className="inp" inputMode="decimal" placeholder={`Qtd${prodSel ? ' (' + prodSel.gramatura + ')' : ''}`} value={qtd} onChange={e => setQtd(e.target.value)} />
-                </div>
-                <button className="btn bp bsm" onClick={addItem}><Plus size={12} /> Add</button>
+              </>
+            )}
+            {prodSel && (
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6, lineHeight: 1.6 }}>
+                Saldo disponível: <b>{fmtNum(prodSel.nivel_atual)} {prodSel.gramatura}</b>
+                {custoSel === 'carregando' ? ' · buscando última compra…'
+                  : custoSel ? <> · Último custo: <b>{fmtR$(custoSel.custo)}/{prodSel.gramatura}</b> ({FONTE[custoSel.fonte]}{custoSel.data ? ' · ' + new Date(custoSel.data + 'T12:00:00').toLocaleDateString('pt-BR') : ''}{custoSel.fornecedor ? ' · ' + custoSel.fornecedor : ''}{custoSel.nf ? ' · NF/doc ' + custoSel.nf : ''})</>
+                  : <span style={{ color: '#DC2626', fontWeight: 700 }}> · ⛔ Sem compra válida registrada — regularize o cadastro para movimentar.</span>}
               </div>
             )}
-            {prodSel && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Saldo disponível na origem: <b>{fmtNum(prodSel.nivel_atual)} {prodSel.gramatura}</b></div>}
           </div>
 
-          {/* Itens adicionados */}
           {itens.length > 0 && (
             <div style={{ marginTop: 10, overflowX: 'auto' }}>
               <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
-                <thead><tr style={{ textAlign: 'left', color: 'var(--muted)' }}><th style={{ padding: 6 }}>Produto</th><th style={{ textAlign: 'right' }}>Qtd</th><th style={{ textAlign: 'right' }}>Saldo origem</th><th></th></tr></thead>
-                <tbody>{itens.map(i => (
-                  <tr key={i.produto_origem_id} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={{ padding: 6 }}>{i.produto_nome}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtNum(Number(i.qtd))} {i.unidade}</td>
-                    <td style={{ textAlign: 'right', color: Number(i.qtd) > i.saldo ? '#DC2626' : 'var(--muted)' }}>{fmtNum(i.saldo)}</td>
-                    <td style={{ textAlign: 'right' }}><button className="btn bo bsm" style={{ color: '#991B1B', padding: '2px 6px' }} onClick={() => removeItem(i.produto_origem_id)}><Trash2 size={11} /></button></td>
-                  </tr>
-                ))}</tbody>
+                <thead><tr style={{ textAlign: 'left', color: 'var(--muted)' }}><th style={{ padding: 6 }}>Produto</th><th style={{ textAlign: 'right' }}>Qtd</th><th style={{ textAlign: 'right' }}>Custo un.</th><th style={{ textAlign: 'right' }}>Subtotal</th><th style={{ textAlign: 'right' }}>Logíst.</th><th style={{ textAlign: 'right' }}>Custo c/ log.</th><th></th></tr></thead>
+                <tbody>{itens.map((i, k) => {
+                  const q = num(i.qtd)
+                  return (
+                    <tr key={i.produto_origem_id} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: 6 }}>{i.produto_nome}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtNum(q)} {i.unidade}</td>
+                      <td style={{ textAlign: 'right' }}>{fmtR$(i.custo.custo)}</td>
+                      <td style={{ textAlign: 'right' }}>{fmtR$(r2(q * i.custo.custo))}</td>
+                      <td style={{ textAlign: 'right' }}>{fmtR$(rateio[k])}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtR$(r2(i.custo.custo + (q > 0 ? rateio[k] / q : 0)))}</td>
+                      <td style={{ textAlign: 'right' }}><button className="btn bo bsm" style={{ color: '#991B1B', padding: '2px 6px' }} onClick={() => removeItem(i.produto_origem_id)}><Trash2 size={11} /></button></td>
+                    </tr>
+                  )
+                })}</tbody>
               </table>
             </div>
           )}
+
+          <div style={{ borderTop: '1px dashed var(--border)', marginTop: 10, paddingTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10, alignItems: 'end' }}>
+            <div className="fg" style={{ margin: 0 }}><label className="fl">Custo logístico total (R$)</label>
+              <input className="inp" inputMode="decimal" placeholder="0,00" value={logistica} onChange={e => setLogistica(e.target.value)} /></div>
+            <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>Valor dos produtos</div><b>{fmtR$(valorProdutos)}</b></div>
+            <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>Logística</div><b>{fmtR$(log)}</b></div>
+            <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>Total da operação</div><b style={{ color: 'var(--bordo)', fontSize: 16 }}>{fmtR$(total)}</b></div>
+          </div>
         </div>
         <div className="mft">
           <button className="btn bo bsm" onClick={onClose}>Cancelar</button>
-          <button className="btn bp bsm" onClick={salvar} disabled={salvando}>{salvando ? <Loader className="spin" size={13} /> : <Check size={13} />} Solicitar transferência</button>
+          <button className="btn bp bsm" onClick={salvar} disabled={salvando}>{salvando ? <Loader className="spin" size={13} /> : <Check size={13} />} {tipo === 'venda' ? 'Solicitar venda' : 'Solicitar transferência'}</button>
         </div>
       </div>
     </div>
@@ -399,76 +535,108 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
     await registrarTimeline('separada', 'Separação confirmada na origem')
     setBusy(false); await load(); onChange()
   }
+  // Reivindica a transição de status de forma atômica (evita baixa/entrada duplicada por duplo clique, F5 ou 2 usuários)
+  const reivindicar = async (de: string, para: string, patch: Record<string, any>) => {
+    const { data } = await sb.from('transferencias').update({ status: para, ...patch, updated_at: nowISO() }).eq('id', id).eq('status', de).select('id')
+    return Array.isArray(data) && data.length > 0
+  }
+  const tipoMov = (sufixo: 'saida' | 'entrada') => isVenda(t) ? `venda_interna_${sufixo}` : `transferencia_${sufixo}`
+  const rotulo = isVenda(t) ? 'Venda' : 'Transferência'
+
   // ENVIO → baixa no estoque da origem
   const enviar = async () => {
-    // qtd enviada = edição ou qtd aprovada
-    const envios = itens.map(it => ({ it, qtd: Number(edits[it.id] ?? String(it.qtd_aprovada ?? it.qtd_solicitada)) }))
+    const envios = itens.map(it => ({ it, qtd: num(edits[it.id] ?? String(it.qtd_aprovada ?? it.qtd_solicitada)) }))
     if (envios.some(e => !(e.qtd >= 0))) { alert('Quantidades inválidas.'); return }
-    if (!confirm('Confirmar ENVIO? Isto dá baixa no estoque da unidade de origem.')) return
+    if (envios.some(e => e.qtd > (e.it.qtd_aprovada ?? e.it.qtd_solicitada))) { alert('Não é possível enviar mais do que o aprovado.'); return }
+    // valida saldo REAL atual da origem antes de qualquer baixa
+    const saldos: Record<string, number> = {}
+    for (const { it, qtd } of envios) {
+      if (qtd <= 0 || !it.produto_origem_id) continue
+      const { data: pd } = await sb.from('estoque_produtos').select('nivel_atual').eq('id', it.produto_origem_id).single()
+      saldos[it.id] = Number(pd?.nivel_atual ?? 0)
+      if (qtd > saldos[it.id]) { alert(`Saldo insuficiente na origem para "${it.produto_nome}": disponível ${fmtNum(saldos[it.id])}, a enviar ${fmtNum(qtd)}.\nConfira o estoque físico e ajuste antes de enviar.`); return }
+      if (!(it.custo_compra_unit > 0) && !(it.preco_unitario > 0)) { alert(`"${it.produto_nome}" está sem custo de compra válido. Regularize o cadastro.`); return }
+    }
+    if (!confirm('Confirmar ENVIO? Isto dá baixa no estoque da loja de origem.')) return
     setBusy(true)
     try {
+      const ok = await reivindicar('separacao', 'enviada', { enviado_por: user?.name || 'Painel', enviado_em: nowISO() })
+      if (!ok) { setBusy(false); alert('Esta operação já foi processada por outro usuário/aba. Atualizando…'); await load(); return }
       for (const { it, qtd } of envios) {
         if (qtd <= 0) { await sb.from('transferencia_itens').update({ qtd_enviada: 0 }).eq('id', it.id); continue }
-        // baixa saldo na origem (trava: não deixa negativo)
-        if (it.produto_origem_id) {
-          const { data: pd } = await sb.from('estoque_produtos').select('nivel_atual').eq('id', it.produto_origem_id).single()
-          const atual = Number(pd?.nivel_atual ?? 0)
-          const novo = Math.max(0, atual - qtd)
-          await sb.from('estoque_produtos').update({ nivel_atual: novo, updated_at: nowISO() }).eq('id', it.produto_origem_id)
-        }
+        const antes = saldos[it.id] ?? 0
+        const depois = Math.max(0, antes - qtd)
+        if (it.produto_origem_id) await sb.from('estoque_produtos').update({ nivel_atual: depois, updated_at: nowISO() }).eq('id', it.produto_origem_id)
         await sb.from('estoque_movimentacoes').insert({
           loja: t.unidade_origem, produto_id: it.produto_origem_id, produto_nome: it.produto_nome,
-          tipo: 'transferencia_saida', quantidade: qtd, unidade: it.unidade,
-          motivo: `Transferência TR-${t.numero} → ${t.unidade_destino}`, created_by: user?.name || 'Painel',
+          tipo: tipoMov('saida'), quantidade: qtd, unidade: it.unidade, saldo_antes: antes, saldo_depois: depois,
+          motivo: `${rotulo} TR-${t.numero} → ${t.unidade_destino}`, nota_fiscal: it.nota_fiscal || null, created_by: user?.name || 'Painel',
         })
         await sb.from('transferencia_itens').update({ qtd_enviada: qtd }).eq('id', it.id)
       }
-      await patchT({ status: 'enviada', enviado_por: user?.name || 'Painel', enviado_em: nowISO() })
-      await registrarTimeline('enviada', 'Produtos enviados · baixa no estoque da origem')
+      await registrarTimeline('enviada', `Produtos enviados · baixa no estoque da origem${isVenda(t) ? ' · venda interna' : ''}`)
       setEdits({})
       setBusy(false); await load(); onChange()
-    } catch (e: any) { setBusy(false); alert('Falha no envio: ' + (e?.message || e)) }
+    } catch (e: any) { setBusy(false); alert('Falha no envio: ' + (e?.message || e) + '\nConfira o histórico/estoque antes de tentar de novo.'); await load() }
   }
-  // RECEBIMENTO → entrada no destino + divergência
+  // RECEBIMENTO → entrada no destino (custo com logística) + divergência
   const receber = async () => {
-    const receb = itens.map(it => ({ it, qtd: Number(edits[it.id] ?? String(it.qtd_enviada ?? 0)) }))
+    const receb = itens.map(it => ({ it, qtd: num(edits[it.id] ?? String(it.qtd_enviada ?? 0)) }))
     if (receb.some(e => !(e.qtd >= 0))) { alert('Quantidades inválidas.'); return }
-    if (!confirm('Confirmar RECEBIMENTO? Isto dá entrada no estoque da unidade de destino.')) return
+    if (!confirm('Confirmar RECEBIMENTO? Isto dá entrada no estoque da loja de destino.')) return
     setBusy(true)
     try {
       let divergencia = false
+      for (const { it, qtd } of receb) if ((it.qtd_enviada ?? 0) !== qtd) divergencia = true
+      const ok = await reivindicar('enviada', 'recebida', {
+        recebido_por: user?.name || 'Painel', recebido_em: nowISO(), tem_divergencia: divergencia,
+        ...(isVenda(t) ? { financeiro_status: 'a_receber' } : {}),
+      })
+      if (!ok) { setBusy(false); alert('Esta operação já foi recebida por outro usuário/aba. Atualizando…'); await load(); return }
       for (const { it, qtd } of receb) {
-        if ((it.qtd_enviada ?? 0) !== qtd) divergencia = true
         if (qtd <= 0) { await sb.from('transferencia_itens').update({ qtd_recebida: 0 }).eq('id', it.id); continue }
-        // casa produto no destino por nome; cria se não existir
+        // custo de entrada no destino = custo de compra + logística rateada por unidade
+        const q0 = it.qtd_enviada || qtd
+        const custoEntrada = it.custo_unit_final > 0 ? it.custo_unit_final : r2((it.custo_compra_unit || it.preco_unitario || 0) + (q0 > 0 ? (it.logistica_rateada || 0) / q0 : 0))
         const { data: pd } = await sb.from('estoque_produtos').select('id, nivel_atual, preco_unitario')
           .ilike('nome', it.produto_nome.trim()).eq('loja', t.unidade_destino).eq('ativo', true).maybeSingle()
+        let antes = 0, depois = qtd, destId: string | null = null
         if (pd) {
-          const atual = Number(pd.nivel_atual ?? 0)
-          const precoAtual = Number(pd.preco_unitario ?? it.preco_unitario)
-          const novo = atual + qtd
-          const cmp = novo > 0 ? (atual * precoAtual + qtd * (it.preco_unitario || precoAtual)) / novo : precoAtual
-          await sb.from('estoque_produtos').update({ nivel_atual: novo, preco_unitario: Math.round(cmp * 100) / 100, updated_at: nowISO() }).eq('id', pd.id)
-          await sb.from('transferencia_itens').update({ qtd_recebida: qtd, produto_destino_id: pd.id }).eq('id', it.id)
+          antes = Number(pd.nivel_atual ?? 0)
+          const precoAtual = Number(pd.preco_unitario ?? custoEntrada)
+          depois = antes + qtd
+          const cmp = depois > 0 ? (antes * precoAtual + qtd * custoEntrada) / depois : precoAtual
+          await sb.from('estoque_produtos').update({ nivel_atual: depois, preco_unitario: r2(cmp), updated_at: nowISO() }).eq('id', pd.id)
+          destId = pd.id
         } else {
           const { data: novoP } = await sb.from('estoque_produtos').insert({
             loja: t.unidade_destino, nome: it.produto_nome, gramatura: it.unidade || 'un',
-            categoria: 'Transferência', nivel_atual: qtd, preco_unitario: it.preco_unitario || 0, ativo: true,
+            categoria: isVenda(t) ? 'Compra interna' : 'Transferência', nivel_atual: qtd, preco_unitario: custoEntrada, ativo: true,
+            fornecedor_nome: it.fornecedor || null,
           }).select('id').single()
-          await sb.from('transferencia_itens').update({ qtd_recebida: qtd, produto_destino_id: novoP?.id ?? null }).eq('id', it.id)
+          destId = novoP?.id ?? null
         }
+        await sb.from('transferencia_itens').update({ qtd_recebida: qtd, produto_destino_id: destId }).eq('id', it.id)
         await sb.from('estoque_movimentacoes').insert({
-          loja: t.unidade_destino, produto_id: null, produto_nome: it.produto_nome,
-          tipo: 'transferencia_entrada', quantidade: qtd, unidade: it.unidade,
-          motivo: `Transferência TR-${t.numero} ← ${t.unidade_origem}`, created_by: user?.name || 'Painel',
+          loja: t.unidade_destino, produto_id: destId, produto_nome: it.produto_nome,
+          tipo: tipoMov('entrada'), quantidade: qtd, unidade: it.unidade, saldo_antes: antes, saldo_depois: depois,
+          motivo: `${rotulo} TR-${t.numero} ← ${t.unidade_origem}`, nota_fiscal: it.nota_fiscal || null, created_by: user?.name || 'Painel',
         })
       }
-      await patchT({ status: 'recebida', recebido_por: user?.name || 'Painel', recebido_em: nowISO(), tem_divergencia: divergencia })
       await registrarTimeline('recebida', divergencia ? 'Recebido COM divergência (enviado ≠ recebido)' : 'Recebido conforme enviado', { divergencia })
       if (divergencia) await registrarTimeline('divergencia', 'Divergência entre enviado e recebido — verificar', {})
+      if (isVenda(t)) await registrarTimeline('financeiro', `Compra interna registrada: ${t.unidade_destino} deve ${fmtR$(t.valor_total)} a ${t.unidade_origem} (produtos ${fmtR$(t.valor_produtos)} + logística ${fmtR$(t.custo_logistico)})`)
       setEdits({})
       setBusy(false); await load(); onChange()
-    } catch (e: any) { setBusy(false); alert('Falha no recebimento: ' + (e?.message || e)) }
+    } catch (e: any) { setBusy(false); alert('Falha no recebimento: ' + (e?.message || e) + '\nConfira o histórico/estoque antes de tentar de novo.'); await load() }
+  }
+  // Quitação da venda interna (acerto entre as lojas)
+  const quitar = async () => {
+    if (!confirm(`Confirmar que ${t.unidade_destino} pagou ${fmtR$(t.valor_total)} a ${t.unidade_origem}?`)) return
+    setBusy(true)
+    const { data } = await sb.from('transferencias').update({ financeiro_status: 'quitado', quitado_por: user?.name || 'Painel', quitado_em: nowISO() }).eq('id', id).eq('financeiro_status', 'a_receber').select('id')
+    if (Array.isArray(data) && data.length) await registrarTimeline('financeiro', `Acerto financeiro quitado (${fmtR$(t.valor_total)})`)
+    setBusy(false); await load(); onChange()
   }
 
   // colunas visíveis por fase
@@ -484,6 +652,8 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 800, color: 'var(--bordo)', fontSize: 16 }}>TR-{t.numero}</span>
           <span className="badge" style={{ background: s.bg, color: s.cor, padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700 }}>{s.label}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#92400E', background: '#FEF3C7', padding: '2px 8px', borderRadius: 99 }}>{tipoLabel(t)}</span>
+          {isVenda(t) && t.financeiro_status && <span style={{ fontSize: 11, fontWeight: 700, color: t.financeiro_status === 'quitado' ? '#166534' : '#B45309' }}>{t.financeiro_status === 'quitado' ? '✔ Quitada' : '⏳ A receber'}</span>}
           {t.tem_divergencia && <span style={{ fontSize: 11, color: '#DC2626', fontWeight: 700 }}><AlertTriangle size={12} style={{ verticalAlign: -2 }} /> Divergência</span>}
         </div>
         <div style={{ fontSize: 15, fontWeight: 700, marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -504,6 +674,9 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
               <th style={{ padding: 6 }}>Produto</th>
               <th style={{ textAlign: 'right' }}>Solicitado</th>
               <th style={{ textAlign: 'right' }}>Saldo origem*</th>
+              <th style={{ textAlign: 'right' }}>Custo compra</th>
+              <th style={{ textAlign: 'right' }}>Logíst.</th>
+              <th style={{ textAlign: 'right' }}>Custo c/ log.</th>
               <th style={{ textAlign: 'right' }}>Saldo destino</th>
               {(t.status !== 'solicitada' && t.status !== 'em_analise') && <th style={{ textAlign: 'right' }}>Enviado</th>}
               {(t.status === 'recebida') && <th style={{ textAlign: 'right' }}>Recebido</th>}
@@ -517,6 +690,9 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
                   <td style={{ padding: 6 }}>{it.produto_nome}</td>
                   <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtNum(it.qtd_solicitada)} {it.unidade}</td>
                   <td style={{ textAlign: 'right', color: 'var(--muted)' }}>{fmtNum(it.saldo_origem_no_pedido)}</td>
+                  <td style={{ textAlign: 'right' }} title={`${FONTE[it.custo_fonte || ''] || 'custo'}${it.ultima_compra_data ? ' · ' + it.ultima_compra_data : ''}${it.fornecedor ? ' · ' + it.fornecedor : ''}${it.nota_fiscal ? ' · NF ' + it.nota_fiscal : ''}`}>{it.custo_compra_unit > 0 ? fmtR$(it.custo_compra_unit) : fmtR$(it.preco_unitario)}</td>
+                  <td style={{ textAlign: 'right' }}>{fmtR$(it.logistica_rateada)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700 }}>{it.custo_unit_final > 0 ? fmtR$(it.custo_unit_final) : '—'}</td>
                   <td style={{ textAlign: 'right', color: 'var(--muted)' }}>{saldoDest != null ? fmtNum(saldoDest) : '—'}</td>
                   {(t.status !== 'solicitada' && t.status !== 'em_analise') && <td style={{ textAlign: 'right' }}>{fmtNum(it.qtd_enviada)}</td>}
                   {(t.status === 'recebida') && <td style={{ textAlign: 'right', color: div ? '#DC2626' : '#166534', fontWeight: 700 }}>{fmtNum(it.qtd_recebida)}{div ? ' ⚠' : ''}</td>}
@@ -532,7 +708,13 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
             })}</tbody>
           </table>
         </div>
-        <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 6 }}>* Saldo da origem registrado no momento da solicitação.</div>
+        <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 6 }}>* Saldo da origem registrado no momento da solicitação. Passe o mouse sobre o custo para ver fonte, data, fornecedor e NF.</div>
+        <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', marginTop: 10, padding: '10px 12px', background: 'var(--bg, #FAF7F5)', borderRadius: 8, fontSize: 13 }}>
+          <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>Valor dos produtos</div><b>{fmtR$(t.valor_produtos)}</b></div>
+          <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>Logística</div><b>{fmtR$(t.custo_logistico)}</b></div>
+          <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>Total da operação</div><b style={{ color: 'var(--bordo)' }}>{fmtR$(t.valor_total)}</b></div>
+          {isVenda(t) && <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>Financeiro</div><b>{t.unidade_destino} paga a {t.unidade_origem}{t.quitado_em ? ' · quitado ' + fmtDataH(t.quitado_em) + ' por ' + t.quitado_por : ''}</b></div>}
+        </div>
 
         {/* Ações do fluxo */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14, borderTop: '1px dashed var(--border)', paddingTop: 12 }}>
@@ -552,6 +734,9 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
           {!busy && mostrarReceb && (
             <button className="btn bp bsm" onClick={receber}><ClipboardCheck size={12} /> Confirmar recebimento (entrada no destino)</button>
           )}
+          {!busy && isVenda(t) && t.status === 'recebida' && t.financeiro_status === 'a_receber' && podeGerir && (
+            <button className="btn bp bsm" onClick={quitar}><Check size={12} /> Marcar acerto como quitado</button>
+          )}
           {!busy && !somenteLeitura && t.status !== 'enviada' && (
             <button className="btn bo bsm" onClick={cancelar} style={{ marginLeft: 'auto', color: '#991B1B' }}><Trash2 size={12} /> Cancelar</button>
           )}
@@ -570,6 +755,152 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
               </div>
             ))}
           </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Relatórios ───────────────────────────────────────────────
+function RelatoriosTransf({ transfs, onAbrir }: { transfs: Transf[]; onAbrir: (id: string) => void }) {
+  const hoje = new Date()
+  const [de, setDe] = useState(new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10))
+  const [ate, setAte] = useState(hoje.toISOString().slice(0, 10))
+  const [fLoja, setFLoja] = useState('')
+  const [itens, setItens] = useState<(TransfItem & { _t?: Transf })[]>([])
+  const [loadingIt, setLoadingIt] = useState(false)
+
+  const lista = useMemo(() => transfs.filter(t => {
+    const d = (t.created_at || '').slice(0, 10)
+    if (d < de || d > ate) return false
+    if (fLoja && t.unidade_origem !== fLoja && t.unidade_destino !== fLoja) return false
+    return true
+  }), [transfs, de, ate, fLoja])
+  const concluidas = useMemo(() => lista.filter(t => t.status === 'recebida'), [lista])
+
+  useEffect(() => {
+    const ids = concluidas.map(t => t.id)
+    if (ids.length === 0) { setItens([]); return }
+    setLoadingIt(true)
+    sb.from('transferencia_itens').select('*').in('transferencia_id', ids).then(({ data }: any) => { setItens(data || []); setLoadingIt(false) })
+  }, [concluidas])
+
+  const porLoja = useMemo(() => LOJAS.map(l => {
+    const sai = concluidas.filter(t => t.unidade_origem === l), ent = concluidas.filter(t => t.unidade_destino === l)
+    const soma = (a: Transf[], f: (t: Transf) => number) => a.reduce((s, t) => s + f(t), 0)
+    return {
+      loja: l,
+      vendas: soma(sai.filter(isVenda), t => t.valor_total), compras: soma(ent.filter(isVenda), t => t.valor_total),
+      transfEnv: soma(sai.filter(t => !isVenda(t)), t => t.valor_total), transfRec: soma(ent.filter(t => !isVenda(t)), t => t.valor_total),
+      logistica: soma(sai.concat(ent), t => t.custo_logistico),
+    }
+  }), [concluidas])
+
+  // valor a pagar/receber entre unidades (vendas recebidas ainda não quitadas)
+  const acertos = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const t of concluidas.filter(t => isVenda(t) && t.financeiro_status === 'a_receber')) {
+      const k = `${t.unidade_destino}→${t.unidade_origem}`; m[k] = (m[k] || 0) + t.valor_total
+    }
+    return Object.entries(m)
+  }, [concluidas])
+
+  const porProduto = useMemo(() => {
+    const m: Record<string, { nome: string; un: string; qtd: number; valor: number; ult: number; ops: number }> = {}
+    for (const it of itens) {
+      const q = it.qtd_recebida ?? it.qtd_enviada ?? 0
+      const k = (it.produto_nome || '').trim().toLowerCase()
+      const r = m[k] || (m[k] = { nome: it.produto_nome, un: it.unidade, qtd: 0, valor: 0, ult: 0, ops: 0 })
+      r.qtd += q; r.valor += q * (it.custo_unit_final || it.preco_unitario || 0); r.ult = it.custo_compra_unit || it.preco_unitario || r.ult; r.ops++
+    }
+    return Object.values(m).sort((a, b) => b.valor - a.valor)
+  }, [itens])
+
+  const totVendido = concluidas.filter(isVenda).reduce((s, t) => s + t.valor_total, 0)
+  const totTransf = concluidas.filter(t => !isVenda(t)).reduce((s, t) => s + t.valor_total, 0)
+  const totLog = concluidas.reduce((s, t) => s + (t.custo_logistico || 0), 0)
+
+  const exportarCSV = () => {
+    const linhas = [['Nº', 'Tipo', 'Status', 'Origem', 'Destino', 'Solicitante', 'Aprovador', 'Expedição', 'Recebimento', 'Criada em', 'Valor produtos', 'Logística', 'Total', 'Financeiro']]
+    for (const t of lista) linhas.push([`TR-${t.numero}`, isVenda(t) ? 'Venda' : 'Transferência', t.status, t.unidade_origem, t.unidade_destino, t.solicitante_nome, t.aprovado_por || '', t.enviado_por || '', t.recebido_por || '', fmtDataH(t.created_at), String(t.valor_produtos ?? 0).replace('.', ','), String(t.custo_logistico ?? 0).replace('.', ','), String(t.valor_total ?? 0).replace('.', ','), t.financeiro_status || ''])
+    const csv = '﻿' + linhas.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    a.download = `transferencias_${de}_${ate}.csv`; a.click()
+  }
+
+  const th: React.CSSProperties = { padding: 6, textAlign: 'right', color: 'var(--muted)', fontWeight: 600 }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' }}>
+        <div className="fg" style={{ margin: 0 }}><label className="fl">De</label><input type="date" className="inp" value={de} onChange={e => setDe(e.target.value)} /></div>
+        <div className="fg" style={{ margin: 0 }}><label className="fl">Até</label><input type="date" className="inp" value={ate} onChange={e => setAte(e.target.value)} /></div>
+        <select className="sel" value={fLoja} onChange={e => setFLoja(e.target.value)} style={{ maxWidth: 180 }}>
+          <option value="">Todas as lojas</option>{LOJAS.map(l => <option key={l} value={l}>{l}</option>)}
+        </select>
+        <button className="btn bo bsm" onClick={exportarCSV} style={{ marginLeft: 'auto' }}>⬇ Exportar CSV</button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10 }}>
+        <Kpi titulo="💰 Total vendido (concluídas)" valor={fmtR$(totVendido)} />
+        <Kpi titulo="🔄 Total transferido" valor={fmtR$(totTransf)} />
+        <Kpi titulo="🚛 Custo logístico" valor={fmtR$(totLog)} />
+        <Kpi titulo="📄 Operações no período" valor={String(lista.length)} />
+      </div>
+
+      <div className="card" style={{ padding: 14, overflowX: 'auto' }}>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>🏬 Por loja (operações recebidas)</div>
+        <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
+          <thead><tr><th style={{ ...th, textAlign: 'left' }}>Loja</th><th style={th}>Vendas (saída)</th><th style={th}>Compras internas (entrada)</th><th style={th}>Transf. enviadas</th><th style={th}>Transf. recebidas</th><th style={th}>Logística</th></tr></thead>
+          <tbody>{porLoja.map(r => (
+            <tr key={r.loja} style={{ borderTop: '1px solid var(--border)' }}>
+              <td style={{ padding: 6, fontWeight: 700 }}>{r.loja}</td>
+              <td style={{ textAlign: 'right' }}>{fmtR$(r.vendas)}</td><td style={{ textAlign: 'right' }}>{fmtR$(r.compras)}</td>
+              <td style={{ textAlign: 'right' }}>{fmtR$(r.transfEnv)}</td><td style={{ textAlign: 'right' }}>{fmtR$(r.transfRec)}</td>
+              <td style={{ textAlign: 'right' }}>{fmtR$(r.logistica)}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+
+      <div className="card" style={{ padding: 14 }}>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>🧾 A pagar / a receber entre unidades (vendas não quitadas)</div>
+        {acertos.length === 0 ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>Nenhum acerto pendente no período.</div> : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
+            {acertos.map(([k, v]) => { const [dev, cred] = k.split('→'); return <div key={k}><b>{dev}</b> deve <b style={{ color: '#B45309' }}>{fmtR$(v)}</b> a <b>{cred}</b></div> })}
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ padding: 14, overflowX: 'auto' }}>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>📦 Por produto {loadingIt && <Loader className="spin" size={12} />}</div>
+        {porProduto.length === 0 ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>Sem movimentações concluídas no período.</div> : (
+          <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
+            <thead><tr><th style={{ ...th, textAlign: 'left' }}>Produto</th><th style={th}>Qtd movimentada</th><th style={th}>Último custo de compra</th><th style={th}>Valor c/ logística</th><th style={th}>Operações</th></tr></thead>
+            <tbody>{porProduto.slice(0, 60).map(r => (
+              <tr key={r.nome} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: 6 }}>{r.nome}</td>
+                <td style={{ textAlign: 'right' }}>{fmtNum(r.qtd)} {r.un}</td><td style={{ textAlign: 'right' }}>{fmtR$(r.ult)}</td>
+                <td style={{ textAlign: 'right' }}>{fmtR$(r.valor)}</td><td style={{ textAlign: 'right' }}>{r.ops}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card" style={{ padding: 14, overflowX: 'auto' }}>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>🔍 Auditoria (solicitante · aprovador · expedição · recebimento)</div>
+        {lista.length === 0 ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>Nenhuma operação no período.</div> : (
+          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+            <thead><tr><th style={{ ...th, textAlign: 'left' }}>Nº</th><th style={{ ...th, textAlign: 'left' }}>Tipo / Rota</th><th style={{ ...th, textAlign: 'left' }}>Solicitou</th><th style={{ ...th, textAlign: 'left' }}>Aprovou</th><th style={{ ...th, textAlign: 'left' }}>Enviou</th><th style={{ ...th, textAlign: 'left' }}>Recebeu</th><th style={th}>Total</th></tr></thead>
+            <tbody>{lista.map(t => (
+              <tr key={t.id} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => onAbrir(t.id)}>
+                <td style={{ padding: 6, fontWeight: 700, color: 'var(--bordo)' }}>TR-{t.numero}</td>
+                <td>{isVenda(t) ? '💰' : '🔄'} {t.unidade_origem} → {t.unidade_destino} <span style={{ color: 'var(--muted)' }}>({st(t.status).label.replace(/^[^ ]+ /, '')})</span></td>
+                <td>{t.solicitante_nome}</td><td>{t.aprovado_por || '—'}</td><td>{t.enviado_por || '—'}</td><td>{t.recebido_por || '—'}</td>
+                <td style={{ textAlign: 'right' }}>{fmtR$(t.valor_total)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
         )}
       </div>
     </div>
