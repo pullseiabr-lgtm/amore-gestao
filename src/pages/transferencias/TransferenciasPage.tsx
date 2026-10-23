@@ -539,6 +539,223 @@ function NovaTransf({ onClose, onSaved, lojaAtual, user, tipoInicial }: { onClos
   )
 }
 
+// ── Modal: editar transferência (cabeçalho, lojas e itens) com auditoria ──
+interface EItem { id: string | null; produto_origem_id: string | null; nome: string; unidade: string; qtd: string; custo: string; fonte: string | null; data: string | null; fornecedor: string | null; nf: string | null; saldo: number | null }
+function EditarTransf({ t, itens, user, onClose, onSaved }: { t: Transf; itens: TransfItem[]; user: any; onClose: () => void; onSaved: () => void }) {
+  const [tipo, setTipo] = useState(t.tipo || 'transferencia')
+  const [origem, setOrigem] = useState(t.unidade_origem)
+  const [destino, setDestino] = useState(t.unidade_destino)
+  const [motivo, setMotivo] = useState(t.motivo || '')
+  const [logistica, setLogistica] = useState(String(t.custo_logistico || ''))
+  const [rows, setRows] = useState<EItem[]>(() => itens.map(i => ({
+    id: i.id, produto_origem_id: i.produto_origem_id, nome: i.produto_nome, unidade: i.unidade, qtd: String(i.qtd_solicitada),
+    custo: String(i.custo_compra_unit > 0 ? i.custo_compra_unit : i.preco_unitario || ''), fonte: i.custo_fonte, data: i.ultima_compra_data, fornecedor: i.fornecedor, nf: i.nota_fiscal, saldo: i.saldo_origem_no_pedido,
+  })))
+  const [prods, setProds] = useState<ProdOrig[]>([])
+  const [selP, setSelP] = useState('')
+  const [nNome, setNNome] = useState(''); const [nUn, setNUn] = useState('un'); const [nQtd, setNQtd] = useState(''); const [nCusto, setNCusto] = useState('')
+  const [salvando, setSalvando] = useState(false)
+
+  const carregarProds = async (loja: string) => {
+    const { data } = await sb.from('estoque_produtos').select('id, nome, gramatura, nivel_atual, preco_unitario, categoria, fornecedor_nome').eq('loja', loja).eq('ativo', true).order('nome')
+    const lista = (data as ProdOrig[]) || []
+    setProds(lista); return lista
+  }
+  useEffect(() => { carregarProds(origem) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // trocar a loja de origem religa cada item ao produto de mesmo nome na nova origem (ou vira item manual)
+  const trocarOrigem = async (nova: string) => {
+    setOrigem(nova)
+    const lista = await carregarProds(nova)
+    setRows(rs => rs.map(r => {
+      const p = lista.find(x => x.nome.trim().toLowerCase() === r.nome.trim().toLowerCase())
+      return p ? { ...r, produto_origem_id: p.id, saldo: p.nivel_atual } : { ...r, produto_origem_id: null, saldo: null }
+    }))
+  }
+  const setRow = (k: number, patch: Partial<EItem>) => setRows(rs => rs.map((r, i) => i === k ? { ...r, ...patch } : r))
+
+  const addDoEstoque = async () => {
+    const p = prods.find(x => x.id === selP); if (!p) return
+    const c = await buscarUltimoCusto(origem, p.nome, p.gramatura, Number(p.preco_unitario) || 0, p.fornecedor_nome)
+    setRows(rs => [...rs, { id: null, produto_origem_id: p.id, nome: p.nome, unidade: p.gramatura, qtd: '1', custo: c ? String(c.custo) : '', fonte: c?.fonte || 'manual', data: c?.data || null, fornecedor: c?.fornecedor || null, nf: c?.nf || null, saldo: p.nivel_atual }])
+    setSelP('')
+  }
+  const addManual = () => {
+    if (!nNome.trim()) { alert('Informe o nome do produto.'); return }
+    if (!(num(nQtd) > 0)) { alert('Informe a quantidade.'); return }
+    if (!(num(nCusto) > 0)) { alert('Informe o custo unitário (R$).'); return }
+    setRows(rs => [...rs, { id: null, produto_origem_id: null, nome: nNome.trim(), unidade: nUn.trim() || 'un', qtd: nQtd, custo: nCusto, fonte: 'manual', data: null, fornecedor: null, nf: null, saldo: null }])
+    setNNome(''); setNQtd(''); setNCusto('')
+  }
+
+  const log = num(logistica)
+  const rateio = useMemo(() => ratear(rows.map(i => ({ qtd: num(i.qtd), custo: num(i.custo) })), log), [rows, log])
+  const valorProdutos = r2(rows.reduce((s, i) => s + num(i.qtd) * num(i.custo), 0))
+  const total = r2(valorProdutos + log)
+  const movido = ['enviada', 'recebida'].includes(t.status)
+
+  const salvar = async () => {
+    if (!origem || !destino) { alert('Escolha as unidades de origem e destino.'); return }
+    if (origem === destino) { alert('Origem e destino devem ser diferentes.'); return }
+    if (rows.length === 0) { alert('A transferência precisa de ao menos um item.'); return }
+    if (rows.some(r => !r.nome.trim() || !(num(r.qtd) > 0))) { alert('Há item sem nome ou com quantidade inválida.'); return }
+    if (rows.some(r => !(num(r.custo) > 0))) { alert('Há item sem custo unitário.'); return }
+    if (log < 0) { alert('Custo logístico inválido.'); return }
+
+    // ── diferenças (para auditoria e para saber se mexe em estoque) ──
+    const orig = new Map(itens.map(i => [i.id, i]))
+    const mudancas: string[] = []
+    const camp = (rot: string, a: any, b: any) => { if (String(a ?? '') !== String(b ?? '')) mudancas.push(`${rot}: ${a || '—'} → ${b || '—'}`) }
+    camp('Origem', t.unidade_origem, origem); camp('Destino', t.unidade_destino, destino)
+    camp('Tipo', t.tipo === 'venda' ? 'Venda' : 'Transferência', tipo === 'venda' ? 'Venda' : 'Transferência')
+    camp('Motivo', t.motivo, motivo.trim() || null)
+    if (r2(t.custo_logistico || 0) !== r2(log)) mudancas.push(`Logística: ${fmtR$(t.custo_logistico)} → ${fmtR$(log)}`)
+    let itensMudaram = false
+    for (const r of rows) {
+      if (!r.id) { mudancas.push(`+ Item: ${r.nome} · ${r.qtd} ${r.unidade} × ${fmtR$(num(r.custo))}`); itensMudaram = true; continue }
+      const o = orig.get(r.id)!
+      const oc = o.custo_compra_unit > 0 ? o.custo_compra_unit : o.preco_unitario
+      const d: string[] = []
+      if (o.produto_nome.trim() !== r.nome.trim()) d.push(`nome ${o.produto_nome} → ${r.nome}`)
+      if ((o.unidade || '') !== r.unidade.trim()) d.push(`un. ${o.unidade} → ${r.unidade}`)
+      if (num(o.qtd_solicitada) !== num(r.qtd)) d.push(`qtd ${fmtNum(o.qtd_solicitada)} → ${fmtNum(num(r.qtd))}`)
+      if (r2(oc) !== r2(num(r.custo))) d.push(`custo ${fmtR$(oc)} → ${fmtR$(num(r.custo))}`)
+      if ((o.produto_origem_id || null) !== (r.produto_origem_id || null)) { d.push(r.produto_origem_id ? 'religado ao estoque da origem' : 'sem vínculo com estoque (manual)'); itensMudaram = true }
+      if (d.length) { mudancas.push(`Item ${o.produto_nome}: ${d.join('; ')}`); if (d.some(x => !x.startsWith('custo'))) itensMudaram = true }
+    }
+    for (const o of itens) if (!rows.some(r => r.id === o.id)) { mudancas.push(`− Item removido: ${o.produto_nome} · ${fmtNum(o.qtd_solicitada)} ${o.unidade}`); itensMudaram = true }
+    if (mudancas.length === 0) { alert('Nenhuma alteração feita.'); return }
+    const mexeEstoque = movido && (origem !== t.unidade_origem || destino !== t.unidade_destino || itensMudaram)
+    if (mexeEstoque) {
+      const q = `Esta transferência já ${t.status === 'recebida' ? 'foi RECEBIDA' : 'foi ENVIADA'}.\n\nPara alterar lojas/itens o sistema vai ESTORNAR as movimentações de estoque já feitas (devolve na origem${t.status === 'recebida' ? ' e retira do destino' : ''}) e a operação volta para "Em separação" para ser enviada de novo.${t.financeiro_status === 'quitado' ? '\n\n⚠ O acerto financeiro quitado será reaberto.' : ''}\n\nConfirmar?`
+      if (!confirm(q)) return
+    } else if (!confirm(`Salvar ${mudancas.length} alteração(ões)?\n\n${mudancas.join('\n')}`)) return
+
+    setSalvando(true)
+    const quem = `${user?.name || 'Painel'}${user?.email ? ' · ' + user.email : ''}`
+    try {
+      let novoStatus = t.status
+      const reset: Record<string, any> = {}
+      if (mexeEstoque) {
+        for (const it of itens) {
+          const qEnv = Number(it.qtd_enviada || 0), qRec = Number(it.qtd_recebida || 0)
+          if (qEnv > 0 && it.produto_origem_id) {
+            const { data: p } = await sb.from('estoque_produtos').select('nivel_atual').eq('id', it.produto_origem_id).maybeSingle()
+            const antes = Number(p?.nivel_atual ?? 0)
+            await sb.from('estoque_produtos').update({ nivel_atual: antes + qEnv, updated_at: nowISO() }).eq('id', it.produto_origem_id)
+            await sb.from('estoque_movimentacoes').insert({ loja: t.unidade_origem, produto_id: it.produto_origem_id, produto_nome: it.produto_nome, tipo: 'estorno_saida', quantidade: qEnv, unidade: it.unidade, saldo_antes: antes, saldo_depois: antes + qEnv, motivo: `Estorno por edição TR-${t.numero} (${quem})`, created_by: user?.name || 'Painel' })
+          }
+          if (t.status === 'recebida' && qRec > 0 && it.produto_destino_id) {
+            const { data: p } = await sb.from('estoque_produtos').select('nivel_atual').eq('id', it.produto_destino_id).maybeSingle()
+            const antes = Number(p?.nivel_atual ?? 0), depois = Math.max(0, antes - qRec)
+            await sb.from('estoque_produtos').update({ nivel_atual: depois, updated_at: nowISO() }).eq('id', it.produto_destino_id)
+            await sb.from('estoque_movimentacoes').insert({ loja: t.unidade_destino, produto_id: it.produto_destino_id, produto_nome: it.produto_nome, tipo: 'estorno_entrada', quantidade: qRec, unidade: it.unidade, saldo_antes: antes, saldo_depois: depois, motivo: `Estorno por edição TR-${t.numero} (${quem})`, created_by: user?.name || 'Painel' })
+          }
+        }
+        novoStatus = 'separacao'
+        Object.assign(reset, { enviado_por: null, enviado_em: null, recebido_por: null, recebido_em: null, tem_divergencia: false, obs_recebimento: null, financeiro_status: null, quitado_por: null, quitado_em: null })
+      }
+      const aprovado = !['solicitada', 'em_analise'].includes(novoStatus)
+      const { error } = await sb.from('transferencias').update({
+        unidade_origem: origem, unidade_destino: destino, tipo, motivo: motivo.trim() || null,
+        valor_produtos: valorProdutos, custo_logistico: log, valor_total: total, status: novoStatus, updated_at: nowISO(), ...reset,
+        ...(!mexeEstoque && t.status === 'recebida' ? { financeiro_status: tipo === 'venda' ? (t.financeiro_status || 'a_receber') : null } : {}),
+      }).eq('id', t.id)
+      if (error) throw error
+      // itens: remove os excluídos, atualiza os existentes, insere os novos
+      for (const o of itens) if (!rows.some(r => r.id === o.id)) await sb.from('transferencia_itens').delete().eq('id', o.id)
+      for (let k = 0; k < rows.length; k++) {
+        const r = rows[k], q = num(r.qtd), c = r2(num(r.custo))
+        const campos: Record<string, any> = {
+          produto_origem_id: r.produto_origem_id, produto_nome: r.nome.trim(), unidade: r.unidade.trim() || 'un', qtd_solicitada: q,
+          qtd_aprovada: aprovado ? q : null, saldo_origem_no_pedido: r.saldo, preco_unitario: c, custo_compra_unit: c,
+          custo_fonte: r.fonte, ultima_compra_data: r.data, fornecedor: r.fornecedor, nota_fiscal: r.nf,
+          logistica_rateada: rateio[k], custo_unit_final: r2(c + (q > 0 ? rateio[k] / q : 0)),
+          ...(mexeEstoque || !r.id ? { qtd_enviada: null, qtd_recebida: null, produto_destino_id: null } : {}),
+        }
+        if (r.id) await sb.from('transferencia_itens').update(campos).eq('id', r.id)
+        else await sb.from('transferencia_itens').insert({ ...campos, transferencia_id: t.id })
+      }
+      await sb.from('transferencia_timeline').insert({
+        transferencia_id: t.id, evento: 'editada', quem,
+        descricao: `${mudancas.join(' | ')}${mexeEstoque ? ' | ↩ movimentações estornadas; voltou para Em separação' : ''}`,
+        meta: { usuario: user?.name || null, login: user?.email || null, usuario_id: user?.id || null, em: nowISO(), mudancas, estorno: mexeEstoque },
+      })
+      onSaved(); onClose()
+    } catch (e: any) { alert('Falha ao salvar a edição: ' + (e?.message || e) + '\nConfira a transferência antes de tentar de novo.') }
+    setSalvando(false)
+  }
+
+  return (
+    <div className="ov open" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 860 }}>
+        <div className="mhd"><b>✏️ Editar TR-{t.numero}</b><button className="btn bo bsm" onClick={onClose}><X size={13} /></button></div>
+        <div className="mbd">
+          {movido && <div style={{ fontSize: 12, background: '#FEF3C7', color: '#92400E', padding: '8px 10px', borderRadius: 8, marginBottom: 10 }}>⚠ Já {t.status === 'recebida' ? 'recebida' : 'enviada'}: alterar lojas ou itens estorna o estoque movimentado e volta a operação para “Em separação”. Mudar só motivo, logística ou tipo não mexe no estoque.</div>}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10 }}>
+            <div className="fg"><label className="fl">Tipo</label>
+              <select className="sel" value={tipo} onChange={e => setTipo(e.target.value)}><option value="venda">💰 Venda entre lojas</option><option value="transferencia">🔄 Transferência sem venda</option></select></div>
+            <div className="fg"><label className="fl">Loja de origem</label>
+              <select className="sel" value={origem} onChange={e => trocarOrigem(e.target.value)}>{LOJAS.map(l => <option key={l} value={l}>{l}</option>)}</select></div>
+            <div className="fg"><label className="fl">Loja de destino</label>
+              <select className="sel" value={destino} onChange={e => setDestino(e.target.value)}>{LOJAS.map(l => <option key={l} value={l}>{l}</option>)}</select></div>
+          </div>
+          <div className="fg"><label className="fl">Observações / motivo</label><input className="inp" value={motivo} onChange={e => setMotivo(e.target.value)} /></div>
+
+          <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 10, overflowX: 'auto' }}>
+            <label className="fl">Itens</label>
+            <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
+              <thead><tr style={{ textAlign: 'left', color: 'var(--muted)' }}><th style={{ padding: 4 }}>Produto</th><th>Un.</th><th>Qtd</th><th>Custo un. (R$)</th><th style={{ textAlign: 'right' }}>Subtotal</th><th></th></tr></thead>
+              <tbody>{rows.map((r, k) => (
+                <tr key={k} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: 4, minWidth: 180 }}>
+                    <input className="inp" value={r.nome} onChange={e => setRow(k, { nome: e.target.value })} style={{ padding: '4px 8px' }} />
+                    <div style={{ fontSize: 10, color: r.produto_origem_id ? 'var(--muted)' : '#92400E', fontWeight: 700 }}>{r.produto_origem_id ? `estoque de ${origem}${r.saldo != null ? ' · saldo ' + fmtNum(r.saldo) : ''}` : 'manual (sem vínculo c/ estoque da origem)'}</div>
+                  </td>
+                  <td><input className="inp" value={r.unidade} onChange={e => setRow(k, { unidade: e.target.value })} style={{ width: 64, padding: '4px 8px' }} /></td>
+                  <td><input className="inp" inputMode="decimal" value={r.qtd} onChange={e => setRow(k, { qtd: e.target.value })} style={{ width: 80, padding: '4px 8px', textAlign: 'right' }} /></td>
+                  <td><input className="inp" inputMode="decimal" value={r.custo} onChange={e => setRow(k, { custo: e.target.value })} style={{ width: 92, padding: '4px 8px', textAlign: 'right' }} /></td>
+                  <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtR$(r2(num(r.qtd) * num(r.custo)))}</td>
+                  <td style={{ textAlign: 'right' }}><button className="btn bo bsm" style={{ color: '#991B1B', padding: '2px 6px' }} onClick={() => setRows(rs => rs.filter((_, i) => i !== k))}><Trash2 size={11} /></button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+
+          <div style={{ borderTop: '1px dashed var(--border)', marginTop: 8, paddingTop: 10 }}>
+            <label className="fl">Adicionar item</label>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+              <select className="sel" value={selP} onChange={e => setSelP(e.target.value)} style={{ flex: 1, minWidth: 200 }}>
+                <option value="">Do estoque de {origem}…</option>
+                {prods.map(p => <option key={p.id} value={p.id}>{p.nome} — saldo {fmtNum(p.nivel_atual)} {p.gramatura}</option>)}
+              </select>
+              <button className="btn bp bsm" onClick={addDoEstoque} disabled={!selP}><Plus size={12} /> Adicionar</button>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <input className="inp" placeholder="Ou manual: nome" value={nNome} onChange={e => setNNome(e.target.value)} style={{ flex: 2, minWidth: 160 }} />
+              <input className="inp" placeholder="un" value={nUn} onChange={e => setNUn(e.target.value)} style={{ width: 60 }} />
+              <input className="inp" inputMode="decimal" placeholder="Qtd" value={nQtd} onChange={e => setNQtd(e.target.value)} style={{ width: 80 }} />
+              <input className="inp" inputMode="decimal" placeholder="Custo un." value={nCusto} onChange={e => setNCusto(e.target.value)} style={{ width: 100 }} />
+              <button className="btn bo bsm" onClick={addManual}><Plus size={12} /> Manual</button>
+            </div>
+          </div>
+
+          <div style={{ borderTop: '1px dashed var(--border)', marginTop: 10, paddingTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10, alignItems: 'end' }}>
+            <div className="fg" style={{ margin: 0 }}><label className="fl">Custo logístico total (R$)</label><input className="inp" inputMode="decimal" placeholder="0,00" value={logistica} onChange={e => setLogistica(e.target.value)} /></div>
+            <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>Valor dos produtos</div><b>{fmtR$(valorProdutos)}</b></div>
+            <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>Total da operação</div><b style={{ color: 'var(--bordo)', fontSize: 16 }}>{fmtR$(total)}</b></div>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>A edição fica registrada no histórico com quem alterou (nome e login), data/hora e o que mudou (antes → depois).</div>
+        </div>
+        <div className="mft">
+          <button className="btn bo bsm" onClick={onClose}>Cancelar</button>
+          <button className="btn bp bsm" onClick={salvar} disabled={salvando}>{salvando ? <Loader className="spin" size={13} /> : <Check size={13} />} Salvar alterações</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Detalhe / fluxo ──────────────────────────────────────────
 function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string; onVoltar: () => void; onChange: () => void; user: any; podeGerir: boolean }) {
   const [t, setT] = useState<Transf | null>(null)
@@ -548,6 +765,7 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [edits, setEdits] = useState<Record<string, string>>({}) // itemId → valor (qtd enviada/recebida em edição)
+  const [editOpen, setEditOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -831,6 +1049,7 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
           {busy && <Loader className="spin" size={16} />}
           {!busy && <a className="btn bo bsm" href={linkTransf(id)} target="_blank" rel="noreferrer">📄 Relatório</a>}
           {!busy && <button className="btn bo bsm" onClick={enviarRelatorio}>📲 Enviar por WhatsApp</button>}
+          {!busy && podeGerir && t.status !== 'cancelada' && <button className="btn bo bsm" onClick={() => setEditOpen(true)}>✏️ Editar</button>}
           {!busy && (t.status === 'solicitada' || t.status === 'em_analise') && podeGerir && (
             <>
               <button className="btn bp bsm" onClick={aprovar}><Check size={12} /> Aprovar</button>
@@ -854,6 +1073,8 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
           )}
         </div>
       </div>
+
+      {editOpen && <EditarTransf t={t} itens={itens} user={user} onClose={() => setEditOpen(false)} onSaved={() => { load(); onChange() }} />}
 
       {/* Timeline */}
       <div className="card" style={{ padding: 16 }}>
