@@ -628,10 +628,28 @@ function NovaTransf({ onClose, onSaved, lojaAtual, user, tipoInicial }: { onClos
   )
 }
 
+// Estorna as movimentações já feitas (devolve na origem; se recebida, retira do destino)
+async function estornarMov(t: Transf, itens: TransfItem[], quem: string, user: any, motivoTxt: string) {
+  for (const it of itens) {
+    const qEnv = Number(it.qtd_enviada || 0), qRec = Number(it.qtd_recebida || 0)
+    if (qEnv > 0 && it.produto_origem_id) {
+      const { data: p } = await sb.from('estoque_produtos').select('nivel_atual').eq('id', it.produto_origem_id).maybeSingle()
+      const antes = Number(p?.nivel_atual ?? 0)
+      must(await sb.from('estoque_produtos').update({ nivel_atual: antes + qEnv, updated_at: nowISO() }).eq('id', it.produto_origem_id))
+      must(await sb.from('estoque_movimentacoes').insert({ loja: t.unidade_origem, produto_id: it.produto_origem_id, produto_nome: it.produto_nome, tipo: 'estorno_saida', quantidade: qEnv, unidade: it.unidade, saldo_antes: antes, saldo_depois: antes + qEnv, motivo: `Estorno por ${motivoTxt} TR-${t.numero} (${quem})`, created_by: user?.name || 'Painel' }))
+    }
+    if (t.status === 'recebida' && qRec > 0 && it.produto_destino_id) {
+      const { data: p } = await sb.from('estoque_produtos').select('nivel_atual').eq('id', it.produto_destino_id).maybeSingle()
+      const antes = Number(p?.nivel_atual ?? 0), depois = Math.max(0, antes - qRec)
+      must(await sb.from('estoque_produtos').update({ nivel_atual: depois, updated_at: nowISO() }).eq('id', it.produto_destino_id))
+      must(await sb.from('estoque_movimentacoes').insert({ loja: t.unidade_destino, produto_id: it.produto_destino_id, produto_nome: it.produto_nome, tipo: 'estorno_entrada', quantidade: qRec, unidade: it.unidade, saldo_antes: antes, saldo_depois: depois, motivo: `Estorno por ${motivoTxt} TR-${t.numero} (${quem})`, created_by: user?.name || 'Painel' }))
+    }
+  }
+}
 const must = (r: any) => { if (r?.error) throw new Error(r.error.message || String(r.error)); return r }
 // ── Modal: editar transferência (cabeçalho, lojas e itens) com auditoria ──
 interface EItem { id: string | null; produto_origem_id: string | null; nome: string; unidade: string; qtd: string; custo: string; fonte: string | null; data: string | null; fornecedor: string | null; nf: string | null; saldo: number | null }
-function EditarTransf({ t, itens, user, onClose, onSaved }: { t: Transf; itens: TransfItem[]; user: any; onClose: () => void; onSaved: () => void }) {
+function EditarTransf({ t, itens, user, onClose, onSaved, onDeleted }: { t: Transf; itens: TransfItem[]; user: any; onClose: () => void; onSaved: () => void; onDeleted: () => void }) {
   const [tipo, setTipo] = useState(t.tipo || 'transferencia')
   const [origem, setOrigem] = useState(t.unidade_origem)
   const [destino, setDestino] = useState(t.unidade_destino)
@@ -645,6 +663,10 @@ function EditarTransf({ t, itens, user, onClose, onSaved }: { t: Transf; itens: 
   const [selP, setSelP] = useState('')
   const [nNome, setNNome] = useState(''); const [nUn, setNUn] = useState('un'); const [nQtd, setNQtd] = useState(''); const [nCusto, setNCusto] = useState('')
   const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState('')
+  const [pend, setPend] = useState<string | null>(null)
+  const [pendExcl, setPendExcl] = useState(false)
+  const [excluindo, setExcluindo] = useState(false)
 
   const carregarProds = async (loja: string) => {
     const { data } = await sb.from('estoque_produtos').select('id, nome, gramatura, nivel_atual, preco_unitario, categoria, fornecedor_nome').eq('loja', loja).eq('ativo', true).order('nome')
@@ -671,9 +693,9 @@ function EditarTransf({ t, itens, user, onClose, onSaved }: { t: Transf; itens: 
     setSelP('')
   }
   const addManual = () => {
-    if (!nNome.trim()) { alert('Informe o nome do produto.'); return }
-    if (!(num(nQtd) > 0)) { alert('Informe a quantidade.'); return }
-    if (!(num(nCusto) > 0)) { alert('Informe o custo unitário (R$).'); return }
+    if (!nNome.trim()) { setErro('Informe o nome do produto.'); return }
+    if (!(num(nQtd) > 0)) { setErro('Informe a quantidade.'); return }
+    if (!(num(nCusto) > 0)) { setErro('Informe o custo unitário (R$).'); return }
     setRows(rs => [...rs, { id: null, produto_origem_id: null, nome: nNome.trim(), unidade: nUn.trim() || 'un', qtd: nQtd, custo: nCusto, fonte: 'manual', data: null, fornecedor: null, nf: null, saldo: null }])
     setNNome(''); setNQtd(''); setNCusto('')
   }
@@ -684,13 +706,14 @@ function EditarTransf({ t, itens, user, onClose, onSaved }: { t: Transf; itens: 
   const total = r2(valorProdutos + log)
   const movido = ['enviada', 'recebida'].includes(t.status)
 
-  const salvar = async () => {
-    if (!origem || !destino) { alert('Escolha as unidades de origem e destino.'); return }
-    if (origem === destino) { alert('Origem e destino devem ser diferentes.'); return }
-    if (rows.length === 0) { alert('A transferência precisa de ao menos um item.'); return }
-    if (rows.some(r => !r.nome.trim() || !(num(r.qtd) > 0))) { alert('Há item sem nome ou com quantidade inválida.'); return }
-    if (rows.some(r => !(num(r.custo) > 0))) { alert('Há item sem custo unitário.'); return }
-    if (log < 0) { alert('Custo logístico inválido.'); return }
+  const salvar = async (confirmado = false) => {
+    setErro('')
+    if (!origem || !destino) { setErro('Escolha as unidades de origem e destino.'); return }
+    if (origem === destino) { setErro('Origem e destino devem ser diferentes.'); return }
+    if (rows.length === 0) { setErro('A transferência precisa de ao menos um item.'); return }
+    if (rows.some(r => !r.nome.trim() || !(num(r.qtd) > 0))) { setErro('Há item sem nome ou com quantidade inválida.'); return }
+    if (rows.some(r => !(num(r.custo) > 0))) { setErro('Há item sem custo unitário.'); return }
+    if (log < 0) { setErro('Custo logístico inválido.'); return }
 
     // ── diferenças (para auditoria e para saber se mexe em estoque) ──
     const orig = new Map(itens.map(i => [i.id, i]))
@@ -714,34 +737,20 @@ function EditarTransf({ t, itens, user, onClose, onSaved }: { t: Transf; itens: 
       if (d.length) { mudancas.push(`Item ${o.produto_nome}: ${d.join('; ')}`); if (d.some(x => !x.startsWith('custo'))) itensMudaram = true }
     }
     for (const o of itens) if (!rows.some(r => r.id === o.id)) { mudancas.push(`− Item removido: ${o.produto_nome} · ${fmtNum(o.qtd_solicitada)} ${o.unidade}`); itensMudaram = true }
-    if (mudancas.length === 0) { alert('Nenhuma alteração feita.'); return }
+    if (mudancas.length === 0) { setErro('Nenhuma alteração feita.'); return }
     const mexeEstoque = movido && (origem !== t.unidade_origem || destino !== t.unidade_destino || itensMudaram)
     if (mexeEstoque) {
       const q = `Esta transferência já ${t.status === 'recebida' ? 'foi RECEBIDA' : 'foi ENVIADA'}.\n\nPara alterar lojas/itens o sistema vai ESTORNAR as movimentações de estoque já feitas (devolve na origem${t.status === 'recebida' ? ' e retira do destino' : ''}) e a operação volta para "Em separação" para ser enviada de novo.${t.financeiro_status === 'quitado' ? '\n\n⚠ O acerto financeiro quitado será reaberto.' : ''}\n\nConfirmar?`
-      if (!confirm(q)) return
-    } else if (!confirm(`Salvar ${mudancas.length} alteração(ões)?\n\n${mudancas.join('\n')}`)) return
+      if (!confirmado) { setPend(q); return }
+    } else if (!confirmado) { setPend(`Salvar ${mudancas.length} alteração(ões)?\n\n${mudancas.join('\n')}`); return }
 
-    setSalvando(true)
+    setPend(null); setSalvando(true)
     const quem = `${user?.name || 'Painel'}${user?.email ? ' · ' + user.email : ''}`
     try {
       let novoStatus = t.status
       const reset: Record<string, any> = {}
       if (mexeEstoque) {
-        for (const it of itens) {
-          const qEnv = Number(it.qtd_enviada || 0), qRec = Number(it.qtd_recebida || 0)
-          if (qEnv > 0 && it.produto_origem_id) {
-            const { data: p } = await sb.from('estoque_produtos').select('nivel_atual').eq('id', it.produto_origem_id).maybeSingle()
-            const antes = Number(p?.nivel_atual ?? 0)
-            must(await sb.from('estoque_produtos').update({ nivel_atual: antes + qEnv, updated_at: nowISO() }).eq('id', it.produto_origem_id))
-            must(await sb.from('estoque_movimentacoes').insert({ loja: t.unidade_origem, produto_id: it.produto_origem_id, produto_nome: it.produto_nome, tipo: 'estorno_saida', quantidade: qEnv, unidade: it.unidade, saldo_antes: antes, saldo_depois: antes + qEnv, motivo: `Estorno por edição TR-${t.numero} (${quem})`, created_by: user?.name || 'Painel' }))
-          }
-          if (t.status === 'recebida' && qRec > 0 && it.produto_destino_id) {
-            const { data: p } = await sb.from('estoque_produtos').select('nivel_atual').eq('id', it.produto_destino_id).maybeSingle()
-            const antes = Number(p?.nivel_atual ?? 0), depois = Math.max(0, antes - qRec)
-            must(await sb.from('estoque_produtos').update({ nivel_atual: depois, updated_at: nowISO() }).eq('id', it.produto_destino_id))
-            must(await sb.from('estoque_movimentacoes').insert({ loja: t.unidade_destino, produto_id: it.produto_destino_id, produto_nome: it.produto_nome, tipo: 'estorno_entrada', quantidade: qRec, unidade: it.unidade, saldo_antes: antes, saldo_depois: depois, motivo: `Estorno por edição TR-${t.numero} (${quem})`, created_by: user?.name || 'Painel' }))
-          }
-        }
+        await estornarMov(t, itens, quem, user, 'edição')
         novoStatus = 'separacao'
         Object.assign(reset, { enviado_por: null, enviado_em: null, recebido_por: null, recebido_em: null, tem_divergencia: false, obs_recebimento: null, financeiro_status: null, quitado_por: null, quitado_em: null })
       }
@@ -772,8 +781,24 @@ function EditarTransf({ t, itens, user, onClose, onSaved }: { t: Transf; itens: 
         meta: { usuario: user?.name || null, login: user?.email || null, usuario_id: user?.id || null, em: nowISO(), mudancas, estorno: mexeEstoque },
       })
       onSaved(); onClose()
-    } catch (e: any) { alert('Falha ao salvar a edição: ' + (e?.message || e) + '\nConfira a transferência antes de tentar de novo.') }
+    } catch (e: any) { setErro('Falha ao salvar a edição: ' + (e?.message || e) + ' — confira a transferência antes de tentar de novo.') }
     setSalvando(false)
+  }
+
+  // Exclusão definitiva: estorna o estoque movimentado e guarda um registro permanente de auditoria
+  const excluir = async () => {
+    setErro(''); setExcluindo(true)
+    const quem = `${user?.name || 'Painel'}${user?.email ? ' · ' + user.email : ''}`
+    try {
+      if (movido) await estornarMov(t, itens, quem, user, 'exclusão')
+      must(await sb.from('app_config').upsert({
+        chave: `transf_excluida_${t.numero}_${Date.now()}`,
+        valor: { transferencia: t, itens, excluida_por: user?.name || null, login: user?.email || null, usuario_id: user?.id || null, excluida_em: nowISO(), estornou_estoque: movido },
+      }, { onConflict: 'chave' }))
+      must(await sb.from('transferencias').delete().eq('id', t.id))
+      onClose(); onDeleted()
+    } catch (e: any) { setErro('Falha ao excluir: ' + (e?.message || e) + ' — confira o estoque e o histórico antes de tentar de novo.') }
+    setExcluindo(false)
   }
 
   return (
@@ -837,9 +862,21 @@ function EditarTransf({ t, itens, user, onClose, onSaved }: { t: Transf; itens: 
           </div>
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>A edição fica registrada no histórico com quem alterou (nome e login), data/hora e o que mudou (antes → depois).</div>
         </div>
+        {(erro || pend || pendExcl) && (
+          <div style={{ margin: '0 18px 10px', padding: '10px 12px', borderRadius: 8, fontSize: 12.5, whiteSpace: 'pre-line', background: erro ? '#FEE2E2' : '#FEF3C7', color: erro ? '#991B1B' : '#92400E', fontWeight: 600 }}>
+            {erro || (pendExcl ? `Excluir DEFINITIVAMENTE a TR-${t.numero}?${movido ? ' O estoque já movimentado será estornado (devolve na origem' + (t.status === 'recebida' ? ' e retira do destino' : '') + ').' : ''} Fica um registro de auditoria com seu nome e login. Não dá para desfazer.` : pend)}
+            {!erro && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button className="btn bp bsm" onClick={() => pendExcl ? excluir() : salvar(true)}>{pendExcl ? 'Sim, excluir' : 'Sim, confirmar'}</button>
+                <button className="btn bo bsm" onClick={() => { setPend(null); setPendExcl(false) }}>Voltar</button>
+              </div>
+            )}
+          </div>
+        )}
         <div className="mft">
+          <button className="btn bo bsm" onClick={() => { setErro(''); setPend(null); setPendExcl(true) }} disabled={salvando || excluindo} style={{ marginRight: 'auto', color: '#991B1B' }}><Trash2 size={12} /> Excluir transferência</button>
           <button className="btn bo bsm" onClick={onClose}>Cancelar</button>
-          <button className="btn bp bsm" onClick={salvar} disabled={salvando}>{salvando ? <Loader className="spin" size={13} /> : <Check size={13} />} Salvar alterações</button>
+          <button className="btn bp bsm" onClick={() => salvar()} disabled={salvando || excluindo}>{salvando || excluindo ? <Loader className="spin" size={13} /> : <Check size={13} />} Salvar alterações</button>
         </div>
       </div>
     </div>
@@ -1150,7 +1187,7 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
       </div>
 
       {whatsOpen && <EnviarWhatsModal t={t} itens={itens} user={user} onClose={() => setWhatsOpen(false)} onSent={load} />}
-      {editOpen && <EditarTransf t={t} itens={itens} user={user} onClose={() => setEditOpen(false)} onSaved={() => { load(); onChange() }} />}
+      {editOpen && <EditarTransf t={t} itens={itens} user={user} onClose={() => setEditOpen(false)} onSaved={() => { load(); onChange() }} onDeleted={() => { onChange(); onVoltar() }} />}
 
       {/* Timeline */}
       <div className="card" style={{ padding: 16 }}>
