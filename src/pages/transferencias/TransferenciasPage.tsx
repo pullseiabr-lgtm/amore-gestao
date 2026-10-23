@@ -628,6 +628,7 @@ function NovaTransf({ onClose, onSaved, lojaAtual, user, tipoInicial }: { onClos
   )
 }
 
+const must = (r: any) => { if (r?.error) throw new Error(r.error.message || String(r.error)); return r }
 // ── Modal: editar transferência (cabeçalho, lojas e itens) com auditoria ──
 interface EItem { id: string | null; produto_origem_id: string | null; nome: string; unidade: string; qtd: string; custo: string; fonte: string | null; data: string | null; fornecedor: string | null; nf: string | null; saldo: number | null }
 function EditarTransf({ t, itens, user, onClose, onSaved }: { t: Transf; itens: TransfItem[]; user: any; onClose: () => void; onSaved: () => void }) {
@@ -731,14 +732,14 @@ function EditarTransf({ t, itens, user, onClose, onSaved }: { t: Transf; itens: 
           if (qEnv > 0 && it.produto_origem_id) {
             const { data: p } = await sb.from('estoque_produtos').select('nivel_atual').eq('id', it.produto_origem_id).maybeSingle()
             const antes = Number(p?.nivel_atual ?? 0)
-            await sb.from('estoque_produtos').update({ nivel_atual: antes + qEnv, updated_at: nowISO() }).eq('id', it.produto_origem_id)
-            await sb.from('estoque_movimentacoes').insert({ loja: t.unidade_origem, produto_id: it.produto_origem_id, produto_nome: it.produto_nome, tipo: 'estorno_saida', quantidade: qEnv, unidade: it.unidade, saldo_antes: antes, saldo_depois: antes + qEnv, motivo: `Estorno por edição TR-${t.numero} (${quem})`, created_by: user?.name || 'Painel' })
+            must(await sb.from('estoque_produtos').update({ nivel_atual: antes + qEnv, updated_at: nowISO() }).eq('id', it.produto_origem_id))
+            must(await sb.from('estoque_movimentacoes').insert({ loja: t.unidade_origem, produto_id: it.produto_origem_id, produto_nome: it.produto_nome, tipo: 'estorno_saida', quantidade: qEnv, unidade: it.unidade, saldo_antes: antes, saldo_depois: antes + qEnv, motivo: `Estorno por edição TR-${t.numero} (${quem})`, created_by: user?.name || 'Painel' }))
           }
           if (t.status === 'recebida' && qRec > 0 && it.produto_destino_id) {
             const { data: p } = await sb.from('estoque_produtos').select('nivel_atual').eq('id', it.produto_destino_id).maybeSingle()
             const antes = Number(p?.nivel_atual ?? 0), depois = Math.max(0, antes - qRec)
-            await sb.from('estoque_produtos').update({ nivel_atual: depois, updated_at: nowISO() }).eq('id', it.produto_destino_id)
-            await sb.from('estoque_movimentacoes').insert({ loja: t.unidade_destino, produto_id: it.produto_destino_id, produto_nome: it.produto_nome, tipo: 'estorno_entrada', quantidade: qRec, unidade: it.unidade, saldo_antes: antes, saldo_depois: depois, motivo: `Estorno por edição TR-${t.numero} (${quem})`, created_by: user?.name || 'Painel' })
+            must(await sb.from('estoque_produtos').update({ nivel_atual: depois, updated_at: nowISO() }).eq('id', it.produto_destino_id))
+            must(await sb.from('estoque_movimentacoes').insert({ loja: t.unidade_destino, produto_id: it.produto_destino_id, produto_nome: it.produto_nome, tipo: 'estorno_entrada', quantidade: qRec, unidade: it.unidade, saldo_antes: antes, saldo_depois: depois, motivo: `Estorno por edição TR-${t.numero} (${quem})`, created_by: user?.name || 'Painel' }))
           }
         }
         novoStatus = 'separacao'
@@ -752,7 +753,7 @@ function EditarTransf({ t, itens, user, onClose, onSaved }: { t: Transf; itens: 
       }).eq('id', t.id)
       if (error) throw error
       // itens: remove os excluídos, atualiza os existentes, insere os novos
-      for (const o of itens) if (!rows.some(r => r.id === o.id)) await sb.from('transferencia_itens').delete().eq('id', o.id)
+      for (const o of itens) if (!rows.some(r => r.id === o.id)) must(await sb.from('transferencia_itens').delete().eq('id', o.id))
       for (let k = 0; k < rows.length; k++) {
         const r = rows[k], q = num(r.qtd), c = r2(num(r.custo))
         const campos: Record<string, any> = {
@@ -762,8 +763,8 @@ function EditarTransf({ t, itens, user, onClose, onSaved }: { t: Transf; itens: 
           logistica_rateada: rateio[k], custo_unit_final: r2(c + (q > 0 ? rateio[k] / q : 0)),
           ...(mexeEstoque || !r.id ? { qtd_enviada: null, qtd_recebida: null, produto_destino_id: null } : {}),
         }
-        if (r.id) await sb.from('transferencia_itens').update(campos).eq('id', r.id)
-        else await sb.from('transferencia_itens').insert({ ...campos, transferencia_id: t.id })
+        if (r.id) must(await sb.from('transferencia_itens').update(campos).eq('id', r.id))
+        else must(await sb.from('transferencia_itens').insert({ ...campos, transferencia_id: t.id }))
       }
       await sb.from('transferencia_timeline').insert({
         transferencia_id: t.id, evento: 'editada', quem,
