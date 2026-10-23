@@ -147,6 +147,89 @@ async function enviarWhats(destinos: { nome: string; fone: string }[], message: 
   return ok
 }
 
+// Contatos para envio: aprovadores + equipe com WhatsApp no perfil
+async function getContatos(): Promise<{ nome: string; fone: string; grupo: string }[]> {
+  const out: { nome: string; fone: string; grupo: string }[] = []
+  const vistos = new Set<string>()
+  const add = (nome: string, fone: string, grupo: string) => {
+    let f = String(fone || '').replace(/\D/g, ''); if (f.length < 10) return
+    if (!f.startsWith('55')) f = '55' + f
+    if (vistos.has(f)) return; vistos.add(f); out.push({ nome, fone: f, grupo })
+  }
+  for (const a of await getAprovadores()) add(a.nome, a.fone, 'Aprovadores')
+  try {
+    const { data } = await sb.from('profiles').select('name, permissions_override')
+    for (const p of (data as any[]) || []) add(p.name || 'Colaborador', p.permissions_override?.__perfil__?.whatsapp, 'Equipe')
+  } catch { /* só aprovadores */ }
+  return out
+}
+function msgCompleta(t: Transf, itens: TransfItem[], pedirAprovacao: boolean) {
+  const linhas = itens.map(i => `• ${i.produto_nome} — ${fmtNum(i.qtd_enviada ?? i.qtd_solicitada)} ${i.unidade} × ${fmtR$(i.custo_compra_unit > 0 ? i.custo_compra_unit : i.preco_unitario)}`).join('\n')
+  const base = msgTransf(t, itens.length, pedirAprovacao)
+  const [cab, ...resto] = base.split('\n\n')
+  return `${cab}\n\n${linhas}\n💵 Produtos: ${fmtR$(t.valor_produtos)} · Logística: ${fmtR$(t.custo_logistico)}\n\n${resto.join('\n\n')}`
+}
+
+// Modal: enviar informações da transferência por WhatsApp (escolhe destinatários, edita a mensagem)
+function EnviarWhatsModal({ t, itens, user, onClose, onSent }: { t: Transf; itens: TransfItem[]; user: any; onClose: () => void; onSent: () => void }) {
+  const [contatos, setContatos] = useState<{ nome: string; fone: string; grupo: string }[]>([])
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [extra, setExtra] = useState('')
+  const [msg, setMsg] = useState(() => msgCompleta(t, itens, ['solicitada', 'em_analise'].includes(t.status)))
+  const [enviando, setEnviando] = useState(false)
+  useEffect(() => { getContatos().then(c => { setContatos(c); setSel(new Set(c.filter(x => x.grupo === 'Aprovadores').map(x => x.fone))) }) }, [])
+  const toggle = (f: string) => setSel(s => { const n = new Set(s); n.has(f) ? n.delete(f) : n.add(f); return n })
+
+  const enviar = async () => {
+    const destinos = contatos.filter(c => sel.has(c.fone)).map(c => ({ nome: c.nome, fone: c.fone }))
+    for (const n of extra.split(/[,;\n]/)) { const f = n.replace(/\D/g, ''); if (f.length >= 10) destinos.push({ nome: f, fone: f.startsWith('55') ? f : '55' + f }) }
+    if (destinos.length === 0) { alert('Escolha ao menos um destinatário.'); return }
+    if (!msg.trim()) { alert('A mensagem está vazia.'); return }
+    setEnviando(true)
+    let ok = 0
+    for (let k = 0; k < destinos.length; k++) {
+      if (k > 0) await new Promise(r => setTimeout(r, 2000 + Math.random() * 3000)) // intervalo variável (anti-bloqueio)
+      ok += await enviarWhats([destinos[k]], msg)
+    }
+    await sb.from('transferencia_timeline').insert({ transferencia_id: t.id, evento: 'whatsapp', descricao: ok > 0 ? `Informações enviadas por WhatsApp a ${destinos.map(d => d.nome).join(', ')} (${ok}/${destinos.length})` : 'Falha no envio por WhatsApp', quem: `${user?.name || 'Painel'}${user?.email ? ' · ' + user.email : ''}` })
+    setEnviando(false)
+    alert(ok > 0 ? `✅ Enviado a ${ok} de ${destinos.length} destinatário(s).` : '⚠ Falha no envio (VPS/Evolution).')
+    if (ok > 0) { onSent(); onClose() }
+  }
+
+  const grupos = Array.from(new Set(contatos.map(c => c.grupo)))
+  return (
+    <div className="ov open" onClick={enviando ? undefined : onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 620 }}>
+        <div className="mhd"><b>📲 Enviar TR-{t.numero} por WhatsApp</b><button className="btn bo bsm" onClick={onClose} disabled={enviando}><X size={13} /></button></div>
+        <div className="mbd">
+          <label className="fl">Destinatários</label>
+          {contatos.length === 0 ? <Loader className="spin" size={14} /> : grupos.map(g => (
+            <div key={g} style={{ marginBottom: 6 }}>
+              <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>{g}</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 3 }}>
+                {contatos.filter(c => c.grupo === g).map(c => (
+                  <label key={c.fone} style={{ fontSize: 12.5, display: 'flex', gap: 4, alignItems: 'center', padding: '3px 8px', border: '1px solid var(--border)', borderRadius: 99, cursor: 'pointer', background: sel.has(c.fone) ? '#DCFCE7' : 'transparent' }}>
+                    <input type="checkbox" checked={sel.has(c.fone)} onChange={() => toggle(c.fone)} /> {c.nome}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div className="fg" style={{ marginTop: 8 }}><label className="fl">Outros números (com DDD, separados por vírgula)</label>
+            <input className="inp" placeholder="81999999999, 81988888888" value={extra} onChange={e => setExtra(e.target.value)} /></div>
+          <div className="fg"><label className="fl">Mensagem (pode editar)</label>
+            <textarea className="inp" rows={11} value={msg} onChange={e => setMsg(e.target.value)} style={{ fontFamily: 'inherit', fontSize: 12.5 }} /></div>
+        </div>
+        <div className="mft">
+          <button className="btn bo bsm" onClick={onClose} disabled={enviando}>Cancelar</button>
+          <button className="btn bp bsm" onClick={enviar} disabled={enviando}>{enviando ? <Loader className="spin" size={13} /> : <Send size={13} />} Enviar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Página ───────────────────────────────────────────────────
 export default function TransferenciasPage() {
   const { loja } = useLoja()
@@ -159,6 +242,7 @@ export default function TransferenciasPage() {
   const [transfs, setTransfs] = useState<Transf[]>([])
   const [loading, setLoading] = useState(true)
   const [novoOpen, setNovoOpen] = useState(false)
+  const [zap, setZap] = useState<{ t: Transf; itens: TransfItem[] } | null>(null)
   const [selId, setSelId] = useState<string | null>(null)
   const [fUnidade, setFUnidade] = useState('')
   const [busca, setBusca] = useState('')
@@ -258,12 +342,16 @@ export default function TransferenciasPage() {
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
-              {listaAtual.map(t => <TransfCard key={t.id} t={t} onAbrir={() => setSelId(t.id)} />)}
+              {listaAtual.map(t => <TransfCard key={t.id} t={t} onAbrir={() => setSelId(t.id)} onZap={async () => {
+                const { data } = await sb.from('transferencia_itens').select('*').eq('transferencia_id', t.id).order('created_at')
+                setZap({ t, itens: (data as TransfItem[]) || [] })
+              }} />)}
             </div>
           )}
         </>
       )}
 
+      {zap && <EnviarWhatsModal t={zap.t} itens={zap.itens} user={user} onClose={() => setZap(null)} onSent={load} />}
       {novoOpen && <NovaTransf onClose={() => setNovoOpen(false)} onSaved={load} lojaAtual={loja} user={user} tipoInicial={novoTipo} />}
     </div>
   )
@@ -279,7 +367,7 @@ function Kpi({ titulo, valor, destaque }: { titulo: string; valor: string; desta
 }
 
 // ── Card ─────────────────────────────────────────────────────
-function TransfCard({ t, onAbrir }: { t: Transf; onAbrir: () => void }) {
+function TransfCard({ t, onAbrir, onZap }: { t: Transf; onAbrir: () => void; onZap: () => void }) {
   const s = st(t.status)
   return (
     <div className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer' }} onClick={onAbrir}>
@@ -295,6 +383,7 @@ function TransfCard({ t, onAbrir }: { t: Transf; onAbrir: () => void }) {
       <div style={{ fontSize: 12, color: 'var(--muted)' }}>Solicitante: {t.solicitante_nome}</div>
       {t.motivo && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Motivo: {t.motivo}</div>}
       <div style={{ fontSize: 11, color: 'var(--muted)' }}>Criada em {fmtDataH(t.created_at)}{t.valor_total > 0 ? ` · ${fmtR$(t.valor_total)}` : ''}</div>
+      <button className="btn bo bsm" style={{ alignSelf: 'flex-start' }} onClick={e => { e.stopPropagation(); onZap() }}>📲 Enviar por WhatsApp</button>
     </div>
   )
 }
@@ -766,6 +855,7 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
   const [busy, setBusy] = useState(false)
   const [edits, setEdits] = useState<Record<string, string>>({}) // itemId → valor (qtd enviada/recebida em edição)
   const [editOpen, setEditOpen] = useState(false)
+  const [whatsOpen, setWhatsOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -951,22 +1041,6 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
     setBusy(false); await load(); onChange()
   }
 
-  // Reenvio/compartilhamento manual do relatório por WhatsApp (aprovadores ou número avulso)
-  const enviarRelatorio = async () => {
-    const aprovadores = await getAprovadores()
-    const extra = prompt(`Enviar o relatório TR-${t.numero} por WhatsApp.\n\nDestinatários: ${aprovadores.map(a => a.nome).join(', ')}.\nSe quiser incluir outro número (com DDD, ex: 5581999999999), digite abaixo; senão deixe em branco:`)
-    if (extra === null) return
-    const destinos = [...aprovadores]
-    const f = extra.replace(/\D/g, '')
-    if (f.length >= 10) destinos.push({ nome: f, fone: f.startsWith('55') ? f : '55' + f })
-    setBusy(true)
-    const pendente = ['solicitada', 'em_analise'].includes(t.status)
-    const ok = await enviarWhats(destinos, msgTransf({ ...t, id }, itens.length, pendente))
-    await registrarTimeline('whatsapp', ok > 0 ? `Relatório enviado por WhatsApp a ${destinos.map(d => d.nome).join(', ')}` : 'Falha no envio por WhatsApp')
-    setBusy(false); await load()
-    alert(ok > 0 ? `✅ Enviado a ${ok} destinatário(s).` : '⚠ Falha no envio (VPS/Evolution).')
-  }
-
   // colunas visíveis por fase
   const mostrarEnvio = t.status === 'separacao'
   const mostrarReceb = t.status === 'enviada'
@@ -1048,7 +1122,7 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14, borderTop: '1px dashed var(--border)', paddingTop: 12 }}>
           {busy && <Loader className="spin" size={16} />}
           {!busy && <a className="btn bo bsm" href={linkTransf(id)} target="_blank" rel="noreferrer">📄 Relatório</a>}
-          {!busy && <button className="btn bo bsm" onClick={enviarRelatorio}>📲 Enviar por WhatsApp</button>}
+          {!busy && <button className="btn bo bsm" onClick={() => setWhatsOpen(true)}>📲 Enviar por WhatsApp</button>}
           {!busy && podeGerir && t.status !== 'cancelada' && <button className="btn bo bsm" onClick={() => setEditOpen(true)}>✏️ Editar</button>}
           {!busy && (t.status === 'solicitada' || t.status === 'em_analise') && podeGerir && (
             <>
@@ -1074,6 +1148,7 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
         </div>
       </div>
 
+      {whatsOpen && <EnviarWhatsModal t={t} itens={itens} user={user} onClose={() => setWhatsOpen(false)} onSent={load} />}
       {editOpen && <EditarTransf t={t} itens={itens} user={user} onClose={() => setEditOpen(false)} onSaved={() => { load(); onChange() }} />}
 
       {/* Timeline */}
