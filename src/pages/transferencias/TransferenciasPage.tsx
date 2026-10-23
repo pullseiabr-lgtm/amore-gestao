@@ -1123,7 +1123,7 @@ function TransfDetalhe({ id, onVoltar, onChange, user, podeGerir }: { id: string
           {busy && <Loader className="spin" size={16} />}
           {!busy && <a className="btn bo bsm" href={linkTransf(id)} target="_blank" rel="noreferrer">📄 Relatório</a>}
           {!busy && <button className="btn bo bsm" onClick={() => setWhatsOpen(true)}>📲 Enviar por WhatsApp</button>}
-          {!busy && podeGerir && t.status !== 'cancelada' && <button className="btn bo bsm" onClick={() => setEditOpen(true)}>✏️ Editar</button>}
+          {!busy && <button className="btn bp bsm" onClick={() => setEditOpen(true)}>✏️ Editar / corrigir</button>}
           {!busy && (t.status === 'solicitada' || t.status === 'em_analise') && podeGerir && (
             <>
               <button className="btn bp bsm" onClick={aprovar}><Check size={12} /> Aprovar</button>
