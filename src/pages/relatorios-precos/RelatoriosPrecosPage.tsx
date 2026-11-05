@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useToast } from '../../hooks/useToast'
 import { fetchProfiles } from '../../lib/db'
 import { enviarWhatsApp, whatsappDoPerfilPorNome } from '../../lib/notify'
+import ListaConsumoTab from './ListaConsumoTab'
 
 const sb = supabase as any
 const fmt = (n: any) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -20,7 +21,7 @@ const STAT: Record<string, { l: string; c: string; e: string }> = {
 
 export default function RelatoriosPrecosPage() {
   const { toast } = useToast()
-  const [tab, setTab] = useState<'compras30' | 'relatorios' | 'destinatarios' | 'regras'>('compras30')
+  const [tab, setTab] = useState<'compras30' | 'consumo' | 'relatorios' | 'destinatarios' | 'regras'>('compras30')
   const [caixas, setCaixas] = useState<any[]>([])
   const [dests, setDests] = useState<any[]>([])
   const [regras, setRegras] = useState<any>(null)
@@ -56,6 +57,7 @@ export default function RelatoriosPrecosPage() {
     <div style={{ padding: '1rem 0' }}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16, background: '#f9fafb', padding: 6, borderRadius: 12, width: 'fit-content' }}>
         {tabBtn('compras30', <CalendarRange size={16} />, 'Compras 30 dias')}
+        {tabBtn('consumo', <FileText size={16} />, 'Lista de Consumo')}
         {tabBtn('relatorios', <BarChart3 size={16} />, 'Por caixa')}
         {tabBtn('destinatarios', <Users size={16} />, 'Destinatários')}
         {tabBtn('regras', <SlidersHorizontal size={16} />, 'Regras & Limites')}
@@ -64,6 +66,7 @@ export default function RelatoriosPrecosPage() {
 
       {loading ? <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Carregando…</div> : <>
         {tab === 'compras30' && <Compras30Tab toast={toast} />}
+        {tab === 'consumo' && <ListaConsumoTab />}
         {tab === 'relatorios' && <div style={card}>
           <b style={{ fontSize: 14 }}>Caixas — gere o relatório comparativo de preços</b>
           <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '4px 0 12px' }}>Compara cada produto com as últimas 3 compras da loja e classifica ABC. Clique para gerar/ver.</p>
