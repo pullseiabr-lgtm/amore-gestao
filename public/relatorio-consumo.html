@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Lista de Consumo por Item — Amore</title>
+<style>
+:root{--vinho:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--shadow:0 1px 2px rgba(80,20,25,.05),0 8px 24px -12px rgba(80,20,25,.12)}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5;font-variant-numeric:tabular-nums}
+.wrap{max-width:980px;margin:0 auto;padding:18px 16px 50px}
+header{border-bottom:2px solid var(--vinho);padding-bottom:12px;margin-bottom:12px}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
+h1{font-size:22px;margin:6px 0 4px}.sub{color:var(--muted);font-size:13.5px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.chip{border:1px solid var(--border);background:var(--card);color:var(--muted);border-radius:20px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.chip.on{background:var(--vinho);color:#fff;border-color:var(--vinho)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0 14px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:12px 14px;box-shadow:var(--shadow)}
+.kn{font-size:21px;font-weight:800}.kl{font-size:11.5px;color:var(--muted);text-transform:uppercase}
+.search{width:100%;max-width:360px;padding:10px 13px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font-size:14px;margin:0 0 12px}
+.cat{background:var(--card);border:1px solid var(--border);border-radius:13px;box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+.cath{display:flex;justify-content:space-between;gap:8px;padding:10px 14px;font-weight:700;background:color-mix(in srgb,var(--vinho) 6%,var(--card));color:var(--vinho)}
+.tw{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-size:10.5px;text-transform:uppercase;color:var(--muted);padding:8px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:top}.num{text-align:right;white-space:nowrap}
+tr.it{cursor:pointer}tr.it:hover{background:color-mix(in srgb,var(--vinho) 4%,var(--card))}
+.det{background:color-mix(in srgb,var(--vinho) 3%,var(--card));font-size:12.5px}.det div{display:flex;gap:10px;flex-wrap:wrap;padding:3px 0;border-top:1px dashed var(--border)}.det div:first-child{border:0}
+.mut{color:var(--muted)}.msg{padding:50px 0;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Consolidando o consumo…</div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY};
+const q=new URLSearchParams(location.search);
+const canon=l=>({'Amore Costa Dourada':'Amore CD','Flow Paiva':'Flow CD'})[l]||l;
+const LOJA=canon((q.get('loja')||'Flow CD').trim());
+let DIAS=parseInt(q.get('dias')||'30',10)||30, BUSCA='', ABERTO=null, DATA=[];
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const nf=v=>Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:3});
+const dmy=s=>{if(!s)return '—';const p=String(s).slice(0,10).split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s};
+const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
+const get=async p=>{const r=await fetch(SB+'/rest/v1/'+p,{headers:H});if(!r.ok)throw new Error(r.status);return r.json()};
+async function load(){
+  const ini=new Date(Date.now()-DIAS*864e5-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+  const cx=await get('caixas?select=id,loja,titulo,data_ref&loja=eq.'+encodeURIComponent(LOJA)+'&data_ref=gte.'+ini+'&limit=1000');
+  const mapa={};cx.forEach(c=>mapa[c.id]=c);const out=[];const ids=cx.map(c=>c.id);
+  for(let i=0;i<ids.length;i+=60){const d=await get('caixa_itens?select=*&caixa_id=in.('+ids.slice(i,i+60).join(',')+')');d.forEach(x=>out.push({...x,_c:mapa[x.caixa_id]}))}
+  DATA=out;
+}
+function render(){
+  const m={};
+  DATA.forEach(r=>{const c=r.categoria||'Outros';if(['combustivel','pedagio'].includes(norm(c)))return;
+    const nome=(r.descricao||'Sem descrição').trim();if(BUSCA&&!norm(nome).includes(norm(BUSCA)))return;
+    const k=norm(nome);const l=m[k]=m[k]||{k,nome,c,v:0,n:0,q:{},cs:[]};const qt=Number(r.quantidade)||0,u=r.unidade||(qt?'un':'');
+    l.v+=Number(r.valor)||0;l.n++;if(qt>0)l.q[u]=(l.q[u]||0)+qt;
+    l.cs.push({d:r.data||(r._c&&r._c.data_ref),t:(r._c&&r._c.titulo)||'—',id:r.caixa_id,f:r.fornecedor||'—',qt,u,v:Number(r.valor)||0})});
+  const ls=Object.values(m).sort((a,b)=>b.v-a.v);const tot=ls.reduce((s,l)=>s+l.v,0);
+  const cxs=new Set(ls.flatMap(l=>l.cs.map(c=>c.id))).size;
+  const qtx=l=>{const e=Object.entries(l.q);return e.length?e.map(([u,x])=>nf(x)+' '+u).join(' + '):'—'};
+  const med=l=>{const e=Object.entries(l.q);if(e.length!==1)return '—';const v=l.cs.filter(c=>c.qt>0).reduce((s,c)=>s+c.v,0);return brl(v/e[0][1])+'/'+e[0][0]};
+  const g={};ls.forEach(l=>(g[l.c]=g[l.c]||[]).push(l));
+  const cats=Object.entries(g).map(([c,a])=>({c,a,t:a.reduce((s,l)=>s+l.v,0)})).sort((a,b)=>b.t-a.t);
+  let h=`<header><div class="eyebrow">Amore Food · Prestação de contas</div><h1>Lista de Consumo por Item — ${esc(LOJA)}</h1><div class="sub">Tudo o que saiu pelos caixas, somado por item, com os caixas de origem · últimos ${DIAS} dias</div></header>
+  <div class="chips">${[7,15,30,60,90,180].map(d=>`<button class="chip ${d===DIAS?'on':''}" onclick="setD(${d})">${d} dias</button>`).join('')}</div>
+  <div class="kpis"><div class="kpi"><div class="kn">${brl(tot)}</div><div class="kl">Total consumido</div></div><div class="kpi"><div class="kn">${ls.length}</div><div class="kl">Itens distintos</div></div><div class="kpi"><div class="kn">${cxs}</div><div class="kl">Caixas de origem</div></div></div>
+  <input class="search" id="bs" placeholder="Buscar item…" value="${esc(BUSCA)}" oninput="setB(this.value)">`;
+  if(!ls.length)h+='<div class="msg">Nenhum item de caixa no período.</div>';
+  cats.forEach(G=>{h+=`<div class="cat"><div class="cath"><span>${esc(G.c)} · ${G.a.length} itens</span><span>${brl(G.t)} · ${tot?Math.round(G.t/tot*100):0}%</span></div><div class="tw"><table><thead><tr><th>Item</th><th>Quantidade</th><th>Preço médio</th><th>Compras</th><th class="num">Valor</th></tr></thead><tbody>`;
+    G.a.forEach(l=>{const key=G.c+'|'+l.k,op=ABERTO===key;
+      h+=`<tr class="it" data-k="${esc(key)}" onclick="tg(this.dataset.k)"><td><b>${op?'▾':'▸'} ${esc(l.nome)}</b></td><td>${qtx(l)}</td><td>${med(l)}</td><td>${l.n}x</td><td class="num"><b>${brl(l.v)}</b></td></tr>`;
+      if(op)h+=`<tr><td colspan="5" class="det"><div class="mut">Caixas de origem</div>${l.cs.sort((a,b)=>String(b.d).localeCompare(String(a.d))).map(c=>`<div><span>${dmy(c.d)}</span><a href="caixa.html?id=${c.id}" style="color:var(--vinho);font-weight:600">${esc(c.t)}</a><span class="mut">${esc(c.f)}</span><span style="margin-left:auto">${c.qt?nf(c.qt)+' '+esc(c.u):'s/ qtd'} · <b>${brl(c.v)}</b></span></div>`).join('')}</td></tr>`});
+    h+='</tbody></table></div></div>'});
+  document.getElementById('app').innerHTML=h;
+  if(BUSCA){const i=document.getElementById('bs');i.focus();i.setSelectionRange(BUSCA.length,BUSCA.length)}
+}
+window.tg=k=>{ABERTO=ABERTO===k?null:k;render()};
+window.setB=v=>{BUSCA=v;render()};
+window.setD=async d=>{DIAS=d;document.getElementById('app').innerHTML='<div class="msg">Consolidando…</div>';await go()};
+async function go(){try{await load();render()}catch(e){document.getElementById('app').innerHTML='<div class="msg">Erro ao carregar.<br><small>'+esc(String(e))+'</small></div>'}}
+go();
+</script>
+</body>
+</html>
