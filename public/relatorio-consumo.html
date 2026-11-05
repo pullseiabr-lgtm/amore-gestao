@@ -43,9 +43,9 @@ const H={apikey:KEY,Authorization:'Bearer '+KEY};
 const q=new URLSearchParams(location.search);
 const canonLoja=l=>{const s=String(l||'').toLowerCase();if(s.includes('flow'))return 'Flow CD';if(s.includes('paiva'))return 'Amore Paiva';if(s.includes('costa')||s.includes(' cd')||s==='amore cd')return 'Amore CD';return l||'—'};
 const LOJAS=['Todas','Amore Paiva','Amore CD','Flow CD'];
-let F={loja:canonLoja(q.get('loja')||'Todas'),dias:parseInt(q.get('dias')||'90',10),busca:q.get('busca')||'',ped:true,cx:true,ent:false,ord:'valor'};
+let F={loja:canonLoja(q.get('loja')||'Todas'),dias:parseInt(q.get('dias')||'90',10),busca:q.get('busca')||'',ped:true,cx:true,nf:true,ent:false,ord:'valor'};
 if(!LOJAS.includes(F.loja))F.loja='Todas';
-let ABERTO=null,RAW={ped:[],cx:[],ent:null};
+let ABERTO=null,RAW={ped:[],cx:[],nf:[],ent:null};
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const nf=v=>Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:3});
@@ -72,7 +72,10 @@ async function loadBase(){
   const cx=[];for(const ch of chunks(cxs.map(c=>c.id),60)){(await get('caixa_itens?select=*&caixa_id=in.('+ch.join(',')+')')).forEach(i=>{const c=cm[i.caixa_id];if(!c)return;
     if(['combustivel','pedagio'].includes(norm(i.categoria)))return;const qtd=Number(i.quantidade)||0,v=Number(i.valor)||0;
     cx.push({o:'Caixa',nome:i.descricao,loja:canonLoja(c.loja),data:String(i.data||c.data_ref||'').slice(0,10),forn:i.fornecedor,ref:c.titulo,cid:c.id,qtd,un:unOf(i.unidade),preco:qtd>0?v/qtd:null,valor:v,agreg:qtd<=0})})}
-  RAW.ped=ped;RAW.cx=cx;RAW.ent=null;
+  let nfs=[];try{nfs=await get('nota_itens?select=*&data=gte.'+ini+'&limit=5000')}catch(e){}
+  const nfCx=new Set(nfs.map(n=>n.caixa_id));
+  const nf=nfs.map(n=>({o:'Nota anexa',nome:n.descricao,loja:canonLoja(n.loja),data:String(n.data||'').slice(0,10),forn:n.fornecedor,ref:(cm[n.caixa_id]&&cm[n.caixa_id].titulo)||'Nota',cid:n.caixa_id,doc:n.documento,qtd:Number(n.quantidade)||0,un:unOf(n.unidade),preco:n.preco_unit==null?null:Number(n.preco_unit),valor:Number(n.valor)||0}));
+  RAW.ped=ped;RAW.cx=cx.filter(r=>!nfCx.has(r.cid));RAW.nf=nf;RAW.ent=null;
 }
 async function loadEnt(){
   if(RAW.ent)return;const ini=iniISO();const out=[];
@@ -80,7 +83,7 @@ async function loadEnt(){
   RAW.ent=out;
 }
 function linhas(){
-  const src=[...(F.ped?RAW.ped:[]),...(F.cx?RAW.cx:[]),...(F.ent&&RAW.ent?RAW.ent:[])];
+  const src=[...(F.ped?RAW.ped:[]),...(F.nf?RAW.nf:[]),...(F.cx?RAW.cx:[]),...(F.ent&&RAW.ent?RAW.ent:[])];
   const m={};
   src.forEach(r=>{if(F.loja!=='Todas'&&r.loja!==F.loja)return;if(F.busca&&!norm(r.nome).includes(norm(F.busca)))return;
     const k=keyOf(r.nome);const l=m[k]=m[k]||{k,nomes:{},ls:[]};l.nomes[r.nome]=(l.nomes[r.nome]||0)+1;l.ls.push(r)});
@@ -100,7 +103,7 @@ function render(){
   let h=`<header><div class="eyebrow">Amore Food · Compras por produto</div><h1>Consumo por Produto${F.loja!=='Todas'?' — '+esc(F.loja):''}</h1><div class="sub">Cada produto comprado, um a um, com preço médio, último preço e data — a partir dos Pedidos de Compra e dos Caixas das prestações${F.ent?' e das Entradas de estoque':''}.</div></header>
   <div class="bar">${sel('l',LOJAS.map(x=>[x,x==='Todas'?'Todas as lojas':x]),F.loja,'setL')}${sel('d',[[30,'Últimos 30 dias'],[60,'Últimos 60 dias'],[90,'Últimos 90 dias'],[180,'Últimos 180 dias'],[365,'Último ano'],[0,'Tudo']],F.dias,'setD')}${sel('o',[['valor','Maior valor'],['nome','A–Z'],['data','Mais recente']],F.ord,'setO')}
   <input type="search" placeholder="Buscar produto (ex.: tilápia, linguado)…" value="${esc(F.busca)}" oninput="setB(this.value)" id="bs"></div>
-  <div class="bar"><span class="mut" style="font-size:12px">Origem:</span><button class="chip ${F.ped?'on':''}" onclick="tgO('ped')">Pedidos de compra</button><button class="chip ${F.cx?'on':''}" onclick="tgO('cx')">Caixas / prestações</button><button class="chip ${F.ent?'on':''}" onclick="tgO('ent')">Entradas de estoque (só qtd)</button>
+  <div class="bar"><span class="mut" style="font-size:12px">Origem:</span><button class="chip ${F.ped?'on':''}" onclick="tgO('ped')">Pedidos de compra</button><button class="chip ${F.cx?'on':''}" onclick="tgO('cx')">Caixas / prestações</button><button class="chip ${F.nf?'on':''}" onclick="tgO('nf')">Notas dos anexos (itens)</button><button class="chip ${F.ent?'on':''}" onclick="tgO('ent')">Entradas de estoque (só qtd)</button>
   <span style="margin-left:auto"></span><button class="btn" onclick="csv()">⬇ CSV</button></div>
   <div class="kpis"><div class="kpi"><div class="kn">${ls.length}</div><div class="kl">Produtos</div></div><div class="kpi"><div class="kn">${comp}</div><div class="kl">Linhas de compra</div></div><div class="kpi"><div class="kn">${brl(tot)}</div><div class="kl">Valor com preço</div></div></div>`;
   if(!ls.length)h+='<div class="msg">Nenhum produto com esses filtros.</div>';
