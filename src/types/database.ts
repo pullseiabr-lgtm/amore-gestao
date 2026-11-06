@@ -996,6 +996,7 @@ export interface ChecklistItem {
   // Campos opcionais (JSONB — retrocompatível com itens antigos)
   instrucao?: string | null      // orientação passo a passo exibida na execução
   foto_ref?: string | null       // foto de referência (padrão esperado)
+  foto_obrig?: boolean           // exige registro fotográfico neste item (aceita várias fotos)
   unidade?: string | null        // ex.: °C, kg, un, R$ — exibida ao lado do valor
   min?: number | null            // limite inferior (temperatura/número) — fora da faixa = não conforme
   max?: number | null            // limite superior
@@ -1010,6 +1011,14 @@ export interface ChecklistCondicao {
   abrir_nc?: boolean         // abre Não Conformidade ao concluir
   bloquear?: boolean         // bloqueia a conclusão do checklist até resolver
   alertar?: boolean          // sinaliza para alertar o gestor
+}
+
+export interface ChecklistFoto {
+  url: string
+  em: string                      // ISO — horário da captura
+  setor: string | null
+  loja: string
+  responsavel: string | null
 }
 
 export interface ChecklistDestinatario {
@@ -1054,6 +1063,7 @@ export interface ChecklistResposta {
   texto?: string | null                                   // resposta do tipo comentário / código escaneado
   assinatura?: string | null                              // URL da assinatura digital (tipo assinatura)
   ia_status?: 'aprovado' | 'reprovado' | 'revisao' | null // veredito da IA em 3 estados
+  fotos?: ChecklistFoto[]                                 // todas as fotos do item (foto_url = a 1ª, por compatibilidade)
   foto_meta?: { capturada_em: string; setor: string | null; loja: string; responsavel: string | null } | null // carimbo gravado também como metadado
   nao_executou?: boolean                                  // marcou "não consigo executar"
   motivo_nao?: string | null                              // justificativa da não execução

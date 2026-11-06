@@ -16,7 +16,7 @@ import { gerarItensIA, validarFotoIA } from '../../lib/checklistIa'
 import { enviarWhatsApp, getZapiCfg, carregarZapiCfgRemoto, normalizarFoneBR } from '../../lib/notify'
 import type {
   ChecklistModelo, ChecklistExecucao, ChecklistItem, ChecklistResposta,
-  ChecklistItemTipo, ChecklistRecorrencia, ChecklistTurno, ChecklistNC, ChecklistCondicao, ChecklistDestinatario,
+  ChecklistItemTipo, ChecklistRecorrencia, ChecklistTurno, ChecklistNC, ChecklistCondicao, ChecklistDestinatario, ChecklistFoto,
 } from '../../types/database'
 
 // ── Constantes ───────────────────────────────────────────────
@@ -88,7 +88,7 @@ async function carimbarFoto(file: File, linhas: string[]): Promise<File> {
 // Mensagem do checklist fechado (disparada às pessoas cadastradas e reenviável pela Gestão à Vista)
 function montaMsgFechamento(e: ChecklistExecucao, itens: ChecklistItem[], respostas: ChecklistResposta[]): string {
   const ncs = respostas.filter(r => r.nc)
-  const fotos = respostas.filter(r => r.foto_url).length
+  const fotos = respostas.reduce((a, r) => a + fotosDe(r).length, 0)
   const ok = itens.filter(i => itemOk(i, respostas.find(r => r.item_id === i.id))).length
   const sc = e.score
   const ic = sc == null ? '⚪' : sc >= 90 ? '🟢' : sc >= 70 ? '🟡' : '🔴'
@@ -102,8 +102,10 @@ function montaMsgFechamento(e: ChecklistExecucao, itens: ChecklistItem[], respos
   if (e.justificativa_atraso) linhas.push(`⏰ Feito com atraso (limite ${e.hora_limite}). Justificativa: ${e.justificativa_atraso}`)
   if (ncs.length) linhas.push(`🚩 ${ncs.length} não conformidade(s):\n` + ncs.slice(0, 5).map(r => `• ${r.nc?.item_txt || 'item'} — ${r.nc?.motivo_reprovacao || ''}`).join('\n'))
   if (e.observacao_geral) linhas.push(`📝 Obs.: ${e.observacao_geral}`)
-  if (fotos) linhas.push(`📷 ${fotos} foto(s) com carimbo de horário e setor`)
-  linhas.push(`\n🔗 Ver no arquivo (Gestão à Vista): ${SITE}/?page=checklists&aba=vista`, '_Operação Padrão · Amore Gestão_')
+  const horas = respostas.flatMap(r => fotosDe(r)).map(f => f.em).filter(Boolean).sort()
+  linhas.push(`⏱️ Início ${fmtHora(e.iniciado_em || horas[0])} · Fim ${fmtHora(e.concluido_em)}`)
+  if (fotos) linhas.push(`📷 ${fotos} foto(s) com carimbo de horário e setor${horas.length ? ` (de ${fmtHora(horas[0])} a ${fmtHora(horas[horas.length - 1])})` : ''}`)
+  linhas.push(`\n🔗 Ver o checklist com as fotos e horários:\n${SITE}/checklist-relatorio.html?id=${e.id}`, `📌 Arquivo: ${SITE}/?page=checklists&aba=vista`, '_Operação Padrão · Amore Gestão_')
   return linhas.join('\n')
 }
 
@@ -136,12 +138,20 @@ function dentroDaFaixa(item: ChecklistItem, v: number): boolean {
 }
 
 // Item respondido de forma satisfatória?
+// Todas as fotos de uma resposta (compatível com respostas antigas que só têm foto_url)
+function fotosDe(r?: ChecklistResposta): ChecklistFoto[] {
+  if (!r) return []
+  if (r.fotos?.length) return r.fotos
+  return r.foto_url ? [{ url: r.foto_url, em: r.foto_meta?.capturada_em || '', setor: r.foto_meta?.setor ?? null, loja: r.foto_meta?.loja || '', responsavel: r.foto_meta?.responsavel ?? null }] : []
+}
+
 function itemOk(item: ChecklistItem, r?: ChecklistResposta): boolean {
   if (!r) return false
   if (r.nao_executou) return false
+  if (item.foto_obrig && item.tipo !== 'foto' && fotosDe(r).length === 0) return false
   switch (item.tipo) {
     case 'confirm': return r.ok === true
-    case 'foto': return !!r.foto_url && r.ia_status !== 'reprovado'
+    case 'foto': return fotosDe(r).length > 0 && r.ia_status !== 'reprovado'
     case 'avaliacao': return (r.nota || 0) > 0
     case 'texto': case 'qrcode': return !!(r.texto && r.texto.trim())
     case 'assinatura': return !!r.assinatura
@@ -546,8 +556,12 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
         item.txt.length > 60 ? item.txt.slice(0, 57) + '…' : item.txt,
       ])
       const url = await uploadAnexo(file, 'checklists')
-      setResp(id, { foto_url: url, ia_ok: null, ia_motivo: null, ia_status: null,
-        foto_meta: { capturada_em: capt.toISOString(), setor: exec.setor, loja: exec.loja, responsavel: quem } })
+      // Acrescenta à lista (várias fotos por item); foto_url/foto_meta seguem apontando para a 1ª
+      const nova: ChecklistFoto = { url, em: capt.toISOString(), setor: exec.setor, loja: exec.loja, responsavel: quem }
+      const atuais = fotosDe(respostas.find(r => r.item_id === id))
+      const todas = [...atuais, nova]
+      setResp(id, { fotos: todas, foto_url: todas[0].url,
+        foto_meta: { capturada_em: todas[0].em, setor: exec.setor, loja: exec.loja, responsavel: todas[0].responsavel } })
       // Validação por IA (não bloqueante — falha silenciosa se a IA estiver fora)
       try {
         const v = await validarFotoIA(item.txt, file)
@@ -620,7 +634,7 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
       const i = itens.find(x => x.id === r.item_id)
       if (!i?.cond || r.nao_executou || itemOk(i, r)) return false
       if (i.cond.bloquear) return true
-      if (i.cond.exigir_foto && !r.foto_url) return true
+      if (i.cond.exigir_foto && fotosDe(r).length === 0) return true
       if (i.cond.exigir_obs && !(r.obs && r.obs.trim())) return true
       return false
     })
@@ -647,7 +661,7 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
         novasNc++
         const nc: ChecklistNC = {
           status: 'aberta', gravidade: item.critico ? 'alta' : 'media',
-          item_txt: item.txt, foto_evidencia: r.foto_url || null, motivo_reprovacao: motivo,
+          item_txt: item.txt, foto_evidencia: fotosDe(r)[0]?.url || null, motivo_reprovacao: motivo,
           causa: null, acao: null, responsavel: null, prazo: null, impacto: null,
           foto_correcao: null, aprovado_por: null,
           aberta_em: agora.toISOString(), encerrada_em: null,
@@ -865,25 +879,41 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
                     )}
                   </div>
                 )}
-                {item.tipo === 'foto' && (
-                  <div>
-                    {r.foto_url && <a href={r.foto_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--bordo)', display: 'block', marginBottom: 4 }}>📎 ver foto enviada{r.foto_meta ? ` · 🕒 ${new Date(r.foto_meta.capturada_em).toLocaleString('pt-BR')} · ${r.foto_meta.setor || 'Geral'}` : ''}</a>}
-                    {r.ia_status && (
-                      <div style={{ fontSize: 11, marginBottom: 4, fontWeight: 600, color: r.ia_status === 'aprovado' ? '#16a34a' : r.ia_status === 'reprovado' ? '#ef4444' : '#f59e0b' }}>
-                        {r.ia_status === 'aprovado' ? '🤖 IA aprovou' : r.ia_status === 'reprovado' ? '🤖 IA reprovou' : '🤖 IA: revisão necessária'}
-                        {r.ia_motivo ? `: ${r.ia_motivo}` : ''}
-                      </div>
-                    )}
-                    {!concluido && (
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: '1px dashed var(--bordo)', color: 'var(--bordo)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                        {uploadingId === item.id ? <Loader2 className="spin" size={14} /> : <Camera size={14} />}
-                        {r.foto_url ? 'Trocar foto' : 'Tirar foto'}
-                        <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
-                          onChange={e => uploadFoto(item.id, item, e.target.files)} />
-                      </label>
-                    )}
-                  </div>
-                )}
+                {/* Registro fotográfico do item — aceita várias fotos, cada uma com horário */}
+                <div style={{ marginTop: 6 }}>
+                  {fotosDe(r).length > 0 && (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                      {fotosDe(r).map((f, fi) => (
+                        <div key={f.url} style={{ textAlign: 'center', position: 'relative' }}>
+                          <a href={f.url} target="_blank" rel="noreferrer">
+                            <img src={f.url} alt="foto" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+                          </a>
+                          <div style={{ fontSize: 10, color: 'var(--muted)' }}>🕒 {f.em ? new Date(f.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—'}</div>
+                          {!concluido && (
+                            <button title="Remover foto" onClick={() => {
+                              const resto = fotosDe(r).filter((_, k) => k !== fi)
+                              setResp(item.id, { fotos: resto, foto_url: resto[0]?.url || null, foto_meta: resto[0] ? { capturada_em: resto[0].em, setor: resto[0].setor, loja: resto[0].loja, responsavel: resto[0].responsavel } : null })
+                            }} style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: 9, border: 'none', background: '#ef4444', color: '#fff', fontSize: 11, cursor: 'pointer', lineHeight: '18px', padding: 0 }}>×</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {r.ia_status && (
+                    <div style={{ fontSize: 11, marginBottom: 4, fontWeight: 600, color: r.ia_status === 'aprovado' ? '#16a34a' : r.ia_status === 'reprovado' ? '#ef4444' : '#f59e0b' }}>
+                      {r.ia_status === 'aprovado' ? '🤖 IA aprovou' : r.ia_status === 'reprovado' ? '🤖 IA reprovou' : '🤖 IA: revisão necessária'}
+                      {r.ia_motivo ? `: ${r.ia_motivo}` : ''}
+                    </div>
+                  )}
+                  {!concluido && (
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: `1px dashed ${(item.foto_obrig || item.tipo === 'foto') && fotosDe(r).length === 0 ? '#ef4444' : 'var(--bordo)'}`, color: 'var(--bordo)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      {uploadingId === item.id ? <Loader2 className="spin" size={14} /> : <Camera size={14} />}
+                      {fotosDe(r).length ? 'Adicionar outra foto' : 'Tirar foto'}{(item.foto_obrig || item.tipo === 'foto') && fotosDe(r).length === 0 ? ' *' : ''}
+                      <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+                        onChange={e => { uploadFoto(item.id, item, e.target.files); e.target.value = '' }} />
+                    </label>
+                  )}
+                </div>
                 {!concluido && (
                   <input value={r.obs || ''} placeholder="Observação (opcional)"
                     onChange={e => setResp(item.id, { obs: e.target.value || null })}
@@ -894,18 +924,11 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
                   <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 10px', marginTop: 6 }}>
                     <div style={{ fontSize: 12, color: '#ef4444', fontWeight: 600 }}>⚠️ {item.cond.mensagem || 'Resposta não conforme — ação necessária'}</div>
                     <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                      {item.cond.exigir_foto && <span style={{ color: r.foto_url ? '#16a34a' : '#ef4444' }}>{r.foto_url ? '✓ foto anexada' : '• exige foto'}</span>}
+                      {item.cond.exigir_foto && <span style={{ color: fotosDe(r).length ? '#16a34a' : '#ef4444' }}>{fotosDe(r).length ? '✓ foto anexada' : '• exige foto'}</span>}
                       {item.cond.exigir_obs && <span style={{ color: (r.obs && r.obs.trim()) ? '#16a34a' : '#ef4444' }}>{(r.obs && r.obs.trim()) ? '✓ observação preenchida' : '• exige observação'}</span>}
                       {item.cond.abrir_nc && <span>• abrirá não conformidade</span>}
                       {item.cond.bloquear && <span style={{ color: '#ef4444' }}>• conclusão bloqueada</span>}
                     </div>
-                    {item.cond.exigir_foto && !r.foto_url && item.tipo !== 'foto' && !concluido && (
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '6px 10px', borderRadius: 8, border: '1px dashed #ef4444', color: '#ef4444', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                        {uploadingId === item.id ? <Loader2 className="spin" size={14} /> : <Camera size={14} />} Anexar foto
-                        <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
-                          onChange={e => uploadFoto(item.id, item, e.target.files)} />
-                      </label>
-                    )}
                   </div>
                 )}
                 {!concluido && (
@@ -1015,7 +1038,7 @@ function VistaTab({ loja, modelos, toast }: {
       const r = (e.respostas || []).find(x => x.item_id === i.id)
       const val = !r ? '—' : r.nao_executou ? `NÃO EXECUTADO: ${r.motivo_nao || ''}` : i.tipo === 'confirm' ? (r.ok ? 'Sim' : 'Não')
         : i.tipo === 'avaliacao' ? `${r.nota ?? '—'}/5` : r.valor != null ? `${r.valor} ${i.unidade || unidadePadrao(i.tipo)}` : (r.texto || (r.foto_url ? 'Foto' : '—'))
-      const foto = r?.foto_url ? `<br><img src="${escHtml(r.foto_url)}" style="max-width:240px;margin-top:4px;border-radius:6px">` : ''
+      const foto = fotosDe(r).map(f => `<br><img src="${escHtml(f.url)}" style="max-width:240px;margin-top:4px;border-radius:6px"><br><small>🕒 ${f.em ? new Date(f.em).toLocaleString('pt-BR') : ''}</small>`).join('')
       return `<tr><td>${escHtml(i.txt)}</td><td>${escHtml(val)}${r?.obs ? '<br><i>' + escHtml(r.obs) + '</i>' : ''}${foto}</td></tr>`
     }).join('')
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escHtml(e.titulo)}</title><style>
@@ -1075,7 +1098,7 @@ function VistaTab({ loja, modelos, toast }: {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {arquivo.map(e => {
             const itens = modeloDe(e.modelo_id)?.itens || []
-            const fotos = (e.respostas || []).filter(r => r.foto_url)
+            const fotos = (e.respostas || []).flatMap(r => fotosDe(r))
             const nNc = (e.respostas || []).filter(r => r.nc).length
             return (
               <div key={e.id} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
@@ -1101,8 +1124,12 @@ function VistaTab({ loja, modelos, toast }: {
                           {r?.nao_executou ? <span style={{ color: '#ef4444' }}>não executado: {r.motivo_nao}</span>
                             : itemOk(i, r) ? <CheckCircle2 size={14} color="#16a34a" /> : <span style={{ color: '#ef4444' }}>✗</span>}
                           {r?.valor != null && <span>{r.valor}{i.unidade || unidadePadrao(i.tipo)}</span>}
-                          {r?.foto_url && <a href={r.foto_url} target="_blank" rel="noreferrer" title={r.foto_meta ? `${new Date(r.foto_meta.capturada_em).toLocaleString('pt-BR')} · ${r.foto_meta.setor || ''}` : ''}>
-                            <img src={r.foto_url} alt="foto" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} /></a>}
+                          {fotosDe(r).map(f => (
+                            <a key={f.url} href={f.url} target="_blank" rel="noreferrer" title={f.em ? new Date(f.em).toLocaleString('pt-BR') : ''} style={{ textAlign: 'center' }}>
+                              <img src={f.url} alt="foto" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />
+                              <div style={{ fontSize: 9, color: 'var(--muted)' }}>{f.em ? new Date(f.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
+                            </a>
+                          ))}
                         </div>
                       )
                     })}
@@ -1226,7 +1253,7 @@ function ModeloModal({ modelo, loja, userName, onClose, onSaved, toast }: {
     finally { setGerandoIa(false) }
   }
 
-  const addItem = () => setItens(prev => [...prev, { id: crypto.randomUUID(), txt: '', tipo: 'confirm', obrigatorio: true, critico: false, peso: 1 }])
+  const addItem = () => setItens(prev => [...prev, { id: crypto.randomUUID(), txt: '', tipo: 'confirm', obrigatorio: true, critico: false, peso: 1, foto_obrig: true }])
   const setItem = (id: string, patch: Partial<ChecklistItem>) => setItens(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i))
   const delItem = (id: string) => setItens(prev => prev.filter(i => i.id !== id))
 
@@ -1376,6 +1403,9 @@ function ModeloModal({ modelo, loja, userName, onClose, onSaved, toast }: {
                 </label>
                 <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                   <input type="checkbox" checked={it.critico} onChange={e => setItem(it.id, { critico: e.target.checked })} /> 🔴 crítico
+                </label>
+                <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!!it.foto_obrig} onChange={e => setItem(it.id, { foto_obrig: e.target.checked })} /> 📷 foto obrigatória
                 </label>
                 <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
                   peso <input type="number" min={1} max={10} value={it.peso} onChange={e => setItem(it.id, { peso: Number(e.target.value) || 1 })} style={{ ...inp, width: 50, padding: '4px 6px', fontSize: 12 }} />

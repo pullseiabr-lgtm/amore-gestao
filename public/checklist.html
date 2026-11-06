@@ -62,11 +62,13 @@ function normFone(f){var d=String(f||'').replace(/\D/g,'').replace(/^0+/,'');if(
 
 // ── Lógica de conformidade (espelha a do painel) ──
 function faixaOk(it,v){if(it.min!=null&&v<it.min)return false;if(it.max!=null&&v>it.max)return false;return true}
+function fotosDe(r){if(!r)return [];if(r.fotos&&r.fotos.length)return r.fotos;return r.foto_url?[{url:r.foto_url,em:(r.foto_meta&&r.foto_meta.capturada_em)||'',setor:r.foto_meta&&r.foto_meta.setor,loja:exec.loja,responsavel:r.foto_meta&&r.foto_meta.responsavel}]:[]}
 function itemOk(it,r){
   if(!r||r.nao_executou)return false;
+  if(it.foto_obrig&&it.tipo!=='foto'&&!fotosDe(r).length)return false;
   switch(it.tipo){
     case 'confirm':return r.ok===true;
-    case 'foto':return !!r.foto_url&&r.ia_status!=='reprovado';
+    case 'foto':return fotosDe(r).length>0&&r.ia_status!=='reprovado';
     case 'avaliacao':return (r.nota||0)>0;
     case 'texto':case 'qrcode':return !!(r.texto&&r.texto.trim());
     case 'assinatura':return !!r.assinatura;
@@ -116,11 +118,12 @@ async function onFoto(id,input){
     var now=new Date(), quem=responsavel()||'—';
     var blob=await carimbar(f,[ (exec.setor||'Geral').toUpperCase()+' · '+exec.loja, now.toLocaleDateString('pt-BR')+' '+now.toLocaleTimeString('pt-BR')+' · '+quem, (it.txt.length>60?it.txt.slice(0,57)+'…':it.txt) ]);
     var url=await upload(blob,'checklists','jpg');
-    var r=get(id);r.foto_url=url;r.ia_ok=null;r.ia_status=null;r.foto_meta={capturada_em:now.toISOString(),setor:exec.setor,loja:exec.loja,responsavel:quem};
+    var r=get(id),todas=fotosDe(r).slice();todas.push({url:url,em:now.toISOString(),setor:exec.setor,loja:exec.loja,responsavel:quem});r.fotos=todas;r.foto_url=todas[0].url;r.foto_meta={capturada_em:todas[0].em,setor:exec.setor,loja:exec.loja,responsavel:todas[0].responsavel};
   }catch(e){alert('Falha ao enviar a foto. Tente de novo.')}
   render();
 }
 
+function rmFoto(id,k){var r=get(id),t=fotosDe(r).filter(function(_,i){return i!==k});r.fotos=t;r.foto_url=t[0]?t[0].url:null;r.foto_meta=t[0]?{capturada_em:t[0].em,setor:t[0].setor,loja:t[0].loja,responsavel:t[0].responsavel}:null;render()}
 // ── Assinatura ──
 function initSig(id){
   var c=document.getElementById('sig_'+id);if(!c)return;
@@ -159,11 +162,9 @@ function itemHtml(it){
     if(r.assinatura)h+='<img class="thumb" style="max-height:80px;background:#fff" src="'+esc(r.assinatura)+'"><button class="nao" style="color:var(--text)" onclick="get(\''+it.id+'\').assinatura=null;render()">Refazer</button>';
     else h+='<canvas class="sig" id="sig_'+it.id+'"></canvas><div style="display:flex;gap:8px;margin-top:6px"><button class="btn g" style="padding:8px 14px" onclick="document.getElementById(\'sig_'+it.id+'\')._clear()">Limpar</button><button class="btn" style="padding:8px 14px" onclick="document.getElementById(\'sig_'+it.id+'\')._save()">Usar assinatura</button></div>';
   }
-  var precisaFoto=it.tipo==='foto'||(it.cond&&it.cond.exigir_foto&&touched&&!ok);
-  if(precisaFoto){
-    if(r.foto_url)h+='<img class="thumb" src="'+esc(r.foto_url)+'">'+(r.foto_meta?'<div class="sub">🕒 '+new Date(r.foto_meta.capturada_em).toLocaleString('pt-BR')+' · '+esc(r.foto_meta.setor||'')+'</div>':'');
-    h+='<label class="photo"><span>📷 '+(r.foto_url?'Trocar foto':'Tirar foto')+'</span><input type="file" accept="image/*" capture="environment" onchange="onFoto(\''+it.id+'\',this)"></label>';
-  }
+  var fs=fotosDe(r),obrig=it.foto_obrig||it.tipo==='foto';
+  if(fs.length){h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">';fs.forEach(function(f,k){h+='<div style="text-align:center;position:relative"><img src="'+esc(f.url)+'" style="width:96px;height:96px;object-fit:cover;border-radius:10px;border:1px solid var(--border)"><div class="sub">🕒 '+(f.em?new Date(f.em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'—')+'</div><button onclick="rmFoto(\''+it.id+'\','+k+')" style="position:absolute;top:-6px;right:-6px;width:24px;height:24px;border-radius:12px;border:none;background:#dc2626;color:#fff;font-size:14px">×</button></div>'});h+='</div>'}
+  h+='<label class="photo" '+(obrig&&!fs.length?'style="border-color:var(--crit);color:var(--crit)"':'')+'><span>📷 '+(fs.length?'Adicionar outra foto':'Tirar foto'+(obrig?' *':''))+'</span><input type="file" accept="image/*" capture="environment" onchange="onFoto(\''+it.id+'\',this)"></label>';
   if(it.cond&&touched&&!ok&&(it.cond.mensagem||it.cond.exigir_obs))h+='<div class="hint" style="color:var(--crit)">⚠️ '+esc(it.cond.mensagem||'Resposta não conforme — preencha a observação')+'</div>';
   h+='<textarea rows="1" placeholder="Observação deste item (opcional)" oninput="get(\''+it.id+'\').obs=this.value||null">'+esc(r.obs||'')+'</textarea>';
   h+='<button class="nao" onclick="get(\''+it.id+'\').nao_executou=true;render()">Não consigo executar</button></div>';
@@ -178,7 +179,7 @@ function render(){
   var keep=responsavel();
   var h='<header class="top"><div class="eyebrow">Amore · Operação Padrão</div><h1>'+esc(exec.titulo)+'</h1><div class="sub">'+esc(exec.loja)+' · '+esc(exec.setor||'Geral')+'</div></header>';
   if(DONE){
-    h+='<div class="done"><div style="font-size:42px">✅</div><h2 style="margin:6px 0">Checklist concluído</h2><div class="sub">'+dataBR(exec.data)+' às '+hora(exec.concluido_em)+' · '+esc(exec.responsavel_nome||'')+'<br>Score '+(exec.score==null?'—':exec.score)+'/100</div><p class="sub">O resumo foi enviado e o checklist está arquivado na Gestão à Vista.</p></div>';
+    h+='<div class="done"><div style="font-size:42px">✅</div><h2 style="margin:6px 0">Checklist concluído</h2><div class="sub">'+dataBR(exec.data)+' às '+hora(exec.concluido_em)+' · '+esc(exec.responsavel_nome||'')+'<br>Score '+(exec.score==null?'—':exec.score)+'/100</div><p class="sub">O resumo foi enviado e o checklist está arquivado na Gestão à Vista.</p><a class="btn" style="display:inline-block;text-decoration:none" href="checklist-relatorio.html?id='+EXEC_ID+'">Ver checklist com fotos e horários</a></div>';
     app.innerHTML=h;return;
   }
   h+='<div class="meta"><div><div class="l">📅 Data</div><div class="v">'+dataBR(exec.data)+'</div></div><div><div class="l">🕒 Horário</div><div class="v">'+hhmm(now)+(exec.hora_limite?' <span class="sub">(limite '+esc(exec.hora_limite)+')</span>':'')+'</div></div><div style="grid-column:1/-1"><div class="l">👤 Quem está fazendo *</div>'+selResp+'</div></div>';
@@ -207,12 +208,12 @@ async function salvar(concluir){
     if(sem.length)return alert('Informe o motivo em '+sem.length+' item(ns) não executado(s).');
     var falta=itens.filter(function(i){var r=resp[i.id];return i.obrigatorio&&!itemOk(i,r)&&!(r&&r.nao_executou)});
     if(falta.length)return alert('Faltam '+falta.length+' item(ns) obrigatório(s):\n• '+falta.slice(0,5).map(function(i){return i.txt}).join('\n• '));
-    var pend=lista.filter(function(r){var i=itens.find(function(x){return x.id===r.item_id});if(!i||!i.cond||r.nao_executou||itemOk(i,r))return false;return i.cond.bloquear||(i.cond.exigir_foto&&!r.foto_url)||(i.cond.exigir_obs&&!(r.obs&&r.obs.trim()))});
+    var pend=lista.filter(function(r){var i=itens.find(function(x){return x.id===r.item_id});if(!i||!i.cond||r.nao_executou||itemOk(i,r))return false;return i.cond.bloquear||(i.cond.exigir_foto&&!fotosDe(r).length)||(i.cond.exigir_obs&&!(r.obs&&r.obs.trim()))});
     if(pend.length)return alert(pend.length+' item(ns) não conforme(s) com ação pendente (foto/observação) ou conclusão bloqueada.');
     if(atr&&!just)return alert('Checklist fora do horário. Escreva a justificativa do atraso.');
     var agora=new Date(), score=calcScore(atr), nNc=0;
     lista=lista.map(function(r){var i=itens.find(function(x){return x.id===r.item_id});if(!i||r.nc)return r;var m=motivoRep(i,r);if(!m)return r;nNc++;
-      r.nc={status:'aberta',gravidade:i.critico?'alta':'media',item_txt:i.txt,foto_evidencia:r.foto_url||null,motivo_reprovacao:m,causa:null,acao:null,responsavel:null,prazo:null,impacto:null,foto_correcao:null,aprovado_por:null,aberta_em:agora.toISOString(),encerrada_em:null};return r});
+      r.nc={status:'aberta',gravidade:i.critico?'alta':'media',item_txt:i.txt,foto_evidencia:(fotosDe(r)[0]||{}).url||null,motivo_reprovacao:m,causa:null,acao:null,responsavel:null,prazo:null,impacto:null,foto_correcao:null,aprovado_por:null,aberta_em:agora.toISOString(),encerrada_em:null};return r});
     upd.respostas=lista;upd.status='concluido';upd.score=score;upd.concluido_em=agora.toISOString();upd.arquivado_em=agora.toISOString();
   }
   busy=true;var b1=document.getElementById('bsave'),b2=document.getElementById('bfim');if(b1)b1.disabled=true;if(b2)b2.disabled=true;
@@ -229,14 +230,16 @@ async function salvar(concluir){
 
 async function disparar(lista,nNc){
   var ds=(modelo&&modelo.destinatarios||[]).filter(function(d){return d.fone});if(!ds.length)return;
-  var okq=itens.filter(function(i){return itemOk(i,resp[i.id])}).length, fotos=lista.filter(function(r){return r.foto_url}).length, sc=exec.score;
+  var okq=itens.filter(function(i){return itemOk(i,resp[i.id])}).length, fotos=lista.reduce(function(a,r){return a+fotosDe(r).length},0), sc=exec.score;
   var ic=sc==null?'⚪':sc>=90?'🟢':sc>=70?'🟡':'🔴';
   var L=['✅ *CHECKLIST FECHADO — '+exec.titulo+'*','🏪 '+exec.loja+' · '+(exec.setor||'Geral'),'📅 '+dataBR(exec.data)+' · 🕒 '+hora(exec.concluido_em),'👤 Responsável: *'+exec.responsavel_nome+'*',ic+' Score '+(sc==null?'—':sc)+'/100 · '+okq+'/'+itens.length+' itens OK'];
   if(exec.justificativa_atraso)L.push('⏰ Feito com atraso (limite '+exec.hora_limite+'). Justificativa: '+exec.justificativa_atraso);
   if(nNc)L.push('🚩 '+nNc+' não conformidade(s):\n'+lista.filter(function(r){return r.nc}).slice(0,5).map(function(r){return '• '+r.nc.item_txt+' — '+r.nc.motivo_reprovacao}).join('\n'));
   if(exec.observacao_geral)L.push('📝 Obs.: '+exec.observacao_geral);
-  if(fotos)L.push('📷 '+fotos+' foto(s) com carimbo de horário e setor');
-  L.push('\n🔗 Ver no arquivo (Gestão à Vista): https://painel.amorefood.com.br/?page=checklists&aba=vista','_Operação Padrão · Amore Gestão_');
+  var hs=[];lista.forEach(function(r){fotosDe(r).forEach(function(f){if(f.em)hs.push(f.em)})});hs.sort();
+  L.push('⏱️ Início '+hora(exec.iniciado_em||hs[0])+' · Fim '+hora(exec.concluido_em));
+  if(fotos)L.push('📷 '+fotos+' foto(s) com carimbo de horário e setor'+(hs.length?' (de '+hora(hs[0])+' a '+hora(hs[hs.length-1])+')':''));
+  L.push('\n🔗 Ver o checklist com as fotos e horários:\nhttps://painel.amorefood.com.br/checklist-relatorio.html?id='+EXEC_ID,'📌 Arquivo: https://painel.amorefood.com.br/?page=checklists&aba=vista','_Operação Padrão · Amore Gestão_');
   var msg=L.join('\n'), n=0;
   for(var i=0;i<ds.length;i++){
     if(i>0)await sleep(2500+Math.random()*4500);

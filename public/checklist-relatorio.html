@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Checklist concluído — Amore</title>
+<style>
+:root{--brand:#6B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--crit:#DC2626}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+.wrap{max-width:760px;margin:0 auto;padding:18px 16px 50px}
+header.top{border-bottom:2px solid var(--brand);padding-bottom:12px;margin-bottom:12px}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--brand);font-weight:800}
+h1{font-size:20px;margin:6px 0 2px}.sub{color:var(--muted);font-size:13px}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin:12px 0}
+.meta div{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 11px}
+.l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.v{font-weight:700;font-size:15px}
+.box{border-radius:12px;padding:11px 13px;margin-top:10px;border:1px solid var(--border);background:var(--card);font-size:14px}
+.late{background:#fffbeb;border-color:#fcd34d;color:#78350f}.nc{border-color:#fca5a5;background:#fef2f2;color:#7f1d1d}
+.item{background:var(--card);border:1px solid var(--border);border-left:4px solid var(--ok);border-radius:12px;padding:11px 13px;margin-top:10px}
+.item.bad{border-left-color:var(--crit)}
+.q{font-weight:600;font-size:14.5px}.ans{font-size:14px;margin-top:3px}
+.fotos{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
+.fotos figure{margin:0;width:150px}.fotos img{width:150px;height:150px;object-fit:cover;border-radius:10px;border:1px solid var(--border)}
+.fotos figcaption{font-size:11px;color:var(--muted)}
+.btn{display:inline-block;margin-top:10px;padding:10px 16px;border-radius:9px;background:var(--brand);color:#fff;text-decoration:none;font-weight:700;font-size:14px}
+.msg{text-align:center;padding:60px 20px;color:var(--muted)}
+@media print{.np{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Carregando…</div></div>
+<script>
+var SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+var KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+var H={apikey:KEY,Authorization:'Bearer '+KEY};
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function hr(iso){return iso?new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'—'}
+function dt(iso){return iso?new Date(iso).toLocaleString('pt-BR'):'—'}
+function fotosDe(r){if(!r)return [];if(r.fotos&&r.fotos.length)return r.fotos;return r.foto_url?[{url:r.foto_url,em:r.foto_meta&&r.foto_meta.capturada_em||'',responsavel:r.foto_meta&&r.foto_meta.responsavel||''}]:[]}
+function faixaOk(it,v){return !((it.min!=null&&v<it.min)||(it.max!=null&&v>it.max))}
+function itemOk(it,r){
+  if(!r||r.nao_executou)return false;
+  if(it.foto_obrig&&it.tipo!=='foto'&&!fotosDe(r).length)return false;
+  switch(it.tipo){case 'confirm':return r.ok===true;case 'foto':return fotosDe(r).length>0&&r.ia_status!=='reprovado';case 'avaliacao':return (r.nota||0)>0;case 'texto':case 'qrcode':return !!(r.texto&&r.texto.trim());case 'assinatura':return !!r.assinatura;case 'temperatura':return r.valor!=null&&faixaOk(it,r.valor);default:return r.valor!=null}
+}
+function resposta(it,r){
+  if(!r)return '—';if(r.nao_executou)return '⛔ Não executado — '+esc(r.motivo_nao||'sem motivo');
+  switch(it.tipo){case 'confirm':return r.ok?'✔️ Sim':'✖️ Não';case 'avaliacao':return '⭐ '+(r.nota||'—')+'/5';case 'texto':case 'qrcode':return esc(r.texto||'—');case 'assinatura':return r.assinatura?'<img src="'+esc(r.assinatura)+'" style="height:50px;background:#fff;border:1px solid #ddd;border-radius:6px">':'—';case 'foto':return fotosDe(r).length?'📷 '+fotosDe(r).length+' foto(s)':'—';default:return r.valor!=null?esc(r.valor)+' '+esc(it.unidade||''):'—'}
+}
+(async function(){
+  var app=document.getElementById('app'),id=new URLSearchParams(location.search).get('id');
+  if(!id){app.innerHTML='<div class="msg">Link inválido.</div>';return}
+  var ex=await (await fetch(SB+'/rest/v1/checklist_execucoes?id=eq.'+encodeURIComponent(id)+'&select=*',{headers:H})).json();
+  if(!ex.length){app.innerHTML='<div class="msg">Checklist não encontrado.</div>';return}
+  var e=ex[0],md=e.modelo_id?await (await fetch(SB+'/rest/v1/checklist_modelos?id=eq.'+e.modelo_id+'&select=itens',{headers:H})).json():[];
+  var itens=(md[0]&&md[0].itens)||[],rs=e.respostas||[];
+  var todasFotos=[];rs.forEach(function(r){fotosDe(r).forEach(function(f){if(f.em)todasFotos.push(f.em)})});todasFotos.sort();
+  var ncs=rs.filter(function(r){return r.nc});
+  var h='<header class="top"><div class="eyebrow">Amore · Operação Padrão</div><h1>'+esc(e.titulo)+'</h1><div class="sub">'+esc(e.loja)+' · '+esc(e.setor||'Geral')+'</div></header>';
+  h+='<div class="meta"><div><div class="l">👤 Quem fez</div><div class="v">'+esc(e.responsavel_nome||'—')+'</div></div><div><div class="l">📅 Data</div><div class="v">'+e.data.split('-').reverse().join('/')+'</div></div><div><div class="l">⏱️ Início → Fim</div><div class="v">'+hr(e.iniciado_em||todasFotos[0])+' → '+hr(e.concluido_em)+'</div></div><div><div class="l">📊 Score</div><div class="v">'+(e.score==null?'—':e.score)+'/100</div></div><div><div class="l">📷 Fotos</div><div class="v">'+todasFotos.length+(todasFotos.length?' <span class="sub">('+hr(todasFotos[0])+'–'+hr(todasFotos[todasFotos.length-1])+')</span>':'')+'</div></div></div>';
+  if(e.justificativa_atraso)h+='<div class="box late"><b>⏰ Feito com atraso (limite '+esc(e.hora_limite)+')</b><br>'+esc(e.justificativa_atraso)+(e.justificada_por?' — '+esc(e.justificada_por):'')+'</div>';
+  if(e.observacao_geral)h+='<div class="box"><b>📝 Observações gerais</b><br>'+esc(e.observacao_geral)+'</div>';
+  if(ncs.length){h+='<div class="box nc"><b>🚩 '+ncs.length+' não conformidade(s) — ações corretivas</b><br>'+ncs.map(function(r){return '• '+esc(r.nc.item_txt)+' — '+esc(r.nc.motivo_reprovacao)+' <i>('+esc(r.nc.status)+(r.nc.responsavel?', resp.: '+esc(r.nc.responsavel):'')+(r.nc.acao?', ação: '+esc(r.nc.acao):'')+')</i>'}).join('<br>')+'<br><a class="btn np" href="/?page=checklists&aba=nc">Abrir plano de ação no painel</a></div>'}
+  itens.forEach(function(it,i){
+    var r=rs.find(function(x){return x.item_id===it.id}),ok=itemOk(it,r),fs=fotosDe(r);
+    h+='<div class="item '+(ok?'':'bad')+'"><div class="q">'+(i+1)+'. '+esc(it.txt)+' '+(ok?'✅':'❌')+'</div><div class="ans">'+resposta(it,r)+'</div>'+(r&&r.obs?'<div class="sub">📝 '+esc(r.obs)+'</div>':'');
+    if(fs.length)h+='<div class="fotos">'+fs.map(function(f){return '<figure><a href="'+esc(f.url)+'" target="_blank"><img src="'+esc(f.url)+'" loading="lazy"></a><figcaption>🕒 '+dt(f.em)+(f.responsavel?'<br>👤 '+esc(f.responsavel):'')+'</figcaption></figure>'}).join('')+'</div>';
+    else if(it.foto_obrig)h+='<div class="sub" style="color:var(--crit)">Sem foto registrada</div>';
+    h+='</div>';
+  });
+  h+='<p class="sub">Concluído em '+dt(e.concluido_em)+'. <a href="#" class="np" onclick="window.print();return false">Imprimir / salvar PDF</a></p>';
+  app.innerHTML=h;
+})();
+</script>
+</body>
+</html>
