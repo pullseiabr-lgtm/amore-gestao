@@ -95,6 +95,13 @@ export default function RecebimentoPage() {
   // Avisos (WhatsApp) a gestor/administrador/comprador + observação ao comprador quando o recebimento vem incompleto
   const [cfgAviso, setCfgAviso] = useState<CfgAviso>({ ativo: false, pessoas: [] })
   const [cfgAberto, setCfgAberto] = useState(false)
+  // Campo "Quem recebe as informações e a nota" deste recebimento: cadastrados (desmarcáveis) + pessoas extras
+  const [destOff, setDestOff] = useState<string[]>([])            // fones (normalizados) desmarcados nesta nota
+  const [destExtras, setDestExtras] = useState<DestRec[]>([])
+  const [exNome, setExNome] = useState('')
+  const [exFone, setExFone] = useState('')
+  const [exPapel, setExPapel] = useState<DestRec['papel']>('gestor')
+  const [exSalvar, setExSalvar] = useState(false)
   const [obsCompradorTxt, setObsCompradorTxt] = useState<string | null>(null)   // null = texto automático
   useEffect(() => { fetchAppConfig<CfgAviso>('recebimento_destinatarios').then(c => { if (c) setCfgAviso({ ativo: !!c.ativo, pessoas: c.pessoas || [] }) }) }, [])
   const salvarCfgAviso = async (c: CfgAviso) => { setCfgAviso(c); await saveAppConfig('recebimento_destinatarios', c) }
@@ -148,7 +155,7 @@ export default function RecebimentoPage() {
 
   const enviarELer = async () => {
     if (!file) { toast('Selecione a foto/PDF da nota.', 'error'); return }
-    setBusy('upload'); setOcrInfo(null); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral('')
+    setBusy('upload'); setOcrInfo(null); setDestOff([]); setDestExtras([]); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral('')
     try {
       const ext = (file.name.split('.').pop() || 'pdf').toLowerCase()
       const path = `recebimentos/${crypto.randomUUID()}.${ext}`
@@ -247,7 +254,7 @@ export default function RecebimentoPage() {
   const obsComprador = obsCompradorTxt ?? analise.obsAuto
 
   // Aviso pós-recebimento: Central de Notificações (sempre que incompleto) + WhatsApp (se ativado) a comprador, gestor e administrador, com o link da nota
-  const avisarRecebimento = async (ctx: { recId: string; loja: string; fornecedor: string; nf: string; total: number; conferente: string; nItens: number; nEstoque: number; status: string; pedidoNum: string | null; compradorNome: string | null; incompleto: boolean; obs: string; anexoUrl: string }) => {
+  const avisarRecebimento = async (ctx: { recId: string; loja: string; fornecedor: string; nf: string; total: number; conferente: string; nItens: number; nEstoque: number; status: string; pedidoNum: string | null; compradorNome: string | null; incompleto: boolean; obs: string; anexoUrl: string; desmarcados: string[]; extras: DestRec[] }) => {
     const titulo = ctx.incompleto ? 'Recebimento INCOMPLETO — ' + ctx.fornecedor : 'Recebimento confirmado — ' + ctx.fornecedor
     const linhas = [
       ctx.incompleto ? '⚠️ *RECEBIMENTO INCOMPLETO*' : '✅ *RECEBIMENTO CONFIRMADO*',
@@ -263,7 +270,7 @@ export default function RecebimentoPage() {
     if (ctx.incompleto) insertNotificacao({ loja: ctx.loja, canal: 'sistema', tipo: 'compra', modulo: 'recebimento', titulo, mensagem: msg, destinatario_nome: ctx.compradorNome || 'Comprador', referencia_id: ctx.recId, status: 'enviado', created_by: ctx.conferente }).catch(() => {})
     // 2) WhatsApp — só se o Esdras ativou e há pessoas cadastradas
     if (!cfgAviso.ativo) return 0
-    const alvo: DestRec[] = [...cfgAviso.pessoas]
+    const alvo: DestRec[] = [...cfgAviso.pessoas.filter(p => !ctx.desmarcados.includes(normalizarFoneBR(p.fone))), ...ctx.extras]
     if (ctx.compradorNome) {
       try {
         const ps = await fetchProfiles()
@@ -345,14 +352,14 @@ export default function RecebimentoPage() {
       let baixaMsg = ''
       if (pedidoSel) { const n = await baixarNoPedido(); if (n > 0) baixaMsg = ` · ${n} item(ns) baixado(s) no pedido` }
       // Aviso a comprador/gestor/administrador (em segundo plano — não segura a tela)
-      const ctxAviso = { recId: data.recebimento_id, loja, fornecedor: String(cab?.fornecedor || 'Fornecedor'), nf: String(cab?.numero_nota || 's/n'), total: Number(cab?.valor_total || 0), conferente: conferente.trim(), nItens: itens.length, nEstoque: Number(data.estoque || 0), status: String(data.status || ''), pedidoNum: analise.pedido?.numero || null, compradorNome: analise.pedido?.criado_por || null, incompleto: analise.incompleto, obs: obsComprador, anexoUrl: anexo?.url || '' }
+      const ctxAviso = { recId: data.recebimento_id, loja, fornecedor: String(cab?.fornecedor || 'Fornecedor'), nf: String(cab?.numero_nota || 's/n'), total: Number(cab?.valor_total || 0), conferente: conferente.trim(), nItens: itens.length, nEstoque: Number(data.estoque || 0), status: String(data.status || ''), pedidoNum: analise.pedido?.numero || null, compradorNome: analise.pedido?.criado_por || null, incompleto: analise.incompleto, obs: obsComprador, anexoUrl: anexo?.url || '', desmarcados: destOff, extras: destExtras }
       avisarRecebimento(ctxAviso).then(n => { if (cfgAviso.ativo) toast(n ? `Aviso enviado a ${n} pessoa(s) no WhatsApp 📲` : 'Aviso: nenhum destinatário recebeu (confira o cadastro de avisos).', n ? 'success' : 'warning') }).catch(() => {})
       if (analise.incompleto) toast('⚠️ Recebimento INCOMPLETO — observação registrada e notificação gerada ao comprador.', 'warning')
       if (data.status === 'pendente_aprovacao')
         toast(`Recebimento registrado com ${data.retidos} item(ns) retido(s) por divergência — aguardando aprovação. ⏳${baixaMsg}`)
       else
         toast(`Recebimento confirmado! Despesa nº ${data.prestacao} · ABC atualizada${data.estoque ? ` · ${data.estoque} no estoque 📦` : ''}${baixaMsg} ✅`)
-      setFile(null); setAnexo(null); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral(''); setObsCompradorTxt(null); setAssinatura(''); setPedidoSel(''); setPedidoItens([]); loadRecs(); loadPedidosAbertos(loja)
+      setFile(null); setAnexo(null); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral(''); setObsCompradorTxt(null); setDestOff([]); setDestExtras([]); setAssinatura(''); setPedidoSel(''); setPedidoItens([]); loadRecs(); loadPedidosAbertos(loja)
     } catch (e: any) { toast('Falha ao confirmar: ' + (e?.message || ''), 'error') }
     setBusy('')
   }
@@ -567,6 +574,47 @@ export default function RecebimentoPage() {
                 <textarea style={{ ...inp, minHeight: 90, marginTop: 4, resize: 'vertical' }} value={obsComprador} onChange={e => setObsCompradorTxt(e.target.value)} />
               </>
             )}
+          </div>
+        )}
+
+        {/* quem recebe as informações e a nota após o recebimento */}
+        {itens.length > 0 && (
+          <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fafafa' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#6B1212' }}>📨 Quem recebe as informações e a nota após o recebimento</div>
+            <div style={{ fontSize: 11.5, color: '#6b7280', margin: '3px 0 8px' }}>
+              Ao confirmar, estas pessoas recebem o resumo do recebimento + o link da nota fiscal{analise.pedido?.criado_por ? ` (o comprador ${analise.pedido.criado_por} do pedido recebe junto)` : ''}.
+              {!cfgAviso.ativo && <b style={{ color: '#B45309' }}> O envio por WhatsApp está desligado — {podeAprovar ? 'ative em "Avisos do recebimento" no topo.' : 'peça a um gestor para ativar.'} A notificação no painel funciona.</b>}
+            </div>
+            {cfgAviso.pessoas.length === 0 && destExtras.length === 0 && <div style={{ fontSize: 12, color: '#9ca3af' }}>Nenhuma pessoa cadastrada ainda. Adicione abaixo.</div>}
+            {cfgAviso.pessoas.map((d, i) => { const f = normalizarFoneBR(d.fone); const off = destOff.includes(f); return (
+              <label key={'c' + i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, padding: '2px 0', cursor: 'pointer' }}>
+                <input type="checkbox" checked={!off} onChange={e => setDestOff(a => e.target.checked ? a.filter(x => x !== f) : [...a, f])} />
+                {d.nome} · {d.fone.replace(/^55/, '')} · <i style={{ color: '#6b7280' }}>{d.papel}</i>
+              </label>
+            ) })}
+            {destExtras.map((d, i) => (
+              <div key={'e' + i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, padding: '2px 0' }}>
+                <span style={{ flex: 1 }}>➕ {d.nome} · {d.fone.replace(/^55/, '')} · <i style={{ color: '#6b7280' }}>{d.papel} (só nesta nota)</i></span>
+                <button onClick={() => setDestExtras(a => a.filter((_, k) => k !== i))} style={{ border: 'none', background: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 12 }}>remover</button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
+              <input style={{ ...inp, flex: 1, minWidth: 110 }} placeholder="Nome" value={exNome} onChange={e => setExNome(e.target.value)} />
+              <input style={{ ...inp, flex: 1, minWidth: 130 }} placeholder="WhatsApp (DDD+número)" value={exFone} onChange={e => setExFone(e.target.value)} />
+              <select style={{ ...inp, width: 'auto' }} value={exPapel} onChange={e => setExPapel(e.target.value as DestRec['papel'])}>
+                <option value="gestor">Gestor</option><option value="administrador">Administrador</option><option value="comprador">Comprador</option><option value="outro">Outro</option>
+              </select>
+              {podeAprovar && <label style={{ fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 4 }}><input type="checkbox" checked={exSalvar} onChange={e => setExSalvar(e.target.checked)} />salvar no cadastro</label>}
+              <button onClick={() => {
+                const f = normalizarFoneBR(exFone)
+                if (!exNome.trim() || !f) { toast('Informe nome e WhatsApp.', 'error'); return }
+                if (cfgAviso.pessoas.some(x => normalizarFoneBR(x.fone) === f) || destExtras.some(x => normalizarFoneBR(x.fone) === f)) { toast('Esse WhatsApp já está na lista.', 'info'); return }
+                const nova: DestRec = { nome: exNome.trim(), fone: f, papel: exPapel }
+                if (podeAprovar && exSalvar) salvarCfgAviso({ ...cfgAviso, pessoas: [...cfgAviso.pessoas, nova] })
+                else setDestExtras(a => [...a, nova])
+                setExNome(''); setExFone('')
+              }} style={{ border: '1px solid #6B1212', background: '#6B1212', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5 }}>+ Adicionar</button>
+            </div>
           </div>
         )}
 
