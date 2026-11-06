@@ -76,6 +76,8 @@ export default function RecebimentoPage() {
   const [anexo, setAnexo] = useState<{ url: string; nome: string } | null>(null)
   const [busy, setBusy] = useState('')
   const [cab, setCab] = useState<any | null>(null)
+  // Resultado das travas/2ª IA do OCR (soma, CNPJ, chave, divergências entre leitores)
+  const [ocrInfo, setOcrInfo] = useState<{ alertas: string[]; validacao?: any; erros?: any } | null>(null)
   const [itens, setItens] = useState<any[]>([])
   const [recs, setRecs] = useState<any[]>([])
   const [prodEstoque, setProdEstoque] = useState<any[]>([])
@@ -133,7 +135,7 @@ export default function RecebimentoPage() {
 
   const enviarELer = async () => {
     if (!file) { toast('Selecione a foto/PDF da nota.', 'error'); return }
-    setBusy('upload'); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral('')
+    setBusy('upload'); setOcrInfo(null); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral('')
     try {
       const ext = (file.name.split('.').pop() || 'pdf').toLowerCase()
       const path = `recebimentos/${crypto.randomUUID()}.${ext}`
@@ -146,7 +148,10 @@ export default function RecebimentoPage() {
       const d = await resp.json()
       if (!resp.ok) { toast(d.error || 'Erro na leitura por IA.', 'error'); setBusy(''); return }
       const its = (d.itens || []).map((x: any) => ({ ...x, conteudo: x.conteudo || 1, recebido: x.quantidade ?? '' }))
-      setCab({ fornecedor: '', cnpj: '', numero_nota: '', serie: '', data_emissao: '', valor_total: '', forma_pagamento: '', ...(d.cabecalho || {}) })
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { _conferir: _cabConf, ...cabLimpo } = (d.cabecalho || {}) as any
+      setCab({ fornecedor: '', cnpj: '', numero_nota: '', serie: '', data_emissao: '', valor_total: '', forma_pagamento: '', ...cabLimpo })
+      setOcrInfo({ alertas: d.alertas || [], validacao: d.validacao, erros: d.leitores_erro })
       setItens(its)
       // tenta pré-vincular a um pedido aberto pelo fornecedor lido na nota (se houver 1 candidato claro)
       try {
@@ -317,6 +322,14 @@ export default function RecebimentoPage() {
 
       {/* passo 2 — conferência */}
       {cab && <div style={card}>
+        {ocrInfo && (ocrInfo.alertas.length > 0 || ocrInfo.validacao) && (
+          <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {ocrInfo.alertas.map((a, k) => { const ok = a.startsWith('✅'); return (
+              <div key={k} style={{ fontSize: 12.5, padding: '6px 10px', borderRadius: 8, fontWeight: 600, background: ok ? '#ECFDF5' : '#FEF3C7', color: ok ? '#166534' : '#92400E', border: `1px solid ${ok ? '#A7F3D0' : '#FDE68A'}` }}>{ok ? a : '⚠️ ' + a}</div>
+            ) })}
+            {ocrInfo.validacao && <div style={{ fontSize: 11, color: '#9ca3af' }}>Leitura por {ocrInfo.validacao.leitores?.gemini ? 'Gemini' : ''}{ocrInfo.validacao.leitores?.gemini && ocrInfo.validacao.leitores?.gpt ? ' + ' : ''}{ocrInfo.validacao.leitores?.gpt ? 'GPT (2ª opinião)' : ''} · CNPJ {ocrInfo.validacao.cnpj_ok ? '✓' : '✗'} · chave {ocrInfo.validacao.chave_ok ? '✓' : '✗'} · soma dos itens {ocrInfo.validacao.soma_ok ? '✓' : '✗'}</div>}
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
           <b style={{ fontSize: 14 }}>🔍 Conferência — cabeçalho da nota</b>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: anexo?.url ? '#ECFDF5' : '#FEF2F2', color: anexo?.url ? '#166534' : '#B91C1C', border: `1px solid ${anexo?.url ? '#A7F3D0' : '#FECACA'}`, borderRadius: 20, padding: '.3rem .8rem', fontWeight: 600 }}>
@@ -383,7 +396,7 @@ export default function RecebimentoPage() {
               {itens.map((it, i) => { const pu = precoUnit(it); const cf = it.confianca; const temD = desvios[i]?.tipo; const retido = itemRetido(i); return (
                 <>
                 <tr key={i} style={{ borderTop: '1px solid #f3f4f6', background: retido ? '#FEF2F2' : undefined }}>
-                  <td style={{ padding: 4, minWidth: 170 }}><input style={inp} value={it.produto || ''} onChange={e => upItem(i, 'produto', e.target.value)} /></td>
+                  <td style={{ padding: 4, minWidth: 170 }}><input style={inp} value={it.produto || ''} onChange={e => upItem(i, 'produto', e.target.value)} />{(it._conferir || it._corrigido) && <div style={{ fontSize: 10.5, color: '#B45309', marginTop: 2 }}>⚠️ {it._corrigido ? `corrigido: ${it._corrigido}` : (it._conferir as any[]).map((c: any) => `${c.campo}: outra IA leu ${c.outra_ia}`).join(' · ')}</div>}</td>
                   <td style={{ width: 60 }}><input style={inp} type="number" step="0.01" value={it.quantidade ?? ''} onChange={e => upItem(i, 'quantidade', e.target.value)} /></td>
                   <td style={{ width: 62 }}><input style={{ ...inp, ...(difItem(it).has && !difItem(it).ok ? { borderColor: '#F59E0B', background: '#FFFBEB' } : {}) }} type="number" step="0.01" value={it.recebido ?? ''} onChange={e => upRecebido(i, e.target.value)} title="Quantidade efetivamente recebida" /></td>
                   <td style={{ width: 60, textAlign: 'center', fontWeight: 700 }}>{(() => { const d = difItem(it); if (!d.has) return <span style={{ color: '#9ca3af' }}>—</span>; if (d.ok) return <span style={{ color: '#1D9E75' }}>✓</span>; return <span style={{ color: d.delta! < 0 ? '#DC2626' : '#D97706', fontSize: 11 }}>⚠ {d.delta! > 0 ? '+' : ''}{d.delta}</span> })()}</td>
