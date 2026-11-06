@@ -1012,6 +1012,12 @@ export interface ChecklistCondicao {
   alertar?: boolean          // sinaliza para alertar o gestor
 }
 
+export interface ChecklistDestinatario {
+  nome: string
+  fone: string
+  papel: 'responsavel' | 'gestor'   // responsável é alertado p/ fazer; ambos recebem o checklist fechado
+}
+
 export interface ChecklistModelo {
   id: string
   loja: string | null            // null = vale p/ todas as lojas
@@ -1026,6 +1032,10 @@ export interface ChecklistModelo {
   exige_gps: boolean
   itens: ChecklistItem[]
   ativo: boolean
+  // Alerta WhatsApp / disparo (opcionais — retrocompatível)
+  alertar?: boolean
+  hora_alerta?: string | null
+  destinatarios?: ChecklistDestinatario[] | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -1044,6 +1054,7 @@ export interface ChecklistResposta {
   texto?: string | null                                   // resposta do tipo comentário / código escaneado
   assinatura?: string | null                              // URL da assinatura digital (tipo assinatura)
   ia_status?: 'aprovado' | 'reprovado' | 'revisao' | null // veredito da IA em 3 estados
+  foto_meta?: { capturada_em: string; setor: string | null; loja: string; responsavel: string | null } | null // carimbo gravado também como metadado
   nao_executou?: boolean                                  // marcou "não consigo executar"
   motivo_nao?: string | null                              // justificativa da não execução
   // Não Conformidade (plano de ação) — aberta quando o item é reprovado
@@ -1091,6 +1102,14 @@ export interface ChecklistExecucao {
   created_by: string | null
   created_at: string
   updated_at: string
+  // Justificativa de atraso, alerta e arquivo (opcionais)
+  justificativa_atraso?: string | null
+  justificada_por?: string | null
+  justificada_em?: string | null
+  alerta_enviado_em?: string | null
+  atraso_alertado_em?: string | null
+  disparado_em?: string | null
+  arquivado_em?: string | null
   // join opcional
   modelo?: ChecklistModelo
 }

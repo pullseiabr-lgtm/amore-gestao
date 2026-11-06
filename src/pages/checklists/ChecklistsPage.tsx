@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Plus, Edit2, Trash2, Loader2, CheckCircle2, Camera, MapPin,
-  Star, ClipboardCheck, Play, RefreshCw, Save, X, Sparkles, FileDown, Send,
+  Star, ClipboardCheck, Play, RefreshCw, Save, X, Sparkles, FileDown, Send, Archive, Clock, User,
 } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -13,10 +13,10 @@ import {
   uploadAnexo, insertTarefa,
 } from '../../lib/db'
 import { gerarItensIA, validarFotoIA } from '../../lib/checklistIa'
-import { enviarWhatsApp, getZapiCfg, carregarZapiCfgRemoto } from '../../lib/notify'
+import { enviarWhatsApp, getZapiCfg, carregarZapiCfgRemoto, normalizarFoneBR } from '../../lib/notify'
 import type {
   ChecklistModelo, ChecklistExecucao, ChecklistItem, ChecklistResposta,
-  ChecklistItemTipo, ChecklistRecorrencia, ChecklistTurno, ChecklistNC, ChecklistCondicao,
+  ChecklistItemTipo, ChecklistRecorrencia, ChecklistTurno, ChecklistNC, ChecklistCondicao, ChecklistDestinatario,
 } from '../../types/database'
 
 // ── Constantes ───────────────────────────────────────────────
@@ -51,9 +51,70 @@ const TIPOS_NUM: ChecklistItemTipo[] = ['numero', 'temperatura', 'quantidade', '
 const unidadePadrao = (t: ChecklistItemTipo) =>
   t === 'temperatura' ? '°C' : t === 'peso' ? 'kg' : t === 'valor' ? 'R$' : t === 'quantidade' ? 'un' : ''
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-const SETORES = ['Geral', 'Cozinha', 'Bar', 'Salão', 'Estoque', 'Limpeza', 'Produção', 'Caixa']
+// Setores principais (fluxo setor → checklist → execução) + setores já existentes (retrocompatível)
+const SETORES_PRINC = ['Abertura de loja', 'Fechamento de loja', 'Checklist de estoque', 'Manutenção']
+const SETOR_ICO: Record<string, string> = { 'Abertura de loja': '🌅', 'Fechamento de loja': '🌃', 'Checklist de estoque': '📦', 'Manutenção': '🛠️' }
+const SETORES = [...SETORES_PRINC, 'Geral', 'Cozinha', 'Bar', 'Salão', 'Estoque', 'Limpeza', 'Produção', 'Caixa']
+const setorIco = (s: string | null | undefined) => SETOR_ICO[s || ''] || '🏷️'
 
-const hoje = () => new Date().toISOString().slice(0, 10)
+// Data "de hoje" no fuso local (o toISOString puro virava o dia às 21h em Recife)
+const hoje = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10) }
+const hhmm = (d: Date) => d.toTimeString().slice(0, 5)
+const fmtDataBR = (iso: string) => iso.split('-').reverse().join('/')
+const fmtHora = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—'
+const SITE = 'https://painel.amorefood.com.br'
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+// Carimbo na imagem: faixa com setor, loja, data/hora e responsável (gravada nos pixels da foto)
+async function carimbarFoto(file: File, linhas: string[]): Promise<File> {
+  try {
+    const bmp = await createImageBitmap(file)
+    const sc = Math.min(1, 1600 / bmp.width)
+    const w = Math.round(bmp.width * sc), h = Math.round(bmp.height * sc)
+    const c = document.createElement('canvas'); c.width = w; c.height = h
+    const ctx = c.getContext('2d'); if (!ctx) return file
+    ctx.drawImage(bmp, 0, 0, w, h)
+    const fs = Math.max(14, Math.round(w / 40)), pad = Math.round(fs * 0.55), lh = Math.round(fs * 1.3)
+    const bh = linhas.length * lh + pad * 2
+    ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(0, h - bh, w, bh)
+    ctx.fillStyle = '#ffffff'; ctx.font = `600 ${fs}px Arial, sans-serif`; ctx.textBaseline = 'top'
+    linhas.forEach((l, i) => ctx.fillText(l, pad, h - bh + pad + i * lh, w - pad * 2))
+    const blob = await new Promise<Blob | null>(r => c.toBlob(r, 'image/jpeg', 0.85))
+    if (!blob) return file
+    return new File([blob], (file.name.replace(/.[^.]+$/, '') || 'foto') + '.jpg', { type: 'image/jpeg' })
+  } catch { return file } // sem carimbo se o navegador não suportar — a foto segue valendo
+}
+
+// Mensagem do checklist fechado (disparada às pessoas cadastradas e reenviável pela Gestão à Vista)
+function montaMsgFechamento(e: ChecklistExecucao, itens: ChecklistItem[], respostas: ChecklistResposta[]): string {
+  const ncs = respostas.filter(r => r.nc)
+  const fotos = respostas.filter(r => r.foto_url).length
+  const ok = itens.filter(i => itemOk(i, respostas.find(r => r.item_id === i.id))).length
+  const sc = e.score
+  const ic = sc == null ? '⚪' : sc >= 90 ? '🟢' : sc >= 70 ? '🟡' : '🔴'
+  const linhas = [
+    `✅ *CHECKLIST FECHADO — ${e.titulo}*`,
+    `🏪 ${e.loja} · ${setorIco(e.setor)} ${e.setor || 'Geral'}`,
+    `📅 ${fmtDataBR(e.data)} · 🕒 ${fmtHora(e.concluido_em)}`,
+    `👤 Responsável: *${e.responsavel_nome || '—'}*`,
+    `${ic} Score ${sc ?? '—'}/100 · ${ok}/${itens.length} itens OK`,
+  ]
+  if (e.justificativa_atraso) linhas.push(`⏰ Feito com atraso (limite ${e.hora_limite}). Justificativa: ${e.justificativa_atraso}`)
+  if (ncs.length) linhas.push(`🚩 ${ncs.length} não conformidade(s):\n` + ncs.slice(0, 5).map(r => `• ${r.nc?.item_txt || 'item'} — ${r.nc?.motivo_reprovacao || ''}`).join('\n'))
+  if (fotos) linhas.push(`📷 ${fotos} foto(s) com carimbo de horário e setor`)
+  linhas.push(`\n🔗 Ver no arquivo (Gestão à Vista): ${SITE}/?page=checklists&aba=vista`, '_Operação Padrão · Amore Gestão_')
+  return linhas.join('\n')
+}
+
+// Envia para uma lista com intervalo ALEATÓRIO entre mensagens (anti-bloqueio). Retorna quantos foram.
+async function dispararLista(dest: ChecklistDestinatario[], msg: string, loja: string, titulo: string): Promise<number> {
+  let ok = 0
+  for (let i = 0; i < dest.length; i++) {
+    if (i > 0) await sleep(2500 + Math.random() * 4500)
+    if (await enviarWhatsApp(dest[i].fone, msg, undefined, { tipo: 'relatorio', modulo: 'checklists', titulo, loja, destinatario_nome: dest[i].nome })) ok++
+  }
+  return ok
+}
 const turnoLbl = (t: string) => TURNOS.find(x => x.v === t)?.lbl || t
 
 // Um modelo "vale para hoje"? (recorrência + dia + turno)
@@ -141,7 +202,11 @@ export default function ChecklistsPage() {
   const { user } = useAuth()
   const { toast } = useToast()
 
-  const [tab, setTab] = useState<'hoje' | 'painel' | 'nc' | 'modelos'>('hoje')
+  const [tab, setTab] = useState<'hoje' | 'vista' | 'painel' | 'nc' | 'modelos'>(() => {
+    const a = new URLSearchParams(window.location.search).get('aba')
+    return a === 'vista' || a === 'painel' || a === 'nc' || a === 'modelos' ? a : 'hoje'
+  })
+  const [setorSel, setSetorSel] = useState<string>('todos')
   const [modelos, setModelos] = useState<ChecklistModelo[]>([])
   const [execucoes, setExecucoes] = useState<ChecklistExecucao[]>([])
   const [loading, setLoading] = useState(true)
@@ -218,6 +283,12 @@ export default function ChecklistsPage() {
 
   const modeloDe = (id: string | null) => modelos.find(m => m.id === id)
 
+  // Setores presentes hoje (principais primeiro, depois os demais)
+  const setoresHoje = useMemo(() => {
+    const set = new Set(execucoes.map(e => e.setor || 'Geral'))
+    return [...SETORES_PRINC.filter(s => set.has(s)), ...[...set].filter(s => !SETORES_PRINC.includes(s)).sort()]
+  }, [execucoes])
+
   // ── Resumo do dia ──
   const resumo = useMemo(() => {
     const tot = execucoes.length
@@ -247,7 +318,7 @@ export default function ChecklistsPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: 'var(--card)', borderRadius: 10, padding: 4 }}>
-        {([['hoje', '📋 Execução do dia'], ['painel', '📊 Painel'], ['nc', '🚩 Não Conformidades'], ['modelos', '⚙️ Modelos']] as const).map(([id, lbl]) => (
+        {([['hoje', '📋 Execução do dia'], ['vista', '📌 Gestão à Vista'], ['painel', '📊 Painel'], ['nc', '🚩 Não Conformidades'], ['modelos', '⚙️ Modelos']] as const).map(([id, lbl]) => (
           <button key={id} onClick={() => setTab(id)} style={{
             flex: 1, padding: '10px 8px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 13,
             fontWeight: tab === id ? 700 : 400,
@@ -276,16 +347,43 @@ export default function ChecklistsPage() {
           {execucoes.length === 0 ? (
             <Empty texto="Nenhum checklist para hoje. Clique em “Gerar checklists de hoje” ou crie um modelo na aba Modelos." />
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
-              {execucoes.map(e => (
-                <ExecucaoCard
-                  key={e.id} exec={e} modelo={modeloDe(e.modelo_id)}
-                  onChange={load} toast={toast} user={user}
-                />
-              ))}
-            </div>
+            <>
+              {/* 1º passo: escolher o SETOR */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 14 }}>
+                {[{ id: 'todos', lbl: '🗂️ Todos', n: execucoes.length, pend: execucoes.filter(e => e.status !== 'concluido').length },
+                  ...setoresHoje.map(st => ({ id: st, lbl: `${setorIco(st)} ${st}`, n: execucoes.filter(e => (e.setor || 'Geral') === st).length, pend: execucoes.filter(e => (e.setor || 'Geral') === st && e.status !== 'concluido').length })),
+                ].map(c => (
+                  <button key={c.id} onClick={() => setSetorSel(c.id)} style={{
+                    padding: '8px 12px', borderRadius: 20, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', fontWeight: setorSel === c.id ? 700 : 500,
+                    background: setorSel === c.id ? 'var(--bordo)' : 'var(--card)', color: setorSel === c.id ? '#fff' : 'var(--text)',
+                  }}>
+                    {c.lbl} <span style={{ opacity: 0.8 }}>· {c.n - c.pend}/{c.n}</span>
+                  </button>
+                ))}
+              </div>
+              {/* 2º passo: checklists do setor → 3º passo: execução */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
+                {setoresHoje.filter(st => setorSel === 'todos' || setorSel === st).map(st => (
+                  <div key={st}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', margin: '4px 0 8px' }}>
+                      {setorIco(st)} {st}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {execucoes.filter(e => (e.setor || 'Geral') === st).map(e => (
+                        <ExecucaoCard
+                          key={e.id} exec={e} modelo={modeloDe(e.modelo_id)}
+                          onChange={load} toast={toast} user={user}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </>
+      ) : tab === 'vista' ? (
+        <VistaTab loja={loja} modelos={modelos} toast={toast} />
       ) : tab === 'painel' ? (
         <PainelTab loja={loja} toast={toast} />
       ) : tab === 'nc' ? (
@@ -416,6 +514,12 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
   const [salvando, setSalvando] = useState(false)
   const [uploadingId, setUploadingId] = useState<string | null>(null)
   const [scanItemId, setScanItemId] = useState<string | null>(null)
+  // Cabeçalho: quem está fazendo + relógio + justificativa de atraso
+  const [responsavel, setResponsavel] = useState(exec.responsavel_nome || user?.name || '')
+  const [justificativa, setJustificativa] = useState(exec.justificativa_atraso || '')
+  const [agora, setAgora] = useState(new Date())
+  const [salvandoJust, setSalvandoJust] = useState(false)
+  useEffect(() => { const t = setInterval(() => setAgora(new Date()), 30000); return () => clearInterval(t) }, [])
 
   const respDe = (id: string): ChecklistResposta =>
     respostas.find(r => r.item_id === id) || { item_id: id, ok: false, valor: null, foto_url: null, nota: null, ia_ok: null, ia_motivo: null, obs: null }
@@ -430,11 +534,19 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
 
   const uploadFoto = async (id: string, item: ChecklistItem, files: FileList | null) => {
     if (!files || !files[0]) return
-    const file = files[0]
     setUploadingId(id)
     try {
+      // Carimbo na imagem: setor + loja + data/hora + responsável (e metadado gravado na resposta)
+      const capt = new Date()
+      const quem = responsavel.trim() || user?.name || '—'
+      const file = await carimbarFoto(files[0], [
+        `${(exec.setor || 'Geral').toUpperCase()} · ${exec.loja}`,
+        `${capt.toLocaleDateString('pt-BR')} ${capt.toLocaleTimeString('pt-BR')} · ${quem}`,
+        item.txt.length > 60 ? item.txt.slice(0, 57) + '…' : item.txt,
+      ])
       const url = await uploadAnexo(file, 'checklists')
-      setResp(id, { foto_url: url, ia_ok: null, ia_motivo: null, ia_status: null })
+      setResp(id, { foto_url: url, ia_ok: null, ia_motivo: null, ia_status: null,
+        foto_meta: { capturada_em: capt.toISOString(), setor: exec.setor, loja: exec.loja, responsavel: quem } })
       // Validação por IA (não bloqueante — falha silenciosa se a IA estiver fora)
       try {
         const v = await validarFotoIA(item.txt, file)
@@ -461,14 +573,37 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
       await updateChecklistExecucao(exec.id, {
         respostas, status: exec.status === 'concluido' ? 'concluido' : 'em_andamento',
         iniciado_em: exec.iniciado_em || new Date().toISOString(),
-        responsavel_nome: exec.responsavel_nome || user?.name || null,
+        responsavel_nome: responsavel.trim() || user?.name || null,
       })
       toast('Progresso salvo.', 'success'); onChange()
     } catch (e) { toast('Erro ao salvar: ' + (e as Error).message, 'error') }
     finally { setSalvando(false) }
   }
 
+  // Atrasado = passou do horário limite (hoje) ou o dia do checklist já ficou para trás
+  const atrasadoAgora = exec.status !== 'concluido' && !!exec.hora_limite && (exec.data < hoje() || (exec.data === hoje() && hhmm(agora) > exec.hora_limite))
+
+  const salvarJustificativa = async () => {
+    if (!justificativa.trim()) { toast('Escreva a justificativa do atraso.', 'warning'); return }
+    setSalvandoJust(true)
+    try {
+      await updateChecklistExecucao(exec.id, {
+        justificativa_atraso: justificativa.trim(),
+        justificada_por: responsavel.trim() || user?.name || null,
+        justificada_em: new Date().toISOString(),
+        status: exec.status === 'pendente' ? 'atrasado' : exec.status,
+      })
+      toast('Justificativa registrada.', 'success'); onChange()
+    } catch (e) { toast('Erro ao justificar: ' + (e as Error).message, 'error') }
+    finally { setSalvandoJust(false) }
+  }
+
   const concluir = async () => {
+    if (!responsavel.trim()) { toast('Informe quem está fazendo o checklist.', 'warning'); return }
+    // Fora do horário → precisa justificar
+    if (atrasadoAgora && !justificativa.trim()) {
+      toast(`Checklist fora do horário (limite ${exec.hora_limite}). Escreva a justificativa do atraso.`, 'warning'); return
+    }
     // "Não consigo executar" sem motivo → precisa justificar
     const semMotivo = itens.filter(i => { const r = respDe(i.id); return r.nao_executou && !(r.motivo_nao && r.motivo_nao.trim()) })
     if (semMotivo.length) {
@@ -499,7 +634,7 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
         if (!gps) { toast('Não foi possível obter o GPS (permita a localização).', 'warning'); setSalvando(false); return }
       }
       const agora = new Date()
-      const atrasado = !!exec.hora_limite && agora.toTimeString().slice(0, 5) > exec.hora_limite
+      const atrasado = atrasadoAgora || (!!exec.hora_limite && agora.toTimeString().slice(0, 5) > exec.hora_limite)
       const score = calcScore(itens, respostas, atrasado)
       // Abre Não Conformidade automática nos itens reprovados (foto reprovada, temperatura fora, não executado)
       let novasNc = 0
@@ -522,10 +657,25 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
         respostas: respostasFinal, status: 'concluido', score,
         concluido_em: agora.toISOString(),
         iniciado_em: exec.iniciado_em || agora.toISOString(),
-        responsavel_nome: exec.responsavel_nome || user?.name || null,
+        responsavel_nome: responsavel.trim(),
         gps_lat: gps?.lat ?? null, gps_lng: gps?.lng ?? null,
+        arquivado_em: agora.toISOString(), // fica arquivado na Gestão à Vista
+        ...(atrasado && justificativa.trim() ? {
+          justificativa_atraso: justificativa.trim(),
+          justificada_por: exec.justificada_por || responsavel.trim(),
+          justificada_em: exec.justificada_em || agora.toISOString(),
+        } : {}),
       })
-      toast(`Checklist concluído — score ${score}/100${atrasado ? ' (com atraso)' : ''}${novasNc ? ` · ${novasNc} não conformidade(s) aberta(s) 🚩` : ''}.`, novasNc ? 'warning' : 'success')
+      // Disparo às pessoas cadastradas no modelo (sem destinatários = não envia nada)
+      const dest = (modelo?.destinatarios || []).filter(d => d.fone)
+      let enviados = 0
+      if (dest.length) {
+        const execFinal: ChecklistExecucao = { ...exec, score, concluido_em: agora.toISOString(), responsavel_nome: responsavel.trim(),
+          justificativa_atraso: justificativa.trim() || exec.justificativa_atraso || null }
+        enviados = await dispararLista(dest, montaMsgFechamento(execFinal, itens, respostasFinal), exec.loja, `Checklist fechado: ${exec.titulo}`)
+        if (enviados) updateChecklistExecucao(exec.id, { disparado_em: new Date().toISOString() }).catch(() => {})
+      }
+      toast(`Checklist concluído — score ${score}/100${atrasado ? ' (com atraso)' : ''}${novasNc ? ` · ${novasNc} não conformidade(s) aberta(s) 🚩` : ''}${dest.length ? (enviados ? ` · enviado a ${enviados}/${dest.length} pessoa(s) 📲` : ' · falha ao enviar no WhatsApp') : ''}.`, novasNc || (dest.length && !enviados) ? 'warning' : 'success')
       setAberto(false); onChange()
     } catch (e) { toast('Erro ao concluir: ' + (e as Error).message, 'error') }
     finally { setSalvando(false) }
@@ -547,6 +697,7 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
             {turnoLbl(exec.turno)} · {exec.setor} · {totalOk}/{itens.length} itens
             {exec.hora_limite ? ` · limite ${exec.hora_limite}` : ''}
             {modelo?.exige_gps ? ' · 📍 exige GPS' : ''}
+            {atrasadoAgora ? <strong style={{ color: '#ef4444' }}> · ⏰ atrasado{exec.justificativa_atraso ? ' (justificado)' : ''}</strong> : null}
           </div>
         </div>
         {concluido && exec.score != null && (
@@ -556,6 +707,36 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
 
       {aberto && (
         <div style={{ padding: '0 14px 14px' }}>
+          {/* Identificação: data, horário e quem está fazendo */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+            <div><label style={lbl}>📅 Data</label><div style={{ fontSize: 13, fontWeight: 600 }}>{fmtDataBR(exec.data)}</div></div>
+            <div><label style={lbl}><Clock size={10} /> {concluido ? 'Concluído às' : 'Horário agora'}</label>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{concluido ? fmtHora(exec.concluido_em) : hhmm(agora)}{exec.iniciado_em && !concluido ? <span style={{ fontWeight: 400, color: 'var(--muted)' }}> · iniciou {fmtHora(exec.iniciado_em)}</span> : null}</div></div>
+            <div><label style={lbl}>🏢 Setor · Loja</label><div style={{ fontSize: 13, fontWeight: 600 }}>{exec.setor || 'Geral'} · {exec.loja}</div></div>
+            <div><label style={lbl}><User size={10} /> Quem está fazendo *</label>
+              {concluido
+                ? <div style={{ fontSize: 13, fontWeight: 600 }}>{exec.responsavel_nome || '—'}</div>
+                : <input value={responsavel} onChange={e => setResponsavel(e.target.value)} placeholder="Nome do responsável" style={{ ...inp, padding: '5px 8px' }} />}
+            </div>
+          </div>
+          {/* Fora do horário → justificativa obrigatória */}
+          {(atrasadoAgora || exec.justificativa_atraso) && (
+            <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#b45309', marginBottom: 4 }}>
+                ⏰ {concluido ? 'Feito com atraso' : `Fora do horário (limite ${exec.hora_limite})`} — justificativa {concluido ? '' : 'obrigatória'}
+              </div>
+              {concluido
+                ? <div style={{ fontSize: 12 }}>{exec.justificativa_atraso || '—'}{exec.justificada_por ? <span style={{ color: 'var(--muted)' }}> — {exec.justificada_por}{exec.justificada_em ? `, ${new Date(exec.justificada_em).toLocaleString('pt-BR')}` : ''}</span> : null}</div>
+                : <>
+                    <textarea value={justificativa} onChange={e => setJustificativa(e.target.value)} rows={2}
+                      placeholder="Por que não foi feito no horário? (ex.: falta de funcionário, loja sem energia…)" style={{ ...inp, resize: 'vertical' }} />
+                    <button onClick={salvarJustificativa} disabled={salvandoJust} style={{ ...btnGhost, marginTop: 6, padding: '5px 10px', fontSize: 12 }}>
+                      {salvandoJust ? <Loader2 className="spin" size={13} /> : <Save size={13} />} Registrar justificativa
+                    </button>
+                    {exec.justificada_em && <span style={{ fontSize: 11, color: '#16a34a', marginLeft: 8 }}>✓ registrada às {fmtHora(exec.justificada_em)}</span>}
+                  </>}
+            </div>
+          )}
           {itens.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Modelo sem itens (ou excluído).</div>}
           {itens.map(item => {
             const r = respDe(item.id)
@@ -681,7 +862,7 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
                 )}
                 {item.tipo === 'foto' && (
                   <div>
-                    {r.foto_url && <a href={r.foto_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--bordo)', display: 'block', marginBottom: 4 }}>📎 ver foto enviada</a>}
+                    {r.foto_url && <a href={r.foto_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--bordo)', display: 'block', marginBottom: 4 }}>📎 ver foto enviada{r.foto_meta ? ` · 🕒 ${new Date(r.foto_meta.capturada_em).toLocaleString('pt-BR')} · ${r.foto_meta.setor || 'Geral'}` : ''}</a>}
                     {r.ia_status && (
                       <div style={{ fontSize: 11, marginBottom: 4, fontWeight: 600, color: r.ia_status === 'aprovado' ? '#16a34a' : r.ia_status === 'reprovado' ? '#ef4444' : '#f59e0b' }}>
                         {r.ia_status === 'aprovado' ? '🤖 IA aprovou' : r.ia_status === 'reprovado' ? '🤖 IA reprovou' : '🤖 IA: revisão necessária'}
@@ -764,6 +945,179 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
   )
 }
 
+// ── Aba Gestão à Vista (quadro do dia + arquivo dos checklists fechados) ─────
+function VistaTab({ loja, modelos, toast }: {
+  loja: string
+  modelos: ChecklistModelo[]
+  toast: (m: string, t?: 'success' | 'error' | 'warning' | 'info') => void
+}) {
+  const [dias, setDias] = useState(7)
+  const [setorF, setSetorF] = useState('todos')
+  const [busca, setBusca] = useState('')
+  const [execs, setExecs] = useState<ChecklistExecucao[]>([])
+  const [loading, setLoading] = useState(true)
+  const [aberto, setAberto] = useState<string | null>(null)
+  const [enviando, setEnviando] = useState<string | null>(null)
+
+  const load = useCallback(() => {
+    setLoading(true)
+    const ini = new Date(Date.now() - (dias - 1) * 86400000)
+    const iniISO = new Date(ini.getTime() - ini.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+    fetchChecklistExecucoesRange(loja, iniISO, hoje()).then(setExecs).finally(() => setLoading(false))
+  }, [loja, dias])
+  useEffect(() => { load() }, [load])
+
+  const modeloDe = (id: string | null) => modelos.find(m => m.id === id)
+  const atrasada = (e: ChecklistExecucao) =>
+    e.status !== 'concluido' && !!e.hora_limite && (e.data < hoje() || (e.data === hoje() && hhmm(new Date()) > e.hora_limite))
+
+  // Quadro do dia por setor
+  const quadro = useMemo(() => {
+    const doDia = execs.filter(e => e.data === hoje())
+    const set = new Set(doDia.map(e => e.setor || 'Geral'))
+    const ordem = [...SETORES_PRINC.filter(x => set.has(x)), ...[...set].filter(x => !SETORES_PRINC.includes(x)).sort()]
+    return ordem.map(st => {
+      const l = doDia.filter(e => (e.setor || 'Geral') === st)
+      return { st, tot: l.length, ok: l.filter(e => e.status === 'concluido').length, atr: l.filter(atrasada).length }
+    })
+  }, [execs])
+
+  const arquivo = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    return execs
+      .filter(e => e.status === 'concluido')
+      .filter(e => setorF === 'todos' || (e.setor || 'Geral') === setorF)
+      .filter(e => !q || [e.titulo, e.responsavel_nome, e.loja, e.setor].some(v => (v || '').toLowerCase().includes(q)))
+      .sort((a, b) => (b.concluido_em || '').localeCompare(a.concluido_em || ''))
+  }, [execs, setorF, busca])
+
+  const reenviar = async (e: ChecklistExecucao) => {
+    const dest = (modeloDe(e.modelo_id)?.destinatarios || []).filter(d => d.fone)
+    if (!dest.length) { toast('Este modelo não tem pessoas cadastradas para receber (aba Modelos).', 'warning'); return }
+    if (!confirm(`Reenviar este checklist no WhatsApp para ${dest.length} pessoa(s)?\n${dest.map(d => d.nome || d.fone).join(', ')}`)) return
+    setEnviando(e.id)
+    try {
+      const itens = modeloDe(e.modelo_id)?.itens || []
+      const n = await dispararLista(dest, montaMsgFechamento(e, itens, e.respostas || []), e.loja, `Checklist reenviado: ${e.titulo}`)
+      if (n) await updateChecklistExecucao(e.id, { disparado_em: new Date().toISOString() }).catch(() => {})
+      toast(`Enviado a ${n}/${dest.length} pessoa(s).`, n ? 'success' : 'error'); load()
+    } finally { setEnviando(null) }
+  }
+
+  const imprimir = (e: ChecklistExecucao) => {
+    const itens = modeloDe(e.modelo_id)?.itens || []
+    const linhas = itens.map(i => {
+      const r = (e.respostas || []).find(x => x.item_id === i.id)
+      const val = !r ? '—' : r.nao_executou ? `NÃO EXECUTADO: ${r.motivo_nao || ''}` : i.tipo === 'confirm' ? (r.ok ? 'Sim' : 'Não')
+        : i.tipo === 'avaliacao' ? `${r.nota ?? '—'}/5` : r.valor != null ? `${r.valor} ${i.unidade || unidadePadrao(i.tipo)}` : (r.texto || (r.foto_url ? 'Foto' : '—'))
+      const foto = r?.foto_url ? `<br><img src="${escHtml(r.foto_url)}" style="max-width:240px;margin-top:4px;border-radius:6px">` : ''
+      return `<tr><td>${escHtml(i.txt)}</td><td>${escHtml(val)}${r?.obs ? '<br><i>' + escHtml(r.obs) + '</i>' : ''}${foto}</td></tr>`
+    }).join('')
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escHtml(e.titulo)}</title><style>
+      body{font-family:Arial,sans-serif;padding:24px;max-width:820px;margin:auto;color:#1a1a1a} h1{color:#6B1212;margin:0 0 4px}
+      .sub{color:#555;font-size:13px;margin-bottom:12px} table{width:100%;border-collapse:collapse;font-size:13px} th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top} th{background:#f6f0f0;color:#6B1212}
+      @media print{.np{display:none}}</style></head><body>
+      <h1>${escHtml(e.titulo)}</h1>
+      <div class="sub">Loja <b>${escHtml(e.loja)}</b> · Setor <b>${escHtml(e.setor || 'Geral')}</b> · Data <b>${fmtDataBR(e.data)}</b> · Concluído às <b>${fmtHora(e.concluido_em)}</b><br>
+      Responsável: <b>${escHtml(e.responsavel_nome || '—')}</b> · Score: <b>${e.score ?? '—'}</b>${e.justificativa_atraso ? '<br>⏰ Atraso justificado: ' + escHtml(e.justificativa_atraso) : ''}</div>
+      <table><thead><tr><th>Item</th><th>Resposta</th></tr></thead><tbody>${linhas}</tbody></table>
+      <button class="np" onclick="window.print()" style="margin-top:16px;padding:8px 16px;background:#6B1212;color:#fff;border:none;border-radius:6px;cursor:pointer">Imprimir / Salvar PDF</button></body></html>`
+    const w = window.open('', '_blank')
+    if (!w) { toast('Permita pop-ups para imprimir.', 'warning'); return }
+    w.document.write(html); w.document.close()
+  }
+
+  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><Loader2 className="spin" size={28} /></div>
+  const setoresArq = [...new Set(execs.filter(e => e.status === 'concluido').map(e => e.setor || 'Geral'))]
+
+  return (
+    <div>
+      {/* Quadro de hoje por setor */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', margin: '0 0 8px' }}>Hoje · {fmtDataBR(hoje())}</div>
+      {quadro.length === 0 ? <Empty texto="Nenhum checklist gerado hoje." /> : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10, marginBottom: 18 }}>
+          {quadro.map(q => {
+            const cor = q.ok === q.tot ? '#16a34a' : q.atr ? '#ef4444' : '#f59e0b'
+            return (
+              <div key={q.st} style={{ background: 'var(--card)', border: `1px solid ${cor}55`, borderLeft: `4px solid ${cor}`, borderRadius: 10, padding: '10px 12px' }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{setorIco(q.st)} {q.st}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: cor }}>{q.ok}/{q.tot}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>{q.atr ? `⏰ ${q.atr} atrasado(s) · ` : ''}{q.tot - q.ok} pendente(s)</div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Arquivo */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        <Archive size={15} /> <strong style={{ fontSize: 13 }}>Arquivo de checklists fechados</strong>
+        <div style={{ flex: 1 }} />
+        {[7, 30, 90].map(d => (
+          <button key={d} onClick={() => setDias(d)} style={{
+            padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer',
+            background: dias === d ? 'var(--bordo)' : 'var(--bg)', color: dias === d ? '#fff' : 'var(--text)',
+          }}>{d} dias</button>
+        ))}
+        <select value={setorF} onChange={e => setSetorF(e.target.value)} style={{ ...inp, width: 'auto' }}>
+          <option value="todos">Todos os setores</option>
+          {setoresArq.map(st => <option key={st} value={st}>{st}</option>)}
+        </select>
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar responsável / checklist" style={{ ...inp, width: 200 }} />
+      </div>
+
+      {arquivo.length === 0 ? <Empty texto="Nenhum checklist fechado no período. Ao concluir um checklist ele fica arquivado aqui." /> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {arquivo.map(e => {
+            const itens = modeloDe(e.modelo_id)?.itens || []
+            const fotos = (e.respostas || []).filter(r => r.foto_url)
+            const nNc = (e.respostas || []).filter(r => r.nc).length
+            return (
+              <div key={e.id} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                <div onClick={() => setAberto(a => a === e.id ? null : e.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{e.titulo}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                      {setorIco(e.setor)} {e.setor || 'Geral'} · 🏪 {e.loja} · 📅 {fmtDataBR(e.data)} {fmtHora(e.concluido_em)} · 👤 {e.responsavel_nome || '—'}
+                      {e.justificativa_atraso ? ' · ⏰ atraso justificado' : ''}{nNc ? ` · 🚩 ${nNc} NC` : ''}{fotos.length ? ` · 📷 ${fotos.length}` : ''}
+                      {e.disparado_em ? ' · 📲 enviado' : ''}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: scoreColor(e.score) }}>{e.score ?? '—'}</div>
+                </div>
+                {aberto === e.id && (
+                  <div style={{ padding: '0 14px 12px', borderTop: '1px solid var(--border)' }}>
+                    {e.justificativa_atraso && <div style={{ fontSize: 12, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '6px 8px', margin: '8px 0' }}>⏰ <b>Justificativa:</b> {e.justificativa_atraso}{e.justificada_por ? ` — ${e.justificada_por}` : ''}</div>}
+                    {itens.map(i => {
+                      const r = (e.respostas || []).find(x => x.item_id === i.id)
+                      return (
+                        <div key={i.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px dashed var(--border)', fontSize: 12 }}>
+                          <span style={{ flex: 1 }}>{i.txt}</span>
+                          {r?.nao_executou ? <span style={{ color: '#ef4444' }}>não executado: {r.motivo_nao}</span>
+                            : itemOk(i, r) ? <CheckCircle2 size={14} color="#16a34a" /> : <span style={{ color: '#ef4444' }}>✗</span>}
+                          {r?.valor != null && <span>{r.valor}{i.unidade || unidadePadrao(i.tipo)}</span>}
+                          {r?.foto_url && <a href={r.foto_url} target="_blank" rel="noreferrer" title={r.foto_meta ? `${new Date(r.foto_meta.capturada_em).toLocaleString('pt-BR')} · ${r.foto_meta.setor || ''}` : ''}>
+                            <img src={r.foto_url} alt="foto" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} /></a>}
+                        </div>
+                      )
+                    })}
+                    <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                      <button onClick={() => imprimir(e)} style={btnGhost}><FileDown size={14} /> Imprimir / PDF</button>
+                      <button onClick={() => reenviar(e)} disabled={enviando === e.id} style={btnGhost}>
+                        {enviando === e.id ? <Loader2 className="spin" size={14} /> : <Send size={14} />} Reenviar no WhatsApp
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Aba Modelos ──────────────────────────────────────────────
 function ModelosTab({ modelos, onNew, onEdit, onRun, onChange, toast }: {
   modelos: ChecklistModelo[]
@@ -801,7 +1155,7 @@ function ModelosTab({ modelos, onNew, onEdit, onRun, onChange, toast }: {
                   {m.setor} · {turnoLbl(m.turno)} · {RECORRENCIAS.find(r => r.v === m.recorrencia)?.lbl}
                   {m.recorrencia === 'semanal' && m.dias_semana?.length ? ` (${m.dias_semana.map(d => DIAS[d]).join(', ')})` : ''}
                   {m.recorrencia === 'mensal' && m.dia_mes ? ` (dia ${m.dia_mes})` : ''}
-                  · {m.itens.length} itens{m.exige_gps ? ' · 📍 GPS' : ''}
+                  · {m.itens.length} itens{m.exige_gps ? ' · 📍 GPS' : ''}{m.alertar && m.hora_alerta ? ` · 📲 alerta ${m.hora_alerta}` : ''}{m.destinatarios?.length ? ` · ${m.destinatarios.length} pessoa(s)` : ''}
                 </div>
               </div>
               <button onClick={() => onRun(m)} title="Executar agora" style={{ ...iconBtn, color: 'var(--bordo)' }}><Play size={15} /></button>
@@ -838,6 +1192,9 @@ function ModeloModal({ modelo, loja, userName, onClose, onSaved, toast }: {
   const [exigeGps, setExigeGps] = useState(modelo?.exige_gps || false)
   const [todasLojas, setTodasLojas] = useState(modelo ? modelo.loja == null : false)
   const [itens, setItens] = useState<ChecklistItem[]>(modelo?.itens || [])
+  const [alertar, setAlertar] = useState(modelo?.alertar || false)
+  const [horaAlerta, setHoraAlerta] = useState(modelo?.hora_alerta || '')
+  const [destinatarios, setDestinatarios] = useState<ChecklistDestinatario[]>(modelo?.destinatarios || [])
   const [salvando, setSalvando] = useState(false)
   const [gerandoIa, setGerandoIa] = useState(false)
   const [uploadingRef, setUploadingRef] = useState<string | null>(null)
@@ -872,6 +1229,9 @@ function ModeloModal({ modelo, loja, userName, onClose, onSaved, toast }: {
     if (!titulo.trim()) { toast('Informe o título.', 'warning'); return }
     const itensLimpos = itens.filter(i => i.txt.trim())
     if (itensLimpos.length === 0) { toast('Adicione ao menos 1 item.', 'warning'); return }
+    const destLimpos = destinatarios.map(d => ({ ...d, nome: d.nome.trim(), fone: normalizarFoneBR(d.fone) })).filter(d => d.fone)
+    if (alertar && !horaAlerta) { toast('Informe o horário do alerta no WhatsApp.', 'warning'); return }
+    if (alertar && !destLimpos.some(d => d.papel === 'responsavel')) { toast('Cadastre ao menos 1 responsável para receber o alerta.', 'warning'); return }
     setSalvando(true)
     try {
       const payload = {
@@ -882,6 +1242,7 @@ function ModeloModal({ modelo, loja, userName, onClose, onSaved, toast }: {
         dia_mes: recorrencia === 'mensal' ? diaMes : null,
         turno, hora_limite: horaLimite || null, exige_gps: exigeGps,
         itens: itensLimpos, ativo: modelo?.ativo ?? true,
+        alertar, hora_alerta: horaAlerta || null, destinatarios: destLimpos,
         created_by: modelo?.created_by ?? userName,
       }
       if (modelo) await updateChecklistModelo(modelo.id, payload)
@@ -950,6 +1311,37 @@ function ModeloModal({ modelo, loja, userName, onClose, onSaved, toast }: {
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
             <input type="checkbox" checked={todasLojas} onChange={e => setTodasLojas(e.target.checked)} /> Aplicar a todas as lojas
           </label>
+        </div>
+
+        {/* Alerta WhatsApp + quem recebe o checklist fechado */}
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--bg)' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>📲 WhatsApp — alerta no horário e envio ao fechar</div>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" checked={alertar} onChange={e => setAlertar(e.target.checked)} /> Alertar o responsável para fazer
+            </label>
+            {alertar && (
+              <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                às <input type="time" value={horaAlerta} onChange={e => setHoraAlerta(e.target.value)} style={{ ...inp, width: 110, padding: '4px 8px' }} />
+                <span style={{ color: 'var(--muted)' }}>(se passar do horário limite sem fazer, o responsável é cobrado a justificar)</span>
+              </label>
+            )}
+          </div>
+          {destinatarios.map((d, i) => (
+            <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
+              <input value={d.nome} placeholder="Nome" onChange={e => setDestinatarios(p => p.map((x, k) => k === i ? { ...x, nome: e.target.value } : x))} style={{ ...inp, flex: 1, minWidth: 110 }} />
+              <input value={d.fone} placeholder="WhatsApp (DDD+número)" onChange={e => setDestinatarios(p => p.map((x, k) => k === i ? { ...x, fone: e.target.value } : x))} style={{ ...inp, flex: 1, minWidth: 140 }} />
+              <select value={d.papel} onChange={e => setDestinatarios(p => p.map((x, k) => k === i ? { ...x, papel: e.target.value as 'responsavel' | 'gestor' } : x))} style={{ ...inp, width: 'auto' }}>
+                <option value="responsavel">Responsável (faz + recebe)</option>
+                <option value="gestor">Gestor (só recebe)</option>
+              </select>
+              <button type="button" onClick={() => setDestinatarios(p => p.filter((_, k) => k !== i))} style={{ ...iconBtn, color: '#ef4444' }}><X size={14} /></button>
+            </div>
+          ))}
+          <button type="button" onClick={() => setDestinatarios(p => [...p, { nome: '', fone: '', papel: 'responsavel' }])} style={{ ...btnGhost, padding: '6px 10px', fontSize: 12 }}>
+            <Plus size={13} /> Pessoa
+          </button>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>Ao fechar e salvar o checklist, todas as pessoas acima recebem o resumo no WhatsApp (intervalo aleatório entre envios). Sem ninguém cadastrado, nada é enviado.</div>
         </div>
 
         {/* Itens */}
