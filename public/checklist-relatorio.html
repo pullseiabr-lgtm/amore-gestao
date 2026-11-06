@@ -55,14 +55,14 @@ function resposta(it,r){
   var ex=await (await fetch(SB+'/rest/v1/checklist_execucoes?id=eq.'+encodeURIComponent(id)+'&select=*',{headers:H})).json();
   if(!ex.length){app.innerHTML='<div class="msg">Checklist não encontrado.</div>';return}
   var e=ex[0],md=e.modelo_id?await (await fetch(SB+'/rest/v1/checklist_modelos?id=eq.'+e.modelo_id+'&select=itens',{headers:H})).json():[];
-  var itens=(md[0]&&md[0].itens)||[],rs=e.respostas||[];
+  var itens=(e.itens_snapshot&&e.itens_snapshot.length?e.itens_snapshot:(md[0]&&md[0].itens))||[],rs=e.respostas||[];
   var todasFotos=[];rs.forEach(function(r){fotosDe(r).forEach(function(f){if(f.em)todasFotos.push(f.em)})});todasFotos.sort();
   var ncs=rs.filter(function(r){return r.nc});
   var h='<header class="top"><div class="eyebrow">Amore · Operação Padrão</div><h1>'+esc(e.titulo)+'</h1><div class="sub">'+esc(e.loja)+' · '+esc(e.setor||'Geral')+'</div></header>';
   h+='<div class="meta"><div><div class="l">👤 Quem fez</div><div class="v">'+esc(e.responsavel_nome||'—')+'</div></div><div><div class="l">📅 Data</div><div class="v">'+e.data.split('-').reverse().join('/')+'</div></div><div><div class="l">⏱️ Início → Fim</div><div class="v">'+hr(e.iniciado_em||todasFotos[0])+' → '+hr(e.concluido_em)+'</div></div><div><div class="l">📊 Score</div><div class="v">'+(e.score==null?'—':e.score)+'/100</div></div><div><div class="l">📷 Fotos</div><div class="v">'+todasFotos.length+(todasFotos.length?' <span class="sub">('+hr(todasFotos[0])+'–'+hr(todasFotos[todasFotos.length-1])+')</span>':'')+'</div></div></div>';
   if(e.justificativa_atraso)h+='<div class="box late"><b>⏰ Feito com atraso (limite '+esc(e.hora_limite)+')</b><br>'+esc(e.justificativa_atraso)+(e.justificada_por?' — '+esc(e.justificada_por):'')+'</div>';
   if(e.observacao_geral)h+='<div class="box"><b>📝 Observações gerais</b><br>'+esc(e.observacao_geral)+'</div>';
-  if(ncs.length){h+='<div class="box nc"><b>🚩 '+ncs.length+' não conformidade(s) — ações corretivas</b><br>'+ncs.map(function(r){return '• '+esc(r.nc.item_txt)+' — '+esc(r.nc.motivo_reprovacao)+' <i>('+esc(r.nc.status)+(r.nc.responsavel?', resp.: '+esc(r.nc.responsavel):'')+(r.nc.acao?', ação: '+esc(r.nc.acao):'')+')</i>'}).join('<br>')+'<br><a class="btn np" href="/?page=checklists&aba=nc">Abrir plano de ação no painel</a></div>'}
+  if(ncs.length){h+='<div class="box nc"><b>🚩 '+ncs.length+' não conformidade(s) — RNC e ações corretivas</b><br>'+ncs.map(function(r){return '• '+(r.nc.rnc_numero?'<b>'+esc(r.nc.rnc_numero)+'</b> ':'')+esc(r.nc.item_txt)+' — '+esc(r.nc.motivo_reprovacao)+' <i>('+esc(r.nc.status)+(r.nc.responsavel?', resp.: '+esc(r.nc.responsavel):'')+(r.nc.acao?', ação: '+esc(r.nc.acao):'')+')</i>'}).join('<br>')+'<br><a class="btn np" href="/?page=checklists&aba=nc">Abrir plano de ação no painel</a></div>'}
   itens.forEach(function(it,i){
     var r=rs.find(function(x){return x.item_id===it.id}),ok=itemOk(it,r),fs=fotosDe(r);
     h+='<div class="item '+(ok?'':'bad')+'"><div class="q">'+(i+1)+'. '+esc(it.txt)+' '+(ok?'✅':'❌')+'</div><div class="ans">'+resposta(it,r)+'</div>'+(r&&r.obs?'<div class="sub">📝 '+esc(r.obs)+'</div>':'');

@@ -214,6 +214,8 @@ async function salvar(concluir){
     var agora=new Date(), score=calcScore(atr), nNc=0;
     lista=lista.map(function(r){var i=itens.find(function(x){return x.id===r.item_id});if(!i||r.nc)return r;var m=motivoRep(i,r);if(!m)return r;nNc++;
       r.nc={status:'aberta',gravidade:i.critico?'alta':'media',item_txt:i.txt,foto_evidencia:(fotosDe(r)[0]||{}).url||null,motivo_reprovacao:m,causa:null,acao:null,responsavel:null,prazo:null,impacto:null,foto_correcao:null,aprovado_por:null,aberta_em:agora.toISOString(),encerrada_em:null};return r});
+    for(var k=0;k<lista.length;k++){var rr=lista[k];if(rr.nc&&!rr.nc.rnc_id){var ii=itens.find(function(x){return x.id===rr.item_id});var rn=await abrirRnc(ii,rr,quem);if(rn){rr.nc.rnc_id=rn.id;rr.nc.rnc_numero=rn.numero}}}
+    upd.itens_snapshot=itens;
     upd.respostas=lista;upd.status='concluido';upd.score=score;upd.concluido_em=agora.toISOString();upd.arquivado_em=agora.toISOString();
   }
   busy=true;var b1=document.getElementById('bsave'),b2=document.getElementById('bfim');if(b1)b1.disabled=true;if(b2)b2.disabled=true;
@@ -228,13 +230,25 @@ async function salvar(concluir){
   busy=false;render();
 }
 
+// Desvio no checklist → abre RNC no módulo RNC, com as fotos como evidência
+async function abrirRnc(it,r,quem){
+  try{
+    var gestor=((modelo&&modelo.destinatarios)||[]).filter(function(d){return d.papel==='gestor'})[0];
+    var desvio=(r.nc.motivo_reprovacao||'Item reprovado')+(r.obs?' · Obs: '+r.obs:'');
+    var res=await fetch(SB+'/rest/v1/rnc',{method:'POST',headers:Object.assign({},H,{Prefer:'return=representation'}),body:JSON.stringify({loja:exec.loja,setor:exec.setor||null,tipos:['Desvio de checklist'],categoria:'Checklist',gravidade:it&&it.critico?'alta':'media',status:'aberta',produto:it?it.txt:r.nc.item_txt,solicitado_txt:'Checklist "'+exec.titulo+'" — '+(it?it.txt:''),recebido_txt:r.nc.motivo_reprovacao||null,desvio_txt:desvio,tratativa_obs:'Aberta automaticamente pelo checklist — aguardando tratativa.',acao_imediata:'Aberta automaticamente pelo checklist.',responsavel:gestor?gestor.nome:null,aberto_por:quem})});
+    if(!res.ok)return null;var nova=(await res.json())[0];if(!nova)return null;
+    await fetch(SB+'/rest/v1/rnc_historico',{method:'POST',headers:H,body:JSON.stringify({rnc_id:nova.id,acao:'RNC aberta pelo checklist',detalhe:exec.titulo+' · '+exec.loja+' · '+(exec.setor||'Geral')+' · '+dataBR(exec.data)+' · '+desvio,usuario:quem})});
+    var fs2=fotosDe(r);for(var i=0;i<fs2.length;i++){await fetch(SB+'/rest/v1/rnc_evidencias',{method:'POST',headers:H,body:JSON.stringify({rnc_id:nova.id,tipo:'Foto do produto',arquivo_url:fs2[i].url,descricao:'Checklist '+exec.titulo+' — '+(it?it.txt:'')+(fs2[i].em?' · '+new Date(fs2[i].em).toLocaleString('pt-BR'):''),usuario:fs2[i].responsavel||quem})})}
+    return {id:nova.id,numero:nova.numero};
+  }catch(e){return null}
+}
 async function disparar(lista,nNc){
   var ds=(modelo&&modelo.destinatarios||[]).filter(function(d){return d.fone});if(!ds.length)return;
   var okq=itens.filter(function(i){return itemOk(i,resp[i.id])}).length, fotos=lista.reduce(function(a,r){return a+fotosDe(r).length},0), sc=exec.score;
   var ic=sc==null?'⚪':sc>=90?'🟢':sc>=70?'🟡':'🔴';
   var L=['✅ *CHECKLIST FECHADO — '+exec.titulo+'*','🏪 '+exec.loja+' · '+(exec.setor||'Geral'),'📅 '+dataBR(exec.data)+' · 🕒 '+hora(exec.concluido_em),'👤 Responsável: *'+exec.responsavel_nome+'*',ic+' Score '+(sc==null?'—':sc)+'/100 · '+okq+'/'+itens.length+' itens OK'];
   if(exec.justificativa_atraso)L.push('⏰ Feito com atraso (limite '+exec.hora_limite+'). Justificativa: '+exec.justificativa_atraso);
-  if(nNc)L.push('🚩 '+nNc+' não conformidade(s):\n'+lista.filter(function(r){return r.nc}).slice(0,5).map(function(r){return '• '+r.nc.item_txt+' — '+r.nc.motivo_reprovacao}).join('\n'));
+  if(nNc)L.push('🚩 '+nNc+' não conformidade(s):\n'+lista.filter(function(r){return r.nc}).slice(0,5).map(function(r){return '• '+r.nc.item_txt+' — '+r.nc.motivo_reprovacao+(r.nc.rnc_numero?' ('+r.nc.rnc_numero+')':'')}).join('\n'));
   if(exec.observacao_geral)L.push('📝 Obs.: '+exec.observacao_geral);
   var hs=[];lista.forEach(function(r){fotosDe(r).forEach(function(f){if(f.em)hs.push(f.em)})});hs.sort();
   L.push('⏱️ Início '+hora(exec.iniciado_em||hs[0])+' · Fim '+hora(exec.concluido_em));

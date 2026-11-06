@@ -1089,6 +1089,8 @@ export interface ChecklistNC {
   aberta_em: string | null
   encerrada_em: string | null
   tarefa_id?: string | null          // tarefa corretiva gerada na Central de Tarefas
+  rnc_id?: string | null             // RNC aberta automaticamente no módulo RNC
+  rnc_numero?: string | null
 }
 
 export interface ChecklistExecucao {
@@ -1115,6 +1117,7 @@ export interface ChecklistExecucao {
   // Justificativa de atraso, alerta e arquivo (opcionais)
   justificativa_atraso?: string | null
   observacao_geral?: string | null
+  itens_snapshot?: ChecklistItem[] | null   // cópia dos itens na conclusão (histórico imutável p/ auditoria)
   justificada_por?: string | null
   justificada_em?: string | null
   alerta_enviado_em?: string | null

@@ -6,6 +6,7 @@ import {
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../hooks/useToast'
+import { supabase } from '../../lib/supabase'
 import Modal from '../../components/ui/Modal'
 import {
   fetchChecklistModelos, insertChecklistModelo, updateChecklistModelo, deleteChecklistModelo,
@@ -85,6 +86,53 @@ async function carimbarFoto(file: File, linhas: string[]): Promise<File> {
   } catch { return file } // sem carimbo se o navegador não suportar — a foto segue valendo
 }
 
+// Itens "oficiais" de uma execução: cópia gravada na conclusão (histórico) ou, se ainda aberta, o modelo atual
+const itensDe = (e: ChecklistExecucao, m?: ChecklistModelo): ChecklistItem[] =>
+  (e.status === 'concluido' && e.itens_snapshot?.length ? e.itens_snapshot : m?.itens) || e.itens_snapshot || []
+
+// Só gerente e administrador (geral) alteram modelos/itens
+const PAPEIS_EDITAM = ['super_admin', 'admin', 'manager']
+
+// Log de auditoria das alterações de modelos (quem, quando, antes/depois). Nunca bloqueia o fluxo.
+async function logAuditoria(m: { id?: string | null; titulo: string }, acao: string, usuario: string | null, resumo: string, antes?: ChecklistItem[] | null, depois?: ChecklistItem[] | null) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('checklist_auditoria').insert({ modelo_id: m.id || null, modelo_titulo: m.titulo, acao, usuario, resumo, itens_antes: antes ?? null, itens_depois: depois ?? null })
+  } catch { /* auditoria é best-effort */ }
+}
+function resumoDiff(antes: ChecklistItem[], depois: ChecklistItem[]): string {
+  const ids = new Set(antes.map(i => i.id))
+  const novos = depois.filter(i => !ids.has(i.id)).length
+  const dIds = new Set(depois.map(i => i.id))
+  const removidos = antes.filter(i => !dIds.has(i.id)).length
+  const alterados = depois.filter(i => { const a = antes.find(x => x.id === i.id); return a && JSON.stringify(a) !== JSON.stringify(i) }).length
+  return `${novos} item(ns) inserido(s), ${alterados} alterado(s), ${removidos} removido(s) — total ${depois.length}`
+}
+
+// Abre uma RNC (módulo RNC) para um desvio encontrado no checklist, com as fotos como evidência
+async function abrirRnc(exec: ChecklistExecucao, item: ChecklistItem, r: ChecklistResposta, nc: ChecklistNC, modelo: ChecklistModelo | undefined, quem: string): Promise<{ id: string; numero: string } | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any
+    const gestor = (modelo?.destinatarios || []).find(d => d.papel === 'gestor')?.nome || null
+    const desvio = `${nc.motivo_reprovacao || 'Item reprovado'}${r.obs ? ' · Obs: ' + r.obs : ''}`
+    const { data: nova, error } = await sb.from('rnc').insert({
+      loja: exec.loja, setor: exec.setor || null, tipos: ['Desvio de checklist'], categoria: 'Checklist',
+      gravidade: item.critico ? 'alta' : 'media', status: 'aberta', produto: item.txt,
+      solicitado_txt: `Checklist "${exec.titulo}" — ${item.txt}`, recebido_txt: nc.motivo_reprovacao || null, desvio_txt: desvio,
+      tratativa_obs: 'Aberta automaticamente pelo checklist — aguardando tratativa.', acao_imediata: 'Aberta automaticamente pelo checklist.',
+      responsavel: gestor, aberto_por: quem, prazo: null,
+    }).select('id, numero').single()
+    if (error || !nova) return null
+    const log = (acao: string, detalhe: string) => sb.from('rnc_historico').insert({ rnc_id: nova.id, acao, detalhe, usuario: quem })
+    await log('RNC aberta pelo checklist', `${exec.titulo} · ${exec.loja} · ${exec.setor || 'Geral'} · ${fmtDataBR(exec.data)} · ${desvio}`)
+    for (const f of fotosDe(r)) {
+      await sb.from('rnc_evidencias').insert({ rnc_id: nova.id, tipo: 'Foto do produto', arquivo_url: f.url, descricao: `Checklist ${exec.titulo} — ${item.txt}${f.em ? ' · ' + new Date(f.em).toLocaleString('pt-BR') : ''}`, usuario: f.responsavel || quem })
+    }
+    return { id: nova.id, numero: nova.numero }
+  } catch { return null }
+}
+
 // Mensagem do checklist fechado (disparada às pessoas cadastradas e reenviável pela Gestão à Vista)
 function montaMsgFechamento(e: ChecklistExecucao, itens: ChecklistItem[], respostas: ChecklistResposta[]): string {
   const ncs = respostas.filter(r => r.nc)
@@ -100,7 +148,7 @@ function montaMsgFechamento(e: ChecklistExecucao, itens: ChecklistItem[], respos
     `${ic} Score ${sc ?? '—'}/100 · ${ok}/${itens.length} itens OK`,
   ]
   if (e.justificativa_atraso) linhas.push(`⏰ Feito com atraso (limite ${e.hora_limite}). Justificativa: ${e.justificativa_atraso}`)
-  if (ncs.length) linhas.push(`🚩 ${ncs.length} não conformidade(s):\n` + ncs.slice(0, 5).map(r => `• ${r.nc?.item_txt || 'item'} — ${r.nc?.motivo_reprovacao || ''}`).join('\n'))
+  if (ncs.length) linhas.push(`🚩 ${ncs.length} não conformidade(s):\n` + ncs.slice(0, 5).map(r => `• ${r.nc?.item_txt || 'item'} — ${r.nc?.motivo_reprovacao || ''}${r.nc?.rnc_numero ? ` (${r.nc.rnc_numero})` : ''}`).join('\n'))
   if (e.observacao_geral) linhas.push(`📝 Obs.: ${e.observacao_geral}`)
   const horas = respostas.flatMap(r => fotosDe(r)).map(f => f.em).filter(Boolean).sort()
   linhas.push(`⏱️ Início ${fmtHora(e.iniciado_em || horas[0])} · Fim ${fmtHora(e.concluido_em)}`)
@@ -210,8 +258,9 @@ const NC_STATUS: Record<string, { lbl: string; cor: string }> = {
 // ── Componente principal ─────────────────────────────────────
 export default function ChecklistsPage() {
   const { loja, lojas } = useLoja()
-  const { user } = useAuth()
+  const { user, isOwner } = useAuth()
   const { toast } = useToast()
+  const podeEditar = !!isOwner || PAPEIS_EDITAM.includes(String(user?.role))
 
   const [tab, setTab] = useState<'hoje' | 'vista' | 'painel' | 'nc' | 'modelos'>(() => {
     const a = new URLSearchParams(window.location.search).get('aba')
@@ -401,7 +450,7 @@ export default function ChecklistsPage() {
         <NcTab loja={loja} user={user} toast={toast} />
       ) : (
         <ModelosTab
-          modelos={modelos}
+          modelos={modelos} podeEditar={podeEditar} userName={user?.name || null}
           onNew={() => { setModeloEdit(null); setShowModeloModal(true) }}
           onEdit={(m) => { setModeloEdit(m); setShowModeloModal(true) }}
           onRun={runModeloAgora}
@@ -519,7 +568,7 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
   toast: (m: string, t?: 'success' | 'error' | 'warning' | 'info') => void
   user: { name?: string; id?: string } | null
 }) {
-  const itens = modelo?.itens || []
+  const itens = itensDe(exec, modelo)
   const [respostas, setRespostas] = useState<ChecklistResposta[]>(exec.respostas || [])
   const [aberto, setAberto] = useState(exec.status !== 'concluido')
   const [salvando, setSalvando] = useState(false)
@@ -653,7 +702,7 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
       const score = calcScore(itens, respostas, atrasado)
       // Abre Não Conformidade automática nos itens reprovados (foto reprovada, temperatura fora, não executado)
       let novasNc = 0
-      const respostasFinal: ChecklistResposta[] = respostas.map(r => {
+      const respostasPrev: ChecklistResposta[] = respostas.map(r => {
         const item = itens.find(i => i.id === r.item_id)
         if (!item || r.nc) return r
         const motivo = motivoReprovacao(item, r)
@@ -668,8 +717,19 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
         }
         return { ...r, nc }
       })
+      // Desvio no checklist → abre uma RNC (com as fotos de evidência) e guarda o nº na não conformidade
+      const respostasFinal: ChecklistResposta[] = []
+      let rncAbertas = 0
+      for (const r of respostasPrev) {
+        const item = itens.find(i => i.id === r.item_id)
+        if (item && r.nc && !r.nc.rnc_id) {
+          const rnc = await abrirRnc(exec, item, r, r.nc, modelo, responsavel.trim())
+          if (rnc) { rncAbertas++; respostasFinal.push({ ...r, nc: { ...r.nc, rnc_id: rnc.id, rnc_numero: rnc.numero } }); continue }
+        }
+        respostasFinal.push(r)
+      }
       await updateChecklistExecucao(exec.id, {
-        respostas: respostasFinal, status: 'concluido', score,
+        respostas: respostasFinal, status: 'concluido', score, itens_snapshot: itens,
         concluido_em: agora.toISOString(),
         iniciado_em: exec.iniciado_em || agora.toISOString(),
         responsavel_nome: responsavel.trim(),
@@ -690,7 +750,7 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
         enviados = await dispararLista(dest, montaMsgFechamento(execFinal, itens, respostasFinal), exec.loja, `Checklist fechado: ${exec.titulo}`)
         if (enviados) updateChecklistExecucao(exec.id, { disparado_em: new Date().toISOString() }).catch(() => {})
       }
-      toast(`Checklist concluído — score ${score}/100${atrasado ? ' (com atraso)' : ''}${novasNc ? ` · ${novasNc} não conformidade(s) aberta(s) 🚩` : ''}${dest.length ? (enviados ? ` · enviado a ${enviados}/${dest.length} pessoa(s) 📲` : ' · falha ao enviar no WhatsApp') : ''}.`, novasNc || (dest.length && !enviados) ? 'warning' : 'success')
+      toast(`Checklist concluído — score ${score}/100${atrasado ? ' (com atraso)' : ''}${novasNc ? ` · ${novasNc} não conformidade(s) aberta(s) 🚩${rncAbertas ? ` (${rncAbertas} RNC)` : ''}` : ''}${dest.length ? (enviados ? ` · enviado a ${enviados}/${dest.length} pessoa(s) 📲` : ' · falha ao enviar no WhatsApp') : ''}.`, novasNc || (dest.length && !enviados) ? 'warning' : 'success')
       setAberto(false); onChange()
     } catch (e) { toast('Erro ao concluir: ' + (e as Error).message, 'error') }
     finally { setSalvando(false) }
@@ -1025,7 +1085,7 @@ function VistaTab({ loja, modelos, toast }: {
     if (!confirm(`Reenviar este checklist no WhatsApp para ${dest.length} pessoa(s)?\n${dest.map(d => d.nome || d.fone).join(', ')}`)) return
     setEnviando(e.id)
     try {
-      const itens = modeloDe(e.modelo_id)?.itens || []
+      const itens = itensDe(e, modeloDe(e.modelo_id))
       const n = await dispararLista(dest, montaMsgFechamento(e, itens, e.respostas || []), e.loja, `Checklist reenviado: ${e.titulo}`)
       if (n) await updateChecklistExecucao(e.id, { disparado_em: new Date().toISOString() }).catch(() => {})
       toast(`Enviado a ${n}/${dest.length} pessoa(s).`, n ? 'success' : 'error'); load()
@@ -1033,7 +1093,7 @@ function VistaTab({ loja, modelos, toast }: {
   }
 
   const imprimir = (e: ChecklistExecucao) => {
-    const itens = modeloDe(e.modelo_id)?.itens || []
+    const itens = itensDe(e, modeloDe(e.modelo_id))
     const linhas = itens.map(i => {
       const r = (e.respostas || []).find(x => x.item_id === i.id)
       const val = !r ? '—' : r.nao_executou ? `NÃO EXECUTADO: ${r.motivo_nao || ''}` : i.tipo === 'confirm' ? (r.ok ? 'Sim' : 'Não')
@@ -1055,6 +1115,11 @@ function VistaTab({ loja, modelos, toast }: {
     w.document.write(html); w.document.close()
   }
 
+  const exportarArquivo = () => {
+    const head = ['Data', 'Concluído em', 'Loja', 'Setor', 'Checklist', 'Responsável', 'Score', 'Atraso justificado', 'Obs. geral', 'Itens', 'Fotos', 'NCs', 'RNCs', 'Enviado em']
+    const rows = arquivo.map(e => { const rs = e.respostas || []; return [e.data, e.concluido_em ? new Date(e.concluido_em).toLocaleString('pt-BR') : '', e.loja, e.setor || '', e.titulo, e.responsavel_nome || '', e.score ?? '', e.justificativa_atraso || '', e.observacao_geral || '', itensDe(e, modeloDe(e.modelo_id)).length, rs.reduce((a, r) => a + fotosDe(r).length, 0), rs.filter(r => r.nc).length, rs.map(r => r.nc?.rnc_numero).filter(Boolean).join(' '), e.disparado_em ? new Date(e.disparado_em).toLocaleString('pt-BR') : ''] })
+    baixarCSV(`arquivo_checklists_${loja}_${hoje()}.csv`, [head, ...rows])
+  }
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><Loader2 className="spin" size={28} /></div>
   const setoresArq = [...new Set(execs.filter(e => e.status === 'concluido').map(e => e.setor || 'Geral'))]
 
@@ -1081,12 +1146,13 @@ function VistaTab({ loja, modelos, toast }: {
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
         <Archive size={15} /> <strong style={{ fontSize: 13 }}>Arquivo de checklists fechados</strong>
         <div style={{ flex: 1 }} />
-        {[7, 30, 90].map(d => (
+        {[7, 30, 90, 365].map(d => (
           <button key={d} onClick={() => setDias(d)} style={{
             padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer',
             background: dias === d ? 'var(--bordo)' : 'var(--bg)', color: dias === d ? '#fff' : 'var(--text)',
-          }}>{d} dias</button>
+          }}>{d === 365 ? '1 ano' : `${d} dias`}</button>
         ))}
+        <button onClick={exportarArquivo} disabled={!arquivo.length} style={btnGhost} title="Exportar o arquivo (auditoria) em CSV"><FileDown size={14} /> CSV auditoria</button>
         <select value={setorF} onChange={e => setSetorF(e.target.value)} style={{ ...inp, width: 'auto' }}>
           <option value="todos">Todos os setores</option>
           {setoresArq.map(st => <option key={st} value={st}>{st}</option>)}
@@ -1097,7 +1163,7 @@ function VistaTab({ loja, modelos, toast }: {
       {arquivo.length === 0 ? <Empty texto="Nenhum checklist fechado no período. Ao concluir um checklist ele fica arquivado aqui." /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {arquivo.map(e => {
-            const itens = modeloDe(e.modelo_id)?.itens || []
+            const itens = itensDe(e, modeloDe(e.modelo_id))
             const fotos = (e.respostas || []).flatMap(r => fotosDe(r))
             const nNc = (e.respostas || []).filter(r => r.nc).length
             return (
@@ -1151,8 +1217,10 @@ function VistaTab({ loja, modelos, toast }: {
 }
 
 // ── Aba Modelos ──────────────────────────────────────────────
-function ModelosTab({ modelos, onNew, onEdit, onRun, onChange, toast }: {
+function ModelosTab({ modelos, podeEditar, userName, onNew, onEdit, onRun, onChange, toast }: {
   modelos: ChecklistModelo[]
+  podeEditar: boolean
+  userName: string | null
   onNew: () => void
   onEdit: (m: ChecklistModelo) => void
   onRun: (m: ChecklistModelo) => void
@@ -1160,17 +1228,19 @@ function ModelosTab({ modelos, onNew, onEdit, onRun, onChange, toast }: {
   toast: (m: string, t?: 'success' | 'error' | 'warning' | 'info') => void
 }) {
   const del = async (m: ChecklistModelo) => {
-    if (!confirm(`Excluir o modelo "${m.titulo}"? As execuções já feitas serão removidas.`)) return
-    try { await deleteChecklistModelo(m.id); toast('Modelo excluído.', 'success'); onChange() }
+    if (!confirm(`Excluir o modelo "${m.titulo}"? O histórico de checklists já feitos é mantido no arquivo.`)) return
+    try { await logAuditoria(m, 'excluido', userName, `Modelo excluído (${m.itens.length} itens)`, m.itens, null); await deleteChecklistModelo(m.id); toast('Modelo excluído (histórico preservado).', 'success'); onChange() }
     catch (e) { toast('Erro: ' + (e as Error).message, 'error') }
   }
   const toggle = async (m: ChecklistModelo) => {
-    try { await updateChecklistModelo(m.id, { ativo: !m.ativo }); onChange() }
+    try { await updateChecklistModelo(m.id, { ativo: !m.ativo }); await logAuditoria(m, m.ativo ? 'desativado' : 'ativado', userName, m.ativo ? 'Modelo desativado' : 'Modelo ativado'); onChange() }
     catch (e) { toast('Erro: ' + (e as Error).message, 'error') }
   }
   return (
     <>
-      <button onClick={onNew} style={btnPrimary}><Plus size={15} /> Novo modelo</button>
+      {podeEditar
+        ? <button onClick={onNew} style={btnPrimary}><Plus size={15} /> Novo modelo</button>
+        : <div style={{ fontSize: 12, color: 'var(--muted)', background: 'var(--card)', border: '1px dashed var(--border)', borderRadius: 8, padding: '8px 10px' }}>🔒 Somente o gerente e o administrador geral criam ou alteram os itens dos checklists.</div>}
       {modelos.length === 0 ? (
         <Empty texto="Nenhum modelo de checklist ainda. Crie o primeiro (ex.: Abertura da Cozinha)." />
       ) : (
@@ -1191,16 +1261,46 @@ function ModelosTab({ modelos, onNew, onEdit, onRun, onChange, toast }: {
                 </div>
               </div>
               <button onClick={() => onRun(m)} title="Executar agora" style={{ ...iconBtn, color: 'var(--bordo)' }}><Play size={15} /></button>
-              <button onClick={() => toggle(m)} title={m.ativo ? 'Desativar' : 'Ativar'} style={iconBtn}>
-                {m.ativo ? '⏸️' : '▶️'}
-              </button>
-              <button onClick={() => onEdit(m)} style={iconBtn}><Edit2 size={15} /></button>
-              <button onClick={() => del(m)} style={{ ...iconBtn, color: '#ef4444' }}><Trash2 size={15} /></button>
+              {podeEditar && <>
+                <button onClick={() => toggle(m)} title={m.ativo ? 'Desativar' : 'Ativar'} style={iconBtn}>
+                  {m.ativo ? '⏸️' : '▶️'}
+                </button>
+                <button onClick={() => onEdit(m)} style={iconBtn}><Edit2 size={15} /></button>
+                <button onClick={() => del(m)} style={{ ...iconBtn, color: '#ef4444' }}><Trash2 size={15} /></button>
+              </>}
             </div>
           ))}
         </div>
       )}
+      {podeEditar && <AuditoriaModelos />}
     </>
+  )
+}
+
+// ── Histórico de alterações dos modelos (auditoria) ──────────
+function AuditoriaModelos() {
+  const [aberto, setAberto] = useState(false)
+  const [linhas, setLinhas] = useState<{ id: string; modelo_titulo: string; acao: string; usuario: string | null; resumo: string | null; created_at: string }[]>([])
+  useEffect(() => {
+    if (!aberto) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(supabase as any).from('checklist_auditoria').select('id,modelo_titulo,acao,usuario,resumo,created_at').order('created_at', { ascending: false }).limit(100)
+      .then((r: { data: typeof linhas | null }) => setLinhas(r.data || []))
+  }, [aberto])
+  return (
+    <div style={{ marginTop: 18 }}>
+      <button onClick={() => setAberto(o => !o)} style={btnGhost}>📜 {aberto ? 'Ocultar' : 'Ver'} histórico de alterações dos modelos</button>
+      {aberto && (
+        <div style={{ marginTop: 8, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: '4px 12px' }}>
+          {linhas.length === 0 ? <div style={{ fontSize: 12, color: 'var(--muted)', padding: 10 }}>Nenhuma alteração registrada ainda.</div> : linhas.map(l => (
+            <div key={l.id} style={{ fontSize: 12, padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+              <strong>{l.acao}</strong> · {l.modelo_titulo} · 👤 {l.usuario || '—'} · 🕒 {new Date(l.created_at).toLocaleString('pt-BR')}
+              {l.resumo && <div style={{ color: 'var(--muted)' }}>{l.resumo}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -1277,8 +1377,13 @@ function ModeloModal({ modelo, loja, userName, onClose, onSaved, toast }: {
         alertar, hora_alerta: horaAlerta || null, destinatarios: destLimpos,
         created_by: modelo?.created_by ?? userName,
       }
-      if (modelo) await updateChecklistModelo(modelo.id, payload)
-      else await insertChecklistModelo(payload)
+      if (modelo) {
+        await updateChecklistModelo(modelo.id, payload)
+        await logAuditoria({ id: modelo.id, titulo: payload.titulo }, 'editado', userName, resumoDiff(modelo.itens, itensLimpos), modelo.itens, itensLimpos)
+      } else {
+        const criado = await insertChecklistModelo(payload)
+        await logAuditoria({ id: criado?.id, titulo: payload.titulo }, 'criado', userName, `Modelo criado com ${itensLimpos.length} itens`, null, itensLimpos)
+      }
       toast('Modelo salvo.', 'success'); onSaved()
     } catch (e) { toast('Erro ao salvar: ' + (e as Error).message, 'error') }
     finally { setSalvando(false) }
