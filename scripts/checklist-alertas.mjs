@@ -88,7 +88,8 @@ async function main() {
   console.log(`${HOJE} ${HHMM} BRT · ${modelos.length} modelo(s) com alerta · ${SEND ? (TO ? 'TESTE → ' + TO : 'ENVIO REAL') : 'SIMULAÇÃO'}`)
 
   for (const m of modelos) {
-    if (!aplicaHoje(m) || !m.hora_alerta) continue
+    // avulso/manual: só alerta se já existe execução hoje; os recorrentes seguem a recorrência
+    if (!m.hora_alerta || (!aplicaHoje(m) && !execHoje.some(e => e.modelo_id === m.id))) continue
 
     for (const lj of lojas.filter(l => m.loja == null || m.loja === l)) {
       // quem faz / quem recebe = pessoas do modelo + escala do cadastro (setor, loja, turno, dia da semana)
@@ -97,6 +98,7 @@ async function main() {
       const gest = dest.filter(d => d.papel === 'gestor')
       if (!resp.length) continue
       let ex = execHoje.find(e => e.modelo_id === m.id && e.loja === lj)
+      if (!ex && !aplicaHoje(m)) continue
       if (!ex) {
         if (SEND && !TO) ex = (await post('checklist_execucoes', [{ modelo_id: m.id, loja: lj, titulo: m.titulo, setor: m.setor, data: HOJE, turno: m.turno, status: 'pendente', respostas: [], hora_limite: m.hora_limite, created_by: 'alerta' }]))?.[0]
         else ex = { id: null, status: 'pendente', alerta_enviado_em: null, atraso_alertado_em: null }
