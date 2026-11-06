@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { PackageCheck, Upload, ScanLine, Check, AlertTriangle, RefreshCw, Trash2, Boxes, ShieldCheck, Camera, ClipboardCheck } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../hooks/useToast'
 import { useAuth } from '../../contexts/AuthContext'
+import { fetchAppConfig, saveAppConfig, fetchProfiles, insertNotificacao } from '../../lib/db'
+import { enviarWhatsApp, normalizarFoneBR } from '../../lib/notify'
 
 const sb = supabase as any
 const SB_URL = 'https://xdwnsqkzgopymufsuccr.supabase.co'
@@ -66,6 +68,11 @@ function casaNome(a: string, b: string) {
   return score >= 2 || (ta.length === 1 && score === 1)
 }
 
+// Quem recebe o aviso de recebimento (gestor/administrador/comprador cadastrados) — app_config 'recebimento_destinatarios'
+interface DestRec { nome: string; fone: string; papel: 'gestor' | 'administrador' | 'comprador' | 'outro' }
+interface CfgAviso { ativo: boolean; pessoas: DestRec[] }
+const sleepMs = (ms: number) => new Promise(r => setTimeout(r, ms))
+
 export default function RecebimentoPage() {
   const { toast } = useToast()
   const { user } = useAuth()
@@ -85,6 +92,12 @@ export default function RecebimentoPage() {
   const [darEntrada, setDarEntrada] = useState(true)
   const [colabs, setColabs] = useState<any[]>([])
   // conferência humana
+  // Avisos (WhatsApp) a gestor/administrador/comprador + observação ao comprador quando o recebimento vem incompleto
+  const [cfgAviso, setCfgAviso] = useState<CfgAviso>({ ativo: false, pessoas: [] })
+  const [cfgAberto, setCfgAberto] = useState(false)
+  const [obsCompradorTxt, setObsCompradorTxt] = useState<string | null>(null)   // null = texto automático
+  useEffect(() => { fetchAppConfig<CfgAviso>('recebimento_destinatarios').then(c => { if (c) setCfgAviso({ ativo: !!c.ativo, pessoas: c.pessoas || [] }) }) }, [])
+  const salvarCfgAviso = async (c: CfgAviso) => { setCfgAviso(c); await saveAppConfig('recebimento_destinatarios', c) }
   const [conferente, setConferente] = useState('')
   const [assinatura, setAssinatura] = useState('')
   const [obsGeral, setObsGeral] = useState('')
@@ -96,7 +109,7 @@ export default function RecebimentoPage() {
   const [pedidoSel, setPedidoSel] = useState('')
   const [pedidoItens, setPedidoItens] = useState<any[]>([])  // conferência de vínculo (pedido × nota)
   const loadPedidosAbertos = useCallback(async (lj: string) => {
-    const { data } = await sb.from('pedidos_compra').select('id,numero,fornecedor,total,requisicao_id,created_at').eq('loja', lj).eq('baixa_feita', false).order('created_at', { ascending: false }).limit(80)
+    const { data } = await sb.from('pedidos_compra').select('id,numero,fornecedor,total,requisicao_id,created_at,criado_por').eq('loja', lj).eq('baixa_feita', false).order('created_at', { ascending: false }).limit(80)
     setPedidosAbertos(data || [])
   }, [])
   useEffect(() => { loadPedidosAbertos(loja); setPedidoSel(''); setPedidoItens([]) }, [loja, loadPedidosAbertos])
@@ -213,6 +226,62 @@ export default function RecebimentoPage() {
   const nDesvios = Object.values(desvios).filter((d: any) => d?.tipo).length
   const nDiverg = itens.filter(it => { const d = difItem(it); return d.has && !d.ok }).length
 
+  // ── Totalidade: tudo o que era esperado veio? (pedido × nota × recebido) ──
+  const analise = useMemo(() => {
+    const pedido = pedidosAbertos.find(p => p.id === pedidoSel) || null
+    const faltantes = pedidoSel ? pedidoItens.filter(pi => pi.falta > 0 && (Number(pi.receber) || 0) < pi.falta)
+      .map(pi => ({ produto: pi.produto_nome as string, unidade: (pi.unidade || '') as string, esperado: Number(pi.falta), recebido: Number(pi.receber) || 0 })) : []
+    const extras = pedidoSel ? itens.filter(it => Number(it.recebido) > 0 && !pedidoItens.some(pi => casaNome(it.produto, pi.produto_nome))).map(it => String(it.produto)) : []
+    const curtos = itens.filter(it => { const d = difItem(it); return d.has && !d.ok && (d.delta || 0) < 0 })
+      .map(it => ({ produto: String(it.produto), faturado: Number(it.quantidade), recebido: Number(it.recebido) }))
+    const somaDifere = !!(cab && totalNota > 0 && Math.abs(somaItens - totalNota) > 0.5)
+    const incompleto = !!itens.length && (faltantes.length > 0 || curtos.length > 0 || somaDifere)
+    const L: string[] = []
+    if (faltantes.length) L.push('Itens do pedido que NÃO vieram (ou vieram a menos):', ...faltantes.map(f => '• ' + f.produto + ' — esperado ' + f.esperado + ' ' + f.unidade + ', veio ' + f.recebido))
+    if (curtos.length) L.push('Veio menos do que a nota faturou:', ...curtos.map(c => '• ' + c.produto + ' — faturado ' + c.faturado + ', recebido ' + c.recebido))
+    if (somaDifere) L.push('A soma dos itens lidos (' + fmt(somaItens) + ') difere do total da nota (' + fmt(totalNota) + ') — pode haver produto não capturado na leitura. Conferir a nota física.')
+    if (extras.length) L.push('Itens na nota que não estão no pedido:', ...extras.map(x => '• ' + x))
+    return { pedido, faltantes, extras, curtos, somaDifere, incompleto, obsAuto: L.join('\n') }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedidoSel, pedidoItens, itens, cab, somaItens, totalNota, pedidosAbertos])
+  const obsComprador = obsCompradorTxt ?? analise.obsAuto
+
+  // Aviso pós-recebimento: Central de Notificações (sempre que incompleto) + WhatsApp (se ativado) a comprador, gestor e administrador, com o link da nota
+  const avisarRecebimento = async (ctx: { recId: string; loja: string; fornecedor: string; nf: string; total: number; conferente: string; nItens: number; nEstoque: number; status: string; pedidoNum: string | null; compradorNome: string | null; incompleto: boolean; obs: string; anexoUrl: string }) => {
+    const titulo = ctx.incompleto ? 'Recebimento INCOMPLETO — ' + ctx.fornecedor : 'Recebimento confirmado — ' + ctx.fornecedor
+    const linhas = [
+      ctx.incompleto ? '⚠️ *RECEBIMENTO INCOMPLETO*' : '✅ *RECEBIMENTO CONFIRMADO*',
+      '🏪 ' + ctx.loja + ' · 🏭 ' + ctx.fornecedor,
+      '🧾 NF ' + ctx.nf + ' · ' + fmt(ctx.total) + (ctx.pedidoNum ? ' · Pedido ' + ctx.pedidoNum : ''),
+      '👤 Conferente: ' + ctx.conferente + ' · ' + ctx.nItens + ' itens' + (ctx.nEstoque ? ' · ' + ctx.nEstoque + ' deram entrada no estoque' : ''),
+    ]
+    if (ctx.status === 'pendente_aprovacao') linhas.push('⏳ Há itens retidos aguardando aprovação do gestor.')
+    if (ctx.incompleto && ctx.obs) linhas.push('', '📝 *Observação ao comprador:*', ctx.obs)
+    linhas.push('', '📎 Nota fiscal: ' + ctx.anexoUrl, '🔗 Painel: ' + window.location.origin + '/?page=recebimento', '_Recebimento Inteligente · Amore Gestão_')
+    const msg = linhas.join('\n')
+    // 1) Central de Notificações (aparece no painel mesmo com o WhatsApp desligado)
+    if (ctx.incompleto) insertNotificacao({ loja: ctx.loja, canal: 'sistema', tipo: 'compra', modulo: 'recebimento', titulo, mensagem: msg, destinatario_nome: ctx.compradorNome || 'Comprador', referencia_id: ctx.recId, status: 'enviado', created_by: ctx.conferente }).catch(() => {})
+    // 2) WhatsApp — só se o Esdras ativou e há pessoas cadastradas
+    if (!cfgAviso.ativo) return 0
+    const alvo: DestRec[] = [...cfgAviso.pessoas]
+    if (ctx.compradorNome) {
+      try {
+        const ps = await fetchProfiles()
+        const pr = ps.find(x => (x.name || '').trim().toLowerCase() === ctx.compradorNome!.trim().toLowerCase())
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const f = normalizarFoneBR(((pr?.permissions_override as any)?.__perfil__?.whatsapp) || '')
+        if (f) alvo.push({ nome: ctx.compradorNome, fone: f, papel: 'comprador' })
+      } catch { /* sem perfil do comprador — segue com os cadastrados */ }
+    }
+    const unicos = alvo.filter((d, i) => normalizarFoneBR(d.fone) && alvo.findIndex(x => normalizarFoneBR(x.fone) === normalizarFoneBR(d.fone)) === i)
+    let ok = 0
+    for (let i = 0; i < unicos.length; i++) {
+      if (i > 0) await sleepMs(2500 + Math.random() * 4500)   // intervalo aleatório (anti-bloqueio)
+      if (await enviarWhatsApp(unicos[i].fone, msg, undefined, { tipo: 'compra', modulo: 'recebimento', titulo, loja: ctx.loja, destinatario_nome: unicos[i].nome, referencia_id: ctx.recId })) ok++
+    }
+    return ok
+  }
+
   // Baixa relacional pela CONFERÊNCIA confirmada (pedidoItens.receber): acumula em qtd_recebida
   // (RECEBIMENTO PARCIAL suportado) e recalcula status/baixa do pedido. Retorna nº de itens baixados.
   const baixarNoPedido = async (): Promise<number> => {
@@ -268,17 +337,22 @@ export default function RecebimentoPage() {
       const p_conferente = { nome: conferente.trim(), user_id: user?.id || null, assinatura: assinatura.trim() }
       const { data, error } = await sb.rpc('recebimento_confirmar', {
         p_loja: loja, p_header: cab, p_itens: itens, p_anexo_url: anexo?.url || null, p_arquivo: anexo?.nome || null,
-        p_estoque, p_conferente, p_observacao: obsGeral || null, p_ocorrencias,
+        p_estoque, p_conferente, p_ocorrencias,
+        p_observacao: [obsGeral, analise.incompleto && obsComprador ? '[RECEBIMENTO INCOMPLETO — obs. ao comprador]\n' + obsComprador : ''].filter(Boolean).join('\n\n') || null,
       })
       if (error || !data?.ok) { toast('Erro ao confirmar: ' + (error?.message || 'tente novamente'), 'error'); setBusy(''); return }
       // Baixa relacional no pedido vinculado (Recebido por item → ciclo da requisição). Complementar: não bloqueia o recebimento.
       let baixaMsg = ''
       if (pedidoSel) { const n = await baixarNoPedido(); if (n > 0) baixaMsg = ` · ${n} item(ns) baixado(s) no pedido` }
+      // Aviso a comprador/gestor/administrador (em segundo plano — não segura a tela)
+      const ctxAviso = { recId: data.recebimento_id, loja, fornecedor: String(cab?.fornecedor || 'Fornecedor'), nf: String(cab?.numero_nota || 's/n'), total: Number(cab?.valor_total || 0), conferente: conferente.trim(), nItens: itens.length, nEstoque: Number(data.estoque || 0), status: String(data.status || ''), pedidoNum: analise.pedido?.numero || null, compradorNome: analise.pedido?.criado_por || null, incompleto: analise.incompleto, obs: obsComprador, anexoUrl: anexo?.url || '' }
+      avisarRecebimento(ctxAviso).then(n => { if (cfgAviso.ativo) toast(n ? `Aviso enviado a ${n} pessoa(s) no WhatsApp 📲` : 'Aviso: nenhum destinatário recebeu (confira o cadastro de avisos).', n ? 'success' : 'warning') }).catch(() => {})
+      if (analise.incompleto) toast('⚠️ Recebimento INCOMPLETO — observação registrada e notificação gerada ao comprador.', 'warning')
       if (data.status === 'pendente_aprovacao')
         toast(`Recebimento registrado com ${data.retidos} item(ns) retido(s) por divergência — aguardando aprovação. ⏳${baixaMsg}`)
       else
         toast(`Recebimento confirmado! Despesa nº ${data.prestacao} · ABC atualizada${data.estoque ? ` · ${data.estoque} no estoque 📦` : ''}${baixaMsg} ✅`)
-      setFile(null); setAnexo(null); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral(''); setAssinatura(''); setPedidoSel(''); setPedidoItens([]); loadRecs(); loadPedidosAbertos(loja)
+      setFile(null); setAnexo(null); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral(''); setObsCompradorTxt(null); setAssinatura(''); setPedidoSel(''); setPedidoItens([]); loadRecs(); loadPedidosAbertos(loja)
     } catch (e: any) { toast('Falha ao confirmar: ' + (e?.message || ''), 'error') }
     setBusy('')
   }
@@ -308,6 +382,12 @@ export default function RecebimentoPage() {
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><PackageCheck size={20} style={{ color: '#6B1212' }} /><b style={{ fontSize: 15 }}>Recebimento Inteligente de Mercadorias</b></div>
         <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '0 0 12px' }}>Leitura da nota → conferência → registro de desvios → identificação do conferente → aprovação → entrada no estoque. Produtos novos são cadastrados automaticamente como <b>pendentes de validação</b>.</p>
+        {podeAprovar && (
+          <div style={{ marginBottom: 10 }}>
+            <button onClick={() => setCfgAberto(o => !o)} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 8, padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>📲 Avisos do recebimento {cfgAviso.ativo ? '(ligado)' : '(desligado)'} {cfgAberto ? '▲' : '▼'}</button>
+            {cfgAberto && <AvisosCfg cfg={cfgAviso} onSave={salvarCfgAviso} toast={toast} />}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <select value={loja} onChange={e => setLoja(e.target.value)} style={{ ...inp, width: 'auto' }}>{LOJAS.map(l => <option key={l}>{l}</option>)}</select>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.5rem .9rem', borderRadius: 10, border: '1px dashed #c4b5a8', cursor: 'pointer', fontSize: 13, background: '#faf8f5' }}>
@@ -474,6 +554,22 @@ export default function RecebimentoPage() {
           </div>}
         </div>
 
+        {/* totalidade: tudo veio? → observação ao comprador */}
+        {itens.length > 0 && (
+          <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 10, border: `1px solid ${analise.incompleto ? '#FDE68A' : '#A7F3D0'}`, background: analise.incompleto ? '#FFFBEB' : '#ECFDF5' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: analise.incompleto ? '#92400E' : '#166534' }}>
+              {analise.incompleto ? '⚠️ Recebimento INCOMPLETO — o comprador será notificado ao confirmar' : '✅ Recebimento completo — nada faltando' + (pedidoSel ? ' em relação ao pedido' : '')}
+            </div>
+            {!pedidoSel && <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 3 }}>Dica: vincule a nota a um pedido de compra (🔗 acima) para conferir item a item o que foi pedido × o que veio.</div>}
+            {analise.incompleto && (
+              <>
+                <label style={{ fontSize: 11.5, color: '#92400E', display: 'block', marginTop: 8 }}>📝 Observação ao comprador (editável)</label>
+                <textarea style={{ ...inp, minHeight: 90, marginTop: 4, resize: 'vertical' }} value={obsComprador} onChange={e => setObsCompradorTxt(e.target.value)} />
+              </>
+            )}
+          </div>
+        )}
+
         {/* observação geral + conferente */}
         <div style={{ marginTop: 18, borderTop: '1px dashed #e5e7eb', paddingTop: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px,1fr))', gap: 14 }}>
           <div>
@@ -517,6 +613,74 @@ export default function RecebimentoPage() {
                 <span style={{ color: '#9ca3af', fontSize: 12 }}>{new Date(r.created_at).toLocaleDateString('pt-BR')}</span>
               </div>) })}
         </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ── Cadastro de quem recebe o aviso de recebimento (gestor, administrador, comprador…) ──
+function AvisosCfg({ cfg, onSave, toast }: { cfg: CfgAviso; onSave: (c: CfgAviso) => Promise<void>; toast: (m: string, t?: any) => void }) {
+  const [nome, setNome] = useState('')
+  const [fone, setFone] = useState('')
+  const [papel, setPapel] = useState<DestRec['papel']>('gestor')
+  const [teste, setTeste] = useState('')
+  const [busy, setBusy] = useState(false)
+  const add = () => {
+    const f = normalizarFoneBR(fone)
+    if (!nome.trim() || !f) { toast('Informe nome e WhatsApp.', 'warning'); return }
+    if (cfg.pessoas.some(p => normalizarFoneBR(p.fone) === f)) { toast('Esse WhatsApp já está na lista.', 'info'); return }
+    onSave({ ...cfg, pessoas: [...cfg.pessoas, { nome: nome.trim(), fone: f, papel }] }); setNome(''); setFone('')
+  }
+  const importar = async () => {
+    setBusy(true)
+    try {
+      const ps = await fetchProfiles()
+      const novas: DestRec[] = []
+      for (const pr of ps) {
+        const r = String(pr.role || '')
+        if (!['super_admin', 'admin', 'manager'].includes(r)) continue
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const f = normalizarFoneBR(((pr.permissions_override as any)?.__perfil__?.whatsapp) || '')
+        if (!pr.name?.trim() || !f || cfg.pessoas.some(p => normalizarFoneBR(p.fone) === f) || novas.some(p => p.fone === f)) continue
+        novas.push({ nome: pr.name.trim(), fone: f, papel: r === 'manager' ? 'gestor' : 'administrador' })
+      }
+      if (!novas.length) { toast('Nenhum gestor/administrador novo com WhatsApp cadastrado.', 'info'); return }
+      await onSave({ ...cfg, pessoas: [...cfg.pessoas, ...novas] }); toast(novas.length + ' pessoa(s) importada(s).', 'success')
+    } finally { setBusy(false) }
+  }
+  const enviarTeste = async () => {
+    const f = normalizarFoneBR(teste)
+    if (!f) { toast('Digite o seu WhatsApp para o teste.', 'warning'); return }
+    const ok = await enviarWhatsApp(f, '📦 *TESTE — Aviso de Recebimento*\n\nÉ assim que gestores, administradores e o comprador vão receber a confirmação (com o link da nota fiscal).\n_Recebimento Inteligente · Amore Gestão_')
+    toast(ok ? 'Teste enviado. ✅' : 'Falha ao enviar o teste.', ok ? 'success' : 'error')
+  }
+  const box: React.CSSProperties = { marginTop: 8, padding: 12, border: '1px solid #e5e7eb', borderRadius: 10, background: '#fafafa' }
+  return (
+    <div style={box}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600 }}>
+        <input type="checkbox" checked={cfg.ativo} onChange={e => onSave({ ...cfg, ativo: e.target.checked })} />
+        Enviar aviso no WhatsApp ao confirmar cada recebimento (com a nota fiscal) {cfg.ativo ? '' : '— desligado: só a Central de Notificações do painel é usada'}
+      </label>
+      <div style={{ fontSize: 11.5, color: '#6b7280', margin: '6px 0' }}>Recebem: as pessoas abaixo + o comprador do pedido vinculado. Se o recebimento vier incompleto, a observação ao comprador vai junto. Intervalo aleatório entre os envios.</div>
+      {cfg.pessoas.map((p, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, padding: '3px 0' }}>
+          <span style={{ flex: 1 }}>{p.nome} · {p.fone.replace(/^55/, '')} · <i>{p.papel}</i></span>
+          <button onClick={() => onSave({ ...cfg, pessoas: cfg.pessoas.filter((_, k) => k !== i) })} style={{ border: 'none', background: 'none', color: '#dc2626', cursor: 'pointer' }}>remover</button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+        <input style={{ ...inp, flex: 1, minWidth: 120 }} placeholder="Nome" value={nome} onChange={e => setNome(e.target.value)} />
+        <input style={{ ...inp, flex: 1, minWidth: 140 }} placeholder="WhatsApp (DDD+número)" value={fone} onChange={e => setFone(e.target.value)} />
+        <select style={{ ...inp, width: 'auto' }} value={papel} onChange={e => setPapel(e.target.value as DestRec['papel'])}>
+          <option value="gestor">Gestor</option><option value="administrador">Administrador</option><option value="comprador">Comprador</option><option value="outro">Outro</option>
+        </select>
+        <button onClick={add} style={{ border: '1px solid #6B1212', background: '#6B1212', color: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5 }}>+ Adicionar</button>
+        <button onClick={importar} disabled={busy} style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5 }}>Importar gestores/administradores do painel</button>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+        <input style={{ ...inp, maxWidth: 220 }} placeholder="Seu WhatsApp p/ teste" value={teste} onChange={e => setTeste(e.target.value)} />
+        <button onClick={enviarTeste} style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5 }}>Enviar teste só para mim</button>
       </div>
     </div>
   )
