@@ -101,6 +101,7 @@ function montaMsgFechamento(e: ChecklistExecucao, itens: ChecklistItem[], respos
   ]
   if (e.justificativa_atraso) linhas.push(`⏰ Feito com atraso (limite ${e.hora_limite}). Justificativa: ${e.justificativa_atraso}`)
   if (ncs.length) linhas.push(`🚩 ${ncs.length} não conformidade(s):\n` + ncs.slice(0, 5).map(r => `• ${r.nc?.item_txt || 'item'} — ${r.nc?.motivo_reprovacao || ''}`).join('\n'))
+  if (e.observacao_geral) linhas.push(`📝 Obs.: ${e.observacao_geral}`)
   if (fotos) linhas.push(`📷 ${fotos} foto(s) com carimbo de horário e setor`)
   linhas.push(`\n🔗 Ver no arquivo (Gestão à Vista): ${SITE}/?page=checklists&aba=vista`, '_Operação Padrão · Amore Gestão_')
   return linhas.join('\n')
@@ -697,6 +698,10 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
             {turnoLbl(exec.turno)} · {exec.setor} · {totalOk}/{itens.length} itens
             {exec.hora_limite ? ` · limite ${exec.hora_limite}` : ''}
             {modelo?.exige_gps ? ' · 📍 exige GPS' : ''}
+            {exec.status !== 'concluido' && (
+              <span onClick={ev => { ev.stopPropagation(); const l = `${SITE}/checklist.html?id=${exec.id}`; navigator.clipboard?.writeText(l).then(() => toast('Link copiado — abre no celular.', 'success')).catch(() => window.prompt('Copie o link:', l)) }}
+                style={{ color: 'var(--bordo)', cursor: 'pointer', textDecoration: 'underline' }}> · 🔗 copiar link p/ celular</span>
+            )}
             {atrasadoAgora ? <strong style={{ color: '#ef4444' }}> · ⏰ atrasado{exec.justificativa_atraso ? ' (justificado)' : ''}</strong> : null}
           </div>
         </div>

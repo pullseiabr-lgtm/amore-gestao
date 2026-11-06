@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Checklist — Amore</title>
+<style>
+:root{--brand:#6B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--crit:#DC2626;--shadow:0 1px 2px rgba(80,20,25,.05),0 8px 24px -14px rgba(80,20,25,.25)}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+.wrap{max-width:720px;margin:0 auto;padding:18px 16px 90px}
+header.top{border-bottom:2px solid var(--brand);padding-bottom:12px;margin-bottom:12px}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--brand);font-weight:800}
+h1{font-size:20px;margin:6px 0 2px;line-height:1.2}.sub{color:var(--muted);font-size:13px}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin:12px 0}
+.meta div{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 11px}
+.meta .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.meta .v{font-weight:600;font-size:14px}
+.item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 13px;margin-top:10px;box-shadow:var(--shadow)}
+.item.ok{border-left:4px solid var(--ok)}.item.bad{border-left:4px solid var(--crit)}
+.q{font-size:15px;font-weight:600}.req{color:var(--crit)}
+.hint{font-size:12.5px;color:var(--muted);background:var(--bg);border-radius:8px;padding:6px 9px;margin-top:6px;white-space:pre-wrap}
+input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);font:inherit;font-size:16px;margin-top:6px}
+.chk{display:flex;align-items:center;gap:10px;font-size:15px;margin-top:8px}.chk input{width:24px;height:24px;margin:0}
+.btn{border:none;border-radius:10px;padding:13px 18px;font-weight:700;font-size:15px;color:#fff;background:var(--brand);cursor:pointer}
+.btn.g{background:var(--card);color:var(--text);border:1px solid var(--border)}
+.btn:disabled{opacity:.6}
+.stars{display:flex;gap:6px;font-size:34px;line-height:1;margin-top:6px}.stars span{cursor:pointer;color:var(--border)}.stars span.on{color:#f59e0b}
+.photo{display:inline-flex;align-items:center;gap:8px;margin-top:8px;padding:12px 14px;border:2px dashed var(--brand);border-radius:10px;color:var(--brand);font-weight:700;font-size:14px;cursor:pointer}
+.photo input{display:none}
+.thumb{width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-top:8px;border:1px solid var(--border)}
+.late{background:#fffbeb;border:1px solid #fcd34d;color:#78350f;border-radius:12px;padding:11px 13px;margin-top:12px}
+.nao{background:none;border:none;color:var(--crit);text-decoration:underline;font-size:12.5px;padding:8px 0 0;cursor:pointer}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--border);padding:10px 16px;display:flex;gap:8px;justify-content:center}
+.bar .btn{flex:1;max-width:340px}
+.msg{text-align:center;padding:60px 20px;color:var(--muted)}
+.done{background:var(--card);border:1px solid var(--ok);border-radius:14px;padding:22px;text-align:center;margin-top:16px}
+canvas.sig{width:100%;height:110px;background:#fff;border:1px solid var(--border);border-radius:9px;touch-action:none;margin-top:6px}
+.foot{margin-top:24px;color:var(--muted);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Carregando checklist…</div></div>
+<script>
+var SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+var KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+var H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+var qs=new URLSearchParams(location.search);
+var EXEC_ID=qs.get('id'), R_PARAM=(qs.get('r')||'').replace(/\D/g,'');
+var exec=null, modelo=null, itens=[], resp={}, dests=[], DONE=false, busy=false;
+var TNUM=['numero','temperatura','quantidade','peso','valor'];
+var UN={temperatura:'°C',peso:'kg',valor:'R$',quantidade:'un'};
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function pad(n){return String(n).padStart(2,'0')}
+function hoje(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+function hhmm(d){return pad(d.getHours())+':'+pad(d.getMinutes())}
+function dataBR(i){return i.split('-').reverse().join('/')}
+function hora(iso){return iso?new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'—'}
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
+async function jget(q){var r=await fetch(SB+'/rest/v1/'+q,{headers:H});return r.ok?r.json():[]}
+function normFone(f){var d=String(f||'').replace(/\D/g,'').replace(/^0+/,'');if(!d)return '';if(d.indexOf('55')===0&&d.length>=12)return d;return(d.length===10||d.length===11)?'55'+d:d}
+
+// ── Lógica de conformidade (espelha a do painel) ──
+function faixaOk(it,v){if(it.min!=null&&v<it.min)return false;if(it.max!=null&&v>it.max)return false;return true}
+function itemOk(it,r){
+  if(!r||r.nao_executou)return false;
+  switch(it.tipo){
+    case 'confirm':return r.ok===true;
+    case 'foto':return !!r.foto_url&&r.ia_status!=='reprovado';
+    case 'avaliacao':return (r.nota||0)>0;
+    case 'texto':case 'qrcode':return !!(r.texto&&r.texto.trim());
+    case 'assinatura':return !!r.assinatura;
+    case 'temperatura':return r.valor!=null&&faixaOk(it,r.valor);
+    default:return r.valor!=null;
+  }
+}
+function calcScore(atrasado){
+  var obrig=itens.filter(function(i){return i.obrigatorio});
+  var base=obrig.length?obrig:itens, tot=0, ok=0;
+  base.forEach(function(i){var p=obrig.length?(i.peso||1)*(i.critico?2:1):1;tot+=p;if(itemOk(i,resp[i.id]))ok+=p});
+  var s=Math.round(ok/(tot||1)*100); if(atrasado)s=Math.round(s*.8); return Math.max(0,Math.min(100,s));
+}
+function motivoRep(it,r){
+  if(r.nao_executou)return 'Não executado: '+(r.motivo_nao||'sem motivo');
+  if(it.tipo==='temperatura'&&r.valor!=null&&!faixaOk(it,r.valor))return 'Temperatura fora do limite ('+r.valor+(it.unidade||'°C')+')';
+  if(it.cond&&it.cond.abrir_nc&&!itemOk(it,r))return it.cond.mensagem||'Resposta não conforme (ação condicional)';
+  return null;
+}
+function get(id){return resp[id]||(resp[id]={item_id:id,ok:false,valor:null,foto_url:null,nota:null,ia_ok:null,ia_motivo:null,obs:null})}
+function responsavel(){var s=document.getElementById('resp');return s?s.value.trim():''}
+function atrasadoAgora(){return !DONE&&!!exec.hora_limite&&(exec.data<hoje()||(exec.data===hoje()&&hhmm(new Date())>exec.hora_limite))}
+
+// ── Foto com carimbo (setor + loja + data/hora + responsável) ──
+async function carimbar(file,linhas){
+  try{
+    var bmp=await createImageBitmap(file), sc=Math.min(1,1600/bmp.width), w=Math.round(bmp.width*sc), h=Math.round(bmp.height*sc);
+    var c=document.createElement('canvas');c.width=w;c.height=h;var ctx=c.getContext('2d');ctx.drawImage(bmp,0,0,w,h);
+    var fs=Math.max(14,Math.round(w/40)),pd=Math.round(fs*.55),lh=Math.round(fs*1.3),bh=linhas.length*lh+pd*2;
+    ctx.fillStyle='rgba(0,0,0,.65)';ctx.fillRect(0,h-bh,w,bh);ctx.fillStyle='#fff';ctx.font='600 '+fs+'px Arial,sans-serif';ctx.textBaseline='top';
+    linhas.forEach(function(l,i){ctx.fillText(l,pd,h-bh+pd+i*lh,w-pd*2)});
+    var blob=await new Promise(function(r){c.toBlob(r,'image/jpeg',.85)});
+    return blob||file;
+  }catch(e){return file}
+}
+async function upload(blob,pasta,ext){
+  var path=pasta+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.'+ext;
+  var up=await fetch(SB+'/storage/v1/object/anexos/'+path,{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':blob.type||'image/jpeg'},body:blob});
+  if(!up.ok)throw new Error('upload '+up.status);
+  return SB+'/storage/v1/object/public/anexos/'+path;
+}
+async function onFoto(id,input){
+  var f=input.files&&input.files[0];if(!f)return;
+  var it=itens.find(function(i){return i.id===id});
+  var lab=input.parentNode;lab.firstChild.textContent='⏳ Enviando…';
+  try{
+    var now=new Date(), quem=responsavel()||'—';
+    var blob=await carimbar(f,[ (exec.setor||'Geral').toUpperCase()+' · '+exec.loja, now.toLocaleDateString('pt-BR')+' '+now.toLocaleTimeString('pt-BR')+' · '+quem, (it.txt.length>60?it.txt.slice(0,57)+'…':it.txt) ]);
+    var url=await upload(blob,'checklists','jpg');
+    var r=get(id);r.foto_url=url;r.ia_ok=null;r.ia_status=null;r.foto_meta={capturada_em:now.toISOString(),setor:exec.setor,loja:exec.loja,responsavel:quem};
+  }catch(e){alert('Falha ao enviar a foto. Tente de novo.')}
+  render();
+}
+
+// ── Assinatura ──
+function initSig(id){
+  var c=document.getElementById('sig_'+id);if(!c)return;
+  c.width=c.clientWidth*2;c.height=220;var ctx=c.getContext('2d'),d=false,dirty=false;
+  function p(e){var t=e.touches?e.touches[0]:e,rc=c.getBoundingClientRect();return{x:(t.clientX-rc.left)*c.width/rc.width,y:(t.clientY-rc.top)*c.height/rc.height}}
+  function st(e){d=true;var q=p(e);ctx.beginPath();ctx.moveTo(q.x,q.y);e.preventDefault()}
+  function mv(e){if(!d)return;var q=p(e);ctx.lineTo(q.x,q.y);ctx.strokeStyle='#111';ctx.lineWidth=4;ctx.lineCap='round';ctx.stroke();dirty=true;e.preventDefault()}
+  function en(){d=false}
+  ['mousedown','touchstart'].forEach(function(n){c.addEventListener(n,st,{passive:false})});
+  ['mousemove','touchmove'].forEach(function(n){c.addEventListener(n,mv,{passive:false})});
+  ['mouseup','mouseleave','touchend'].forEach(function(n){c.addEventListener(n,en)});
+  c._save=async function(){if(!dirty)return alert('Assine no quadro antes.');var b=await new Promise(function(r){c.toBlob(r,'image/png')});
+    try{get(id).assinatura=await upload(b,'checklists/assinaturas','png');render()}catch(e){alert('Falha ao salvar a assinatura.')}};
+  c._clear=function(){ctx.clearRect(0,0,c.width,c.height);dirty=false};
+}
+
+// ── Render ──
+function itemHtml(it){
+  var r=resp[it.id]||{},ok=itemOk(it,r),touched=!!resp[it.id];
+  var h='<div class="item '+(r.nao_executou?'bad':ok?'ok':'')+'"><div class="q">'+esc(it.txt)+(it.obrigatorio?' <span class="req">*</span>':'')+(it.critico?' 🔴':'')+(ok?' ✅':'')+'</div>';
+  if(it.instrucao)h+='<div class="hint">ℹ️ '+esc(it.instrucao)+'</div>';
+  if(it.foto_ref)h+='<a href="'+esc(it.foto_ref)+'" target="_blank"><img class="thumb" style="max-height:90px;width:auto" src="'+esc(it.foto_ref)+'"><div class="sub">padrão esperado</div></a>';
+  if(r.nao_executou){
+    h+='<div class="hint" style="color:var(--crit)">⛔ Não executado</div><input placeholder="Motivo (obrigatório)" value="'+esc(r.motivo_nao||'')+'" oninput="get(\''+it.id+'\').motivo_nao=this.value"><button class="nao" style="color:var(--text)" onclick="get(\''+it.id+'\').nao_executou=false;render()">↩︎ Voltar a executar</button></div>';
+    return h;
+  }
+  if(it.tipo==='confirm')h+='<label class="chk"><input type="checkbox" '+(r.ok?'checked':'')+' onchange="get(\''+it.id+'\').ok=this.checked;render()"> Confirmar conclusão</label>';
+  if(TNUM.indexOf(it.tipo)>=0){var un=it.unidade||UN[it.tipo]||'',fora=it.tipo==='temperatura'&&r.valor!=null&&!faixaOk(it,r.valor);
+    h+='<input type="number" inputmode="decimal" step="any" placeholder="Valor'+(un?' ('+un+')':'')+'" value="'+(r.valor==null?'':r.valor)+'" '+(fora?'style="border-color:var(--crit)"':'')+' onchange="get(\''+it.id+'\').valor=this.value===\'\'?null:Number(this.value);render()">';
+    if(it.min!=null||it.max!=null)h+='<div class="sub">faixa '+(it.min==null?'−∞':it.min)+'…'+(it.max==null?'+∞':it.max)+'</div>';
+    if(fora)h+='<div class="sub" style="color:var(--crit)">⚠️ Fora do limite — não conforme</div>';}
+  if(it.tipo==='avaliacao'){h+='<div class="stars">';for(var n=1;n<=5;n++)h+='<span class="'+((r.nota||0)>=n?'on':'')+'" onclick="get(\''+it.id+'\').nota='+n+';render()">★</span>';h+='</div>'}
+  if(it.tipo==='texto')h+='<textarea rows="2" placeholder="Escreva a resposta…" oninput="get(\''+it.id+'\').texto=this.value">'+esc(r.texto||'')+'</textarea>';
+  if(it.tipo==='qrcode')h+='<input placeholder="Digite o código" value="'+esc(r.texto||'')+'" oninput="get(\''+it.id+'\').texto=this.value">';
+  if(it.tipo==='assinatura'){
+    if(r.assinatura)h+='<img class="thumb" style="max-height:80px;background:#fff" src="'+esc(r.assinatura)+'"><button class="nao" style="color:var(--text)" onclick="get(\''+it.id+'\').assinatura=null;render()">Refazer</button>';
+    else h+='<canvas class="sig" id="sig_'+it.id+'"></canvas><div style="display:flex;gap:8px;margin-top:6px"><button class="btn g" style="padding:8px 14px" onclick="document.getElementById(\'sig_'+it.id+'\')._clear()">Limpar</button><button class="btn" style="padding:8px 14px" onclick="document.getElementById(\'sig_'+it.id+'\')._save()">Usar assinatura</button></div>';
+  }
+  var precisaFoto=it.tipo==='foto'||(it.cond&&it.cond.exigir_foto&&touched&&!ok);
+  if(precisaFoto){
+    if(r.foto_url)h+='<img class="thumb" src="'+esc(r.foto_url)+'">'+(r.foto_meta?'<div class="sub">🕒 '+new Date(r.foto_meta.capturada_em).toLocaleString('pt-BR')+' · '+esc(r.foto_meta.setor||'')+'</div>':'');
+    h+='<label class="photo"><span>📷 '+(r.foto_url?'Trocar foto':'Tirar foto')+'</span><input type="file" accept="image/*" capture="environment" onchange="onFoto(\''+it.id+'\',this)"></label>';
+  }
+  if(it.cond&&touched&&!ok&&(it.cond.mensagem||it.cond.exigir_obs))h+='<div class="hint" style="color:var(--crit)">⚠️ '+esc(it.cond.mensagem||'Resposta não conforme — preencha a observação')+'</div>';
+  h+='<textarea rows="1" placeholder="Observação deste item (opcional)" oninput="get(\''+it.id+'\').obs=this.value||null">'+esc(r.obs||'')+'</textarea>';
+  h+='<button class="nao" onclick="get(\''+it.id+'\').nao_executou=true;render()">Não consigo executar</button></div>';
+  return h;
+}
+function render(){
+  var app=document.getElementById('app'), now=new Date();
+  var tot=itens.filter(function(i){return itemOk(i,resp[i.id])}).length;
+  var selResp=dests.length
+    ? '<select id="resp"><option value="">— selecione quem está fazendo —</option>'+dests.map(function(d){var sel=(R_PARAM&&normFone(d.fone)===normFone(R_PARAM))||(exec.responsavel_nome&&exec.responsavel_nome===d.nome);return '<option value="'+esc(d.nome)+'" '+(sel?'selected':'')+'>'+esc(d.nome)+'</option>'}).join('')+'</select>'
+    : '<input id="resp" placeholder="Seu nome" value="'+esc(exec.responsavel_nome||'')+'">';
+  var keep=responsavel();
+  var h='<header class="top"><div class="eyebrow">Amore · Operação Padrão</div><h1>'+esc(exec.titulo)+'</h1><div class="sub">'+esc(exec.loja)+' · '+esc(exec.setor||'Geral')+'</div></header>';
+  if(DONE){
+    h+='<div class="done"><div style="font-size:42px">✅</div><h2 style="margin:6px 0">Checklist concluído</h2><div class="sub">'+dataBR(exec.data)+' às '+hora(exec.concluido_em)+' · '+esc(exec.responsavel_nome||'')+'<br>Score '+(exec.score==null?'—':exec.score)+'/100</div><p class="sub">O resumo foi enviado e o checklist está arquivado na Gestão à Vista.</p></div>';
+    app.innerHTML=h;return;
+  }
+  h+='<div class="meta"><div><div class="l">📅 Data</div><div class="v">'+dataBR(exec.data)+'</div></div><div><div class="l">🕒 Horário</div><div class="v">'+hhmm(now)+(exec.hora_limite?' <span class="sub">(limite '+esc(exec.hora_limite)+')</span>':'')+'</div></div><div style="grid-column:1/-1"><div class="l">👤 Quem está fazendo *</div>'+selResp+'</div></div>';
+  if(atrasadoAgora())h+='<div class="late"><b>⏰ Fora do horário (limite '+esc(exec.hora_limite)+')</b><br>Justifique o atraso para concluir:<textarea id="just" rows="2" placeholder="Por que não foi feito no horário?">'+esc(exec.justificativa_atraso||'')+'</textarea></div>';
+  h+='<div class="sub" style="margin-top:10px">'+tot+'/'+itens.length+' itens feitos</div>';
+  itens.forEach(function(it){h+=itemHtml(it)});
+  h+='<div class="item"><div class="q">📝 Observações gerais</div><textarea id="obsg" rows="3" placeholder="Algo importante sobre este checklist (opcional)">'+esc(exec.observacao_geral||'')+'</textarea></div>';
+  h+='<div class="foot">Amore Gestão · Operação Padrão</div>';
+  h+='<div class="bar"><button class="btn g" id="bsave" onclick="salvar(false)">Salvar progresso</button><button class="btn" id="bfim" onclick="salvar(true)">Concluir</button></div>';
+  app.innerHTML=h;
+  if(keep){var s=document.getElementById('resp');if(s)s.value=keep}
+  itens.forEach(function(i){if(i.tipo==='assinatura'&&!(resp[i.id]&&resp[i.id].assinatura))initSig(i.id)});
+}
+// preserva textos digitados fora de render (obsg/just/resp) em variáveis
+document.addEventListener('input',function(e){if(e.target.id==='obsg')exec.observacao_geral=e.target.value;if(e.target.id==='just')exec.justificativa_atraso=e.target.value});
+
+async function salvar(concluir){
+  if(busy)return;var quem=responsavel();
+  if(!quem)return alert('Informe quem está fazendo o checklist.');
+  var lista=Object.keys(resp).map(function(k){return resp[k]});
+  var upd={respostas:lista,status:'em_andamento',iniciado_em:exec.iniciado_em||new Date().toISOString(),responsavel_nome:quem,observacao_geral:exec.observacao_geral||null,updated_at:new Date().toISOString()};
+  var atr=atrasadoAgora(), just=(exec.justificativa_atraso||'').trim();
+  if(just){upd.justificativa_atraso=just;upd.justificada_por=quem;upd.justificada_em=exec.justificada_em||new Date().toISOString()}
+  if(concluir){
+    var sem=itens.filter(function(i){var r=resp[i.id];return r&&r.nao_executou&&!(r.motivo_nao&&r.motivo_nao.trim())});
+    if(sem.length)return alert('Informe o motivo em '+sem.length+' item(ns) não executado(s).');
+    var falta=itens.filter(function(i){var r=resp[i.id];return i.obrigatorio&&!itemOk(i,r)&&!(r&&r.nao_executou)});
+    if(falta.length)return alert('Faltam '+falta.length+' item(ns) obrigatório(s):\n• '+falta.slice(0,5).map(function(i){return i.txt}).join('\n• '));
+    var pend=lista.filter(function(r){var i=itens.find(function(x){return x.id===r.item_id});if(!i||!i.cond||r.nao_executou||itemOk(i,r))return false;return i.cond.bloquear||(i.cond.exigir_foto&&!r.foto_url)||(i.cond.exigir_obs&&!(r.obs&&r.obs.trim()))});
+    if(pend.length)return alert(pend.length+' item(ns) não conforme(s) com ação pendente (foto/observação) ou conclusão bloqueada.');
+    if(atr&&!just)return alert('Checklist fora do horário. Escreva a justificativa do atraso.');
+    var agora=new Date(), score=calcScore(atr), nNc=0;
+    lista=lista.map(function(r){var i=itens.find(function(x){return x.id===r.item_id});if(!i||r.nc)return r;var m=motivoRep(i,r);if(!m)return r;nNc++;
+      r.nc={status:'aberta',gravidade:i.critico?'alta':'media',item_txt:i.txt,foto_evidencia:r.foto_url||null,motivo_reprovacao:m,causa:null,acao:null,responsavel:null,prazo:null,impacto:null,foto_correcao:null,aprovado_por:null,aberta_em:agora.toISOString(),encerrada_em:null};return r});
+    upd.respostas=lista;upd.status='concluido';upd.score=score;upd.concluido_em=agora.toISOString();upd.arquivado_em=agora.toISOString();
+  }
+  busy=true;var b1=document.getElementById('bsave'),b2=document.getElementById('bfim');if(b1)b1.disabled=true;if(b2)b2.disabled=true;
+  try{
+    var r=await fetch(SB+'/rest/v1/checklist_execucoes?id=eq.'+EXEC_ID,{method:'PATCH',headers:Object.assign({},H,{Prefer:'return=representation'}),body:JSON.stringify(upd)});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    var novo=(await r.json())[0];exec=Object.assign(exec,novo);
+    if(concluir){
+      await disparar(lista,nNc);DONE=true;
+    }else alert('Progresso salvo.');
+  }catch(e){alert('Erro ao salvar: '+e.message)}
+  busy=false;render();
+}
+
+async function disparar(lista,nNc){
+  var ds=(modelo&&modelo.destinatarios||[]).filter(function(d){return d.fone});if(!ds.length)return;
+  var okq=itens.filter(function(i){return itemOk(i,resp[i.id])}).length, fotos=lista.filter(function(r){return r.foto_url}).length, sc=exec.score;
+  var ic=sc==null?'⚪':sc>=90?'🟢':sc>=70?'🟡':'🔴';
+  var L=['✅ *CHECKLIST FECHADO — '+exec.titulo+'*','🏪 '+exec.loja+' · '+(exec.setor||'Geral'),'📅 '+dataBR(exec.data)+' · 🕒 '+hora(exec.concluido_em),'👤 Responsável: *'+exec.responsavel_nome+'*',ic+' Score '+(sc==null?'—':sc)+'/100 · '+okq+'/'+itens.length+' itens OK'];
+  if(exec.justificativa_atraso)L.push('⏰ Feito com atraso (limite '+exec.hora_limite+'). Justificativa: '+exec.justificativa_atraso);
+  if(nNc)L.push('🚩 '+nNc+' não conformidade(s):\n'+lista.filter(function(r){return r.nc}).slice(0,5).map(function(r){return '• '+r.nc.item_txt+' — '+r.nc.motivo_reprovacao}).join('\n'));
+  if(exec.observacao_geral)L.push('📝 Obs.: '+exec.observacao_geral);
+  if(fotos)L.push('📷 '+fotos+' foto(s) com carimbo de horário e setor');
+  L.push('\n🔗 Ver no arquivo (Gestão à Vista): https://painel.amorefood.com.br/?page=checklists&aba=vista','_Operação Padrão · Amore Gestão_');
+  var msg=L.join('\n'), n=0;
+  for(var i=0;i<ds.length;i++){
+    if(i>0)await sleep(2500+Math.random()*4500);
+    try{var r=await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:normFone(ds[i].fone),message:msg})});if(r.ok)n++}catch(e){}
+  }
+  if(n)fetch(SB+'/rest/v1/checklist_execucoes?id=eq.'+EXEC_ID,{method:'PATCH',headers:H,body:JSON.stringify({disparado_em:new Date().toISOString()})}).catch(function(){});
+}
+
+(async function(){
+  var app=document.getElementById('app');
+  if(!EXEC_ID){app.innerHTML='<div class="msg">Link inválido.</div>';return}
+  var ex=await jget('checklist_execucoes?id=eq.'+encodeURIComponent(EXEC_ID)+'&select=*');
+  if(!ex.length){app.innerHTML='<div class="msg">Checklist não encontrado.</div>';return}
+  exec=ex[0];
+  var md=exec.modelo_id?await jget('checklist_modelos?id=eq.'+exec.modelo_id+'&select=*'):[];
+  modelo=md[0]||null;itens=(modelo&&modelo.itens)||[];
+  dests=((modelo&&modelo.destinatarios)||[]).filter(function(d){return d.papel==='responsavel'});
+  (exec.respostas||[]).forEach(function(r){resp[r.item_id]=r});
+  DONE=exec.status==='concluido';
+  if(!itens.length&&!DONE){app.innerHTML='<div class="msg">Este checklist não tem itens (modelo removido).</div>';return}
+  render();
+})();
+</script>
+</body>
+</html>

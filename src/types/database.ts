@@ -1104,6 +1104,7 @@ export interface ChecklistExecucao {
   updated_at: string
   // Justificativa de atraso, alerta e arquivo (opcionais)
   justificativa_atraso?: string | null
+  observacao_geral?: string | null
   justificada_por?: string | null
   justificada_em?: string | null
   alerta_enviado_em?: string | null

@@ -56,7 +56,9 @@ async function enviarLista(lista, msgDe) {
   return ok
 }
 
-const link = '\n🔗 Abrir: https://painel.amorefood.com.br/?page=checklists'
+// Link direto (página pública mobile) do checklist DESTA loja/setor, já identificando o responsável
+const linkDe = (ex, d) => `\n🔗 Abrir e preencher pelo celular:\nhttps://painel.amorefood.com.br/checklist.html?id=${ex.id || 'SIMULACAO'}&r=${fone(d.fone)}`
+const linkPainel = '\n🔗 Painel: https://painel.amorefood.com.br/?page=checklists&aba=vista'
 
 async function main() {
   const [tenant, modelos, execHoje] = await Promise.all([
@@ -89,14 +91,14 @@ async function main() {
 
       // 1) hora de fazer (janela de 3h para não disparar coisa velha)
       if (!ex.alerta_enviado_em && tAlerta != null && NOW >= tAlerta && NOW - tAlerta <= 180) {
-        const n = await enviarLista(resp, d => `⏰ *Hora do checklist*\n\nOlá, ${String(d.nome || '').split(' ')[0] || 'tudo bem'}! Está na hora de fazer o checklist *${m.titulo}* (${m.setor}) da loja *${lj}*.${m.hora_limite ? `\nLimite: *${m.hora_limite}*.` : ''}\nLembre de tirar as fotos pelo painel (elas saem com horário e setor).${link}`)
+        const n = await enviarLista(resp, d => `⏰ *Hora do checklist*\n\nOlá, ${String(d.nome || '').split(' ')[0] || 'tudo bem'}! Está na hora de fazer o checklist *${m.titulo}* (${m.setor}) da loja *${lj}*.${m.hora_limite ? `\nLimite: *${m.hora_limite}*.` : ''}\nAs fotos saem com horário e setor.${linkDe(ex, d)}`)
         if (n) await marca({ alerta_enviado_em: new Date().toISOString() })
       }
 
       // 2) passou do limite sem concluir → cobra justificativa + avisa gestores
       if (!ex.atraso_alertado_em && tLimite != null && NOW > tLimite && NOW - tLimite <= 360) {
-        const n = await enviarLista(resp, d => `🚨 *Checklist atrasado*\n\n${String(d.nome || '').split(' ')[0] || 'Olá'}, o checklist *${m.titulo}* (${lj}) passou do limite das *${m.hora_limite}* e ainda não foi concluído.\n\nPor favor, *justifique o atraso* no painel e conclua o quanto antes.${link}`)
-        if (gest.length) await enviarLista(gest, d => `🚨 *Checklist atrasado — ${lj}*\n\n*${m.titulo}* (${m.setor}) passou do limite das ${m.hora_limite} e não foi concluído. Responsável(is): ${resp.map(r => r.nome).join(', ')}.${link}`)
+        const n = await enviarLista(resp, d => `🚨 *Checklist atrasado*\n\n${String(d.nome || '').split(' ')[0] || 'Olá'}, o checklist *${m.titulo}* (${lj}) passou do limite das *${m.hora_limite}* e ainda não foi concluído.\n\nPor favor, *justifique o atraso* pelo link e conclua o quanto antes.${linkDe(ex, d)}`)
+        if (gest.length) await enviarLista(gest, d => `🚨 *Checklist atrasado — ${lj}*\n\n*${m.titulo}* (${m.setor}) passou do limite das ${m.hora_limite} e não foi concluído. Responsável(is): ${resp.map(r => r.nome).join(', ')}.${linkPainel}`)
         if (n) await marca({ atraso_alertado_em: new Date().toISOString(), ...(ex.status === 'pendente' ? { status: 'atrasado' } : {}) })
       }
     }
