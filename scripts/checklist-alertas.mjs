@@ -38,6 +38,22 @@ const aplicaHoje = m => {
   if (m.recorrencia === 'mensal') return m.dia_mes === br.getUTCDate()
   return false
 }
+// Escala do cadastro (app_config.checklist_cadastro): atribuições por setor/loja/turno/dias
+function efetivos(m, loja, cad) {
+  const dow = br.getUTCDay()
+  const out = []
+  const add = (nome, f, papel) => { const n = fone(f); if (n && !out.some(o => o.fone === n && o.papel === papel)) out.push({ nome, fone: n, papel }) }
+  for (const d of (m.destinatarios || [])) add(d.nome, d.fone, d.papel)
+  for (const a of (cad.atribuicoes || [])) {
+    if (a.setor !== m.setor) continue
+    if (a.loja !== '*' && a.loja !== loja) continue
+    if (a.turno && a.turno !== 'qualquer' && m.turno && m.turno !== 'qualquer' && a.turno !== m.turno) continue
+    if (a.dias && a.dias.length && !a.dias.includes(dow)) continue
+    const pe = (cad.pessoas || []).find(x => x.id === a.pessoa_id)
+    if (pe) add(pe.nome, pe.fone, a.papel)
+  }
+  return out
+}
 const fone = f => { const d = String(f || '').replace(/\D/g, ''); return d.startsWith('55') ? d : (d.length >= 10 ? '55' + d : d) }
 
 async function enviar(dest, msg) {
@@ -61,22 +77,25 @@ const linkDe = (ex, d) => `\n🔗 Abrir e preencher pelo celular:\nhttps://paine
 const linkPainel = '\n🔗 Painel: https://painel.amorefood.com.br/?page=checklists&aba=vista'
 
 async function main() {
-  const [tenant, modelos, execHoje] = await Promise.all([
+  const [tenant, modelos, execHoje, cadRows] = await Promise.all([
     get('tenant_settings?slug=eq.default&select=stores'),
     get('checklist_modelos?ativo=eq.true&alertar=eq.true&select=*'),
     get(`checklist_execucoes?data=eq.${HOJE}&select=*`),
+    get('app_config?chave=eq.checklist_cadastro&select=valor'),
   ])
+  const cad = cadRows?.[0]?.valor || { pessoas: [], atribuicoes: [] }
   const lojas = (tenant?.[0]?.stores || []).filter(l => l && l !== 'Todas as Lojas')
   console.log(`${HOJE} ${HHMM} BRT · ${modelos.length} modelo(s) com alerta · ${SEND ? (TO ? 'TESTE → ' + TO : 'ENVIO REAL') : 'SIMULAÇÃO'}`)
 
   for (const m of modelos) {
     if (!aplicaHoje(m) || !m.hora_alerta) continue
-    const dest = (m.destinatarios || []).filter(d => d.fone)
-    const resp = dest.filter(d => d.papel === 'responsavel')
-    const gest = dest.filter(d => d.papel === 'gestor')
-    if (!resp.length) continue
 
     for (const lj of lojas.filter(l => m.loja == null || m.loja === l)) {
+      // quem faz / quem recebe = pessoas do modelo + escala do cadastro (setor, loja, turno, dia da semana)
+      const dest = efetivos(m, lj, cad)
+      const resp = dest.filter(d => d.papel === 'responsavel')
+      const gest = dest.filter(d => d.papel === 'gestor')
+      if (!resp.length) continue
       let ex = execHoje.find(e => e.modelo_id === m.id && e.loja === lj)
       if (!ex) {
         if (SEND && !TO) ex = (await post('checklist_execucoes', [{ modelo_id: m.id, loja: lj, titulo: m.titulo, setor: m.setor, data: HOJE, turno: m.turno, status: 'pendente', respostas: [], hora_limite: m.hora_limite, created_by: 'alerta' }]))?.[0]

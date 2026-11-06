@@ -47,6 +47,7 @@ var KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6In
 var H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
 var qs=new URLSearchParams(location.search);
 var EXEC_ID=qs.get('id'), R_PARAM=(qs.get('r')||'').replace(/\D/g,'');
+var cad={pessoas:[],atribuicoes:[]};
 var exec=null, modelo=null, itens=[], resp={}, dests=[], DONE=false, busy=false;
 var TNUM=['numero','temperatura','quantidade','peso','valor'];
 var UN={temperatura:'°C',peso:'kg',valor:'R$',quantidade:'un'};
@@ -242,8 +243,21 @@ async function abrirRnc(it,r,quem){
     return {id:nova.id,numero:nova.numero};
   }catch(e){return null}
 }
+// Quem faz / quem recebe = pessoas do modelo + escala do cadastro (setor, loja, turno, dia da semana)
+function efetivos(){
+  var out=[];function add(n,f,pp){f=normFone(f);if(!f)return;for(var i=0;i<out.length;i++)if(out[i].fone===f&&out[i].papel===pp)return;out.push({nome:n,fone:f,papel:pp})}
+  ((modelo&&modelo.destinatarios)||[]).forEach(function(d){add(d.nome,d.fone,d.papel)});
+  var dow=new Date(exec.data+'T12:00:00').getDay(), tm=modelo&&modelo.turno;
+  (cad.atribuicoes||[]).forEach(function(a){
+    if(a.setor!==exec.setor)return;if(a.loja!=='*'&&a.loja!==exec.loja)return;
+    if(a.turno&&a.turno!=='qualquer'&&tm&&tm!=='qualquer'&&a.turno!==tm)return;
+    if(a.dias&&a.dias.length&&a.dias.indexOf(dow)<0)return;
+    var pe=(cad.pessoas||[]).filter(function(x){return x.id===a.pessoa_id})[0];if(pe)add(pe.nome,pe.fone,a.papel);
+  });
+  return out;
+}
 async function disparar(lista,nNc){
-  var ds=(modelo&&modelo.destinatarios||[]).filter(function(d){return d.fone});if(!ds.length)return;
+  var ds=efetivos().filter(function(d,i,a){return a.findIndex(function(x){return x.fone===d.fone})===i});if(!ds.length)return;
   var okq=itens.filter(function(i){return itemOk(i,resp[i.id])}).length, fotos=lista.reduce(function(a,r){return a+fotosDe(r).length},0), sc=exec.score;
   var ic=sc==null?'⚪':sc>=90?'🟢':sc>=70?'🟡':'🔴';
   var L=['✅ *CHECKLIST FECHADO — '+exec.titulo+'*','🏪 '+exec.loja+' · '+(exec.setor||'Geral'),'📅 '+dataBR(exec.data)+' · 🕒 '+hora(exec.concluido_em),'👤 Responsável: *'+exec.responsavel_nome+'*',ic+' Score '+(sc==null?'—':sc)+'/100 · '+okq+'/'+itens.length+' itens OK'];
@@ -270,7 +284,8 @@ async function disparar(lista,nNc){
   exec=ex[0];
   var md=exec.modelo_id?await jget('checklist_modelos?id=eq.'+exec.modelo_id+'&select=*'):[];
   modelo=md[0]||null;itens=(modelo&&modelo.itens)||[];
-  dests=((modelo&&modelo.destinatarios)||[]).filter(function(d){return d.papel==='responsavel'});
+  var cc=await jget('app_config?chave=eq.checklist_cadastro&select=valor');if(cc[0]&&cc[0].valor)cad=cc[0].valor;
+  dests=efetivos().filter(function(d){return d.papel==='responsavel'}).filter(function(d,i,a){return a.findIndex(function(x){return x.fone===d.fone})===i});
   (exec.respostas||[]).forEach(function(r){resp[r.item_id]=r});
   DONE=exec.status==='concluido';
   if(!itens.length&&!DONE){app.innerHTML='<div class="msg">Este checklist não tem itens (modelo removido).</div>';return}

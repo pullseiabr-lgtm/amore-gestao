@@ -11,7 +11,7 @@ import Modal from '../../components/ui/Modal'
 import {
   fetchChecklistModelos, insertChecklistModelo, updateChecklistModelo, deleteChecklistModelo,
   fetchChecklistExecucoes, fetchChecklistExecucoesRange, insertChecklistExecucao, updateChecklistExecucao,
-  uploadAnexo, insertTarefa,
+  uploadAnexo, insertTarefa, fetchAppConfig, saveAppConfig, fetchProfiles,
 } from '../../lib/db'
 import { gerarItensIA, validarFotoIA } from '../../lib/checklistIa'
 import { enviarWhatsApp, getZapiCfg, carregarZapiCfgRemoto, normalizarFoneBR } from '../../lib/notify'
@@ -53,10 +53,52 @@ const unidadePadrao = (t: ChecklistItemTipo) =>
   t === 'temperatura' ? '°C' : t === 'peso' ? 'kg' : t === 'valor' ? 'R$' : t === 'quantidade' ? 'un' : ''
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 // Setores principais (fluxo setor → checklist → execução) + setores já existentes (retrocompatível)
-const SETORES_PRINC = ['Abertura de loja', 'Fechamento de loja', 'Checklist de estoque', 'Manutenção']
-const SETOR_ICO: Record<string, string> = { 'Abertura de loja': '🌅', 'Fechamento de loja': '🌃', 'Checklist de estoque': '📦', 'Manutenção': '🛠️' }
+const SETORES_PRINC = ['Abertura de loja', 'Fechamento de loja', 'Checklist operacional', 'Auditoria', 'Checklist de estoque', 'Manutenção']
+const SETORES_PADRAO = SETORES_PRINC
+const SETOR_ICO: Record<string, string> = { 'Abertura de loja': '🌅', 'Fechamento de loja': '🌃', 'Checklist operacional': '🧭', 'Auditoria': '🔍', 'Checklist de estoque': '📦', 'Manutenção': '🛠️' }
 const SETORES = [...SETORES_PRINC, 'Geral', 'Cozinha', 'Bar', 'Salão', 'Estoque', 'Limpeza', 'Produção', 'Caixa']
 const setorIco = (s: string | null | undefined) => SETOR_ICO[s || ''] || '🏷️'
+
+// ── Cadastro de setores, pessoas e escala (quem faz / quem recebe, por loja, turno e dia) ──
+interface CadPessoa { id: string; nome: string; fone: string }
+interface CadAtrib {
+  loja: string                       // '*' = todas as lojas
+  setor: string
+  pessoa_id: string
+  papel: 'responsavel' | 'gestor'    // responsável faz (recebe o alerta); gestor só recebe o checklist fechado
+  turno?: ChecklistTurno             // 'qualquer' (ou vazio) = todos os turnos
+  dias?: number[]                    // 0=dom..6=sáb; vazio = todos os dias
+}
+interface ChecklistCadastro { setores: string[]; pessoas: CadPessoa[]; atribuicoes: CadAtrib[] }
+const CAD_KEY = 'checklist_cadastro'
+const CAD_VAZIO: ChecklistCadastro = { setores: [], pessoas: [], atribuicoes: [] }
+const listaSetores = (cad: ChecklistCadastro): string[] => {
+  const out: string[] = []
+  for (const x of [...SETORES_PADRAO, ...(cad.setores || [])]) if (x && !out.some(o => o.toLowerCase() === x.toLowerCase())) out.push(x)
+  return out
+}
+// Quem faz / quem recebe: pessoas do modelo + escala do cadastro (setor + loja + turno + dia da semana do checklist)
+function destinatariosEfetivos(m: { setor?: string | null; turno?: string | null; destinatarios?: ChecklistDestinatario[] | null } | undefined, loja: string, dataISO: string, cad: ChecklistCadastro): ChecklistDestinatario[] {
+  const base = (m?.destinatarios || []).filter(d => d.fone)
+  const dow = new Date(dataISO + 'T12:00:00').getDay()
+  const extra: ChecklistDestinatario[] = []
+  for (const a of cad.atribuicoes || []) {
+    if (a.setor !== (m?.setor || '')) continue
+    if (a.loja !== '*' && a.loja !== loja) continue
+    if (a.turno && a.turno !== 'qualquer' && m?.turno && m.turno !== 'qualquer' && a.turno !== m.turno) continue
+    if (a.dias?.length && !a.dias.includes(dow)) continue
+    const pe = cad.pessoas.find(x => x.id === a.pessoa_id)
+    if (pe?.fone) extra.push({ nome: pe.nome, fone: pe.fone, papel: a.papel })
+  }
+  const out: ChecklistDestinatario[] = []
+  for (const d of [...base, ...extra]) {
+    const f = normalizarFoneBR(d.fone)
+    if (!out.some(o => normalizarFoneBR(o.fone) === f && o.papel === d.papel)) out.push({ ...d, fone: f })
+  }
+  return out
+}
+// Para disparo: cada telefone uma vez só
+const unicosPorFone = (l: ChecklistDestinatario[]) => l.filter((d, i) => l.findIndex(x => normalizarFoneBR(x.fone) === normalizarFoneBR(d.fone)) === i)
 
 // Data "de hoje" no fuso local (o toISOString puro virava o dia às 21h em Recife)
 const hoje = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10) }
@@ -262,10 +304,12 @@ export default function ChecklistsPage() {
   const { toast } = useToast()
   const podeEditar = !!isOwner || PAPEIS_EDITAM.includes(String(user?.role))
 
-  const [tab, setTab] = useState<'hoje' | 'vista' | 'painel' | 'nc' | 'modelos'>(() => {
+  const [tab, setTab] = useState<'hoje' | 'vista' | 'painel' | 'nc' | 'modelos' | 'cadastro'>(() => {
     const a = new URLSearchParams(window.location.search).get('aba')
-    return a === 'vista' || a === 'painel' || a === 'nc' || a === 'modelos' ? a : 'hoje'
+    return a === 'vista' || a === 'painel' || a === 'nc' || a === 'modelos' || a === 'cadastro' ? a : 'hoje'
   })
+  const [cad, setCad] = useState<ChecklistCadastro>(CAD_VAZIO)
+  const salvarCad = async (c: ChecklistCadastro) => { setCad(c); await saveAppConfig(CAD_KEY, c) }
   const [setorSel, setSetorSel] = useState<string>('todos')
   const [modelos, setModelos] = useState<ChecklistModelo[]>([])
   const [execucoes, setExecucoes] = useState<ChecklistExecucao[]>([])
@@ -279,12 +323,14 @@ export default function ChecklistsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [ms, es] = await Promise.all([
+      const [ms, es, cd] = await Promise.all([
         fetchChecklistModelos(loja),
         fetchChecklistExecucoes(loja, hoje()),
+        fetchAppConfig<ChecklistCadastro>(CAD_KEY),
       ])
       setModelos(ms)
       setExecucoes(es)
+      if (cd) setCad({ setores: cd.setores || [], pessoas: cd.pessoas || [], atribuicoes: cd.atribuicoes || [] })
     } finally { setLoading(false) }
   }, [loja])
 
@@ -378,7 +424,7 @@ export default function ChecklistsPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: 'var(--card)', borderRadius: 10, padding: 4 }}>
-        {([['hoje', '📋 Execução do dia'], ['vista', '📌 Gestão à Vista'], ['painel', '📊 Painel'], ['nc', '🚩 Não Conformidades'], ['modelos', '⚙️ Modelos']] as const).map(([id, lbl]) => (
+        {(([['hoje', '📋 Execução do dia'], ['vista', '📌 Gestão à Vista'], ['painel', '📊 Painel'], ['nc', '🚩 Não Conformidades'], ['modelos', '⚙️ Modelos'], ['cadastro', '👥 Cadastro']] as const).filter(([id]) => id !== 'cadastro' || podeEditar)).map(([id, lbl]) => (
           <button key={id} onClick={() => setTab(id)} style={{
             flex: 1, padding: '10px 8px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 13,
             fontWeight: tab === id ? 700 : 400,
@@ -432,7 +478,7 @@ export default function ChecklistsPage() {
                       {execucoes.filter(e => (e.setor || 'Geral') === st).map(e => (
                         <ExecucaoCard
                           key={e.id} exec={e} modelo={modeloDe(e.modelo_id)}
-                          onChange={load} toast={toast} user={user}
+                          onChange={load} toast={toast} user={user} cad={cad}
                         />
                       ))}
                     </div>
@@ -442,8 +488,10 @@ export default function ChecklistsPage() {
             </>
           )}
         </>
+      ) : tab === 'cadastro' && podeEditar ? (
+        <CadastroTab cad={cad} lojas={lojas} lojaAtiva={loja} onSave={salvarCad} toast={toast} />
       ) : tab === 'vista' ? (
-        <VistaTab loja={loja} modelos={modelos} toast={toast} />
+        <VistaTab loja={loja} modelos={modelos} cad={cad} toast={toast} />
       ) : tab === 'painel' ? (
         <PainelTab loja={loja} toast={toast} />
       ) : tab === 'nc' ? (
@@ -460,7 +508,7 @@ export default function ChecklistsPage() {
 
       {showModeloModal && (
         <ModeloModal
-          modelo={modeloEdit} loja={loja} userName={user?.name || null}
+          modelo={modeloEdit} loja={loja} userName={user?.name || null} cad={cad}
           onClose={() => setShowModeloModal(false)}
           onSaved={() => { setShowModeloModal(false); load() }}
           toast={toast}
@@ -561,7 +609,8 @@ function SignaturePad({ onSave, uploading }: { onSave: (blob: Blob) => void; upl
 }
 
 // ── Card de execução (preenchimento) ─────────────────────────
-function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
+function ExecucaoCard({ exec, modelo, onChange, toast, user, cad }: {
+  cad: ChecklistCadastro
   exec: ChecklistExecucao
   modelo?: ChecklistModelo
   onChange: () => void
@@ -742,7 +791,7 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
         } : {}),
       })
       // Disparo às pessoas cadastradas no modelo (sem destinatários = não envia nada)
-      const dest = (modelo?.destinatarios || []).filter(d => d.fone)
+      const dest = unicosPorFone(destinatariosEfetivos(modelo, exec.loja, exec.data, cad))
       let enviados = 0
       if (dest.length) {
         const execFinal: ChecklistExecucao = { ...exec, score, concluido_em: agora.toISOString(), responsavel_nome: responsavel.trim(),
@@ -1034,7 +1083,8 @@ function ExecucaoCard({ exec, modelo, onChange, toast, user }: {
 }
 
 // ── Aba Gestão à Vista (quadro do dia + arquivo dos checklists fechados) ─────
-function VistaTab({ loja, modelos, toast }: {
+function VistaTab({ loja, modelos, cad, toast }: {
+  cad: ChecklistCadastro
   loja: string
   modelos: ChecklistModelo[]
   toast: (m: string, t?: 'success' | 'error' | 'warning' | 'info') => void
@@ -1080,7 +1130,7 @@ function VistaTab({ loja, modelos, toast }: {
   }, [execs, setorF, busca])
 
   const reenviar = async (e: ChecklistExecucao) => {
-    const dest = (modeloDe(e.modelo_id)?.destinatarios || []).filter(d => d.fone)
+    const dest = unicosPorFone(destinatariosEfetivos(modeloDe(e.modelo_id) || { setor: e.setor, turno: e.turno }, e.loja, e.data, cad))
     if (!dest.length) { toast('Este modelo não tem pessoas cadastradas para receber (aba Modelos).', 'warning'); return }
     if (!confirm(`Reenviar este checklist no WhatsApp para ${dest.length} pessoa(s)?\n${dest.map(d => d.nome || d.fone).join(', ')}`)) return
     setEnviando(e.id)
@@ -1216,6 +1266,157 @@ function VistaTab({ loja, modelos, toast }: {
   )
 }
 
+// ── Aba Cadastro: setores + pessoas + quem faz / quem recebe em cada setor ──
+function CadastroTab({ cad, lojas, lojaAtiva, onSave, toast }: {
+  cad: ChecklistCadastro
+  lojas: string[]
+  lojaAtiva: string
+  onSave: (c: ChecklistCadastro) => Promise<void>
+  toast: (m: string, t?: 'success' | 'error' | 'warning' | 'info') => void
+}) {
+  const [novoSetor, setNovoSetor] = useState('')
+  const [nome, setNome] = useState('')
+  const [fone, setFone] = useState('')
+  const [lojaSel, setLojaSel] = useState<string>(lojaAtiva && lojaAtiva !== 'Todas as Lojas' ? lojaAtiva : '*')
+  const [importando, setImportando] = useState(false)
+  // Escala: ao adicionar uma pessoa a um setor, vale para este turno e estes dias da semana
+  const [turnoSel, setTurnoSel] = useState<ChecklistTurno>('qualquer')
+  const [diasSel, setDiasSel] = useState<number[]>([])
+  const setores = useMemo(() => listaSetores(cad), [cad])
+  const lojasOpts = lojas.filter(l => l && l !== 'Todas as Lojas')
+
+  const salvar = async (c: ChecklistCadastro, msg?: string) => { await onSave(c); if (msg) toast(msg, 'success') }
+
+  const addSetor = () => {
+    const n = novoSetor.trim()
+    if (!n) return
+    if (setores.some(s => s.toLowerCase() === n.toLowerCase())) { toast('Esse setor já existe.', 'info'); return }
+    salvar({ ...cad, setores: [...cad.setores, n] }, 'Setor cadastrado.'); setNovoSetor('')
+  }
+  const delSetor = (s: string) => {
+    if (SETORES_PADRAO.includes(s)) { toast('Setores padrão não podem ser removidos.', 'info'); return }
+    if (!confirm(`Remover o setor "${s}" do cadastro? (checklists já feitos continuam no arquivo)`)) return
+    salvar({ ...cad, setores: cad.setores.filter(x => x !== s), atribuicoes: cad.atribuicoes.filter(a => a.setor !== s) }, 'Setor removido.')
+  }
+  const addPessoa = () => {
+    const f = normalizarFoneBR(fone)
+    if (!nome.trim() || !f) { toast('Informe nome e WhatsApp.', 'warning'); return }
+    if (cad.pessoas.some(p => p.fone === f)) { toast('Já existe uma pessoa com esse WhatsApp.', 'info'); return }
+    salvar({ ...cad, pessoas: [...cad.pessoas, { id: crypto.randomUUID(), nome: nome.trim(), fone: f }] }, 'Pessoa cadastrada.'); setNome(''); setFone('')
+  }
+  const delPessoa = (p: CadPessoa) => {
+    if (!confirm(`Remover ${p.nome}? Ela deixa de receber/fazer checklists em todos os setores.`)) return
+    salvar({ ...cad, pessoas: cad.pessoas.filter(x => x.id !== p.id), atribuicoes: cad.atribuicoes.filter(a => a.pessoa_id !== p.id) }, 'Pessoa removida.')
+  }
+  const importar = async () => {
+    setImportando(true)
+    try {
+      const ps = await fetchProfiles()
+      const novas: CadPessoa[] = []
+      for (const pr of ps) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const f = normalizarFoneBR(((pr.permissions_override as any)?.__perfil__?.whatsapp) || '')
+        if (!pr.name?.trim() || !f || cad.pessoas.some(p => p.fone === f) || novas.some(p => p.fone === f)) continue
+        novas.push({ id: crypto.randomUUID(), nome: pr.name.trim(), fone: f })
+      }
+      if (!novas.length) { toast('Nenhum usuário novo com WhatsApp cadastrado.', 'info'); return }
+      await salvar({ ...cad, pessoas: [...cad.pessoas, ...novas] }, `${novas.length} pessoa(s) importada(s) dos usuários do painel.`)
+    } finally { setImportando(false) }
+  }
+  const atribs = (setor: string, papel: 'responsavel' | 'gestor') =>
+    cad.atribuicoes.filter(a => a.setor === setor && a.loja === lojaSel && a.papel === papel)
+  const addAtrib = (setor: string, papel: 'responsavel' | 'gestor', pessoaId: string) => {
+    if (!pessoaId) return
+    const chave = (a: CadAtrib) => `${a.setor}|${a.loja}|${a.papel}|${a.pessoa_id}|${a.turno || 'qualquer'}|${[...(a.dias || [])].sort().join(',')}`
+    const nova: CadAtrib = { loja: lojaSel, setor, pessoa_id: pessoaId, papel, turno: turnoSel, dias: [...diasSel].sort() }
+    if (cad.atribuicoes.some(a => chave(a) === chave(nova))) return
+    salvar({ ...cad, atribuicoes: [...cad.atribuicoes, nova] })
+  }
+  const delAtrib = (a: CadAtrib) =>
+    salvar({ ...cad, atribuicoes: cad.atribuicoes.filter(x => x !== a) })
+
+  const secao: React.CSSProperties = { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 14 }
+  const pNome = (id: string) => cad.pessoas.find(p => p.id === id)?.nome || '—'
+  const chip = (txt: string, onDel?: () => void) => (
+    <span key={txt} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 16, padding: '3px 8px', fontSize: 12 }}>
+      {txt}{onDel && <button onClick={onDel} style={{ border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1 }}>×</button>}
+    </span>
+  )
+
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+        Cadastre os setores/tipos de checklist (abertura, fechamento, operacional, auditoria…), as pessoas e defina, por loja, <b>quem faz</b> (recebe o alerta no horário) e <b>quem recebe</b> o checklist fechado. A mesma pessoa pode atuar em vários setores.
+      </div>
+
+      <div style={secao}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🏷️ Setores / tipos de checklist</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+          {setores.map(s => chip(`${setorIco(s)} ${s}`, SETORES_PADRAO.includes(s) ? undefined : () => delSetor(s)))}
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input value={novoSetor} onChange={e => setNovoSetor(e.target.value)} placeholder="Novo setor (ex.: Cozinha, Salão, Caixa…)" style={{ ...inp, flex: 1 }} onKeyDown={e => e.key === 'Enter' && addSetor()} />
+          <button onClick={addSetor} style={btnPrimary}><Plus size={14} /> Setor</button>
+        </div>
+      </div>
+
+      <div style={secao}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>👥 Pessoas ({cad.pessoas.length})</span>
+          <button onClick={importar} disabled={importando} style={btnGhost}>{importando ? <Loader2 className="spin" size={14} /> : <User size={14} />} Importar usuários do painel</button>
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+          <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome" style={{ ...inp, flex: 1, minWidth: 120 }} />
+          <input value={fone} onChange={e => setFone(e.target.value)} placeholder="WhatsApp (DDD+número)" style={{ ...inp, flex: 1, minWidth: 140 }} />
+          <button onClick={addPessoa} style={btnPrimary}><Plus size={14} /> Pessoa</button>
+        </div>
+        {cad.pessoas.length === 0
+          ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>Nenhuma pessoa cadastrada.</div>
+          : <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{cad.pessoas.map(p => chip(`${p.nome} · ${p.fone.replace(/^55/, '')}`, () => delPessoa(p)))}</div>}
+      </div>
+
+      <div style={secao}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>🧩 Quem faz e quem recebe, por setor</span>
+          <select value={lojaSel} onChange={e => setLojaSel(e.target.value)} style={{ ...inp, width: 'auto' }}>
+            <option value="*">Todas as lojas</option>
+            {lojasOpts.map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </div>
+        {cad.pessoas.length === 0 && <div style={{ fontSize: 12, color: '#b45309', marginBottom: 8 }}>Cadastre as pessoas acima para poder atribuí-las.</div>}
+        <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', marginBottom: 6 }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>⏱️ Escala — vale para quem você adicionar a seguir: turno e dias da semana (sem marcar dia = todos os dias)</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select value={turnoSel} onChange={e => setTurnoSel(e.target.value as ChecklistTurno)} style={{ ...inp, width: 'auto', fontSize: 12 }}>
+              {TURNOS.map(t => <option key={t.v} value={t.v}>{t.v === 'qualquer' ? '⏱️ Todos os turnos' : t.lbl}</option>)}
+            </select>
+            {DIAS.map((d, i) => (
+              <button key={i} type="button" onClick={() => setDiasSel(p => p.includes(i) ? p.filter(x => x !== i) : [...p, i])}
+                style={{ padding: '4px 9px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 12, cursor: 'pointer', background: diasSel.includes(i) ? 'var(--bordo)' : 'var(--card)', color: diasSel.includes(i) ? '#fff' : 'var(--text)' }}>{d}</button>
+            ))}
+          </div>
+        </div>
+        {setores.map(st => (
+          <div key={st} style={{ borderTop: '1px solid var(--border)', padding: '10px 0' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{setorIco(st)} {st}</div>
+            {(['responsavel', 'gestor'] as const).map(papel => (
+              <div key={papel} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: 'var(--muted)', width: 92 }}>{papel === 'responsavel' ? '✅ Quem faz' : '📥 Quem recebe'}</span>
+                {atribs(st, papel).map(a => chip(`${pNome(a.pessoa_id)}${a.turno && a.turno !== 'qualquer' ? ' · ' + turnoLbl(a.turno).replace(/^S+s/, '') : ''}${a.dias?.length ? ' · ' + a.dias.map(d => DIAS[d]).join(',') : ''}`, () => delAtrib(a)))}
+                <select value="" onChange={e => addAtrib(st, papel, e.target.value)} style={{ ...inp, width: 'auto', fontSize: 12, padding: '4px 8px' }}>
+                  <option value="">+ adicionar</option>
+                  {cad.pessoas.filter(p => !atribs(st, papel).some(a => a.pessoa_id === p.id)).map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        ))}
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>"Todas as lojas" vale para qualquer loja; a atribuição específica soma com ela. As pessoas cadastradas direto no modelo continuam valendo.</div>
+      </div>
+    </div>
+  )
+}
+
 // ── Aba Modelos ──────────────────────────────────────────────
 function ModelosTab({ modelos, podeEditar, userName, onNew, onEdit, onRun, onChange, toast }: {
   modelos: ChecklistModelo[]
@@ -1305,7 +1506,8 @@ function AuditoriaModelos() {
 }
 
 // ── Modal de criar/editar modelo ─────────────────────────────
-function ModeloModal({ modelo, loja, userName, onClose, onSaved, toast }: {
+function ModeloModal({ modelo, loja, userName, cad, onClose, onSaved, toast }: {
+  cad: ChecklistCadastro
   modelo: ChecklistModelo | null
   loja: string
   userName: string | null
@@ -1363,7 +1565,7 @@ function ModeloModal({ modelo, loja, userName, onClose, onSaved, toast }: {
     if (itensLimpos.length === 0) { toast('Adicione ao menos 1 item.', 'warning'); return }
     const destLimpos = destinatarios.map(d => ({ ...d, nome: d.nome.trim(), fone: normalizarFoneBR(d.fone) })).filter(d => d.fone)
     if (alertar && !horaAlerta) { toast('Informe o horário do alerta no WhatsApp.', 'warning'); return }
-    if (alertar && !destLimpos.some(d => d.papel === 'responsavel')) { toast('Cadastre ao menos 1 responsável para receber o alerta.', 'warning'); return }
+    if (alertar && !destLimpos.some(d => d.papel === 'responsavel') && !cad.atribuicoes.some(a => a.setor === setor && a.papel === 'responsavel')) { toast('Cadastre ao menos 1 responsável (aqui ou na aba Cadastro, para este setor) para receber o alerta.', 'warning'); return }
     setSalvando(true)
     try {
       const payload = {
@@ -1404,7 +1606,7 @@ function ModeloModal({ modelo, loja, userName, onClose, onSaved, toast }: {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <Field label="Setor">
             <select value={setor} onChange={e => setSetor(e.target.value)} style={inp}>
-              {SETORES.map(s => <option key={s} value={s}>{s}</option>)}
+              {[...new Set([...listaSetores(cad), ...SETORES, ...(modelo?.setor ? [modelo.setor] : [])])].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </Field>
           <Field label="Turno">
@@ -1475,9 +1677,18 @@ function ModeloModal({ modelo, loja, userName, onClose, onSaved, toast }: {
               <button type="button" onClick={() => setDestinatarios(p => p.filter((_, k) => k !== i))} style={{ ...iconBtn, color: '#ef4444' }}><X size={14} /></button>
             </div>
           ))}
-          <button type="button" onClick={() => setDestinatarios(p => [...p, { nome: '', fone: '', papel: 'responsavel' }])} style={{ ...btnGhost, padding: '6px 10px', fontSize: 12 }}>
-            <Plus size={13} /> Pessoa
-          </button>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => setDestinatarios(p => [...p, { nome: '', fone: '', papel: 'responsavel' }])} style={{ ...btnGhost, padding: '6px 10px', fontSize: 12 }}>
+              <Plus size={13} /> Pessoa
+            </button>
+            {cad.pessoas.length > 0 && (
+              <select value="" onChange={e => { const pe = cad.pessoas.find(x => x.id === e.target.value); if (pe) setDestinatarios(p => [...p, { nome: pe.nome, fone: pe.fone, papel: 'responsavel' }]) }} style={{ ...inp, width: 'auto', fontSize: 12 }}>
+                <option value="">+ do cadastro…</option>
+                {cad.pessoas.map(x => <option key={x.id} value={x.id}>{x.nome}</option>)}
+              </select>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>A escala por setor, loja, turno e dia fica na aba 👥 Cadastro e soma com as pessoas daqui.</div>
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>Ao fechar e salvar o checklist, todas as pessoas acima recebem o resumo no WhatsApp (intervalo aleatório entre envios). Sem ninguém cadastrado, nada é enviado.</div>
         </div>
 
