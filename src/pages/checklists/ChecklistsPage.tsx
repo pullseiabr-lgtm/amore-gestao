@@ -11,7 +11,7 @@ import Modal from '../../components/ui/Modal'
 import {
   fetchChecklistModelos, insertChecklistModelo, updateChecklistModelo, deleteChecklistModelo,
   fetchChecklistExecucoes, fetchChecklistExecucoesRange, insertChecklistExecucao, updateChecklistExecucao,
-  uploadAnexo, insertTarefa, fetchAppConfig, saveAppConfig, fetchProfiles,
+  uploadAnexo, insertTarefa, fetchAppConfig, fetchProfiles,
 } from '../../lib/db'
 import { gerarItensIA, validarFotoIA } from '../../lib/checklistIa'
 import { enviarWhatsApp, getZapiCfg, carregarZapiCfgRemoto, normalizarFoneBR } from '../../lib/notify'
@@ -309,7 +309,13 @@ export default function ChecklistsPage() {
     return a === 'vista' || a === 'painel' || a === 'nc' || a === 'modelos' || a === 'cadastro' ? a : 'hoje'
   })
   const [cad, setCad] = useState<ChecklistCadastro>(CAD_VAZIO)
-  const salvarCad = async (c: ChecklistCadastro) => { setCad(c); await saveAppConfig(CAD_KEY, c) }
+  const salvarCad = async (c: ChecklistCadastro) => {
+    const anterior = cad
+    setCad(c)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any).from('app_config').upsert({ chave: CAD_KEY, valor: c, updated_at: new Date().toISOString() }, { onConflict: 'chave' })
+    if (error) { setCad(anterior); toast('Não consegui salvar o cadastro: ' + (error.message || 'erro desconhecido'), 'error') }
+  }
   const [setorSel, setSetorSel] = useState<string>('todos')
   const [modelos, setModelos] = useState<ChecklistModelo[]>([])
   const [execucoes, setExecucoes] = useState<ChecklistExecucao[]>([])

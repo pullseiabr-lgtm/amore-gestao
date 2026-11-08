@@ -3,7 +3,7 @@ import { PackageCheck, Upload, ScanLine, Check, AlertTriangle, RefreshCw, Trash2
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../hooks/useToast'
 import { useAuth } from '../../contexts/AuthContext'
-import { fetchAppConfig, saveAppConfig, fetchProfiles, insertNotificacao } from '../../lib/db'
+import { fetchAppConfig, fetchProfiles, insertNotificacao } from '../../lib/db'
 import { enviarWhatsApp, normalizarFoneBR } from '../../lib/notify'
 
 const sb = supabase as any
@@ -93,7 +93,7 @@ export default function RecebimentoPage() {
   const [colabs, setColabs] = useState<any[]>([])
   // conferência humana
   // Avisos (WhatsApp) a gestor/administrador/comprador + observação ao comprador quando o recebimento vem incompleto
-  const [cfgAviso, setCfgAviso] = useState<CfgAviso>({ ativo: false, pessoas: [] })
+  const [cfgAviso, setCfgAviso] = useState<CfgAviso>({ ativo: true, pessoas: [] })
   const [cfgAberto, setCfgAberto] = useState(false)
   // Campo "Quem recebe as informações e a nota" deste recebimento: cadastrados (desmarcáveis) + pessoas extras
   const [destOff, setDestOff] = useState<string[]>([])            // fones (normalizados) desmarcados nesta nota
@@ -103,8 +103,14 @@ export default function RecebimentoPage() {
   const [exPapel, setExPapel] = useState<DestRec['papel']>('gestor')
   const [exSalvar, setExSalvar] = useState(false)
   const [obsCompradorTxt, setObsCompradorTxt] = useState<string | null>(null)   // null = texto automático
-  useEffect(() => { fetchAppConfig<CfgAviso>('recebimento_destinatarios').then(c => { if (c) setCfgAviso({ ativo: !!c.ativo, pessoas: c.pessoas || [] }) }) }, [])
-  const salvarCfgAviso = async (c: CfgAviso) => { setCfgAviso(c); await saveAppConfig('recebimento_destinatarios', c) }
+  useEffect(() => { fetchAppConfig<CfgAviso>('recebimento_destinatarios').then(c => { if (c) setCfgAviso({ ativo: c.ativo !== false, pessoas: c.pessoas || [] }) }) }, [])
+  const salvarCfgAviso = async (c: CfgAviso) => {
+    const anterior = cfgAviso
+    setCfgAviso(c)
+    const { error } = await sb.from('app_config').upsert({ chave: 'recebimento_destinatarios', valor: c, updated_at: new Date().toISOString() }, { onConflict: 'chave' })
+    if (error) { setCfgAviso(anterior); toast('Não consegui salvar os avisos: ' + (error.message || 'erro desconhecido'), 'error') }
+    else toast('Avisos salvos. ✅', 'success')
+  }
   const [conferente, setConferente] = useState('')
   const [assinatura, setAssinatura] = useState('')
   const [obsGeral, setObsGeral] = useState('')
@@ -583,7 +589,7 @@ export default function RecebimentoPage() {
             <div style={{ fontSize: 13, fontWeight: 700, color: '#6B1212' }}>📨 Quem recebe as informações e a nota após o recebimento</div>
             <div style={{ fontSize: 11.5, color: '#6b7280', margin: '3px 0 8px' }}>
               Ao confirmar, estas pessoas recebem o resumo do recebimento + o link da nota fiscal{analise.pedido?.criado_por ? ` (o comprador ${analise.pedido.criado_por} do pedido recebe junto)` : ''}.
-              {!cfgAviso.ativo && <b style={{ color: '#B45309' }}> O envio por WhatsApp está desligado — {podeAprovar ? 'ative em "Avisos do recebimento" no topo.' : 'peça a um gestor para ativar.'} A notificação no painel funciona.</b>}
+              {!cfgAviso.ativo && <b style={{ color: '#B45309' }}> O envio por WhatsApp está desligado — {podeAprovar ? 'ligue em "Avisos do recebimento" no topo.' : 'peça a um gestor para ligar.'} A notificação no painel funciona.</b>}
             </div>
             {cfgAviso.pessoas.length === 0 && destExtras.length === 0 && <div style={{ fontSize: 12, color: '#9ca3af' }}>Nenhuma pessoa cadastrada ainda. Adicione abaixo.</div>}
             {cfgAviso.pessoas.map((d, i) => { const f = normalizarFoneBR(d.fone); const off = destOff.includes(f); return (
@@ -700,8 +706,10 @@ function AvisosCfg({ cfg, onSave, toast }: { cfg: CfgAviso; onSave: (c: CfgAviso
   const enviarTeste = async () => {
     const f = normalizarFoneBR(teste)
     if (!f) { toast('Digite o seu WhatsApp para o teste.', 'warning'); return }
+    setBusy(true)
     const ok = await enviarWhatsApp(f, '📦 *TESTE — Aviso de Recebimento*\n\nÉ assim que gestores, administradores e o comprador vão receber a confirmação (com o link da nota fiscal).\n_Recebimento Inteligente · Amore Gestão_')
-    toast(ok ? 'Teste enviado. ✅' : 'Falha ao enviar o teste.', ok ? 'success' : 'error')
+    setBusy(false)
+    toast(ok ? 'Teste enviado para ' + f.replace(/^55/, '') + '. ✅ Confira o WhatsApp desse número.' : 'Falha ao enviar o teste para ' + f + '. Confira o número (com DDD) e se o WhatsApp do painel está conectado.', ok ? 'success' : 'error')
   }
   const box: React.CSSProperties = { marginTop: 8, padding: 12, border: '1px solid #e5e7eb', borderRadius: 10, background: '#fafafa' }
   return (
@@ -728,7 +736,7 @@ function AvisosCfg({ cfg, onSave, toast }: { cfg: CfgAviso; onSave: (c: CfgAviso
       </div>
       <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
         <input style={{ ...inp, maxWidth: 220 }} placeholder="Seu WhatsApp p/ teste" value={teste} onChange={e => setTeste(e.target.value)} />
-        <button onClick={enviarTeste} style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5 }}>Enviar teste só para mim</button>
+        <button onClick={enviarTeste} disabled={busy} style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5 }}>Enviar teste só para mim</button>
       </div>
     </div>
   )
