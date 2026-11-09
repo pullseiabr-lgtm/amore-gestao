@@ -24,12 +24,14 @@ const GRAVIDADES = [
 ]
 const TRATATIVAS = ['Recebimento integral', 'Recebimento parcial', 'Recebimento com ressalva', 'Produto segregado', 'Produto devolvido', 'Pedido recusado', 'Substituição solicitada', 'Complemento solicitado', 'Crédito/abatimento solicitado', 'Aguardando fornecedor']
 const STATUS: { id: string; label: string; emoji: string; cor: string }[] = [
-  { id: 'aberta', label: 'Aberta', emoji: '🔴', cor: '#dc2626' },
+  { id: 'aberta', label: 'Aberta (identificada)', emoji: '🔴', cor: '#dc2626' },
   { id: 'em_analise', label: 'Em análise', emoji: '🟠', cor: '#ea580c' },
+  { id: 'aguardando_execucao', label: 'Aguardando execução', emoji: '🟣', cor: '#7c3aed' },
   { id: 'aguardando_fornecedor', label: 'Aguardando fornecedor', emoji: '🟡', cor: '#ca8a04' },
-  { id: 'em_tratativa', label: 'Em tratativa', emoji: '🔵', cor: '#2563eb' },
-  { id: 'resolvida', label: 'Resolvida', emoji: '🟢', cor: '#16a34a' },
-  { id: 'encerrada', label: 'Encerrada', emoji: '⚫', cor: '#374151' },
+  { id: 'em_tratativa', label: 'Em tratativa (execução)', emoji: '🔵', cor: '#2563eb' },
+  { id: 'resolvida', label: 'Resolvida (aguardando validação)', emoji: '🟢', cor: '#16a34a' },
+  { id: 'reincidente', label: 'Reincidente', emoji: '🟥', cor: '#991b1b' },
+  { id: 'encerrada', label: 'Encerrada (concluída)', emoji: '⚫', cor: '#374151' },
 ]
 const EVID_TIPOS = ['Foto do produto', 'Foto da embalagem', 'Foto da etiqueta/lote', 'Nota Fiscal', 'Pedido de Compra', 'Documento complementar']
 const AREAS = ['Compras', 'Recebimento', 'Estoque', 'Cozinha', 'Salão', 'Atendimento', 'Gerência', 'Manutenção', 'Produção', 'Financeiro', 'Administrativo', 'Operação', 'Qualidade', 'Diretoria', 'Geral']
@@ -278,6 +280,87 @@ const contar = (rs: any[], key: (r: any) => string | string[] | null | undefined
 }
 
 // ══════════════════════════════════════════════════════════════
+// INDICADORES DE OPERAÇÃO — RNCs abertas na operação (restaurante) e pelos checklists
+// ══════════════════════════════════════════════════════════════
+function PainelOperacao({ rncs, lojas, onOpen }: { rncs: any[]; lojas: string[]; onOpen: (id: string) => void }) {
+  const ops = useMemo(() => rncs.filter(r => r.origem === 'operacao' || r.origem === 'checklist'), [rncs])
+  const ehReinc = (r: any) => r.status === 'reincidente' || !!r.reincidente_de || (r.tipos || []).includes('Reincidência')
+  const k = useMemo(() => {
+    const abertas = ops.filter(r => r.status !== 'encerrada')
+    const enc = ops.filter(r => r.status === 'encerrada')
+    const comPrazo = enc.filter(r => r.prazo && r.encerrado_em)
+    const noPrazo = comPrazo.filter(r => String(r.encerrado_em).slice(0, 10) <= String(r.prazo).slice(0, 10)).length
+    const tempos = enc.filter(r => r.encerrado_em).map(r => (new Date(r.encerrado_em).getTime() - new Date(r.created_at).getTime()) / 86400000)
+    return {
+      total: ops.length, abertas: abertas.length, atraso: abertas.filter(r => diasAtraso(r) > 0).length, concluidas: enc.length,
+      reinc: ops.filter(ehReinc).length, indReinc: ops.length ? Math.round(ops.filter(ehReinc).length / ops.length * 100) : 0,
+      pctPrazo: comPrazo.length ? Math.round(noPrazo / comPrazo.length * 100) : null,
+      tmedio: tempos.length ? tempos.reduce((a, b) => a + b, 0) / tempos.length : null,
+    }
+  }, [ops])
+  const lojasOk = lojas.filter(l => l && l !== 'Todas as Lojas')
+  const porLoja = lojasOk.map(l => { const x = ops.filter(r => r.loja === l); return { nome: l, total: x.length, abertas: x.filter(r => r.status !== 'encerrada').length, atraso: x.filter(r => diasAtraso(r) > 0).length, concl: x.filter(r => r.status === 'encerrada').length } })
+  const pendentes = useMemo(() => {
+    const m: Record<string, { abertas: number; atraso: number }> = {}
+    for (const r of ops) { if (r.status === 'encerrada' || !r.responsavel) continue; const o = m[r.responsavel] || (m[r.responsavel] = { abertas: 0, atraso: 0 }); o.abertas++; if (diasAtraso(r) > 0) o.atraso++ }
+    return Object.entries(m).sort((a, b) => b[1].atraso - a[1].atraso || b[1].abertas - a[1].abertas).slice(0, 8)
+  }, [ops])
+  const porMes = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const r of ops) { const key = String(r.created_at).slice(0, 7); m[key] = (m[key] || 0) + 1 }
+    return Object.entries(m).sort((a, b) => a[0].localeCompare(b[0])).slice(-6).map(([key, value]) => ({ label: key.slice(5) + '/' + key.slice(0, 4), value }))
+  }, [ops])
+  const causas = useMemo(() => {
+    const comCausa = contar(ops, r => (r.causa_raiz || '').trim() ? (r.causa_raiz as string).trim().slice(0, 40) : null)
+    return comCausa.length ? comCausa : contar(ops, r => (r.tipos || []).filter((t: string) => t !== 'Operação' && t !== 'Reincidência' && t !== 'Desvio de checklist'))
+  }, [ops])
+  const kpi = (lbl: string, val: string | number, cor: string, sub?: string) => (
+    <div style={{ ...card, borderLeft: `4px solid ${cor}` }}><div style={{ fontSize: 11, color: 'var(--muted)' }}>{lbl}</div><div style={{ fontSize: 24, fontWeight: 800, color: cor }}>{val}</div>{sub && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{sub}</div>}</div>
+  )
+  if (!ops.length) return <div style={{ ...card, textAlign: 'center', color: 'var(--muted)' }}>Nenhuma RNC de operação registrada ainda. Use o botão <b>🚩 RNC de Operação</b> (ou os desvios dos checklists) para começar a gerar os indicadores.</div>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+        {kpi('RNC abertas', k.abertas, '#dc2626', 'de ' + k.total + ' no total')}
+        {kpi('Em atraso', k.atraso, '#b91c1c')}
+        {kpi('Concluídas', k.concluidas, '#16a34a')}
+        {kpi('Reincidentes', k.reinc, '#991b1b', 'índice ' + k.indReinc + '%')}
+        {kpi('Resolvidas no prazo', k.pctPrazo == null ? '—' : k.pctPrazo + '%', '#2563eb')}
+        {kpi('Tempo médio de resolução', k.tmedio == null ? '—' : k.tmedio.toFixed(1) + ' d', '#7c3aed')}
+      </div>
+      <div style={{ ...card, overflowX: 'auto' }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>🏪 RNC por loja</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <thead><tr style={{ color: 'var(--muted)', textAlign: 'left' }}>{['Loja', 'Total', 'Abertas', 'Em atraso', 'Concluídas'].map(h => <th key={h} style={{ padding: '4px 6px' }}>{h}</th>)}</tr></thead>
+          <tbody>{porLoja.map(l => <tr key={l.nome} style={{ borderTop: '1px solid var(--border)' }}><td style={{ padding: '5px 6px', fontWeight: 600 }}>{l.nome}</td><td>{l.total}</td><td>{l.abertas}</td><td style={{ color: l.atraso ? '#dc2626' : undefined, fontWeight: l.atraso ? 700 : 400 }}>{l.atraso}</td><td>{l.concl}</td></tr>)}</tbody>
+        </table>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+        <BarList titulo="Por setor" itens={contar(ops, r => r.setor || '—', 8)} />
+        <BarList titulo="Por categoria" itens={contar(ops, r => r.categoria || '—', 8)} cor="#2563eb" />
+        <BarList titulo="Principais causas / ocorrências" itens={causas} cor="#ea580c" />
+        <BarList titulo="Evolução mensal" itens={porMes} cor="#7c3aed" />
+      </div>
+      <div style={card}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>👤 Responsáveis com tarefas pendentes</div>
+        {pendentes.length === 0 ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>Ninguém com pendência. 🎉</div> : pendentes.map(([nome, v]) => (
+          <div key={nome} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '4px 0', borderTop: '1px solid var(--border)' }}><span>{nome}</span><span>{v.abertas} aberta(s){v.atraso ? <b style={{ color: '#dc2626' }}> · {v.atraso} em atraso</b> : ''}</span></div>
+        ))}
+      </div>
+      <div style={card}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>🔁 Reincidências e RNCs críticas em aberto</div>
+        {ops.filter(r => r.status !== 'encerrada' && (ehReinc(r) || r.gravidade === 'critica')).length === 0 ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>Nenhuma.</div> :
+          ops.filter(r => r.status !== 'encerrada' && (ehReinc(r) || r.gravidade === 'critica')).slice(0, 10).map(r => (
+            <div key={r.id} onClick={() => onOpen(r.id)} style={{ cursor: 'pointer', fontSize: 12.5, padding: '4px 0', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ color: 'var(--bordo)' }}>{r.numero} · {r.titulo || r.categoria} · {r.loja}</span><span>{ehReinc(r) ? '🟥 reincidente ' : ''}{r.gravidade === 'critica' ? '🔴 crítica' : ''}</span>
+            </div>
+          ))}
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
 // RNC INTERNA — visão dentro da Central de Tarefas
 // ══════════════════════════════════════════════════════════════
 export default function RncView({ initialId }: { initialId?: string | null }) {
@@ -291,7 +374,7 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
   const [showNova, setShowNova] = useState(false)
   const [showOp, setShowOp] = useState(false)
   const [showGraf, setShowGraf] = useState(true)
-  const [vista, setVista] = useState<'painel' | 'banco'>('painel')
+  const [vista, setVista] = useState<'painel' | 'banco' | 'operacao'>('painel')
   const [f, setF] = useState({ origem: '', unidade: '', fornecedor: '', status: '', responsavel: '', categoria: '', tipo: '', de: '', ate: '', atrasadas: false, comDevolucao: false, busca: '' })
   const setFiltro = (patch: Partial<typeof f>) => setF(o => ({ ...o, ...patch }))
 
@@ -369,6 +452,8 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
   const selecionada = rncs.find(r => r.id === selId) || null
   const kpis = [
     { lbl: 'RNCs abertas', val: cnt('aberta'), emoji: '🔴', cor: '#dc2626', on: () => setF(o => ({ ...o, status: 'aberta' })) },
+    { lbl: 'Aguardando execução', val: cnt('aguardando_execucao'), emoji: '🟣', cor: '#7c3aed', on: () => setF(o => ({ ...o, status: 'aguardando_execucao' })) },
+    { lbl: 'Reincidentes', val: cnt('reincidente'), emoji: '🟥', cor: '#991b1b', on: () => setF(o => ({ ...o, status: 'reincidente' })) },
     { lbl: 'Em análise', val: cnt('em_analise'), emoji: '🟠', cor: '#ea580c', on: () => setF(o => ({ ...o, status: 'em_analise' })) },
     { lbl: 'Aguardando fornecedor', val: cnt('aguardando_fornecedor'), emoji: '🟡', cor: '#ca8a04', on: () => setF(o => ({ ...o, status: 'aguardando_fornecedor' })) },
     { lbl: 'Em tratativa', val: cnt('em_tratativa'), emoji: '🔵', cor: '#2563eb', on: () => setF(o => ({ ...o, status: 'em_tratativa' })) },
@@ -393,10 +478,11 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
       </div>
 
       <div style={{ display: 'flex', gap: 6 }}>
-        {([['painel', '📋 Painel de RNCs'], ['banco', '🗄️ Banco de dados (respondidas)']] as const).map(([id, nome]) => (
+        {([['painel', '📋 Painel de RNCs'], ['operacao', '🚩 Indicadores de Operação'], ['banco', '🗄️ Banco de dados (respondidas)']] as const).map(([id, nome]) => (
           <button key={id} onClick={() => setVista(id)} style={{ padding: '7px 14px', borderRadius: 20, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', border: '1px solid var(--bordo)', background: vista === id ? 'var(--bordo)' : 'transparent', color: vista === id ? '#fff' : 'var(--bordo)' }}>{nome}</button>
         ))}
       </div>
+      {vista === 'operacao' && <PainelOperacao rncs={rncs} lojas={lojas} onOpen={(id: string) => setSelId(id)} />}
       {vista === 'banco' && <BancoRnc rncs={rncs} loading={loading} onOpen={(id: string) => setSelId(id)} />}
       {vista === 'painel' && <>
       {/* Indicadores clicáveis */}

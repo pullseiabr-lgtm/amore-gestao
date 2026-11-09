@@ -10,12 +10,28 @@ const hoje = (() => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getT
 const dias = d => Math.round((new Date(String(d).slice(0, 10) + 'T00:00:00') - new Date(hoje + 'T00:00:00')) / 86400000);
 const link = id => 'https://painel.amorefood.com.br/?page=tarefas&rnc=' + id;
 (async () => {
-  const rncs = await j('rnc?status=neq.encerrada&select=id,numero,fornecedor,produto,responsavel,aberto_por,prazo,status,ciencia_em');
+  const soOp = process.argv.includes('--op');   // --op: só RNCs de operação (rodada da manhã)
+  const rncs = await j('rnc?status=neq.encerrada&select=id,numero,fornecedor,produto,responsavel,aberto_por,prazo,status,ciencia_em,origem,titulo,categoria,loja,gravidade,validador' + (soOp ? '&origem=eq.operacao' : ''));
   if (!Array.isArray(rncs)) { console.log('erro', JSON.stringify(rncs)); return; }
   const profiles = await j('profiles?select=name,permissions_override');
   const fone = n => { const p = profiles.find(x => (x.name || '').trim().toLowerCase() === (n || '').trim().toLowerCase()); return ((p && p.permissions_override && p.permissions_override.__perfil__ && p.permissions_override.__perfil__.whatsapp) || '').replace(/\D/g, ''); };
   const fila = [];
   for (const r of rncs) {
+    // RNC de OPERAÇÃO: prazo definido pela gravidade na abertura (sem ciência de 4 dias úteis). Vencida → responsável + gestão (validador/quem abriu)
+    if (r.origem === 'operacao') {
+      const gestao = r.validador || r.aberto_por, desc = (r.titulo || r.categoria || '') + ' · ' + (r.loja || '');
+      if (r.status === 'resolvida' || r.status === 'aguardando_validacao') { if (gestao) fila.push([gestao, `🔵 *${r.numero}* aguarda a sua validação para encerramento.\n${desc}\n\n${link(r.id)}`]); continue; }
+      if (!r.prazo) continue;
+      const d = dias(r.prazo);
+      if (r.responsavel && d === 1) fila.push([r.responsavel, `⚠️ *${r.numero}* vence amanhã.\n${desc}\n\n${link(r.id)}`]);
+      else if (r.responsavel && d === 0) fila.push([r.responsavel, `⚠️ *${r.numero}* vence hoje.\n${desc}\n\n${link(r.id)}`]);
+      else if (d < 0) {
+        const crit = r.gravidade === 'critica' ? '🚨 CRÍTICA — ' : '';
+        if (r.responsavel) fila.push([r.responsavel, `🔴 ${crit}*${r.numero}* está em atraso há ${-d} dia(s).\n${desc}\n\n${link(r.id)}`]);
+        if (gestao && gestao !== r.responsavel) fila.push([gestao, `🔴 ${crit}*${r.numero}* VENCIDA há ${-d} dia(s) — responsável: ${r.responsavel || '—'}.\n${desc}\n\n${link(r.id)}`]);
+      }
+      continue;
+    }
     if (r.status === 'resolvida') { if (r.aberto_por) fila.push([r.aberto_por, `🔵 *${r.numero}* aguarda sua validação para encerramento.\n${r.fornecedor || ''} · ${r.produto || ''}\n\n${link(r.id)}`]); continue; }
     if (!r.ciencia_em && r.responsavel) { fila.push([r.responsavel, `👁️ *${r.numero}* aguarda a sua ciência — o prazo de 4 dias úteis só começa a contar depois dela.
 ${r.fornecedor || ''} · ${r.produto || ''}

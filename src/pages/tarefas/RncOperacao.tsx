@@ -100,7 +100,7 @@ export function NovaRncOperacao({ profiles, lojas, lojaAtual, userName, notifica
     try {
       const nomeResp = responsavel
       const { data: nova, error } = await sb.from('rnc').insert({
-        origem: 'operacao', loja, setor, categoria, tipos: ['Operação', ...ocorr, ...(reinc ? ['Reincidência'] : [])], gravidade, status: 'aberta',
+        origem: 'operacao', loja, setor, categoria, tipos: ['Operação', ...ocorr, ...(reinc ? ['Reincidência'] : [])], gravidade, status: reinc ? 'reincidente' : 'aberta',
         titulo: titulo.trim(), desvio_txt: desc.trim(), tratativa_obs: contencao.trim() || null, acao_imediata: contencao.trim() || null,
         acao_corretiva: acao.trim() || null, responsavel: nomeResp, responsavel_area: setor, prazo, aberto_por: userName, validador: validador || null,
         reincidente_de: reinc || null, produto: null,
