@@ -5,6 +5,7 @@ import { useToast } from '../../hooks/useToast'
 import { useAuth } from '../../contexts/AuthContext'
 import { fetchAppConfig, fetchProfiles, insertNotificacao } from '../../lib/db'
 import { enviarWhatsApp, normalizarFoneBR } from '../../lib/notify'
+import { NovaRnc } from '../tarefas/RncView'
 
 const sb = supabase as any
 const SB_URL = 'https://xdwnsqkzgopymufsuccr.supabase.co'
@@ -110,6 +111,16 @@ export default function RecebimentoPage() {
     const { error } = await sb.from('app_config').upsert({ chave: 'recebimento_destinatarios', valor: c, updated_at: new Date().toISOString() }, { onConflict: 'chave' })
     if (error) { setCfgAviso(anterior); toast('Não consegui salvar os avisos: ' + (error.message || 'erro desconhecido'), 'error') }
     else toast('Avisos salvos. ✅', 'success')
+  }
+  // RNC aberta de dentro do recebimento (mesmo formulário da RNC de Recebimento, já preenchido; direcionada por WhatsApp ao responsável)
+  const [rncAberta, setRncAberta] = useState<{ prefill: Record<string, unknown>; evidUrls: { tipo: string; url: string; descricao?: string }[] } | null>(null)
+  const [profilesRnc, setProfilesRnc] = useState<any[]>([])
+  useEffect(() => { if (rncAberta && !profilesRnc.length) fetchProfiles().then(setProfilesRnc).catch(() => {}) }, [rncAberta]) // eslint-disable-line react-hooks/exhaustive-deps
+  const notificarRnc = async (nome: string, msg: string, titulo: string, refId: string) => {
+    const pr = profilesRnc.find(x => (x.name || '').trim().toLowerCase() === (nome || '').trim().toLowerCase())
+    const phone = String(((pr?.permissions_override as any)?.__perfil__?.whatsapp) || '').replace(/\D/g, '')
+    if (!phone) return false
+    return enviarWhatsApp(phone, msg, undefined, { tipo: 'compra', modulo: 'rnc', titulo, destinatario_nome: nome, referencia_id: refId, created_by: user?.name } as any)
   }
   const [conferente, setConferente] = useState('')
   const [assinatura, setAssinatura] = useState('')
@@ -258,6 +269,23 @@ export default function RecebimentoPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pedidoSel, pedidoItens, itens, cab, somaItens, totalNota, pedidosAbertos])
   const obsComprador = obsCompradorTxt ?? analise.obsAuto
+  const abrirRnc = (idx?: number) => {
+    const it = idx != null ? itens[idx] : null
+    const d = it ? difItem(it) : null
+    const base: Record<string, unknown> = {
+      loja, setor: 'Recebimento', fornecedor: cab?.fornecedor || '', nf_numero: cab?.numero_nota || '', nf_data: cab?.data_emissao || '',
+      data_recebimento: new Date().toISOString().slice(0, 10), recebedor: conferente || user?.name || '',
+      pedido_id: pedidoSel || null, pedido_numero: analise.pedido?.numero || '',
+    }
+    if (it) Object.assign(base, {
+      produto: it.produto || '', unidade: it.unidade || '', qtd_solicitada: String(it.quantidade ?? ''), qtd_recebida: String(it.recebido ?? ''), valor_produto: String(it.valor_total ?? ''),
+      solicitado_txt: (it.quantidade ?? '') + ' ' + (it.unidade || '') + ' — ' + (it.produto || ''),
+      recebido_txt: it.recebido !== '' && it.recebido != null ? it.recebido + ' ' + (it.unidade || '') + ' — ' + (it.produto || '') : '',
+      desvio_txt: d && d.has && !d.ok ? 'Faturado ' + it.quantidade + ' ' + (it.unidade || '') + ', recebido ' + it.recebido + ' (diferença ' + d.delta + ').' : '',
+    })
+    else if (analise.incompleto) base.desvio_txt = analise.obsAuto
+    setRncAberta({ prefill: base, evidUrls: anexo?.url ? [{ tipo: 'Nota Fiscal', url: anexo.url, descricao: 'NF ' + (cab?.numero_nota || '') + ' — ' + (cab?.fornecedor || '') }] : [] })
+  }
 
   // Aviso pós-recebimento: Central de Notificações (sempre que incompleto) + WhatsApp (se ativado) a comprador, gestor e administrador, com o link da nota
   const avisarRecebimento = async (ctx: { recId: string; loja: string; fornecedor: string; nf: string; total: number; conferente: string; nItens: number; nEstoque: number; status: string; pedidoNum: string | null; compradorNome: string | null; incompleto: boolean; obs: string; anexoUrl: string; desmarcados: string[]; extras: DestRec[] }) => {
@@ -391,6 +419,8 @@ export default function RecebimentoPage() {
 
   return (
     <div style={{ padding: '1rem 0' }}>
+      {rncAberta && <NovaRnc profiles={profilesRnc} lojas={LOJAS} lojaAtual={loja} userName={user?.name || 'Usuário'} notificar={notificarRnc} prefill={rncAberta.prefill} evidUrls={rncAberta.evidUrls}
+        onClose={() => setRncAberta(null)} onSaved={() => { setRncAberta(null); toast('RNC aberta e direcionada ao responsável por WhatsApp. ✅') }} />}
       {/* passo 1 */}
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><PackageCheck size={20} style={{ color: '#6B1212' }} /><b style={{ fontSize: 15 }}>Recebimento Inteligente de Mercadorias</b></div>
@@ -489,7 +519,7 @@ export default function RecebimentoPage() {
               {itens.map((it, i) => { const pu = precoUnit(it); const cf = it.confianca; const temD = desvios[i]?.tipo; const retido = itemRetido(i); return (
                 <>
                 <tr key={i} style={{ borderTop: '1px solid #f3f4f6', background: retido ? '#FEF2F2' : undefined }}>
-                  <td style={{ padding: 4, minWidth: 170 }}><input style={inp} value={it.produto || ''} onChange={e => upItem(i, 'produto', e.target.value)} />{(it._conferir || it._corrigido) && <div style={{ fontSize: 10.5, color: '#B45309', marginTop: 2 }}>⚠️ {it._corrigido ? `corrigido: ${it._corrigido}` : (it._conferir as any[]).map((c: any) => `${c.campo}: outra IA leu ${c.outra_ia}`).join(' · ')}</div>}</td>
+                  <td style={{ padding: 4, minWidth: 170 }}><input style={inp} value={it.produto || ''} onChange={e => upItem(i, 'produto', e.target.value)} /><button type="button" onClick={() => abrirRnc(i)} title="Abrir RNC para este item" style={{ border: 'none', background: 'none', color: '#b91c1c', cursor: 'pointer', fontSize: 11, padding: '2px 0', textDecoration: 'underline' }}>🚩 abrir RNC deste item</button>{(it._conferir || it._corrigido) && <div style={{ fontSize: 10.5, color: '#B45309', marginTop: 2 }}>⚠️ {it._corrigido ? `corrigido: ${it._corrigido}` : (it._conferir as any[]).map((c: any) => `${c.campo}: outra IA leu ${c.outra_ia}`).join(' · ')}</div>}</td>
                   <td style={{ width: 60 }}><input style={inp} type="number" step="0.01" value={it.quantidade ?? ''} onChange={e => upItem(i, 'quantidade', e.target.value)} /></td>
                   <td style={{ width: 62 }}><input style={{ ...inp, ...(difItem(it).has && !difItem(it).ok ? { borderColor: '#F59E0B', background: '#FFFBEB' } : {}) }} type="number" step="0.01" value={it.recebido ?? ''} onChange={e => upRecebido(i, e.target.value)} title="Quantidade efetivamente recebida" /></td>
                   <td style={{ width: 60, textAlign: 'center', fontWeight: 700 }}>{(() => { const d = difItem(it); if (!d.has) return <span style={{ color: '#9ca3af' }}>—</span>; if (d.ok) return <span style={{ color: '#1D9E75' }}>✓</span>; return <span style={{ color: d.delta! < 0 ? '#DC2626' : '#D97706', fontSize: 11 }}>⚠ {d.delta! > 0 ? '+' : ''}{d.delta}</span> })()}</td>
@@ -573,6 +603,7 @@ export default function RecebimentoPage() {
             <div style={{ fontSize: 13, fontWeight: 700, color: analise.incompleto ? '#92400E' : '#166534' }}>
               {analise.incompleto ? '⚠️ Recebimento INCOMPLETO — o comprador será notificado ao confirmar' : '✅ Recebimento completo — nada faltando' + (pedidoSel ? ' em relação ao pedido' : '')}
             </div>
+            <button onClick={() => abrirRnc()} style={{ marginTop: 8, border: '1px solid #b91c1c', background: '#fff', color: '#b91c1c', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 700 }}>🚩 Abrir RNC deste recebimento (direciona ao responsável por WhatsApp)</button>
             {!pedidoSel && <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 3 }}>Dica: vincule a nota a um pedido de compra (🔗 acima) para conferir item a item o que foi pedido × o que veio.</div>}
             {analise.incompleto && (
               <>

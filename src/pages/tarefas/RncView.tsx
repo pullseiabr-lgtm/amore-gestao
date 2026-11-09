@@ -8,6 +8,7 @@ import { fetchProfiles, insertTarefa, uploadAnexo } from '../../lib/db'
 import { enviarWhatsApp } from '../../lib/notify'
 import { siteOrigin } from '../../lib/site'
 import { AnexoUploader, AnexoLinks } from '../../components/ui/AnexoUploader'
+import { NovaRncOperacao } from './RncOperacao'
 
 // Tabelas rnc / rnc_evidencias / rnc_historico ainda não estão em types/database.ts → cliente destipado
 const sb = supabase as any
@@ -288,9 +289,10 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
   const [profiles, setProfiles] = useState<any[]>([])
   const [selId, setSelId] = useState<string | null>(initialId || null)
   const [showNova, setShowNova] = useState(false)
+  const [showOp, setShowOp] = useState(false)
   const [showGraf, setShowGraf] = useState(true)
   const [vista, setVista] = useState<'painel' | 'banco'>('painel')
-  const [f, setF] = useState({ unidade: '', fornecedor: '', status: '', responsavel: '', categoria: '', tipo: '', de: '', ate: '', atrasadas: false, comDevolucao: false, busca: '' })
+  const [f, setF] = useState({ origem: '', unidade: '', fornecedor: '', status: '', responsavel: '', categoria: '', tipo: '', de: '', ate: '', atrasadas: false, comDevolucao: false, busca: '' })
   const setFiltro = (patch: Partial<typeof f>) => setF(o => ({ ...o, ...patch }))
 
   useEffect(() => { fetchProfiles().then(setProfiles).catch(() => {}) }, [])
@@ -317,6 +319,9 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
 
   // ── Filtro da lista ──
   const filtradas = useMemo(() => rncs.filter(r => {
+    if (f.origem === 'operacao' && r.origem !== 'operacao') return false
+    if (f.origem === 'checklist' && r.origem !== 'checklist') return false
+    if (f.origem === 'recebimento' && r.origem) return false
     if (f.unidade && r.loja !== f.unidade) return false
     if (f.fornecedor && r.fornecedor !== f.fornecedor) return false
     if (f.status && r.status !== f.status) return false
@@ -381,7 +386,10 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
           <div style={{ fontSize: 17, fontWeight: 800 }}>RNC Internas</div>
           <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Controle de não conformidades, tratativas e devoluções.</div>
         </div>
-        <button onClick={() => setShowNova(true)} style={{ ...btn(), display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', fontSize: 13 }}><Plus size={14} /> Abrir nova RNC</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={() => setShowOp(true)} style={{ ...btn('#b91c1c'), display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', fontSize: 13 }}><Plus size={14} /> 🚩 RNC de Operação</button>
+          <button onClick={() => setShowNova(true)} style={{ ...btn(), display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', fontSize: 13 }}><Plus size={14} /> 📦 RNC de Recebimento</button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 6 }}>
@@ -450,6 +458,7 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
       {/* Filtros */}
       <div style={{ ...card, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, alignItems: 'end' }}>
         <div><label style={lbl}>Busca</label><input style={inp} value={f.busca} onChange={e => setFiltro({ busca: e.target.value })} placeholder="RNC, PC, NF, produto, lote…" /></div>
+        <div><label style={lbl}>Origem</label><select style={inp} value={f.origem} onChange={e => setFiltro({ origem: e.target.value })}><option value="">Todas</option><option value="operacao">🚩 Operação</option><option value="recebimento">📦 Recebimento</option><option value="checklist">✅ Checklist</option></select></div>
         <div><label style={lbl}>Unidade</label><select style={inp} value={f.unidade} onChange={e => setFiltro({ unidade: e.target.value })}><option value="">Todas</option>{lojas.filter(l => l && l !== 'Todas as Lojas').map(l => <option key={l}>{l}</option>)}</select></div>
         <div><label style={lbl}>Fornecedor</label><select style={inp} value={f.fornecedor} onChange={e => setFiltro({ fornecedor: e.target.value })}><option value="">Todos</option>{Array.from(new Set(rncs.map(r => r.fornecedor).filter(Boolean))).sort().map((x: any) => <option key={x}>{x}</option>)}</select></div>
         <div><label style={lbl}>Status</label><select style={inp} value={f.status} onChange={e => setFiltro({ status: e.target.value })}><option value="">Todos</option>{STATUS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></div>
@@ -461,7 +470,7 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
         <label style={{ fontSize: 12, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.atrasadas} onChange={e => setFiltro({ atrasadas: e.target.checked })} /> Atrasadas</label>
         <label style={{ fontSize: 12, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.comDevolucao} onChange={e => setFiltro({ comDevolucao: e.target.checked })} /> Com devolução</label>
         {(filtroAtivo || f.unidade || f.fornecedor || f.responsavel || f.categoria || f.tipo || f.de || f.ate || f.busca) && (
-          <button onClick={() => setF({ unidade: '', fornecedor: '', status: '', responsavel: '', categoria: '', tipo: '', de: '', ate: '', atrasadas: false, comDevolucao: false, busca: '' })} style={btn('#6b7280')}>Limpar filtros</button>
+          <button onClick={() => setF({ origem: '', unidade: '', fornecedor: '', status: '', responsavel: '', categoria: '', tipo: '', de: '', ate: '', atrasadas: false, comDevolucao: false, busca: '' })} style={btn('#6b7280')}>Limpar filtros</button>
         )}
       </div>
 
@@ -478,8 +487,8 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
                 return (
                   <tr key={r.id} onClick={() => setSelId(r.id)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
                     <td style={{ padding: '8px 10px', fontWeight: 700, color: 'var(--bordo)', whiteSpace: 'nowrap' }}>{r.numero}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{fmtD(r.created_at)}</td><td>{r.loja}</td><td>{r.fornecedor || '—'}</td><td>{r.pedido_numero || '—'}</td><td>{r.nf_numero || '—'}</td>
-                    <td>{r.produto || '—'}</td><td>{r.lote || '—'}</td><td>{r.categoria || (r.tipos || [])[0] || '—'}</td><td>{r.responsavel || '—'}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{fmtD(r.created_at)}</td><td>{r.loja}</td><td>{r.fornecedor || (r.origem === 'operacao' ? '🚩 Operação' : r.origem === 'checklist' ? '✅ Checklist' : '—')}</td><td>{r.pedido_numero || '—'}</td><td>{r.nf_numero || '—'}</td>
+                    <td>{r.produto || r.titulo || '—'}</td><td>{r.lote || '—'}</td><td>{r.categoria || (r.tipos || [])[0] || '—'}</td><td>{r.responsavel || '—'}</td>
                     <td style={{ whiteSpace: 'nowrap', color: at ? '#dc2626' : undefined, fontWeight: at ? 700 : 400 }}>{fmtD(r.prazo)}{at ? ` ⏰${at}d` : ''}</td>
                     <td style={{ whiteSpace: 'nowrap' }}><span style={{ background: st.cor + '18', color: st.cor, borderRadius: 20, padding: '2px 9px', fontSize: 11.5, fontWeight: 700 }}>{st.emoji} {st.label}</span></td>
                   </tr>
@@ -493,6 +502,8 @@ export default function RncView({ initialId }: { initialId?: string | null }) {
 
       </>}
 
+      {showOp && <NovaRncOperacao profiles={profiles} lojas={lojas} lojaAtual={loja} userName={userName} notificar={notificar}
+        onClose={() => setShowOp(false)} onSaved={(id: string, enviou: boolean, nome: string) => { setShowOp(false); load(); setSelId(id); window.alert(enviou ? 'RNC aberta e enviada no WhatsApp para ' + nome + '. ✅' : 'RNC aberta. Não consegui enviar o WhatsApp para ' + nome + ' (sem número cadastrado?).') }} />}
       {showNova && <NovaRnc profiles={profiles} responsaveis={responsaveis} lojas={lojas} lojaAtual={loja} userName={userName} notificar={notificar}
         onClose={() => setShowNova(false)} onSaved={(id: string) => { setShowNova(false); load(); setSelId(id) }} />}
       {selecionada && <RncDetalhe r={selecionada} profiles={profiles} responsaveis={responsaveis} userName={userName} notificar={notificar} onClose={() => setSelId(null)} onChanged={load} />}
@@ -558,7 +569,7 @@ function BancoRnc({ rncs, loading, onOpen }: { rncs: any[]; loading: boolean; on
 // ══════════════════════════════════════════════════════════════
 // NOVA RNC
 // ══════════════════════════════════════════════════════════════
-function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onSaved }: any) {
+export function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onSaved, prefill, evidUrls }: any) {
   const lojasOk: string[] = lojas.filter((l: string) => l && l !== 'Todas as Lojas')
   const [f, setF] = useState<any>({
     loja: lojaAtual && lojaAtual !== 'Todas as Lojas' ? lojaAtual : (lojasOk[0] || ''), setor: 'Recebimento', centro_custo: '', tipos: [] as string[],
@@ -568,6 +579,13 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
   })
   const [pcSnap, setPcSnap] = useState<any>(null)
   const set = (k: string, v: any) => setF((o: any) => ({ ...o, [k]: v }))
+  // Aberta de dentro do Recebimento Inteligente: já vem com fornecedor, NF, pedido e item preenchidos
+  useEffect(() => {
+    if (!prefill) return
+    setF((o: any) => ({ ...o, ...prefill }))
+    if (prefill.pedido_id) escolherPC({ id: prefill.pedido_id, numero: prefill.pedido_numero, fornecedor: prefill.fornecedor }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const toggle = (k: string, v: string) => setF((o: any) => ({ ...o, [k]: o[k].includes(v) ? o[k].filter((x: string) => x !== v) : [...o[k], v] }))
   const [busca, setBusca] = useState(''); const [achados, setAchados] = useState<any[]>([]); const [itens, setItens] = useState<any[]>([])
   const [buscando, setBuscando] = useState(false); const [semAchado, setSemAchado] = useState(false)
@@ -644,6 +662,9 @@ function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClose, onS
           await sb.from('rnc_evidencias').insert({ rnc_id: nova.id, tipo: ev.tipo, arquivo_url: url, descricao: ev.descricao || null, usuario: userName })
           await log('Evidência anexada', `${ev.tipo}${ev.descricao ? ' — ' + ev.descricao : ''}`)
         } catch (e) { console.error(e) }
+      }
+      for (const ev of (evidUrls || [])) {
+        try { await sb.from('rnc_evidencias').insert({ rnc_id: nova.id, tipo: ev.tipo, arquivo_url: ev.url, descricao: ev.descricao || null, usuario: userName }); await log('Evidência anexada', `${ev.tipo}${ev.descricao ? ' — ' + ev.descricao : ''}`) } catch (e) { console.error(e) }
       }
       const linkR = `${siteOrigin()}/?page=tarefas&rnc=${nova.id}`
       const corpo = `${nova.numero} · ${f.loja}\nSetor: ${f.responsavel_area}\nPC: ${f.pedido_numero || '—'}\nFornecedor: ${f.fornecedor || '—'}${pcSnap?.data_entrega ? `\nEntrega: ${fmtD(pcSnap.data_entrega)}` : ''}${f.recebedor ? `\nRecebido por: ${f.recebedor}` : ''}\nProduto: ${f.produto || '—'}${f.nf_numero ? `\nNF: ${f.nf_numero}` : ''}${f.lote ? `\nLote: ${f.lote}` : ''}\nDesvio: ${f.desvio_txt.trim()}\nGravidade: ${gravInfo(f.gravidade).emoji} ${gravInfo(f.gravidade).label}\nPrazo: ${PRAZO_DIAS_UTEIS} dias úteis após sua ciência\nAberta por: ${userName}`
@@ -898,7 +919,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
   const semCiencia = !r.ciencia_em && r.status !== 'encerrada'
   const darCiencia = async () => {
     const agora = new Date()
-    const prazoNovo = addDiasUteis(agora, PRAZO_DIAS_UTEIS)
+    const prazoNovo = r.origem === 'operacao' && r.prazo ? String(r.prazo).slice(0, 10) : addDiasUteis(agora, PRAZO_DIAS_UTEIS)
     await salvar({ ciencia_por: userName, ciencia_em: agora.toISOString(), prazo: prazoNovo, ...(r.status === 'aberta' ? { status: 'em_analise' } : {}) },
       'Ciência registrada', async () => { await log('Prazo de tratativa definido', `${PRAZO_DIAS_UTEIS} dias úteis após a ciência → ${fmtD(prazoNovo)}`) })
     if (r.aberto_por && r.aberto_por !== userName) await notificar(r.aberto_por, `👁️ *Ciência da ${r.numero}*\n${userName} tomou ciência e tem até ${fmtD(prazoNovo)} (${PRAZO_DIAS_UTEIS} dias úteis) para tratar.\n\n${link}\n_Amore Gestão_`, `RNC ${r.numero}`, r.id)
