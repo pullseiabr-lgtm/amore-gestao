@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Estimativa de Crédito — Amore</title>
+<style>
+:root{--brand:#6B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--crit:#DC2626;--shadow:0 1px 2px rgba(80,20,25,.05),0 8px 24px -14px rgba(80,20,25,.25)}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.45;font-variant-numeric:tabular-nums}
+.wrap{max-width:1000px;margin:0 auto;padding:18px 16px 60px}
+header.top{border-bottom:2px solid var(--brand);padding-bottom:12px;margin-bottom:14px}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--brand);font-weight:800}
+h1{font-size:22px;margin:6px 0 2px}.sub{color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:10px;margin:14px 0}
+.k{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow)}
+.k .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.k .v{font-size:22px;font-weight:800;margin-top:2px}.k .s{font-size:12px;color:var(--muted);margin-top:2px}
+.k.total{border-color:var(--brand);background:linear-gradient(180deg,var(--card),rgba(107,18,18,.05))}
+.box{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin:10px 0;font-size:13px;box-shadow:var(--shadow)}
+.box.warn{border-color:#fcd34d;background:#fffbeb;color:#78350f}
+@media(prefers-color-scheme:dark){.box.warn{background:#2a2108;color:#fde68a}}
+h2{font-size:16px;margin:24px 0 6px;color:var(--brand)}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+input[type=search]{flex:1;min-width:180px;padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--text);font:inherit}
+.btn{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:9px;padding:8px 12px;font:inherit;font-size:13px;cursor:pointer}
+.btn.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:720px}
+th,td{padding:7px 9px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+th{background:rgba(107,18,18,.07);color:var(--brand);font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;position:sticky;top:0}
+td.n,th.n{text-align:right;white-space:nowrap}
+tr.cf td:first-child{box-shadow:inset 3px 0 0 #f59e0b}
+.pill{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:99px}
+.p-alta{background:#dcfce7;color:#166534}.p-media{background:#fef3c7;color:#92400e}.p-baixa{background:#fee2e2;color:#991b1b}.p-real{background:#dbeafe;color:#1e40af}
+.mut{color:var(--muted);font-size:11.5px}
+.foot{margin-top:26px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:12px}
+.msg{text-align:center;padding:60px 20px;color:var(--muted)}
+@media print{.bar,.np{display:none}.tw{overflow:visible}body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Carregando estimativa…</div></div>
+<script>
+var SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+var KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+var ID=new URLSearchParams(location.search).get('id'), D=null, filtro='', soConferir={};
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function brl(n){return (Number(n)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+function dt(s){return s?String(s).slice(0,10).split('-').reverse().join('/'):'—'}
+function pill(c){return '<span class="pill p-'+(c==='média'?'media':c)+'">'+c+'</span>'}
+function norm(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')}
+function render(){
+  var m=D.margem||0.1, app=document.getElementById('app');
+  var tot=0,lo=0,hi=0,sem=0,itens=0;D.reqs.forEach(function(r){tot+=r.total_estimado;lo+=r.total_baixo;hi+=r.total_alto;sem+=r.sem_preco;itens+=r.itens});
+  var h='<header class="top"><div class="eyebrow">Amore · Financeiro · Créditos</div><h1>Estimativa de crédito para as compras</h1><div class="sub">Gerada em '+new Date(D.gerado_em).toLocaleString('pt-BR')+' · preço médio do histórico de compras de cada item × quantidade pedida</div></header>';
+  h+='<div class="grid">';
+  D.reqs.forEach(function(r){h+='<div class="k"><div class="l">'+esc(r.rotulo)+'</div><div class="v">'+brl(r.total_estimado)+'</div><div class="s">Crédito sugerido (+'+Math.round(m*100)+'%): <b>'+brl(r.total_estimado*(1+m))+'</b></div><div class="s">faixa '+brl(r.total_baixo)+' – '+brl(r.total_alto)+'</div><div class="s">'+r.com_preco+' de '+r.itens+' itens com preço'+(r.sem_preco?' · <b style="color:var(--warn)">'+r.sem_preco+' sem histórico</b>':'')+'</div></div>'});
+  h+='<div class="k total"><div class="l">Total das 4 requisições</div><div class="v">'+brl(tot)+'</div><div class="s">Crédito sugerido (+'+Math.round(m*100)+'%): <b>'+brl(tot*(1+m))+'</b></div><div class="s">faixa '+brl(lo)+' – '+brl(hi)+'</div><div class="s">'+itens+' itens · '+sem+' sem histórico de preço</div></div></div>';
+  h+='<div class="box warn"><b>Como ler:</b> o valor é uma <b>estimativa</b>. Para cada item usei a média dos preços já pagos (pedidos de compra, notas/caixas, cadastro de estoque e requisições anteriores, priorizando os últimos 150 dias e a mesma unidade do pedido). Itens marcados com <b>⚠️ conferir</b> têm poucas amostras, unidade diferente (pacote/caixa/fardo), variação grande de preço ou valor alto — vale confirmar antes de liberar o crédito. Itens <b>sem histórico</b> não entram no total: some o que for necessário à parte. Pedidos em g/ml foram convertidos para kg/L.</div>';
+  D.reqs.forEach(function(r,ri){
+    h+='<h2>'+esc(r.rotulo)+' — '+esc(r.titulo||'')+'</h2>';
+    h+='<div class="bar"><input type="search" placeholder="Buscar item…" oninput="filtro=this.value;draw('+ri+')" value=""><button class="btn" id="cf'+ri+'" onclick="soConferir['+ri+']=!soConferir['+ri+'];draw('+ri+')">⚠️ só os para conferir</button></div>';
+    h+='<div class="tw" id="t'+ri+'"></div>';
+  });
+  h+='<div class="foot">Amore Gestão · Estimativa baseada em histórico de compras. Não substitui cotação: use o crédito sugerido como teto de referência e ajuste na liberação. <a href="#" class="np" onclick="window.print();return false">Imprimir / salvar PDF</a></div>';
+  app.innerHTML=h; D.reqs.forEach(function(r,ri){draw(ri)});
+}
+function draw(ri){
+  var r=D.reqs[ri], q=norm(document.querySelectorAll('input[type=search]')[ri]?document.querySelectorAll('input[type=search]')[ri].value:'');
+  var b=document.getElementById('cf'+ri);if(b)b.className='btn'+(soConferir[ri]?' on':'');
+  var com=r.linhas.filter(function(l){return l.preco>0}), sem=r.linhas.filter(function(l){return !(l.preco>0)});
+  var rows=com.filter(function(l){return (!q||norm(l.produto).indexOf(q)>=0)&&(!soConferir[ri]||l.conferir)}).sort(function(a,b){return b.valor-a.valor});
+  var h='<table><thead><tr><th>Item</th><th class="n">Qtd</th><th class="n">Preço médio</th><th class="n">Mín – Máx</th><th>Última compra</th><th class="n">Amostras</th><th class="n">Valor estimado</th></tr></thead><tbody>';
+  rows.forEach(function(l){
+    var e=l.est, real=l.comprado;
+    h+='<tr class="'+(l.conferir?'cf':'')+'"><td>'+esc(l.produto)+(l.conferir?' <span class="mut" title="poucas amostras, unidade diferente, preço variável ou valor alto">⚠️ conferir</span>':'')+'<div class="mut">'+esc(l.categoria)+(e&&e.parecido&&e.similaridade<0.9?' · parecido com: '+esc(e.parecido):'')+'</div></td>';
+    h+='<td class="n">'+l.qtd+' '+esc(l.unidade)+(l.qtd_base!==l.qtd&&l.un_base?'<div class="mut">= '+l.qtd_base+' '+esc(l.un_base)+'</div>':'')+'</td>';
+    if(real){h+='<td class="n">'+brl(real.preco)+'<div><span class="pill p-real">já comprado</span></div></td><td class="n mut">—</td><td class="mut">'+esc(real.fornecedor||'')+(real.pedido?' · pedido '+esc(real.pedido):'')+'</td><td class="n mut">—</td>'}
+    else{h+='<td class="n">'+brl(e.media)+'<div>'+pill(e.conf)+'</div></td><td class="n mut">'+(e.minimo===e.maximo?'—':brl(e.minimo)+' – '+brl(e.maximo))+'</td><td class="mut">'+brl(e.ultimo)+' · '+dt(e.ultimo_em)+'<div>'+esc(e.ultimo_fonte)+'</div></td><td class="n">'+e.amostras+'</td>'}
+    h+='<td class="n"><b>'+brl(l.valor)+'</b></td></tr>';
+  });
+  if(!rows.length)h+='<tr><td colspan="7" class="mut" style="text-align:center;padding:18px">Nenhum item neste filtro.</td></tr>';
+  h+='<tr><td colspan="6" class="n"><b>Total estimado ('+com.length+' itens com preço)</b></td><td class="n"><b>'+brl(r.total_estimado)+'</b></td></tr>';
+  if(sem.length&&!soConferir[ri])h+='<tr><td colspan="7" class="mut"><b>Sem histórico de preço ('+sem.length+') — fora do total:</b> '+sem.map(function(l){return esc(l.produto)+' ('+l.qtd+' '+esc(l.unidade)+')'}).join(' · ')+'</td></tr>';
+  h+='</tbody></table>';
+  document.getElementById('t'+ri).innerHTML=h;
+}
+(async function(){
+  var app=document.getElementById('app');
+  if(!ID){app.innerHTML='<div class="msg">Link inválido.</div>';return}
+  try{
+    var r=await fetch(SB+'/rest/v1/app_config?chave=eq.'+encodeURIComponent('estimativa_credito_'+ID)+'&select=valor',{headers:{apikey:KEY,Authorization:'Bearer '+KEY}});
+    var j=await r.json();
+    if(!j.length){app.innerHTML='<div class="msg">Estimativa não encontrada.</div>';return}
+    D=j[0].valor;render();
+  }catch(e){app.innerHTML='<div class="msg">Não foi possível carregar a estimativa.</div>'}
+})();
+</script>
+</body>
+</html>
