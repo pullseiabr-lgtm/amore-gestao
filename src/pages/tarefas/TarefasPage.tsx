@@ -1764,7 +1764,7 @@ export default function TarefasPage() {
               </div>
 
               {/* Anexos */}
-              <AnexoUploader value={form.anexos} onChange={v => setForm(f => ({ ...f, anexos: v || '' }))} pasta="tarefas" />
+              <AnexoUploader value={form.anexos} onChange={v => setForm(f => ({ ...f, anexos: v || '' }))} pasta="tarefas" max={10} />
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
@@ -2031,7 +2031,7 @@ export default function TarefasPage() {
                     placeholder="Descrição do serviço/produto" style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
                   <input value={orcEntry.fornecedor} onChange={e => setOrcEntry(f => ({ ...f, fornecedor: e.target.value }))}
                     placeholder="Fornecedor (se houver)" style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
-                  <AnexoUploader value={orcEntry.anexos} onChange={v => setOrcEntry(f => ({ ...f, anexos: v || '' }))} pasta="tarefas" label="📎 Orçamento / documento" />
+                  <AnexoUploader value={orcEntry.anexos} onChange={v => setOrcEntry(f => ({ ...f, anexos: v || '' }))} pasta="tarefas" max={10} label="📎 Orçamento / documento" />
                   <input value={orcEntry.obs} onChange={e => setOrcEntry(f => ({ ...f, obs: e.target.value }))}
                     placeholder="Observação (opcional)" style={{ padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13 }} />
                   <button onClick={() => enviarOrcamento(detalhe)} disabled={detalheSaving}
@@ -2669,7 +2669,7 @@ export default function TarefasPage() {
               </label>
               <textarea value={transObs} onChange={e => setTransObs(e.target.value)} rows={3} placeholder={HINT[transicao.novoStatus] || 'Observação'}
                 style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: 13, resize: 'vertical', marginBottom: 10 }} />
-              <AnexoUploader value={transAnexos} onChange={v => setTransAnexos(v || '')} pasta="tarefas" label="📎 Evidência (foto, orçamento, NF, documento…)" />
+              <AnexoUploader value={transAnexos} onChange={v => setTransAnexos(v || '')} pasta="tarefas" max={10} label="📎 Evidência (foto, orçamento, NF, documento…)" />
               <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8 }}>
                 📲 O solicitante <strong>{transicao.tarefa.solicitante_nome || '—'}</strong> será notificado da atualização.
               </div>

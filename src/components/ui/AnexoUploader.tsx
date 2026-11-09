@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { uploadAnexo } from '../../lib/db'
 
+const contar = (v: string | null) => (v || '').split(/\n+/).map(s => s.trim()).filter(Boolean).length
+
 // Botão de upload (foto/PDF do celular) + lista editável de links.
 // Reutilizável em Atas, Tarefas, OS, Pipeline, etc.
 // Os arquivos vão para o bucket "anexos" do Supabase Storage e o link público
@@ -10,20 +12,29 @@ export function AnexoUploader({
   onChange,
   pasta = 'geral',
   label = '📎 Anexos',
+  max,
 }: {
   value: string | null
   onChange: (v: string | null) => void
   pasta?: string
   label?: string
+  max?: number   // limite de arquivos (conta os links já existentes)
 }) {
   const [enviando, setEnviando] = useState(false)
 
   const handle = async (files: FileList | null) => {
     if (!files || files.length === 0) return
+    let lista = Array.from(files)
+    if (max) {
+      const atual = contar(value)
+      const vagas = Math.max(0, max - atual)
+      if (lista.length > vagas) { alert(vagas === 0 ? `Limite de ${max} arquivos atingido. Remova algum para enviar outro.` : `Limite de ${max} arquivos: só ${vagas} vaga(s) restante(s). Os primeiros ${vagas} serão enviados.`); lista = lista.slice(0, vagas) }
+      if (!lista.length) return
+    }
     setEnviando(true)
     try {
       const urls: string[] = []
-      for (const f of Array.from(files)) {
+      for (const f of lista) {
         try { urls.push(await uploadAnexo(f, pasta)) }
         catch (e) { alert('Falha ao enviar ' + f.name + ': ' + (e as Error).message) }
       }
@@ -35,7 +46,7 @@ export function AnexoUploader({
     <div>
       {label && <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>{label}</label>}
       <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px', borderRadius: 8, border: '1px dashed var(--bordo)', background: 'var(--bg)', cursor: enviando ? 'wait' : 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--bordo)', marginBottom: 6 }}>
-        {enviando ? '⏳ Enviando…' : '📤 Enviar arquivo / foto (do celular)'}
+        {enviando ? '⏳ Enviando…' : '📤 Enviar arquivo / foto (do celular)' + (max ? ` — ${contar(value)}/${max}` : '')}
         <input type="file" accept="image/*,application/pdf" multiple capture="environment" disabled={enviando}
           onChange={e => handle(e.target.files)} style={{ display: 'none' }} />
       </label>
