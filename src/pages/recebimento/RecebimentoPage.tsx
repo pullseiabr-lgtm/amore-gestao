@@ -6,12 +6,14 @@ import { useAuth } from '../../contexts/AuthContext'
 import { fetchAppConfig, fetchProfiles, insertNotificacao } from '../../lib/db'
 import { enviarWhatsApp, normalizarFoneBR } from '../../lib/notify'
 import { NovaRnc } from '../tarefas/RncView'
+import { useLoja } from '../../contexts/LojaContext'
+import RecebimentoHistorico, { subirDocumentoRecebimento, TIPOS_DOC } from './RecebimentoHistorico'
 
 const sb = supabase as any
 const SB_URL = 'https://xdwnsqkzgopymufsuccr.supabase.co'
 const fmt = (n: any) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const card: React.CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: '1.1rem 1.3rem', marginBottom: 14 }
-const LOJAS = ['Amore Paiva', 'Amore CD']
+const LOJAS_BASE = ['Amore Paiva', 'Amore CD', 'Flow CD']
 const UNIDADES = ['', 'kg', 'g', 'L', 'ml', 'un', 'cx', 'pct', 'dz']
 const inp: React.CSSProperties = { padding: '.5rem .7rem', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, width: '100%' }
 
@@ -77,6 +79,14 @@ const sleepMs = (ms: number) => new Promise(r => setTimeout(r, ms))
 export default function RecebimentoPage() {
   const { toast } = useToast()
   const { user } = useAuth()
+  const { lojas: lojasCtx } = useLoja()
+  const LOJAS = useMemo(() => Array.from(new Set([...LOJAS_BASE, ...(lojasCtx || []).filter(l => l && l !== 'Todas as Lojas')])), [lojasCtx])
+  const [docsExtras, setDocsExtras] = useState<{ tipo: string; numero: string; url: string; nome: string }[]>([])
+  const [docTipo, setDocTipo] = useState('segunda_nf')
+  const [docNumero, setDocNumero] = useState('')
+  const [docEnviando, setDocEnviando] = useState(false)
+  const [rncIds, setRncIds] = useState<string[]>([])
+  const [histKey, setHistKey] = useState(0)
   const podeAprovar = ['super_admin', 'manager', 'admin', 'gestor', 'diretor'].includes((user?.role || '').toLowerCase())
   const podeExcluir = (user?.role || '').toLowerCase() === 'super_admin'
   const [loja, setLoja] = useState('Amore Paiva')
@@ -172,7 +182,7 @@ export default function RecebimentoPage() {
 
   const enviarELer = async () => {
     if (!file) { toast('Selecione a foto/PDF da nota.', 'error'); return }
-    setBusy('upload'); setOcrInfo(null); setDestOff([]); setDestExtras([]); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral('')
+    setBusy('upload'); setDocsExtras([]); setRncIds([]); setOcrInfo(null); setDestOff([]); setDestExtras([]); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral('')
     try {
       const ext = (file.name.split('.').pop() || 'pdf').toLowerCase()
       const path = `recebimentos/${crypto.randomUUID()}.${ext}`
@@ -382,6 +392,16 @@ export default function RecebimentoPage() {
         p_observacao: [obsGeral, analise.incompleto && obsComprador ? '[RECEBIMENTO INCOMPLETO — obs. ao comprador]\n' + obsComprador : ''].filter(Boolean).join('\n\n') || null,
       })
       if (error || !data?.ok) { toast('Erro ao confirmar: ' + (error?.message || 'tente novamente'), 'error'); setBusy(''); return }
+      // Arquivo digital: guarda cada documento (NF principal + adicionais) individualmente e liga as RNCs abertas na conferência.
+      // Complementar — se falhar, o recebimento já está confirmado e não é desfeito.
+      try {
+        const docs = [
+          ...(anexo?.url ? [{ recebimento_id: data.recebimento_id, tipo: 'principal', numero_nota: cab?.numero_nota || null, url: anexo.url, arquivo_nome: anexo.nome || null, created_by: user?.name || null }] : []),
+          ...docsExtras.map(d => ({ recebimento_id: data.recebimento_id, tipo: d.tipo, numero_nota: d.numero || null, url: d.url, arquivo_nome: d.nome, created_by: user?.name || null })),
+        ]
+        if (docs.length) await sb.from('recebimento_documentos').insert(docs)
+        if (rncIds.length) await sb.from('rnc').update({ recebimento_id: data.recebimento_id }).in('id', rncIds)
+      } catch (e) { console.error('arquivo digital do recebimento', e) }
       // Baixa relacional no pedido vinculado (Recebido por item → ciclo da requisição). Complementar: não bloqueia o recebimento.
       let baixaMsg = ''
       if (pedidoSel) { const n = await baixarNoPedido(); if (n > 0) baixaMsg = ` · ${n} item(ns) baixado(s) no pedido` }
@@ -393,7 +413,7 @@ export default function RecebimentoPage() {
         toast(`Recebimento registrado com ${data.retidos} item(ns) retido(s) por divergência — aguardando aprovação. ⏳${baixaMsg}`)
       else
         toast(`Recebimento confirmado! Despesa nº ${data.prestacao} · ABC atualizada${data.estoque ? ` · ${data.estoque} no estoque 📦` : ''}${baixaMsg} ✅`)
-      setFile(null); setAnexo(null); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral(''); setObsCompradorTxt(null); setDestOff([]); setDestExtras([]); setAssinatura(''); setPedidoSel(''); setPedidoItens([]); loadRecs(); loadPedidosAbertos(loja)
+      setFile(null); setAnexo(null); setCab(null); setItens([]); setEstoqueRows([]); setDesvios({}); setDesvioOpen(new Set()); setObsGeral(''); setObsCompradorTxt(null); setDestOff([]); setDestExtras([]); setAssinatura(''); setPedidoSel(''); setPedidoItens([]); setDocsExtras([]); setRncIds([]); setHistKey(k => k + 1); loadRecs(); loadPedidosAbertos(loja)
     } catch (e: any) { toast('Falha ao confirmar: ' + (e?.message || ''), 'error') }
     setBusy('')
   }
@@ -420,7 +440,7 @@ export default function RecebimentoPage() {
   return (
     <div style={{ padding: '1rem 0' }}>
       {rncAberta && <NovaRnc profiles={profilesRnc} lojas={LOJAS} lojaAtual={loja} userName={user?.name || 'Usuário'} notificar={notificarRnc} prefill={rncAberta.prefill} evidUrls={rncAberta.evidUrls}
-        onClose={() => setRncAberta(null)} onSaved={() => { setRncAberta(null); toast('RNC aberta e direcionada ao responsável por WhatsApp. ✅') }} />}
+        onClose={() => setRncAberta(null)} onSaved={(id?: string) => { if (id) setRncIds(a => [...a, id]); setRncAberta(null); toast('RNC aberta e direcionada ao responsável por WhatsApp. ✅') }} />}
       {/* passo 1 */}
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><PackageCheck size={20} style={{ color: '#6B1212' }} /><b style={{ fontSize: 15 }}>Recebimento Inteligente de Mercadorias</b></div>
@@ -463,6 +483,34 @@ export default function RecebimentoPage() {
           {[['fornecedor', 'Fornecedor'], ['cnpj', 'CNPJ'], ['numero_nota', 'Nº da nota'], ['serie', 'Série'], ['data_emissao', 'Data emissão'], ['valor_total', 'Valor total'], ['forma_pagamento', 'Forma pgto']].map(([k, l]) => (
             <div key={k}><label style={{ fontSize: 11, color: '#9ca3af' }}>{l}</label><input style={inp} value={cab[k] ?? ''} onChange={e => setCab({ ...cab, [k]: e.target.value })} /></div>
           ))}
+        </div>
+
+        {/* mais de uma nota fiscal / documento nesta mesma entrega — cada um fica guardado individualmente */}
+        <div style={{ marginTop: 12, background: '#faf8f5', border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 12px' }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#6B1212' }}>📎 Outras notas fiscais / documentos desta entrega (opcional)</div>
+          <div style={{ fontSize: 11.5, color: '#9ca3af', marginBottom: 6 }}>Segunda nota da mesma entrega, nota complementar ou outro documento. Ficam arquivados no histórico do recebimento.</div>
+          {docsExtras.map((d, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, marginBottom: 4, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 600 }}>{TIPOS_DOC.find(t => t.id === d.tipo)?.label || d.tipo}{d.numero ? ` · NF ${d.numero}` : ''}</span>
+              <a href={d.url} target="_blank" rel="noreferrer" style={{ color: '#6B1212' }}>{d.nome.slice(0, 28)}</a>
+              <button type="button" onClick={() => setDocsExtras(a => a.filter((_, k) => k !== i))} style={{ border: 'none', background: 'none', color: '#B91C1C', cursor: 'pointer', fontSize: 12 }}>remover</button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select style={{ ...inp, width: 'auto' }} value={docTipo} onChange={e => setDocTipo(e.target.value)}>{TIPOS_DOC.filter(t => t.id !== 'principal').map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select>
+            <input style={{ ...inp, width: 130 }} placeholder="Nº da nota" value={docNumero} onChange={e => setDocNumero(e.target.value)} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.45rem .8rem', borderRadius: 8, border: '1px dashed #6B1212', color: '#6B1212', cursor: docEnviando ? 'wait' : 'pointer', fontSize: 12.5, fontWeight: 600 }}>
+              <Upload size={14} />{docEnviando ? 'Enviando…' : 'Anexar foto ou PDF'}
+              <input type="file" accept="image/*,application/pdf" disabled={docEnviando} style={{ display: 'none' }} onChange={async e => {
+                const f = e.target.files?.[0]; e.target.value = ''
+                if (!f) return
+                setDocEnviando(true)
+                try { const up = await subirDocumentoRecebimento(f); setDocsExtras(a => [...a, { tipo: docTipo, numero: docNumero.trim(), url: up.url, nome: up.nome }]); setDocNumero('') }
+                catch (err) { toast('Erro ao enviar o documento: ' + (err as Error).message, 'error') }
+                setDocEnviando(false)
+              }} />
+            </label>
+          </div>
         </div>
 
         <div style={{ marginTop: 12, background: pedidoSel ? '#F0FDF4' : '#faf8f5', border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 12px' }}>
@@ -680,6 +728,9 @@ export default function RecebimentoPage() {
           <button onClick={confirmar} disabled={!!busy || !conferente.trim() || !assinatura.trim()} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '.7rem 1.6rem', borderRadius: 10, border: 'none', background: (!conferente.trim() || !assinatura.trim()) ? '#9ca3af' : '#1D9E75', color: '#fff', cursor: (!conferente.trim() || !assinatura.trim()) ? 'not-allowed' : 'pointer', fontWeight: 600 }}><Check size={16} />{busy === 'confirm' ? 'Confirmando…' : nRetidos > 0 ? 'Registrar e enviar p/ aprovação' : 'Aprovar recebimento'}</button>
         </div>
       </div>}
+
+      {/* arquivo digital: histórico pesquisável + ficha de cada recebimento */}
+      <RecebimentoHistorico lojas={LOJAS} userName={user?.name || 'Usuário'} reloadKey={histKey} />
 
       {/* recebimentos recentes */}
       <div style={card}>
