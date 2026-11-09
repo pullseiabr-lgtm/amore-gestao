@@ -871,29 +871,53 @@ export default function TarefasPage() {
     setEditForm({
       titulo: t.titulo, loja: t.loja, setor: t.setor, prioridade: t.prioridade,
       responsavel_nome: t.responsavel_nome || '', solicitante_nome: t.solicitante_nome || '',
-      prazo: t.prazo ? String(t.prazo).slice(0, 10) : '', descricao: t.descricao || '',
+      prazo: t.prazo ? String(t.prazo).slice(0, 10) : '', descricao: t.descricao || '', anexos: t.anexos || '',
     })
     setEditMode(true)
   }
-  const salvarEdicao = async () => {
+  const salvarEdicao = async (enviar = false) => {
     if (!detalhe || !editForm) return
     const campos: [string, string][] = [
       ['titulo', 'Título'], ['loja', 'Loja'], ['setor', 'Setor'], ['prioridade', 'Prioridade'],
-      ['responsavel_nome', 'Responsável'], ['solicitante_nome', 'Solicitante'], ['prazo', 'Prazo'], ['descricao', 'Descrição'],
+      ['responsavel_nome', 'Responsável'], ['solicitante_nome', 'Solicitante'], ['prazo', 'Prazo'], ['descricao', 'Descrição'], ['anexos', 'Anexos'],
     ]
+    const nArq = (v: any) => String(v ?? '').split(/\n+/).map((s: string) => s.trim()).filter(Boolean).length
     const upd: any = {}; const logs: { campo: string; de: string; para: string }[] = []
     for (const [k, lbl] of campos) {
       const a = String((detalhe as any)[k] ?? '')
       const n = String(editForm[k] ?? '')
-      if (a !== n) { upd[k] = n || null; logs.push({ campo: lbl, de: a || '—', para: n || '—' }) }
+      if (a !== n) {
+        upd[k] = n || null
+        logs.push(k === 'anexos' ? { campo: lbl, de: nArq(a) + ' arquivo(s)', para: nArq(n) + ' arquivo(s)' } : { campo: lbl, de: a || '—', para: n || '—' })
+      }
     }
     if (logs.length === 0) { setEditMode(false); return }
     if (!editForm.titulo?.trim()) { alert('O título não pode ficar vazio.'); return }
+    if (nArq(editForm.anexos) > 10) { alert('Máximo de 10 arquivos por tarefa. Remova alguns antes de salvar.'); return }
     setDetalheSaving(true)
     try {
       await updateTarefa(detalhe.id, upd)
       for (const l of logs) {
         await insertTarefaHistorico({ tarefa_id: detalhe.id, acao: 'Campo alterado', campo: l.campo, valor_anterior: l.de, valor_novo: l.para, usuario_nome: user?.name || 'Sistema' })
+      }
+      // "Salvar e enviar": avisa o responsável por WhatsApp com o resumo das alterações e os links dos anexos
+      if (enviar) {
+        const resp = editForm.responsavel_nome || detalhe.responsavel_nome || ''
+        const phone = whatsappDoResponsavel(resp)
+        if (!phone) alert(`Alterações salvas, mas ${resp || 'o responsável'} não tem WhatsApp cadastrado — avise por outro canal.`)
+        else {
+          const links = String(editForm.anexos || '').split(/\n+/).map((s: string) => s.trim()).filter((l: string) => /^https?:\/\//.test(l))
+          const tt = { ...detalhe, ...upd } as Tarefa
+          const msg = [
+            `✏️ *TAREFA ATUALIZADA*${detalhe.numero != null ? ` #${String(detalhe.numero).padStart(4, '0')}` : ''}`, '',
+            `📋 *${tt.titulo}*`, `🏪 ${tt.loja} · 🏷 ${tt.setor}`, `Por: ${user?.name || 'Sistema'}`, '',
+            '*O que mudou:*', ...logs.map(l => `• ${l.campo}: ${String(l.de).slice(0, 80)} → ${String(l.para).slice(0, 120)}`),
+            links.length ? `\n📎 Anexos (${links.length}):\n${links.join('\n')}` : '', '',
+            `Abra a tarefa:\n${linkTarefa(tt, 'resp')}`, '_Amore Gestão_',
+          ].filter(l => l !== '').join('\n')
+          const ok = await zapPara(resp, phone, msg, { titulo: `Atualização: ${tt.titulo}`, refId: detalhe.id })
+          await insertTarefaHistorico({ tarefa_id: detalhe.id, acao: ok ? `Alterações enviadas a ${resp} por WhatsApp` : `Falha ao enviar alterações a ${resp}`, campo: null, valor_anterior: null, valor_novo: null, usuario_nome: user?.name || 'Sistema' })
+        }
       }
       setEditMode(false)
       await load()
@@ -1863,9 +1887,11 @@ export default function TarefasPage() {
                   <textarea value={editForm.descricao} onChange={e => setEditForm((f: any) => ({ ...f, descricao: e.target.value }))} rows={3}
                     style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13, resize: 'vertical' }} />
                 </div>
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <AnexoUploader value={editForm.anexos || ''} onChange={v => setEditForm((f: any) => ({ ...f, anexos: v || '' }))} pasta="tarefas" max={10} />
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', position: 'sticky', bottom: 0, background: 'var(--bg)', padding: '10px 0', borderTop: '1px solid var(--border)', zIndex: 2 }}>
                   <button onClick={() => setEditMode(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 13 }}>Cancelar</button>
-                  <button onClick={salvarEdicao} disabled={detalheSaving} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Salvar alterações</button>
+                  <button onClick={() => salvarEdicao(false)} disabled={detalheSaving} style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid var(--bordo)', background: 'var(--card)', color: 'var(--bordo)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>💾 Salvar</button>
+                  <button onClick={() => salvarEdicao(true)} disabled={detalheSaving} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: detalheSaving ? 'wait' : 'pointer', fontSize: 13, fontWeight: 600 }}>{detalheSaving ? 'Salvando…' : '📲 Salvar e enviar alterações'}</button>
                 </div>
               </div>
             )}
