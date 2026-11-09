@@ -3,6 +3,8 @@ import type { CSSProperties } from 'react'
 import { supabase } from '../../lib/supabase'
 import { uploadAnexo } from '../../lib/db'
 import { siteOrigin } from '../../lib/site'
+import { AcompanhantesEditor, nomesAcomp, rotuloAcomp, listaSetores } from './RncView'
+import type { Acomp } from './RncView'
 
 // RNC de OPERAÇÃO (desvios gerados no restaurante) — mesmo cadastro (tabela rnc) da RNC de Recebimento,
 // com origem='operacao', categorias/ocorrências da operação, gravidade → prazo, evidências e envio ao responsável.
@@ -54,6 +56,8 @@ export function NovaRncOperacao({ profiles, lojas, lojaAtual, userName, notifica
   const [prazoManual, setPrazoManual] = useState(false)
   const [acao, setAcao] = useState('')
   const [reinc, setReinc] = useState('')
+  const [acomp, setAcomp] = useState<Acomp[]>([])
+  const setoresLista = useMemo(() => Array.from(new Set([...SETORES_OP, ...listaSetores(profiles || [])])).sort((a, b) => a.localeCompare(b)), [profiles])
   const [anteriores, setAnteriores] = useState<{ id: string; numero: string; titulo: string | null; desvio_txt: string | null }[]>([])
   const [evid, setEvid] = useState<Evid[]>([])
   const [evTipo, setEvTipo] = useState('Foto do problema')
@@ -102,7 +106,7 @@ export function NovaRncOperacao({ profiles, lojas, lojaAtual, userName, notifica
       const { data: nova, error } = await sb.from('rnc').insert({
         origem: 'operacao', loja, setor, categoria, tipos: ['Operação', ...ocorr, ...(reinc ? ['Reincidência'] : [])], gravidade, status: reinc ? 'reincidente' : 'aberta',
         titulo: titulo.trim(), desvio_txt: desc.trim(), tratativa_obs: contencao.trim() || null, acao_imediata: contencao.trim() || null,
-        acao_corretiva: acao.trim() || null, responsavel: nomeResp, responsavel_area: setor, prazo, aberto_por: userName, validador: validador || null,
+        acao_corretiva: acao.trim() || null, responsavel: nomeResp, responsavel_area: setor, prazo, aberto_por: userName, validador: validador || null, acompanhantes: acomp,
         reincidente_de: reinc || null, produto: null,
       }).select('id, numero').single()
       if (error || !nova) { setErros(['Falha ao gravar a RNC: ' + (error?.message || 'sem resposta do servidor')]); setSalvando(false); return }
@@ -126,6 +130,17 @@ export function NovaRncOperacao({ profiles, lojas, lojaAtual, userName, notifica
       if (validador && validador !== nomeResp && validador !== userName) {
         await sleepMs(2500 + Math.random() * 3000)
         await notificar(validador, `📣 *RNC de operação — você valida o encerramento*\n\nResponsável: ${nomeResp}\n${corpo}\n\n${link}\n_Amore Gestão_`, `RNC ${nova.numero}`, nova.id)
+      }
+      if (acomp.length) {
+        await log('Acompanhantes definidos', acomp.map(rotuloAcomp).join(', '))
+        const ja = new Set<string>([nomeResp, userName, validador])
+        let n = 0
+        for (const nome of nomesAcomp(profiles || [], acomp)) {
+          if (ja.has(nome)) continue
+          await sleepMs(2500 + Math.random() * 3000)
+          if (await notificar(nome, `👀 *Você acompanha uma nova RNC de operação*\n\nResponsável pela tratativa: ${nomeResp} (${setor})\n${corpo}\n\nVocê receberá um aviso a cada mudança de estágio, até a tratativa final.\n\n${link}\n_Amore Gestão_`, `RNC ${nova.numero}`, nova.id)) n++
+        }
+        await log('Disparo WhatsApp', `Acompanhantes avisados: ${n}`)
       }
       onSaved(nova.id, ok1, nomeResp)
     } catch (e) { setErros(['Erro: ' + ((e as Error).message || 'tente novamente')]) }
@@ -151,7 +166,7 @@ export function NovaRncOperacao({ profiles, lojas, lojaAtual, userName, notifica
         {sec('1. Identificação')}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
           <div><label style={lbl}>Loja *</label><select style={inp} value={loja} onChange={e => setLoja(e.target.value)}>{lojasOk.map((l: string) => <option key={l}>{l}</option>)}</select></div>
-          <div><label style={lbl}>Setor envolvido</label><select style={inp} value={setor} onChange={e => setSetor(e.target.value)}>{SETORES_OP.map(s => <option key={s}>{s}</option>)}</select></div>
+          <div><label style={lbl}>Setor responsável pela tratativa</label><select style={inp} value={setor} onChange={e => setSetor(e.target.value)}>{setoresLista.map(s => <option key={s}>{s}</option>)}</select></div>
         </div>
         <div style={{ marginTop: 10 }}>
           <label style={lbl}>Categoria da ocorrência</label>
@@ -196,6 +211,7 @@ export function NovaRncOperacao({ profiles, lojas, lojaAtual, userName, notifica
             <select style={inp} value={validador} onChange={e => setValidador(e.target.value)}><option value="">Quem abriu a RNC</option>
               {usuarios.map((u: { nome: string }) => <option key={u.nome} value={u.nome}>{u.nome}</option>)}</select></div>
         </div>
+        <div style={{ marginTop: 10 }}><AcompanhantesEditor profiles={profiles || []} value={acomp} onChange={setAcomp} /></div>
         <div style={{ marginTop: 8 }}><label style={lbl}>Ação corretiva solicitada</label><textarea style={{ ...inp, minHeight: 56, resize: 'vertical' }} value={acao} onChange={e => setAcao(e.target.value)} placeholder="O que o responsável precisa fazer para corrigir" /></div>
         {anteriores.length > 0 && (
           <div style={{ marginTop: 8 }}><label style={lbl}>Já aconteceu antes? Vincular a RNC anterior (reincidência)</label>

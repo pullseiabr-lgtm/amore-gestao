@@ -55,12 +55,12 @@ const perfilDe = (p: any) => (p?.permissions_override as any)?.__perfil__ || {}
 const setorDe = (p: any) => String(perfilDe(p).setor || '').trim()
 const foneOk = (p: any) => !!String(perfilDe(p).whatsapp || '').replace(/\D/g, '')
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-const listaSetores = (profiles: any[]) => {
+export const listaSetores = (profiles: any[]) => {
   const m = new Map<string, string>()
   for (const s of [...AREAS, ...profiles.map(setorDe)]) if (s && !m.has(s.toLowerCase())) m.set(s.toLowerCase(), cap(s))
   return Array.from(m.values()).sort((a, b) => a.localeCompare(b))
 }
-const usuariosDoSetor = (profiles: any[], setor: string) => profiles
+export const usuariosDoSetor = (profiles: any[], setor: string) => profiles
   .filter(p => (p.name || '').trim() && (!setor || setorDe(p).toLowerCase() === setor.toLowerCase()))
   .map(p => ({ nome: (p.name as string).trim(), fone: foneOk(p) }))
   .sort((a, b) => a.nome.localeCompare(b.nome))
@@ -76,16 +76,16 @@ const todosUsuarios = (profiles: any[], setor: string) => {
 const rotuloUsuario = (u: { nome: string; fone: boolean; setor: string }) => `${u.nome}${u.setor ? ' · ' + u.setor : ''}${u.fone ? '' : ' (sem WhatsApp)'}`
 
 // ── Acompanhamento: setores/usuários extras que recebem TODO o andamento da RNC por WhatsApp ──
-type Acomp = { tipo: 'setor' | 'usuario'; nome: string }
+export type Acomp = { tipo: 'setor' | 'usuario'; nome: string }
 const acompDe = (r: any): Acomp[] => (Array.isArray(r?.acompanhantes) ? r.acompanhantes : []).filter((a: any) => a && a.nome && (a.tipo === 'setor' || a.tipo === 'usuario'))
-const nomesAcomp = (profiles: any[], acomp: Acomp[]) => {
+export const nomesAcomp = (profiles: any[], acomp: Acomp[]) => {
   const s = new Set<string>()
   for (const a of acomp) { if (a.tipo === 'setor') usuariosDoSetor(profiles, a.nome).forEach(u => s.add(u.nome)); else s.add(a.nome) }
   return s
 }
-const rotuloAcomp = (a: Acomp) => (a.tipo === 'setor' ? '🏢 ' : '👤 ') + a.nome
+export const rotuloAcomp = (a: Acomp) => (a.tipo === 'setor' ? '🏢 ' : '👤 ') + a.nome
 
-function AcompanhantesEditor({ profiles, value, onChange }: { profiles: any[]; value: Acomp[]; onChange: (v: Acomp[]) => void }) {
+export function AcompanhantesEditor({ profiles, value, onChange }: { profiles: any[]; value: Acomp[]; onChange: (v: Acomp[]) => void }) {
   const tem = (tipo: string, nome: string) => value.some(a => a.tipo === tipo && a.nome.toLowerCase() === nome.toLowerCase())
   const add = (tipo: 'setor' | 'usuario', nome: string) => { if (nome && !tem(tipo, nome)) onChange([...value, { tipo, nome }]) }
   return (
