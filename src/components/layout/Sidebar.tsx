@@ -127,7 +127,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick }: SidebarProps) {
-  const { user, logout, can, isOwner } = useAuth()
+  const { user, logout, can, isOwner, fullMenu } = useAuth()
   const { theme } = useTheme()
   const { loja } = useLoja()
   const isFlow = /flow/i.test(loja || '')
@@ -183,7 +183,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
         </div>
 
         <nav className="sb-nav">
-          {!isOwner ? (
+          {!fullMenu ? (
           <>
             {/* ── Menu do Colaborador: Requisição, Tarefas, Status, Créditos ── */}
             <div className="sb-sec">Minha Operação</div>

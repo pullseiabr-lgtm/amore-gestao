@@ -363,6 +363,14 @@ export const LIMITED_SUPERADMINS: string[] = [
 /** Dono = acesso irrestrito. Regra ROBUSTA: qualquer super_admin OU e-mail de dono,
  *  MENOS quem estiver na lista de restritos (Wagner). Assim nenhum dono perde acesso
  *  por diferença de e-mail, e o Wagner continua restrito. */
+/** Acesso conforme o cadastro (role + permissions_override), sem ser dono: vê o menu completo, mas respeita o que está desligado (ex.: Configurações). */
+export const FULL_ACCESS_EMAILS: string[] = [
+  'aristelamota@gmail.com',        // Aristela Mota — Gestora Administrativa
+]
+export function hasFullAccess(user: Profile | null): boolean {
+  return !!user && !isOwner(user) && FULL_ACCESS_EMAILS.includes(_email(user))
+}
+
 export function isOwner(user: Profile | null): boolean {
   if (!user) return false
   if (LIMITED_SUPERADMINS.includes(_email(user))) return false
@@ -383,6 +391,7 @@ export const ALL_STORES_EMAILS: string[] = [
   'lwsantana@icloud.com',          // Wagner
   'aline.s.claudino@icloud.com',   // Aline
   'dudarocha4683@gmail.com',       // Maria Eduarda
+  'aristelamota@gmail.com',        // Aristela Mota
 ]
 export function canSeeAllStores(user: Profile | null): boolean {
   return isOwner(user) || ALL_STORES_EMAILS.includes(_email(user))

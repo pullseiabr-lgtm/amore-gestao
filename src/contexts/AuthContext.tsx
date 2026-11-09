@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchProfile, upsertProfile, updateProfile, insertAuditLog } from '../lib/db'
-import { ROLE_PERMISSIONS, isOwner as isOwnerProfile, colabPermissions } from '../lib/permissions'
+import { ROLE_PERMISSIONS, isOwner as isOwnerProfile, hasFullAccess, colabPermissions } from '../lib/permissions'
 import type { Profile, PermissionsMap } from '../types/database'
 
 // Modo demo DESLIGADO em qualquer ambiente: nada de credencial fixa, nada de
@@ -32,6 +32,7 @@ interface AuthContextValue {
   can: (module: string, action?: keyof PermissionsMap[string]) => boolean
   effectivePermissions: PermissionsMap
   isOwner: boolean
+  fullMenu: boolean
   demoUsers: typeof DEMO_USERS
   refreshUser: () => Promise<void>
   passwordRecovery: boolean
@@ -41,7 +42,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue>({
   user: null, loading: true, isDemoMode: false,
   login: async () => null, logout: async () => {},
-  can: () => false, effectivePermissions: {}, isOwner: false, demoUsers: DEMO_USERS,
+  can: () => false, effectivePermissions: {}, isOwner: false, fullMenu: false, demoUsers: DEMO_USERS,
   refreshUser: async () => {},
   passwordRecovery: false, endPasswordRecovery: () => {},
 })
@@ -190,11 +191,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const owner = isOwnerProfile(user)
+  const full = hasFullAccess(user)
 
   // Donos (Esdras / Esdras Santana) mantêm acesso total. Todos os demais logins
   // ficam restritos aos 9 módulos operacionais, independentemente do papel/override.
   const effectivePermissions: PermissionsMap = user
-    ? owner
+    ? (owner || full)
       ? { ...(ROLE_PERMISSIONS[user.role] || {}), ...(user.permissions_override || {}) }
       : colabPermissions()
     : {}
@@ -207,7 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, isDemoMode, login, logout, can, effectivePermissions, isOwner: owner, demoUsers: DEMO_ENABLED ? DEMO_USERS : {}, refreshUser, passwordRecovery, endPasswordRecovery: () => setPasswordRecovery(false) }}>
+    <AuthContext.Provider value={{ user, loading, isDemoMode, login, logout, can, effectivePermissions, isOwner: owner, fullMenu: owner || full, demoUsers: DEMO_ENABLED ? DEMO_USERS : {}, refreshUser, passwordRecovery, endPasswordRecovery: () => setPasswordRecovery(false) }}>
       {children}
     </AuthContext.Provider>
   )
