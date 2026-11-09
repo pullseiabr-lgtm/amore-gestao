@@ -75,8 +75,48 @@ const todosUsuarios = (profiles: any[], setor: string) => {
 }
 const rotuloUsuario = (u: { nome: string; fone: boolean; setor: string }) => `${u.nome}${u.setor ? ' · ' + u.setor : ''}${u.fone ? '' : ' (sem WhatsApp)'}`
 
+// ── Acompanhamento: setores/usuários extras que recebem TODO o andamento da RNC por WhatsApp ──
+type Acomp = { tipo: 'setor' | 'usuario'; nome: string }
+const acompDe = (r: any): Acomp[] => (Array.isArray(r?.acompanhantes) ? r.acompanhantes : []).filter((a: any) => a && a.nome && (a.tipo === 'setor' || a.tipo === 'usuario'))
+const nomesAcomp = (profiles: any[], acomp: Acomp[]) => {
+  const s = new Set<string>()
+  for (const a of acomp) { if (a.tipo === 'setor') usuariosDoSetor(profiles, a.nome).forEach(u => s.add(u.nome)); else s.add(a.nome) }
+  return s
+}
+const rotuloAcomp = (a: Acomp) => (a.tipo === 'setor' ? '🏢 ' : '👤 ') + a.nome
+
+function AcompanhantesEditor({ profiles, value, onChange }: { profiles: any[]; value: Acomp[]; onChange: (v: Acomp[]) => void }) {
+  const tem = (tipo: string, nome: string) => value.some(a => a.tipo === tipo && a.nome.toLowerCase() === nome.toLowerCase())
+  const add = (tipo: 'setor' | 'usuario', nome: string) => { if (nome && !tem(tipo, nome)) onChange([...value, { tipo, nome }]) }
+  return (
+    <div>
+      <label style={lbl}>Setores / pessoas que acompanham a RNC (recebem WhatsApp a cada mudança de estágio, até a tratativa final)</label>
+      {value.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+          {value.map(a => (
+            <span key={a.tipo + a.nome} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 20, padding: '3px 6px 3px 10px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              {rotuloAcomp(a)}{a.tipo === 'setor' ? ` (${usuariosDoSetor(profiles, a.nome).length})` : ''}
+              <button type="button" onClick={() => onChange(value.filter(x => x !== a))} title="Remover" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}><X size={13} /></button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 10 }}>
+        <select style={inp} value="" onChange={e => add('setor', e.target.value)}>
+          <option value="">+ Adicionar setor…</option>
+          {listaSetores(profiles).filter(s => !tem('setor', s)).map(s => <option key={s} value={s}>{s} ({usuariosDoSetor(profiles, s).length} usuário(s))</option>)}
+        </select>
+        <select style={inp} value="" onChange={e => add('usuario', e.target.value)}>
+          <option value="">+ Adicionar pessoa…</option>
+          {todosUsuarios(profiles, '').filter(u => !tem('usuario', u.nome)).map(u => <option key={u.nome} value={u.nome}>{rotuloUsuario(u)}</option>)}
+        </select>
+      </div>
+    </div>
+  )
+}
+
 // ── Helpers ──────────────────────────────────────────────────
-const hoje0 = () => new Date(new Date().toDateString()).getTime()
+const hoje0= () => new Date(new Date().toDateString()).getTime()
 const fmtD = (s?: string | null) => { if (!s) return '—'; const m = String(s).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}/${m[2]}/${m[1]}` : '—' }
 const fmtDH = (s?: string | null) => s ? new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 const brl = (n: any) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -661,7 +701,7 @@ export function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClo
     loja: lojaAtual && lojaAtual !== 'Todas as Lojas' ? lojaAtual : (lojasOk[0] || ''), setor: 'Recebimento', centro_custo: '', tipos: [] as string[],
     pedido_id: null, pedido_numero: '', fornecedor: '', produto: '', unidade: '', qtd_solicitada: '', valor_produto: '',
     nf_numero: '', nf_data: '', data_recebimento: new Date().toISOString().slice(0, 10), local_recebimento: '', recebedor: userName, transportadora: '', lote: '', qtd_recebida: '',
-    solicitado_txt: '', recebido_txt: '', desvio_txt: '', categoria: 'Produto', gravidade: 'media', tratativas: [] as string[], tratativa_obs: '', acao_corretiva: '', acao_preventiva: '', responsavel: '', responsavel_area: '',
+    solicitado_txt: '', recebido_txt: '', desvio_txt: '', categoria: 'Produto', gravidade: 'media', tratativas: [] as string[], tratativa_obs: '', acao_corretiva: '', acao_preventiva: '', responsavel: '', responsavel_area: '', acompanhantes: [] as Acomp[],
   })
   const [pcSnap, setPcSnap] = useState<any>(null)
   const set = (k: string, v: any) => setF((o: any) => ({ ...o, [k]: v }))
@@ -733,7 +773,7 @@ export function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClo
         valor_total_afetado: num('valor_produto'),
         solicitado_txt: f.solicitado_txt || (f.qtd_solicitada ? `${f.qtd_solicitada} ${f.unidade} — ${f.produto}` : null), recebido_txt: f.recebido_txt || (f.qtd_recebida ? `${f.qtd_recebida} ${f.unidade} — ${f.produto}` : null),
         desvio_txt: f.desvio_txt.trim(), tratativas: f.tratativas, tratativa_obs: f.tratativa_obs.trim(), acao_imediata: f.tratativa_obs.trim(), acao_corretiva: f.acao_corretiva.trim() || null, acao_preventiva: f.acao_preventiva.trim() || null,
-        responsavel: f.responsavel, responsavel_area: f.responsavel_area || null, prazo: null, aberto_por: userName,
+        responsavel: f.responsavel, responsavel_area: f.responsavel_area || null, prazo: null, aberto_por: userName, acompanhantes: f.acompanhantes || [],
         data_entrega: normData(pcSnap?.data_entrega), pedido_snapshot: pcSnap || null,
       }
       const { data: nova, error } = await sb.from('rnc').insert(row).select('id, numero').single()
@@ -763,6 +803,18 @@ export function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClo
           await new Promise(r => setTimeout(r, 2500 + Math.random() * 2500))
         }
         await log('Disparo WhatsApp', `Setor ${f.responsavel_area} avisado`)
+      }
+      const acomp: Acomp[] = f.acompanhantes || []
+      if (acomp.length) {
+        await log('Acompanhantes definidos', acomp.map(rotuloAcomp).join(', '))
+        const ja = new Set<string>([f.responsavel, userName, ...(f.avisarSetor ? usuariosDoSetor(profiles, f.responsavel_area).map(u => u.nome) : [])])
+        let n = 0
+        for (const nome of nomesAcomp(profiles, acomp)) {
+          if (ja.has(nome)) continue
+          if (await notificar(nome, `👀 *Você acompanha uma nova RNC*\n\nResponsável pela tratativa: ${f.responsavel} (${f.responsavel_area})\n${corpo}\n\nVocê receberá um aviso a cada mudança de estágio, até a tratativa final.\n\n${linkR}\n_Amore Gestão_`, `RNC ${nova.numero}`, nova.id)) n++
+          await new Promise(res => setTimeout(res, 2500 + Math.random() * 2500))
+        }
+        await log('Disparo WhatsApp', `Acompanhantes avisados: ${n}`)
       }
       onSaved(nova.id)
     } catch (e: any) { console.error(e); setErros(['Erro ao salvar: ' + (e?.message || e)]) } finally { setSalvando(false) }
@@ -867,6 +919,7 @@ export function NovaRnc({ profiles, lojas, lojaAtual, userName, notificar, onClo
         </div>
         <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6 }}>⏱ O prazo de tratativa é de <b>{PRAZO_DIAS_UTEIS} dias úteis</b>, contados a partir da ciência do responsável.</div>
         <label style={{ fontSize: 12.5, display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }}><input type="checkbox" checked={!!f.avisarSetor} onChange={e => set('avisarSetor', e.target.checked)} /> Avisar também os outros usuários do setor</label>
+        <div style={{ marginTop: 10 }}><AcompanhantesEditor profiles={profiles} value={f.acompanhantes || []} onChange={v => set('acompanhantes', v)} /></div>
 
         {erros.length > 0 && (
           <div id="rnc-erros" style={{ marginTop: 14, padding: '10px 12px', borderRadius: 8, background: '#fee2e2', border: '1px solid #dc2626', color: '#991b1b', fontSize: 12.5 }}>
@@ -916,6 +969,26 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
   const st = statusInfo(r.status); const gr = gravInfo(r.gravidade); const atraso = diasAtraso(r); const rest = diasRestantes(r)
   const log = (acao: string, detalhe?: string) => sb.from('rnc_historico').insert({ rnc_id: r.id, acao, detalhe: detalhe || null, usuario: userName })
   const pick = (keys: string[]) => Object.fromEntries(keys.map(k => [k, NUM_KEYS.has(k) ? (ed[k] === '' || ed[k] == null ? null : Number(String(ed[k]).replace(',', '.'))) : (ed[k] === '' ? null : ed[k])]))
+  const link = `${siteOrigin()}/?page=tarefas&rnc=${r.id}`
+  // Todos que devem acompanhar o andamento: responsável + solicitante + acompanhantes (setores/pessoas), menos quem fez a ação
+  const envolvidos = (extra: (string | null | undefined)[] = []) => {
+    const s = new Set<string>()
+    ;[r.responsavel, r.aberto_por, ...extra].forEach(n => { if (n && String(n).trim()) s.add(String(n).trim()) })
+    nomesAcomp(profiles, acompDe(r)).forEach(n => s.add(n))
+    s.delete(userName)
+    return Array.from(s)
+  }
+  const avisarEnvolvidos = async (msg: string, acao: string, extra: (string | null | undefined)[] = []) => {
+    const nomes = envolvidos(extra)
+    let ok = 0
+    const falhas: string[] = []
+    for (const n of nomes) {
+      if (await notificar(n, msg, `RNC ${r.numero}`, r.id)) ok++; else falhas.push(n)
+      await new Promise(res => setTimeout(res, 2000 + Math.random() * 2500))
+    }
+    if (nomes.length) await log(acao, `${ok}/${nomes.length} aviso(s) por WhatsApp: ${nomes.filter(n => !falhas.includes(n)).join(', ') || '—'}${falhas.length ? ` · sem WhatsApp: ${falhas.join(', ')}` : ''}`)
+  }
+  const avisoEstagio = (de: string, para: string) => `🔄 *${r.numero} mudou de estágio*\n\n${statusInfo(de).emoji} ${statusInfo(de).label}\n⬇️\n${statusInfo(para).emoji} ${statusInfo(para).label}\n\nPor: ${userName}\n${r.loja}${r.fornecedor ? ` · ${r.fornecedor}` : ''}${r.produto ? ` · ${r.produto}` : ''}\nTratativa: ${r.responsavel || '—'}${r.responsavel_area ? ` (${r.responsavel_area})` : ''}${r.prazo ? `\nPrazo: ${fmtD(r.prazo)}` : ''}\n\n${link}\n_Amore Gestão_`
   const salvar = async (patch: any, acao: string, depois?: () => Promise<void>) => {
     const diffs = Object.keys(patch).filter(k => JSON.stringify(patch[k] ?? null) !== JSON.stringify(r[k] ?? null)).map(k => `${LABELS[k] || k}: ${fmtVal(r[k])} → ${fmtVal(patch[k])}`)
     if (!diffs.length) { alert('Nenhuma alteração para salvar.'); return }
@@ -924,11 +997,12 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
       await sb.from('rnc').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', r.id)
       await log(acao, diffs.join(' | '))
       if (depois) await depois()
+      // Mudança de estágio → avisa todos os envolvidos (encerramento e ciência têm disparo próprio)
+      if (patch.status && patch.status !== r.status && patch.status !== 'encerrada' && !patch.ciencia_em) await avisarEnvolvidos(avisoEstagio(r.status, patch.status), `Disparo de estágio → ${statusInfo(patch.status).label}`)
       onChanged()
     } finally { setBusy(false) }
   }
   const mudarStatus = async (novo: string, extra: any = {}) => { await salvar({ status: novo, ...extra }, `Status → ${statusInfo(novo).label}`) }
-  const link = `${siteOrigin()}/?page=tarefas&rnc=${r.id}`
   const avisar = async (nome: string, setor: string, prazo: string) => {
     const ok = await notificar(nome, `🔴 *RNC direcionada a você*\n\n${r.numero} · ${r.loja}\nSetor: ${setor || '—'}\nFornecedor: ${r.fornecedor || '—'}\nProduto: ${r.produto || '—'}${r.nf_numero ? `\nNF: ${r.nf_numero}` : ''}${r.lote ? `\nLote: ${r.lote}` : ''}\nDesvio: ${r.desvio_txt || '—'}\nPrazo: ${fmtD(prazo)}\n\n${link}\n_Amore Gestão_`, `RNC ${r.numero}`, r.id)
     await log('Disparo WhatsApp', ok ? `Aviso enviado a ${nome}${setor ? ' (' + setor + ')' : ''}` : `Não foi possível avisar ${nome} (sem WhatsApp cadastrado?)`)
@@ -1008,7 +1082,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
     const prazoNovo = r.origem === 'operacao' && r.prazo ? String(r.prazo).slice(0, 10) : addDiasUteis(agora, PRAZO_DIAS_UTEIS)
     await salvar({ ciencia_por: userName, ciencia_em: agora.toISOString(), prazo: prazoNovo, ...(r.status === 'aberta' ? { status: 'em_analise' } : {}) },
       'Ciência registrada', async () => { await log('Prazo de tratativa definido', `${PRAZO_DIAS_UTEIS} dias úteis após a ciência → ${fmtD(prazoNovo)}`) })
-    if (r.aberto_por && r.aberto_por !== userName) await notificar(r.aberto_por, `👁️ *Ciência da ${r.numero}*\n${userName} tomou ciência e tem até ${fmtD(prazoNovo)} (${PRAZO_DIAS_UTEIS} dias úteis) para tratar.\n\n${link}\n_Amore Gestão_`, `RNC ${r.numero}`, r.id)
+    await avisarEnvolvidos(`👁️ *Ciência da ${r.numero}*\n${userName} tomou ciência e tem até ${fmtD(prazoNovo)} (${PRAZO_DIAS_UTEIS} dias úteis) para tratar.${r.status === 'aberta' ? `\n\n${statusInfo('aberta').emoji} ${statusInfo('aberta').label} ⬇️ ${statusInfo('em_analise').emoji} ${statusInfo('em_analise').label}` : ''}\n\n${link}\n_Amore Gestão_`, 'Disparo de ciência')
   }
   const encerrar = async () => {
     if (!tudoOk) { alert('Não é possível encerrar — falta:\n\n' + checks.filter(c => !c.ok).map(c => '• ' + c.txt).join('\n')); return }
@@ -1018,6 +1092,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
       const nomes = new Set<string>()
       ;[r.aberto_por, r.responsavel, r.recebedor, pc?.recebedor].forEach(n => { if (n && String(n).trim()) nomes.add(String(n).trim()) })
       usuariosDoSetor(profiles, 'Compras').forEach(u => nomes.add(u.nome))
+      nomesAcomp(profiles, acompDe(r)).forEach(n => nomes.add(n))
       const resumoFim = `✅ *${r.numero} ENCERRADA*\n\n${r.loja} · ${r.fornecedor || '—'}${pc?.numero ? ` · PC ${pc.numero}` : ''}\nProduto: ${r.produto || '—'}\nDesvio: ${r.desvio_txt || '—'}\n\n*Solução:* ${r.solucao || '—'}\n*Devolutiva final:* ${r.devolutiva_final || '—'}\nResultado: ${RESULTADOS.find(x => x.id === r.resultado)?.label || '—'} · Encerrada por ${userName}\n\n${link}\n_Amore Gestão_`
       let enviados = 0
       for (const n of nomes) {
@@ -1140,10 +1215,19 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
                 {S('categoria', 'Categoria', CATEGORIAS)}
                 <div><label style={lbl}>Gravidade</label><select style={inp} value={ed.gravidade ?? 'media'} onChange={e => setEd((o: any) => ({ ...o, gravidade: e.target.value }))}>{GRAVIDADES.map(g => <option key={g.id} value={g.id}>{g.emoji} {g.label}</option>)}</select></div>
               </div>
+              <AcompanhantesEditor profiles={profiles} value={acompDe(ed)} onChange={v => setEd((o: any) => ({ ...o, acompanhantes: v }))} />
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {salvarBtn(['responsavel', 'responsavel_area', 'prazo', 'categoria', 'gravidade'], 'Direcionamento/prazo/classificação atualizados', async () => {
+                {salvarBtn(['responsavel', 'responsavel_area', 'prazo', 'categoria', 'gravidade', 'acompanhantes'], 'Direcionamento/prazo/classificação/acompanhantes atualizados', async () => {
                   if (ed.responsavel && ed.responsavel !== r.responsavel)
                     await avisar(ed.responsavel, ed.responsavel_area, ed.prazo)
+                  // Quem acabou de ser incluído como acompanhante é avisado e passa a receber cada mudança de estágio
+                  const antes = nomesAcomp(profiles, acompDe(r))
+                  const novos = Array.from(nomesAcomp(profiles, acompDe(ed))).filter(n => !antes.has(n) && n !== userName && n !== ed.responsavel)
+                  for (const n of novos) {
+                    await notificar(n, `👀 *Você foi incluído para acompanhar a ${r.numero}*\n\n${statusInfo(r.status).emoji} ${statusInfo(r.status).label}\n${r.loja}${r.fornecedor ? ` · ${r.fornecedor}` : ''}${r.produto ? ` · ${r.produto}` : ''}\nTratativa: ${ed.responsavel || '—'}${ed.responsavel_area ? ` (${ed.responsavel_area})` : ''}\n\nVocê receberá um aviso a cada mudança de estágio, até a tratativa final.\n\n${link}\n_Amore Gestão_`, `RNC ${r.numero}`, r.id)
+                    await new Promise(res => setTimeout(res, 2000 + Math.random() * 2500))
+                  }
+                  if (novos.length) await log('Acompanhantes avisados', novos.join(', '))
                 })}
                 {r.responsavel && <button onClick={() => avisar(r.responsavel, r.responsavel_area, r.prazo)} disabled={busy} style={{ ...btn('#166534', busy), marginTop: 10 }}>📲 Reenviar aviso ao responsável</button>}
               </div>
@@ -1218,8 +1302,9 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
               <div><label style={lbl}>Anexos da resposta (e-mail, foto, NF de devolução…)</label><AnexoUploader value={ed.fornecedor_resposta_anexos ?? null} onChange={v => setEd((o: any) => ({ ...o, fornecedor_resposta_anexos: v }))} pasta="rnc" label="" /></div>
               <Galeria itens={splitUrls(ed.fornecedor_resposta_anexos).map(u => ({ url: u, rotulo: 'Resposta do fornecedor' }))} />
               {salvarBtn(['fornecedor_resposta', 'fornecedor_resposta_anexos'], 'Resposta do fornecedor registrada', async () => {
-                await sb.from('rnc').update({ fornecedor_resposta_por: userName, fornecedor_resposta_em: new Date().toISOString(), ...(r.status === 'aguardando_fornecedor' || r.status === 'aberta' || r.status === 'em_analise' ? { status: 'em_tratativa' } : {}) }).eq('id', r.id)
-                if (r.responsavel && r.responsavel !== userName) await notificar(r.responsavel, '📩 *Resposta do fornecedor na ' + r.numero + '*\n\n' + (r.fornecedor || '') + ' — ' + String(ed.fornecedor_resposta || '').slice(0, 300) + '\n\n' + link + '\n_Amore Gestão_', 'RNC ' + r.numero, r.id)
+                const mudou = r.status === 'aguardando_fornecedor' || r.status === 'aberta' || r.status === 'em_analise'
+                await sb.from('rnc').update({ fornecedor_resposta_por: userName, fornecedor_resposta_em: new Date().toISOString(), ...(mudou ? { status: 'em_tratativa' } : {}) }).eq('id', r.id)
+                await avisarEnvolvidos('📩 *Resposta do fornecedor na ' + r.numero + '*\n\n' + (r.fornecedor || '') + ' — ' + String(ed.fornecedor_resposta || '').slice(0, 300) + (mudou ? '\n\n' + statusInfo(r.status).emoji + ' ' + statusInfo(r.status).label + ' ⬇️ ' + statusInfo('em_tratativa').emoji + ' ' + statusInfo('em_tratativa').label : '') + '\n\n' + link + '\n_Amore Gestão_', 'Disparo: resposta do fornecedor')
               })}
 
               <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--bordo)', marginTop: 10 }}>🛒 TRATATIVA DE COMPRAS</div>
