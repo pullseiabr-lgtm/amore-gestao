@@ -76,7 +76,8 @@ const todosUsuarios = (profiles: any[], setor: string) => {
 const rotuloUsuario = (u: { nome: string; fone: boolean; setor: string }) => `${u.nome}${u.setor ? ' · ' + u.setor : ''}${u.fone ? '' : ' (sem WhatsApp)'}`
 
 // ── Acompanhamento: setores/usuários extras que recebem TODO o andamento da RNC por WhatsApp ──
-export type Acomp = { tipo: 'setor' | 'usuario'; nome: string }
+export const MAX_ACOMP = 4
+export type Acomp ={ tipo: 'setor' | 'usuario'; nome: string }
 const acompDe = (r: any): Acomp[] => (Array.isArray(r?.acompanhantes) ? r.acompanhantes : []).filter((a: any) => a && a.nome && (a.tipo === 'setor' || a.tipo === 'usuario'))
 export const nomesAcomp = (profiles: any[], acomp: Acomp[]) => {
   const s = new Set<string>()
@@ -87,10 +88,11 @@ export const rotuloAcomp = (a: Acomp) => (a.tipo === 'setor' ? '🏢 ' : '👤 '
 
 export function AcompanhantesEditor({ profiles, value, onChange }: { profiles: any[]; value: Acomp[]; onChange: (v: Acomp[]) => void }) {
   const tem = (tipo: string, nome: string) => value.some(a => a.tipo === tipo && a.nome.toLowerCase() === nome.toLowerCase())
-  const add = (tipo: 'setor' | 'usuario', nome: string) => { if (nome && !tem(tipo, nome)) onChange([...value, { tipo, nome }]) }
+  const cheio = value.length >= MAX_ACOMP
+  const add = (tipo: 'setor' | 'usuario', nome: string) => { if (nome && !cheio && !tem(tipo, nome)) onChange([...value, { tipo, nome }]) }
   return (
     <div>
-      <label style={lbl}>Setores / pessoas que acompanham a RNC (recebem WhatsApp a cada mudança de estágio, até a tratativa final)</label>
+      <label style={lbl}>Setores / pessoas que acompanham e tratam junto com o setor responsável — até {MAX_ACOMP} ({value.length}/{MAX_ACOMP}). Recebem WhatsApp a cada mudança de estágio, até a tratativa final</label>
       {value.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
           {value.map(a => (
@@ -102,12 +104,12 @@ export function AcompanhantesEditor({ profiles, value, onChange }: { profiles: a
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 10 }}>
-        <select style={inp} value="" onChange={e => add('setor', e.target.value)}>
-          <option value="">+ Adicionar setor…</option>
+        <select style={inp} value="" disabled={cheio} onChange={e => add('setor', e.target.value)}>
+          <option value="">{cheio ? `Limite de ${MAX_ACOMP} atingido` : '+ Adicionar setor…'}</option>
           {listaSetores(profiles).filter(s => !tem('setor', s)).map(s => <option key={s} value={s}>{s} ({usuariosDoSetor(profiles, s).length} usuário(s))</option>)}
         </select>
-        <select style={inp} value="" onChange={e => add('usuario', e.target.value)}>
-          <option value="">+ Adicionar pessoa…</option>
+        <select style={inp} value="" disabled={cheio} onChange={e => add('usuario', e.target.value)}>
+          <option value="">{cheio ? `Limite de ${MAX_ACOMP} atingido` : '+ Adicionar pessoa…'}</option>
           {todosUsuarios(profiles, '').filter(u => !tem('usuario', u.nome)).map(u => <option key={u.nome} value={u.nome}>{rotuloUsuario(u)}</option>)}
         </select>
       </div>
@@ -1037,7 +1039,7 @@ function RncDetalhe({ r, profiles, responsaveis, userName, notificar, onClose, o
     const L: string[] = []
     const add = (t: string, v?: any) => { if (v != null && String(v).trim() !== '' && String(v) !== '—') L.push(t + ': ' + String(v).trim()) }
     L.push('*FECHAMENTO DA ' + r.numero + '*', '')
-    add('Unidade', r.loja); add('Aberta por', r.aberto_por ? r.aberto_por + ' em ' + fmtDH(r.created_at) : ''); add('Tratada por', r.responsavel ? r.responsavel + (r.responsavel_area ? ' (' + r.responsavel_area + ')' : '') : '')
+    add('Unidade', r.loja); add('Aberta por', r.aberto_por ? r.aberto_por + ' em ' + fmtDH(r.created_at) : ''); add('Tratada por', r.responsavel ? r.responsavel + (r.responsavel_area ? ' (' + r.responsavel_area + ')' : '') : ''); add('Tratada junto com', acompDe(r).map(a => a.nome).join(', '))
     add('Status', statusInfo(r.status).label); add('Gravidade', gravInfo(r.gravidade).label); add('Categoria', r.categoria)
     L.push('', '*PEDIDO DE COMPRA*')
     add('PC', pc?.numero || r.pedido_numero); add('Fornecedor', pc?.fornecedor || r.fornecedor); add('Data da entrega', fmtD(pc?.data_entrega || r.data_entrega || r.data_recebimento)); add('Recebido por', pc?.recebedor || r.recebedor)
