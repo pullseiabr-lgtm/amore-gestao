@@ -1835,7 +1835,13 @@ export default function TarefasPage() {
             {/* Painel de edição dos campos (gera registro no histórico) */}
             {editMode && editForm && (
               <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg)', display: 'grid', gap: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--bordo)' }}>✏️ EDITAR TAREFA</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--bordo)' }}>✏️ EDITAR TAREFA</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button onClick={() => salvarEdicao(false)} disabled={detalheSaving} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--bordo)', background: 'var(--card)', color: 'var(--bordo)', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>💾 Salvar</button>
+                    <button onClick={() => salvarEdicao(true)} disabled={detalheSaving} style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: detalheSaving ? 'wait' : 'pointer', fontSize: 12, fontWeight: 600 }}>{detalheSaving ? 'Salvando…' : '📲 Salvar e enviar'}</button>
+                  </div>
+                </div>
                 <div>
                   <label style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Título</label>
                   <input value={editForm.titulo} onChange={e => setEditForm((f: any) => ({ ...f, titulo: e.target.value }))}
@@ -1887,8 +1893,18 @@ export default function TarefasPage() {
                   <textarea value={editForm.descricao} onChange={e => setEditForm((f: any) => ({ ...f, descricao: e.target.value }))} rows={3}
                     style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card)', fontSize: 13, resize: 'vertical' }} />
                 </div>
-                <AnexoUploader value={editForm.anexos || ''} onChange={v => setEditForm((f: any) => ({ ...f, anexos: v || '' }))} pasta="tarefas" max={10} />
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', position: 'sticky', bottom: 0, background: 'var(--bg)', padding: '10px 0', borderTop: '1px solid var(--border)', zIndex: 2 }}>
+                <AnexoUploader value={editForm.anexos || ''} pasta="tarefas" max={10} onChange={async v => {
+                  setEditForm((f: any) => ({ ...f, anexos: v || '' }))
+                  // Grava na hora: arquivo enviado não se perde mesmo que a pessoa feche o painel sem clicar em Salvar
+                  if (!detalhe) return
+                  const n = (x: any) => String(x ?? '').split(/\n+/).map((s: string) => s.trim()).filter(Boolean).length
+                  try {
+                    await updateTarefa(detalhe.id, { anexos: v || null })
+                    await insertTarefaHistorico({ tarefa_id: detalhe.id, acao: 'Campo alterado', campo: 'Anexos', valor_anterior: n(detalhe.anexos) + ' arquivo(s)', valor_novo: n(v) + ' arquivo(s)', usuario_nome: user?.name || 'Sistema' })
+                    setDetalhe({ ...detalhe, anexos: v || null } as Tarefa)
+                  } catch (e: any) { alert('Arquivo enviado, mas não consegui gravar na tarefa: ' + (e?.message || 'erro') + '. Clique em Salvar para tentar de novo.') }
+                }} />
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                   <button onClick={() => setEditMode(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', cursor: 'pointer', fontSize: 13 }}>Cancelar</button>
                   <button onClick={() => salvarEdicao(false)} disabled={detalheSaving} style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid var(--bordo)', background: 'var(--card)', color: 'var(--bordo)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>💾 Salvar</button>
                   <button onClick={() => salvarEdicao(true)} disabled={detalheSaving} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: 'var(--bordo)', color: '#fff', cursor: detalheSaving ? 'wait' : 'pointer', fontSize: 13, fontWeight: 600 }}>{detalheSaving ? 'Salvando…' : '📲 Salvar e enviar alterações'}</button>
