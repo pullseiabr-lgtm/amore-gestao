@@ -99,7 +99,7 @@ export async function enviarWhatsApp(phone: string, message: string, _cfg?: Zapi
       const r = await fetch('/api/evolution-send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: fone, message }),
+        body: JSON.stringify({ phone: fone, message, nome: meta?.destinatario_nome || undefined }),
       })
       ok = r.ok
       if (!r.ok) erro = `HTTP ${r.status}`

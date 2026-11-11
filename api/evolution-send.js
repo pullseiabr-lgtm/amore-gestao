@@ -20,6 +20,41 @@ async function getEvolutionCfg() {
   } catch { return null }
 }
 
+// ── Pedido de ciência ───────────────────────────────────────────────────────
+// Todo disparo para um USUÁRIO DO PAINEL leva, no fim, um pedido nominal de ciência ("Fulano, responda OK…"),
+// para não haver mensagem enviada sem retorno. Destinatários de fora (fornecedores, clientes) não recebem o rodapé,
+// pois os textos deles têm formato próprio. O nome vem do campo "nome" ou do cadastro (profiles) pelo WhatsApp.
+let _perfisCache = { at: 0, rows: [] }
+async function perfisComFone() {
+  if (Date.now() - _perfisCache.at < 5 * 60 * 1000) return _perfisCache.rows
+  try {
+    const r = await fetch(`${process.env.VITE_SUPABASE_URL}/rest/v1/profiles?select=name,permissions_override`, {
+      headers: { apikey: process.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}` },
+    })
+    const rows = await r.json()
+    if (Array.isArray(rows)) _perfisCache = { at: Date.now(), rows }
+  } catch { /* usa o cache anterior */ }
+  return _perfisCache.rows
+}
+const so9 = (v) => String(v || '').replace(/\D/g, '').slice(-9)
+function primeiroNome(n) {
+  const p = String(n || '').trim().split(/\s+/)[0] || ''
+  return p ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : ''
+}
+async function nomeDoUsuario(fone, nomeInformado) {
+  const fones = so9(fone)
+  const rows = await perfisComFone()
+  const achado = fones.length === 9 ? rows.find(p => {
+    const pf = p?.permissions_override?.__perfil__
+    return [pf?.whatsapp, pf?.whatsapp2].some(w => so9(w) === fones)
+  }) : null
+  // só usuários cadastrados no painel recebem o rodapé
+  if (!achado) return ''
+  return primeiroNome(nomeInformado || achado.name)
+}
+const rodapeCiencia = (nome) => `\n\n👁️ *${nome}*, por favor responda *OK* a esta mensagem para confirmar que deu ciência.`
+const jaPedeCiencia = (t) => /deu ci[eê]ncia|confirmar (a )?ci[eê]ncia|responda \*?ok/i.test(String(t || ''))
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
@@ -74,20 +109,28 @@ export default async function handler(req, res) {
   if (!message && !image && !document) return res.status(400).json({ error: 'Envie message, image ou document.' })
 
   const fone = String(phone).replace(/\D/g, '')
+  let msgFinal = message, capFinal = caption
+  try {
+    const nome = await nomeDoUsuario(fone, body && body.nome)
+    if (nome) {
+      if (message && !jaPedeCiencia(message)) msgFinal = message + rodapeCiencia(nome)
+      if (!message && caption && !jaPedeCiencia(caption)) capFinal = caption + rodapeCiencia(nome)
+    }
+  } catch { /* nunca bloqueia o envio */ }
 
   try {
     let endpoint, payload
     if (document) {
       // Documento (PDF) — URL pública. Legenda = caption || message.
       endpoint = `${url}/message/sendMedia/${instance}`
-      payload = { number: fone, mediatype: 'document', mimetype: 'application/pdf', media: document, caption: caption || message || '', fileName: fileName || 'relatorio.pdf' }
+      payload = { number: fone, mediatype: 'document', mimetype: 'application/pdf', media: document, caption: capFinal || msgFinal || '', fileName: fileName || 'relatorio.pdf' }
     } else if (image) {
       // Envio de mídia (imagem) — aceita URL pública ou base64. Legenda = caption || message.
       endpoint = `${url}/message/sendMedia/${instance}`
-      payload = { number: fone, mediatype: 'image', mimetype: 'image/jpeg', media: image, caption: caption || message || '', fileName: 'flyer.jpg' }
+      payload = { number: fone, mediatype: 'image', mimetype: 'image/jpeg', media: image, caption: capFinal || msgFinal || '', fileName: 'flyer.jpg' }
     } else {
       endpoint = `${url}/message/sendText/${instance}`
-      payload = { number: fone, text: message }
+      payload = { number: fone, text: msgFinal }
     }
     const r = await fetch(endpoint, {
       method: 'POST',
