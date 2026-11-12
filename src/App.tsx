@@ -65,6 +65,7 @@ import StatusRequisicoesPage from './pages/requisicoes/StatusRequisicoesPage'
 import CampanhasPage from './pages/campanhas/CampanhasPage'
 import PesquisaAuraPage from './pages/pesquisa/PesquisaAuraPage'
 import ControleAgentePage from './pages/agente-controle/ControleAgentePage'
+import CentralComandoPage from './pages/ia-comando/CentralComandoPage'
 import RelatoriosPrecosPage from './pages/relatorios-precos/RelatoriosPrecosPage'
 import RecebimentoPage from './pages/recebimento/RecebimentoPage'
 import EtiquetasPage from './pages/etiquetas/EtiquetasPage'
@@ -141,6 +142,7 @@ export type PageId =
   | 'clientes'
   | 'campanhas'
   | 'agente-controle'
+  | 'amore-ia'
   | 'relatorios-precos'
   | 'recebimento'
   | 'etiquetas'
@@ -214,6 +216,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   clientes: 'Clientes Amore (CRM)',
   campanhas: 'Campanhas',
   'agente-controle': 'Controle do Agente',
+  'amore-ia': 'Central de Comando — Amore IA',
   'relatorios-precos': 'Relatório de Compras',
   recebimento: 'Recebimento Inteligente',
   etiquetas: 'Etiquetas & Leitura',
@@ -307,6 +310,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'clientes':             return <ClientesPage />
     case 'campanhas':            return <CampanhasPage />
     case 'agente-controle':      return <ControleAgentePage />
+    case 'amore-ia':             return <CentralComandoPage />
     case 'relatorios-precos':    return <RelatoriosPrecosPage />
     case 'recebimento':          return <RecebimentoPage />
     case 'etiquetas':            return <EtiquetasPage />
