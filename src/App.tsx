@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from './contexts/AuthContext'
 import { carregarZapiCfgRemoto } from './lib/notify'
-import { useTheme } from './contexts/ThemeContext'
+import { useTheme, brandPalette } from './contexts/ThemeContext'
 import { LojaProvider, useLoja } from './contexts/LojaContext'
 import LoginPage from './pages/auth/LoginPage'
 import ResetPasswordPage from './pages/auth/ResetPasswordPage'
@@ -152,7 +152,7 @@ export type PageId =
   | 'creditos'
 
 const PAGE_TITLES: Record<PageId, string> = {
-  dashboard: 'Dashboard',
+  dashboard: 'Início',
   vendas: 'Vendas',
   compras: 'Compras',
   'notas-fiscais': 'Notas Fiscais',
@@ -227,15 +227,6 @@ const PAGE_TITLES: Record<PageId, string> = {
 
 // Aplica a paleta Flow (verde) no painel quando a loja ativa é "Flow CD".
 // Restaura o tema padrão (do TenantSettings) para as demais lojas.
-function _lighten(hex: string, amount: number): string {
-  try {
-    const num = parseInt(hex.replace('#', ''), 16)
-    const r = Math.min(255, (num >> 16) + amount)
-    const g = Math.min(255, ((num >> 8) & 0xff) + amount)
-    const b = Math.min(255, (num & 0xff) + amount)
-    return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')
-  } catch { return hex }
-}
 function LojaBrand() {
   const { loja } = useLoja()
   const { theme } = useTheme()
@@ -245,16 +236,15 @@ function LojaBrand() {
       root.setProperty('--bordo', '#3FA34D')
       root.setProperty('--bordo-l', '#58B94F')
       root.setProperty('--bordo-d', '#2E7D34')
-      root.setProperty('--sidebar', '#123D18')
-      root.setProperty('--sidebar-a', _lighten('#123D18', 10))
-      root.setProperty('--sidebar-b', _lighten('#123D18', 8))
+      root.setProperty('--bordo-bg', '#E8F4E7')
+      root.setProperty('--sidebar', '#F6FAF5')
     } else {
-      root.setProperty('--bordo', theme.primary_color)
-      root.setProperty('--bordo-l', theme.primary_light)
-      root.setProperty('--bordo-d', theme.primary_dark)
-      root.setProperty('--sidebar', theme.sidebar_color)
-      root.setProperty('--sidebar-a', _lighten(theme.sidebar_color, 10))
-      root.setProperty('--sidebar-b', _lighten(theme.sidebar_color, 8))
+      const p = brandPalette(theme)
+      root.setProperty('--bordo', p.primary)
+      root.setProperty('--bordo-l', p.light)
+      root.setProperty('--bordo-d', p.dark)
+      root.setProperty('--bordo-bg', `color-mix(in srgb, ${p.primary} 10%, #fff)`)
+      root.setProperty('--sidebar', '#FFFFFF')
     }
   }, [loja, theme])
   return null

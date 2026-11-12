@@ -8,11 +8,11 @@ const DEFAULT_THEME: TenantSettings = {
   company_name: 'Amore Gestão',
   logo_url: null,
   favicon_url: null,
-  primary_color: '#6B1212',
-  primary_dark: '#4A0C0C',
-  primary_light: '#8B1A1A',
-  sidebar_color: '#1A0505',
-  accent_color: '#6B1212',
+  primary_color: '#C2533B',
+  primary_dark: '#A4432E',
+  primary_light: '#D4684F',
+  sidebar_color: '#FFFFFF',
+  accent_color: '#C2533B',
   font_heading: 'Plus Jakarta Sans',
   font_body: 'Inter',
   stores: ['Amore CD', 'Amore Paiva', 'Flow CD'],
@@ -38,14 +38,25 @@ const ThemeContext = createContext<ThemeContextValue>({
   applyTheme: () => {},
 })
 
+// Paleta antiga (bordô) salva no banco/localStorage migra para a identidade coral Amore.
+// Cores personalizadas via White Label continuam valendo.
+const LEGACY_PRIMARY = ['#6b1212', '#8b1a1a', '#4a0c0c']
+export function brandPalette(t: TenantSettings) {
+  const legacy = LEGACY_PRIMARY.includes((t.primary_color || '').toLowerCase())
+  return legacy
+    ? { primary: '#C2533B', light: '#D4684F', dark: '#A4432E' }
+    : { primary: t.primary_color, light: t.primary_light, dark: t.primary_dark }
+}
+
 function applyCSS(t: TenantSettings) {
   const root = document.documentElement
-  root.style.setProperty('--bordo', t.primary_color)
-  root.style.setProperty('--bordo-l', t.primary_light)
-  root.style.setProperty('--bordo-d', t.primary_dark)
-  root.style.setProperty('--sidebar', t.sidebar_color)
-  root.style.setProperty('--sidebar-a', lighten(t.sidebar_color, 10))
-  root.style.setProperty('--sidebar-b', lighten(t.sidebar_color, 8))
+  const p = brandPalette(t)
+  root.style.setProperty('--bordo', p.primary)
+  root.style.setProperty('--bordo-l', p.light)
+  root.style.setProperty('--bordo-d', p.dark)
+  root.style.setProperty('--bordo-bg', `color-mix(in srgb, ${p.primary} 10%, #fff)`)
+  // Menu lateral claro: a cor escura do White Label antigo deixaria o texto ilegível
+  root.style.setProperty('--sidebar', '#FFFFFF')
 
   const fontId = 'dynamic-font'
   let link = document.getElementById(fontId) as HTMLLinkElement | null
@@ -58,16 +69,6 @@ function applyCSS(t: TenantSettings) {
   const h = t.font_heading.replace(/ /g, '+')
   const b = t.font_body.replace(/ /g, '+')
   link.href = `https://fonts.googleapis.com/css2?family=${h}:wght@400;500;600;700;800&family=${b}:wght@400;500;600&display=swap`
-}
-
-function lighten(hex: string, amount: number): string {
-  try {
-    const num = parseInt(hex.replace('#', ''), 16)
-    const r = Math.min(255, (num >> 16) + amount)
-    const g = Math.min(255, ((num >> 8) & 0xff) + amount)
-    const b = Math.min(255, (num & 0xff) + amount)
-    return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')
-  } catch { return hex }
 }
 
 function getLocalTheme(): TenantSettings {

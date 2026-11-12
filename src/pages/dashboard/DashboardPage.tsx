@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from 'react'
-import { AlertTriangle, CheckCircle, AlertCircle, TrendingUp, TrendingDown, ShoppingCart, Package, Clock, BarChart2, Zap, Bot, Shield, MessageSquare, ChefHat, Star, CalendarDays } from 'lucide-react'
+import { AlertTriangle, CheckCircle, AlertCircle, TrendingUp, TrendingDown, ShoppingCart, Package, Clock, BarChart2, Zap, Bot, Shield, MessageSquare, ChefHat, Star, CalendarDays, ClipboardList, Wallet, Brain, Inbox, ListChecks, ShieldAlert } from 'lucide-react'
 import { useLoja } from '../../contexts/LojaContext'
 import { useAuth } from '../../contexts/AuthContext'
+import { ModuleCard, SectionTitle, type Pastel } from '../../components/ui/ModuleCard'
 import {
   fetchRupturas, fetchRelatoriosCVL, fetchRequisicoes, fetchProdutos,
   fetchComprasAuditoria, fetchCozinhaProducao, fetchCozinhaDesperdicio, fetchCozinhaFichas,
@@ -46,11 +47,23 @@ function KpiCard({ lbl, val, sub, col, icon, trend, loading }: KpiCardProps) {
   )
 }
 
+// ── Módulos principais da home (id = rota do painel; perm = permissão exigida) ──
+const MODULOS: { id: string; perm?: string; titulo: string; desc: string; cor: Pastel; icone: React.ReactNode }[] = [
+  { id: 'requisicoes', perm: 'requisicoes', titulo: 'Compras', desc: 'Requisições e cotações', cor: 'rosa', icone: <ShoppingCart /> },
+  { id: 'estoque', titulo: 'Estoque', desc: 'Produtos e movimentações', cor: 'areia', icone: <Package /> },
+  { id: 'creditos', perm: 'financeiro', titulo: 'Prestação de contas', desc: 'Despesas e documentos', cor: 'dourado', icone: <Wallet /> },
+  { id: 'inteligencia-compras', perm: 'requisicoes', titulo: 'Inteligência de compras', desc: 'Preços e fornecedores', cor: 'coral', icone: <Brain /> },
+  { id: 'tarefas', titulo: 'Central de tarefas', desc: 'Demandas e execução', cor: 'verde', icone: <ListChecks /> },
+  { id: 'tarefas', titulo: 'RNC', desc: 'Não conformidades', cor: 'cinza', icone: <ShieldAlert /> },
+  { id: 'recebimento', titulo: 'Recebimento', desc: 'Notas e conferências', cor: 'rosa', icone: <Inbox /> },
+  { id: 'checklists', titulo: 'Operação', desc: 'Rotinas e procedimentos', cor: 'areia', icone: <ClipboardList /> },
+]
+
 // ── main ───────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const { loja } = useLoja()
-  const { user } = useAuth()
+  const { user, can } = useAuth()
 
   // ── Saudação inteligente + data por extenso ──────────────────
   const agora = new Date()
@@ -255,11 +268,11 @@ export default function DashboardPage() {
           <div style={{ fontSize: 12.5, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
             <CalendarDays size={13} /> {dataExtenso}
           </div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, margin: '5px 0 0', color: 'var(--bordo)', lineHeight: 1.15 }}>
+          <h1 style={{ fontSize: 26, fontWeight: 700, margin: '5px 0 0', color: 'var(--text)', lineHeight: 1.15 }}>
             {saudacao}, {primeiroNome}! <span style={{ fontSize: 22 }}>{emojiSaudacao}</span>
           </h1>
-          <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3 }}>
-            Aqui está o resumo da operação{loja && loja !== 'Todas as Lojas' ? ` — ${loja}` : ''}.
+          <div style={{ fontSize: 13.5, color: 'var(--muted)', marginTop: 3 }}>
+            Visão geral da sua operação{loja && loja !== 'Todas as Lojas' ? ` — ${loja}` : ''}.
           </div>
         </div>
         <button className="btn bo bsm" onClick={gerarRelatorioWhatsApp}
@@ -329,6 +342,16 @@ export default function DashboardPage() {
           loading={loading}
         />
       </div>
+
+      {/* ── Módulos principais (cartões pastel) ─────────────────── */}
+      <SectionTitle>Módulos</SectionTitle>
+      <div className="module-grid">
+        {MODULOS.filter(m => can(m.perm ?? m.id, 'view')).map(m => (
+          <ModuleCard key={m.id + m.titulo} titulo={m.titulo} descricao={m.desc} cor={m.cor} icone={m.icone}
+            onClick={() => document.dispatchEvent(new CustomEvent('amore-nav', { detail: m.id }))} />
+        ))}
+      </div>
+      <div style={{ height: 22 }} />
 
       {/* ── 🤖 Agente Analítico de Compras ─────────────────────── */}
       {(() => {
