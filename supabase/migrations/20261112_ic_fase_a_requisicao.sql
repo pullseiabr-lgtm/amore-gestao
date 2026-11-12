@@ -28,6 +28,9 @@ begin
   v_crit := coalesce((cfg->>'critico')::numeric,10); v_alerta := coalesce((cfg->>'alerta')::numeric,5); v_susp := coalesce((cfg->>'suspeito')::numeric,5);
   alias := coalesce(cfg->'aliases','{}'::jsonb);
   select loja into v_loja from requisicoes where id=p_req;
+  create temp table if not exists _ic_all (data date, preco_base numeric, fornecedor_key text, loja text, valor numeric, qtd_base numeric, caixa_id uuid, produto_key text, un_base text) on commit drop;
+  truncate _ic_all;
+  insert into _ic_all select c.data, c.preco_base, c.fornecedor_key, c.loja, c.valor, c.qtd_base, c.caixa_id, coalesce(alias->>c.produto_key, c.produto_key), c.un_base from v_ic_compras c where c.preco_ok and c.data_ok and c.eh_produto;
   for it in select * from requisicao_itens where requisicao_id=p_req order by created_at loop
     k := ic_norm(it.produto_nome); ub := ic_unid_base(it.unidade);
     qb := coalesce(it.quantidade_aprovada, it.quantidade, 0) * ic_unid_fator(it.unidade);
@@ -35,11 +38,9 @@ begin
     truncate _ic_m;
     insert into _ic_m
       select c.data, c.preco_base, c.fornecedor_key, c.loja, c.valor, c.qtd_base, c.caixa_id
-      from v_ic_compras c
-      where c.preco_ok and c.data_ok and c.eh_produto and c.un_base=ub
-        and (coalesce(alias->>c.produto_key, c.produto_key) = coalesce(alias->>k,k)
-             or coalesce(alias->>c.produto_key, c.produto_key) like coalesce(alias->>k,k)||' %'
-             or coalesce(alias->>k,k) like coalesce(alias->>c.produto_key, c.produto_key)||' %');
+      from _ic_all c
+      where c.un_base=ub
+        and (c.produto_key = coalesce(alias->>k,k) or c.produto_key like coalesce(alias->>k,k)||' %' or coalesce(alias->>k,k) like c.produto_key||' %');
     select count(distinct m.data) into n from _ic_m m;
     if n = 0 then
       sem := sem + 1;
