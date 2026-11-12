@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Brain, RefreshCw, X, FileText, FileSpreadsheet, AlertTriangle, Search } from 'lucide-react'
 import CompradorTab from './CompradorTab'
+import SemanalTab from './SemanalTab'
+import { useAuth } from '../../contexts/AuthContext'
+import { isOwner } from '../../lib/permissions'
 import { useLoja } from '../../contexts/LojaContext'
 import { useToast } from '../../hooks/useToast'
 import {
@@ -16,8 +19,8 @@ const grid = (min: number): React.CSSProperties => ({ display: 'grid', gridTempl
 const th: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', fontSize: 11, color: 'var(--muted)', fontWeight: 700, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }
 const td: React.CSSProperties = { padding: '7px 10px', fontSize: 12.5, borderBottom: '1px solid var(--border)', verticalAlign: 'top' }
 
-type Aba = 'comprador' | 'dashboard' | 'produtos' | 'fornecedores' | 'variacoes' | 'frequencia' | 'relatorio' | 'config'
-const ABAS: [Aba, string][] = [['comprador', '🛒 Comprador'], ['dashboard', '📊 Dashboard'], ['produtos', '🧾 Produtos'], ['fornecedores', '🏪 Fornecedores'], ['variacoes', '📈 Variações'], ['frequencia', '🔁 Frequência'], ['relatorio', '📑 Relatório'], ['config', '⚙️ Configurações']]
+type Aba = 'semanal' | 'comprador' | 'dashboard' | 'produtos' | 'fornecedores' | 'variacoes' | 'frequencia' | 'relatorio' | 'config'
+const ABAS: [Aba, string][] = [['comprador', '🛒 Comprador'], ['semanal', '🗓️ Semanal por loja'], ['dashboard', '📊 Dashboard'], ['produtos', '🧾 Produtos'], ['fornecedores', '🏪 Fornecedores'], ['variacoes', '📈 Variações'], ['frequencia', '🔁 Frequência'], ['relatorio', '📑 Relatório'], ['config', '⚙️ Configurações']]
 
 const Badge = ({ n }: { n: Nivel }) => <span style={{ background: NIVEL_INFO[n].c + '22', color: NIVEL_INFO[n].c, border: `1px solid ${NIVEL_INFO[n].c}55`, borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{NIVEL_INFO[n].e} {NIVEL_INFO[n].l}</span>
 const Kpi = ({ t, v, s, c }: { t: string; v: string; s?: string; c?: string }) => (
@@ -55,6 +58,7 @@ function BarrasH({ itens, fmt, cor }: { itens: { l: string; v: number }[]; fmt: 
 export default function InteligenciaComprasPage() {
   const { loja: lojaCtx } = useLoja()
   const { toast } = useToast()
+  const { user } = useAuth()
   const [todas, setTodas] = useState<Compra[]>([])
   const [cfg, setCfg] = useState<Cfg>(CFG_PADRAO)
   const [loading, setLoading] = useState(true)
@@ -200,10 +204,12 @@ export default function InteligenciaComprasPage() {
         {ABAS.map(([k, l]) => <button key={k} className="btn" onClick={() => setAba(k)} style={{ background: aba === k ? 'var(--bordo)' : 'var(--card)', color: aba === k ? '#fff' : 'var(--text)', border: '1px solid var(--border)' }}>{l}</button>)}
       </div>
 
-      {aba !== 'config' && aba !== 'comprador' && filtroBox}
+      {aba !== 'config' && aba !== 'comprador' && aba !== 'semanal' && filtroBox}
       {loading ? <div style={{ ...card, color: 'var(--muted)' }}>Carregando histórico de compras…</div> : <>
 
       {aba === 'comprador' && <CompradorTab comprador={cfg.comprador || 'Esdras Santana'} loja={fLoja} />}
+
+      {aba === 'semanal' && <SemanalTab todas={todas} cfg={cfg} lojaInicial={fLoja} podeEnviar={isOwner(user)} />}
 
       {aba === 'dashboard' && <>
         <div style={{ ...grid(190), marginBottom: 12 }}>
@@ -264,6 +270,9 @@ export default function InteligenciaComprasPage() {
               <div key={k}><label style={lbl}>{l}</label><input style={inp} inputMode="decimal" value={String(cfg[k] as number)} onChange={e => setCfg({ ...cfg, [k]: Number(e.target.value.replace(',', '.')) || 0 })} /></div>)}
           </div>
           <div style={{ marginTop: 10, maxWidth: 320 }}><label style={lbl}>Comprador padrão (responsável por finalizar compras)</label><input style={inp} value={cfg.comprador || ''} onChange={e => setCfg({ ...cfg, comprador: e.target.value })} /></div>
+          <div style={{ marginTop: 10, maxWidth: 420 }}><label style={lbl}>Resumo semanal no WhatsApp — envio MANUAL (desligado por padrão; só o Esdras libera)</label>
+            <label style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" disabled={!isOwner(user)} checked={!!cfg.semanalWhatsApp} onChange={e => setCfg({ ...cfg, semanalWhatsApp: e.target.checked })} style={{ width: 'auto' }} /> Liberar botão “Enviar resumo no WhatsApp”</label>
+            <textarea style={{ ...inp, marginTop: 6 }} rows={3} placeholder={'WhatsApps dos gestores (um por linha, com DDD)'} value={cfg.semanalFones || ''} onChange={e => setCfg({ ...cfg, semanalFones: e.target.value })} /></div>
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
             <button className="btn" style={{ background: 'var(--bordo)', color: '#fff' }} onClick={async () => { await salvarCfg(cfg); toast('Configuração salva ✅') }}>Salvar</button>
             <button className="btn" style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }} onClick={() => setCfg({ ...CFG_PADRAO, aliases: cfg.aliases })}>Restaurar padrão</button>

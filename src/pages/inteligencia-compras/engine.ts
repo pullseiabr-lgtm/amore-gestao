@@ -22,8 +22,10 @@ export interface Cfg {
   freqCurta: number    // % do intervalo médio abaixo do qual a compra é "fora do padrão"
   aliases: Record<string, string> // produto_key -> produto_key canônico (agrupamento manual)
   comprador: string    // comprador padrão do ciclo de compras (Fase B)
+  semanalWhatsApp: boolean // libera o botão MANUAL de envio do resumo semanal (desligado por padrão)
+  semanalFones: string     // WhatsApps dos gestores autorizados (um por linha)
 }
-export const CFG_PADRAO: Cfg = { estavel: 1, alerta: 5, critico: 10, suspeito: 5, freqCurta: 50, aliases: {}, comprador: 'Esdras Santana' }
+export const CFG_PADRAO: Cfg = { estavel: 1, alerta: 5, critico: 10, suspeito: 5, freqCurta: 50, aliases: {}, comprador: 'Esdras Santana', semanalWhatsApp: false, semanalFones: '' }
 const CFG_KEY = 'ic_config'
 
 export async function carregarCfg(): Promise<Cfg> {
