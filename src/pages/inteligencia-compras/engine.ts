@@ -21,8 +21,9 @@ export interface Cfg {
   suspeito: number     // razão entre preços acima da qual o salto é tratado como erro de unidade/embalagem
   freqCurta: number    // % do intervalo médio abaixo do qual a compra é "fora do padrão"
   aliases: Record<string, string> // produto_key -> produto_key canônico (agrupamento manual)
+  comprador: string    // comprador padrão do ciclo de compras (Fase B)
 }
-export const CFG_PADRAO: Cfg = { estavel: 1, alerta: 5, critico: 10, suspeito: 5, freqCurta: 50, aliases: {} }
+export const CFG_PADRAO: Cfg = { estavel: 1, alerta: 5, critico: 10, suspeito: 5, freqCurta: 50, aliases: {}, comprador: 'Esdras Santana' }
 const CFG_KEY = 'ic_config'
 
 export async function carregarCfg(): Promise<Cfg> {

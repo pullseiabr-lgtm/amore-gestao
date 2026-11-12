@@ -5,7 +5,7 @@ import { brl, pctF, dBR, titulo } from './engine'
 const sb = supabase as any
 
 export interface ItemAnalise {
-  item_id: string; produto: string; qtd: number; unidade: string; un_base?: string; status: 'ok' | 'sem_referencia'; n_compras?: number
+  item_id: string; produto: string; qtd: number; unidade: string; un_base?: string; qtd_base?: number; status: 'ok' | 'sem_referencia'; n_compras?: number
   ultimo?: { preco: number; data: string; fornecedor: string; loja: string }; anterior_preco?: number | null; variacao_pct?: number | null; media?: number
   menor_hist?: { preco: number; fornecedor: string; data: string }; fornecedores?: { nome: string; ultimo_preco: number; data: string; menor: number }[]
   custo_estimado?: number; custo_media?: number; alerta?: string | null; origem?: string[]
