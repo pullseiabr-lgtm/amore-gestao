@@ -8,6 +8,7 @@ Fonte de dados: view `v_ic_compras` (itens da Prestação de Contas — `caixa_i
 | A — preços na aprovação | `PrecosRequisicao.tsx` (modal de aprovação) e `public/requisicao-editar.html` | RPC `ic_analise_requisicao`, tabela `ic_req_analises` (snapshots `envio` e `aprovacao`) |
 | B — Comprador | `CompradorTab.tsx` | `ic_cotacoes`, `ic_compras_plano`; recebido lido de `pedido_compra_itens` |
 | C — Semanal por loja | `SemanalTab.tsx`, `semanal.ts` | consolidado gravado em `app_config.ic_semanal_<loja>_<segunda>` |
+| D — Consumo | `ConsumoTab.tsx` | views `v_ic_consumo_real` (baixas, perdas, transferências enviadas) e `v_ic_estoque_atual`; sem consumo real mostra ESTIMATIVA pelas compras |
 
 ## Relatório semanal de segunda-feira 8h — NÃO está agendado (de propósito)
 
