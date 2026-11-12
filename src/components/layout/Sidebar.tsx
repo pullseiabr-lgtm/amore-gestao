@@ -6,7 +6,7 @@ import { useTheme } from '../../contexts/ThemeContext'
 import { useLoja } from '../../contexts/LojaContext'
 
 // Remove emoji do rótulo (ícones agora são lucide, traço arredondado)
-const stripEmoji = (t: string) => t.replace(/^[^p{L}p{N}]+/u, '').trim()
+const stripEmoji = (t: string) => t.replace(/^[^\p{L}\p{N}]+/u, '').trim()
 
 // Família única de ícones (traço arredondado) por módulo
 const ICON_BY_ID: Record<string, React.ComponentType<{ size?: number }>> = {

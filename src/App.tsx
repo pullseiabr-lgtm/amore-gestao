@@ -244,7 +244,7 @@ function LojaBrand() {
       root.setProperty('--bordo-l', p.light)
       root.setProperty('--bordo-d', p.dark)
       root.setProperty('--bordo-bg', `color-mix(in srgb, ${p.primary} 10%, #fff)`)
-      root.setProperty('--sidebar', '#FFFFFF')
+      root.setProperty('--sidebar', '#F7E8EA')
     }
   }, [loja, theme])
   return null

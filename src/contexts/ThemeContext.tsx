@@ -11,7 +11,7 @@ const DEFAULT_THEME: TenantSettings = {
   primary_color: '#C2533B',
   primary_dark: '#A4432E',
   primary_light: '#D4684F',
-  sidebar_color: '#FFFFFF',
+  sidebar_color: '#F7E8EA',
   accent_color: '#C2533B',
   font_heading: 'Plus Jakarta Sans',
   font_body: 'Inter',
@@ -56,7 +56,7 @@ function applyCSS(t: TenantSettings) {
   root.style.setProperty('--bordo-d', p.dark)
   root.style.setProperty('--bordo-bg', `color-mix(in srgb, ${p.primary} 10%, #fff)`)
   // Menu lateral claro: a cor escura do White Label antigo deixaria o texto ilegível
-  root.style.setProperty('--sidebar', '#FFFFFF')
+  root.style.setProperty('--sidebar', '#F7E8EA')
 
   const fontId = 'dynamic-font'
   let link = document.getElementById(fontId) as HTMLLinkElement | null
