@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import PrecosRequisicao, { snapshotRequisicao } from '../inteligencia-compras/PrecosRequisicao'
 import {
   Plus, Search, Trash2, ChevronLeft, Loader, Check, X,
   DollarSign, FileText, Clock, AlertTriangle, CheckCircle2, XCircle,
@@ -210,6 +211,7 @@ function useToast() {
 // Aprovadores da requisição — disparo AUTOMÁTICO ao enviar para aprovação (Wagner + Aline).
 const REQ_APROVADORES = [{ nome: 'Wagner', fone: '5581994135602' }, { nome: 'Aline', fone: '5581994573420' }]
 async function dispararAprovacaoReq(req: any, nItens: number, userName: string) {
+  snapshotRequisicao(req.id, 'envio', userName) // Inteligência de Compras: guarda a análise de preços do momento do envio
   const lojaLabel = ({ 'Amore CD': 'Amore Costa Dourada', 'Flow CD': 'Flow Costa Dourada' } as Record<string, string>)[req.loja] || req.loja
   const num = req.numero != null ? `#${req.numero}` : (req.codigo || 'nova')
   const link = `${siteOrigin()}/requisicao-editar.html?id=${req.id}`
@@ -348,6 +350,7 @@ function ModalAprovacao({ req, itens, userName: _userName, onSalvo, onFechar }: 
             <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>REQ-{String(req.numero).padStart(4,'0')} · {req.titulo}</div></div>
           <button className="ib rd" onClick={onFechar}><X size={15} /></button>
         </div>
+        <PrecosRequisicao reqId={req.id} />
         <div style={{ border:'1px solid #e5e7eb', borderRadius:10, overflow:'hidden', marginBottom:14 }}>
           <div style={{ background:'#f8fafc', padding:'7px 12px', fontSize:10, fontWeight:700, color:'var(--muted)', display:'grid', gridTemplateColumns:'1fr 80px 80px 1fr', gap:8 }}>
             <span>PRODUTO</span><span>QTD SOL.</span><span>QTD APROV.</span><span>BLOQUEAR?</span>
@@ -928,6 +931,7 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
       const s = st[item.id]
       if (s) await updateRequisicaoItem(item.id, { bloqueado:s.bloqueado, motivo_bloqueio:s.bloqueado?s.motivo:null, quantidade_aprovada:s.bloqueado?null:s.qtd, status:s.bloqueado?'cancelado':'aprovado' })
     }
+    if (acao==='aprovada'||acao==='parcialmente_aprovada') await snapshotRequisicao(req.id, 'aprovacao', userName)
     const u = await updateRequisicao(req.id, { status:acao, aprovador_nome:userName, aprovador_at:new Date().toISOString(), obs_aprovacao:obs||null })
     const bl = itens.filter(i=>st[i.id]?.bloqueado).map(i=>i.produto_nome)
     const desc = acao==='aprovada'?`Aprovada por ${userName}`:acao==='parcialmente_aprovada'?`Aprovada parcialmente. Bloqueados: ${bl.join(', ')}`:acao==='reprovada'?`Reprovada por ${userName}`:`Ajuste solicitado por ${userName}`

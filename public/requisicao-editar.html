@@ -154,6 +154,7 @@ function renderPage(){
       <div class="searchwrap"><input id="busca" placeholder="Buscar produto para adicionar…" autocomplete="off"><div class="results" id="results"></div></div>
       <div class="hint">${CAT.length} produtos no catálogo · você pode aumentar/reduzir quantidade e excluir itens abaixo</div>
     </div>
+    <div class="card" id="intel"><div class="hint">🧠 Calculando inteligência de preços…</div></div>
     <div class="card">
       <div class="tw"><table><thead><tr><th>Categoria</th><th>Produto</th><th>Marca</th><th>Unidade</th><th>Qtd</th><th></th></tr></thead><tbody id="itens"></tbody></table></div>
       <div class="foot">
@@ -174,7 +175,24 @@ function renderPage(){
     html+=`<div class="ritem new" onclick="addNovo()">➕ Adicionar novo: "${esc(b.value.trim())}"</div>`;
     res.innerHTML=html; res.classList.add('show'); });
   document.addEventListener('click',e=>{ if(!e.target.closest('.searchwrap')){const r=el('results');if(r)r.classList.remove('show');} });
-  render();
+  render(); carregarIntel();
+}
+const fmtP=n=>n==null?'—':'R$ '+Number(n).toFixed(2).replace('.',',');
+const ALT={aumento_critico:['🔴 Aumento crítico','#DC2626'],aumento_alerta:['🟠 Aumento (alerta)','#EA580C'],aumento:['🟡 Aumento','#D97706'],reducao:['🟢 Redução','#1D9E75'],suspeito:['❓ Salto suspeito','#6B7280']};
+async function carregarIntel(momento){
+  const box=el('intel'); if(!box)return;
+  try{
+    const r=await fetch(SB+'/rest/v1/rpc/ic_analise_requisicao',{method:'POST',headers:H,body:JSON.stringify({p_req:ID,p_momento:momento||null,p_usuario:momento?((el('quem')&&el('quem').value)||null):null})});
+    const a=await r.json(); if(!r.ok||!a.itens) throw new Error(a.message||'falha');
+    const nAl=a.itens.filter(i=>i.alerta&&i.alerta!=='reducao').length;
+    const linhas=a.itens.map(i=>{
+      if(i.status!=='ok') return '<tr><td>'+esc(i.produto)+'</td><td>'+esc(i.qtd)+' '+esc(i.unidade)+'</td><td colspan="6" style="color:var(--muted)">⚪ sem referência de preço no histórico</td></tr>';
+      const al=i.alerta&&ALT[i.alerta]; const forn=(i.fornecedores||[]).length>1?'<div style="color:var(--muted);font-size:10.5px">'+i.fornecedores.map(f=>esc(f.nome)+' '+fmtP(f.ultimo_preco)).join(' · ')+'</div>':'';
+      return '<tr'+(i.alerta&&i.alerta!=='reducao'&&i.alerta!=='suspeito'?' style="background:#FEF2F2"':'')+'><td><b>'+esc(i.produto)+'</b></td><td>'+esc(i.qtd)+' '+esc(i.unidade)+'</td><td><b>'+fmtP(i.ultimo.preco)+'</b>/'+esc(i.un_base)+'</td><td>'+dmy(i.ultimo.data)+'<br><span style="color:var(--muted)">'+esc(i.ultimo.fornecedor)+'</span></td><td>'+fmtP(i.media)+'</td><td>'+(i.menor_hist?fmtP(i.menor_hist.preco)+'<br><span style="color:var(--muted)">'+esc(i.menor_hist.fornecedor)+'</span>':'—')+forn+'</td><td>'+(i.variacao_pct==null?'<span style="color:var(--muted)">1ª referência</span>':'<b style="color:'+(al?al[1]:'inherit')+'">'+(i.variacao_pct>0?'+':'')+String(i.variacao_pct).replace('.',',')+'%'+(al?' '+al[0]:'')+'</b>')+'</td><td><b>'+fmtP(i.custo_estimado)+'</b><div style="color:var(--muted);font-size:10.5px">pela média '+fmtP(i.custo_media)+'</div></td></tr>';}).join('');
+    box.innerHTML='<div style="font-weight:800;color:var(--v)">🧠 Inteligência de preços</div><div class="hint" style="margin-bottom:10px">Custo estimado = <b>último preço pago</b> (a média das últimas compras é só indicador). Itens sem histórico aparecem como “sem referência”, não R$ 0. A análise original fica gravada nesta requisição.</div>'
+     +'<div class="grid" style="margin-bottom:10px"><div><label>Custo estimado (itens com referência)</label><b style="font-size:20px">'+fmtP(a.custo_total)+'</b></div><div><label>Com referência / sem</label><b style="font-size:20px">'+a.itens_com_referencia+' / '+a.itens_sem_referencia+'</b></div><div><label>Alertas</label><b style="font-size:20px;color:'+(nAl?'#DC2626':'inherit')+'">'+nAl+'</b></div></div>'
+     +'<div class="tw" style="max-height:340px;overflow:auto"><table style="min-width:760px"><thead><tr><th>Produto</th><th>Qtd</th><th>Último preço</th><th>Última compra</th><th>Média</th><th>Menor / fornecedores</th><th>Variação</th><th>Custo item</th></tr></thead><tbody>'+linhas+'</tbody></table></div>';
+  }catch(e){ box.innerHTML='<div class="hint">Inteligência de preços indisponível agora ('+esc(e.message)+').</div>'; }
 }
 function addCat(i){ const p=CAT[i]; if(!p)return; addItem({produto:p.nome,marca:p.marca,un:p.un,custo:p.custo,categoria:p.categoria,qtd:1}); el('busca').value='';el('results').classList.remove('show');el('busca').focus(); }
 function addNovo(){ const nome=el('busca').value.trim(); if(!nome)return; const un=prompt('Unidade (ex.: kg, Caixa, Unidade(s)):','Unidade(s)')||'Unidade(s)'; addItem({produto:nome,marca:'',un,custo:0,categoria:mapCat('',nome),qtd:1}); el('busca').value='';el('results').classList.remove('show'); }
@@ -220,6 +238,7 @@ async function salvar(silent,porArg){
     if(!r.ok) throw new Error('itens '+r.status);
     await logAlteracao(por,mudancas);   // registra o que mudou (quem/quando/o quê)
     snapshotAtual();                    // novo ponto de comparação
+    if(!silent) carregarIntel();
     if(!silent) show(mudancas.length?('✅ Alterações salvas e registradas ('+mudancas.length+' mudança'+(mudancas.length>1?'s':'')+').'):'✅ Salvo (sem alterações a registrar).',true);
     return true;
   }catch(e){ if(!silent) show('Erro ao salvar: '+e.message,false); return false; }
@@ -232,6 +251,7 @@ async function validar(){
   const num='REQ-'+String(REQ.numero).padStart(4,'0');
   try{
     await fetch(SB+'/rest/v1/requisicoes?id=eq.'+ID,{method:'PATCH',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify({status:'aprovada',aprovador_nome:quem,aprovador_at:new Date().toISOString()})});
+    try{ await carregarIntel('aprovacao'); }catch(e){}
     await timeline('aprovacao','✅ Aprovada por '+quem+' — enviada para o Esdras gerar a COTAÇÃO e mandar aos fornecedores',quem,null);
     const linkCot='https://painel.amorefood.com.br/?page=cotacao&req='+ID;
     const msg='✅ *Requisição APROVADA por '+quem+'* — '+num+'\n'+(REQ.loja||'')+' · '+esc(REQ.titulo||'')+'\n🧾 '+ITENS.length+' itens\n\n➡️ *Próximo passo: COTAÇÃO*\n👉 *Esdras (Compras)*, abra para gerar a cotação e *enviar aos fornecedores*:\n'+linkCot;
