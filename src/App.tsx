@@ -12,6 +12,7 @@ import VendasPage from './pages/vendas/VendasPage'
 import ComprasPage from './pages/compras/ComprasPage'
 import NotasFiscaisPage from './pages/notas/NotasFiscaisPage'
 import InteligenciaComprasPage from './pages/notas/InteligenciaComprasPage'
+import InteligenciaComprasMercadoPage from './pages/inteligencia-compras/InteligenciaComprasPage'
 import CmvAbcPage from './pages/notas/CmvAbcPage'
 import CompradorIaPage from './pages/notas/CompradorIaPage'
 import FinanceiroPage from './pages/financeiro/FinanceiroPage'
@@ -92,6 +93,7 @@ export type PageId =
   | 'ciclo-compras'
   | 'requisicao-inteligente'
   | 'analise-semanal'
+  | 'inteligencia-compras'
   | 'entregas'
   | 'painel-gestao'
   | 'custos'
@@ -154,7 +156,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   vendas: 'Vendas',
   compras: 'Compras',
   'notas-fiscais': 'Notas Fiscais',
-  'compras-inteligencia': 'Inteligência de Compras',
+  'compras-inteligencia': 'Histórico de Preços (NF)',
   'cmv-abc': 'CMV & Curva ABC',
   'comprador-ia': 'Comprador IA',
   requisicoes: 'Requisições de Compra',
@@ -164,6 +166,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'ciclo-compras': 'Ciclo de Compras & Recebimento',
   'requisicao-inteligente': 'Requisição Inteligente',
   'analise-semanal': 'Análise Semanal de Compra',
+  'inteligencia-compras': 'Inteligência de Compras',
   'entregas': 'Agendamento de Entregas',
   'painel-gestao': 'Painel de Gestão',
   'custos': 'Custo por Produto',
@@ -273,6 +276,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'ciclo-compras': return <CicloComprasPage />
     case 'requisicao-inteligente': return <RequisicaoInteligentePage />
     case 'analise-semanal': return <AnaliseSemanalPage />
+    case 'inteligencia-compras': return <InteligenciaComprasMercadoPage />
     case 'entregas': return <EntregasPage />
     case 'painel-gestao': return <PainelGestaoPage />
     case 'custos': return <CustosPage />
@@ -350,7 +354,7 @@ function setUrlPage(p: PageId) {
 const PAGE_PERM: Partial<Record<PageId, string>> = {
   'requisicao-nova': 'requisicoes', 'requisicoes-status': 'requisicoes', 'gestao-lista': 'requisicoes', 'cotacao': 'requisicoes',
   'pedidos': 'requisicoes', 'ciclo-compras': 'requisicoes', 'relatorio-diario': 'requisicoes',
-  'requisicao-inteligente': 'requisicoes', 'analise-semanal': 'requisicoes',
+  'requisicao-inteligente': 'requisicoes', 'analise-semanal': 'requisicoes', 'inteligencia-compras': 'requisicoes',
   'pipeline-suprimentos': 'requisicoes', 'dashboard-suprimentos': 'requisicoes',
   'boletos': 'financeiro', 'pesquisa-aura': 'campanhas', 'produtos-categorias': 'produtos',
   'site-leads': 'clientes', 'transferencias': 'estoque',
