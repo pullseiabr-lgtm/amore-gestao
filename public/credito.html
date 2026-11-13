@@ -62,7 +62,7 @@ async function main(){
   let despHTML='';
   if((despesas||[]).length){
     despHTML='<div class="sec">🧾 Despesas realizadas</div><div class="tw"><table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Fornecedor</th><th class="num">Valor</th></tr></thead><tbody>'+
-      despesas.map(d=>'<tr><td>'+fD(d.data)+'</td><td>'+esc(d.descricao)+(d.comprovante_url?' <a href="'+esc(d.comprovante_url)+'" target="_blank" rel="noreferrer">📎</a>':'')+'</td><td>'+esc(d.categoria||'—')+'</td><td>'+esc(d.fornecedor||'—')+'</td><td class="num">'+brl(d.valor)+'</td></tr>').join('')+
+      despesas.map(d=>'<tr><td>'+fD(d.data)+'</td><td>'+esc(d.descricao)+(d.comprovante_url?' <a href="'+esc(d.comprovante_url)+'" target="_blank" rel="noreferrer">📎</a>':'')+(((d.nf&&d.nf.arquivos)||[]).filter(function(u){return u&&u!==d.comprovante_url}).map(function(u,i){return ' <a href="'+esc(u)+'" target="_blank" rel="noreferrer">📎'+(i+2)+'</a>'}).join(''))+'</td><td>'+esc(d.categoria||'—')+'</td><td>'+esc(d.fornecedor||'—')+'</td><td class="num">'+brl(d.valor)+'</td></tr>').join('')+
       '</tbody><tfoot><tr><td colspan="4">Total gasto</td><td class="num tl">'+brl(gasto)+'</td></tr></tfoot></table></div>';
   }
 

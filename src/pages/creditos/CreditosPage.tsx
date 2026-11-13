@@ -52,6 +52,7 @@ interface Despesa {
   data: string
   forma_pagamento: string | null
   comprovante_url: string | null
+  nf?: { arquivos?: string[] } | null   // demais folhas/fotos do mesmo documento
   centro_custo: string | null
   created_at: string
 }
@@ -884,7 +885,7 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
                   <td><CaixaTag numero={c.numero} reembolso={isReembolsoProprio} /></td>
                   <td>{d.descricao}</td><td>{d.categoria}</td><td>{d.fornecedor || '—'}</td>
                   <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtR$(d.valor)}</td>
-                  <td><AnexoLink url={d.comprovante_url} label="Ver NF" /></td>
+                  <td><AnexoLink url={d.comprovante_url} label="Ver NF" />{(d.nf?.arquivos || []).filter(u => u && u !== d.comprovante_url).map((u, i) => <span key={u} style={{ marginLeft: 6 }}><AnexoLink url={u} label={`Folha/foto ${i + 2}`} /></span>)}</td>
                   <td><button className="btn bo bsm" style={{ color: '#991B1B', padding: '2px 6px' }} onClick={() => excluirDespesa(d)}><Trash2 size={11} /></button></td>
                 </tr>
               ))}</tbody>
@@ -1636,7 +1637,7 @@ function PainelGestaoCred({ creditos, despesas }: { creditos: Credito[]; despesa
                 <td style={{ padding: '6px 8px' }}>{d.descricao}</td>
                 <td style={{ padding: '6px 8px' }}>{d.categoria || '—'}</td>
                 <td style={{ padding: '6px 8px' }}>{d.fornecedor || '—'}</td>
-                <td style={{ padding: '6px 8px' }}>{d.comprovante_url ? <AnexoLink url={d.comprovante_url} label="NF" /> : ''}</td>
+                <td style={{ padding: '6px 8px' }}>{d.comprovante_url ? <AnexoLink url={d.comprovante_url} label="NF" /> : ''}{(d.nf?.arquivos || []).filter(u => u && u !== d.comprovante_url).map((u, i) => <span key={u} style={{ marginLeft: 6 }}><AnexoLink url={u} label={`+${i + 1}`} /></span>)}</td>
                 <td style={tdN}>{fmtR$(d.valor)}</td>
               </tr>
             ))}</tbody>
