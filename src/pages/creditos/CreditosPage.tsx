@@ -722,6 +722,31 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
     setApBusy(false)
   }
 
+  // Edita o valor APROVADO (base). Mantém os aportes informais; recalcula saldo e registra histórico.
+  const editarValorAprovado = async () => {
+    if (isReembolsoProprio) return
+    const v = prompt(`Novo valor aprovado (base) para CRD-${c.numero} (R$):\n\nAtual: ${fmtR$(creditoBase)}${totalAportes > 0 ? `\n(+ aportes informais ${fmtR$(totalAportes)} mantidos)` : ''}`, String(creditoBase).replace('.', ','))
+    if (v == null) return
+    const novoBase = Number(v.replace(/\./g, '').replace(',', '.'))
+    if (!(novoBase > 0)) { alert('Valor inválido.'); return }
+    if (Math.abs(novoBase - creditoBase) < 0.005) return
+    const motivo = prompt('Motivo da alteração do valor aprovado:')
+    if (!motivo || !motivo.trim()) { alert('Informe o motivo para registrar a alteração.'); return }
+    const novoTotalCred = novoBase + totalAportes
+    const novoSaldo = novoTotalCred - totalGasto
+    const prest = {
+      ...(c.prestacao || {}),
+      edicoes_valor: [...((c.prestacao?.edicoes_valor as any[]) || []), { de: creditoBase, para: novoBase, motivo: motivo.trim(), por: user?.name || 'Painel', em: new Date().toISOString() }],
+    }
+    const patch: any = { valor_aprovado: novoTotalCred, saldo: novoSaldo, prestacao: prest, updated_at: new Date().toISOString() }
+    if (c.status === 'em_analise') patch.prestacao = { ...prest, saldo: novoSaldo }
+    const { error } = await sb.from('creditos').update(patch).eq('id', c.id)
+    if (error) { alert('Falha ao salvar: ' + error.message); return }
+    try { await sb.from('credito_movimentos').insert({ credito_id: c.id, tipo: 'ajuste', valor: novoBase - creditoBase, data: hoje(), obs: `Valor aprovado alterado de ${fmtR$(creditoBase)} para ${fmtR$(novoBase)} — ${motivo.trim()}`, created_by: user?.name || 'Painel' }) } catch { /* segue */ }
+    if (c.status === 'em_analise') alert('Valor aprovado atualizado ✅. Como a prestação já está em análise, revise a definição do saldo e salve novamente.')
+    onChange()
+  }
+
   // Opções de destino conforme saldo (com descrição do que cada uma faz — sem depender de digitar)
   const opcoesDestino: { id: string; label: string; desc: string }[] = isReembolsoProprio
     ? [{ id: 'reembolso', label: '🔴 Reembolsar colaborador', desc: 'Devolve ao colaborador o valor pago com recurso próprio.' }]
@@ -836,8 +861,19 @@ function PrestacaoDetalhe({ c, onVoltar, onChange, user }: { c: Credito; onVolta
           </div>
           <div style={{ fontSize: 12.5, display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-              <span>📝 Crédito aprovado (base)</span><b>{fmtR$(creditoBase)}</b>
+              <span>📝 Crédito aprovado (base)</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <b>{fmtR$(creditoBase)}</b>
+                {c.status !== 'encerrado' && c.status !== 'remanescente' && (
+                  <button className="btn bo bsm" onClick={editarValorAprovado} title="Editar o valor aprovado">✏️ Editar valor</button>
+                )}
+              </span>
             </div>
+            {((c.prestacao?.edicoes_valor as any[]) || []).map((e, i) => (
+              <div key={'ev' + i} style={{ fontSize: 11, color: 'var(--muted)' }}>
+                ✏️ Valor alterado de {fmtR$(e.de)} para {fmtR$(e.para)} · {e.motivo} · por {e.por} em {fmtData(e.em)}
+              </div>
+            ))}
             {aportes.map((a, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 6, padding: '6px 8px' }}>
                 <span style={{ lineHeight: 1.45 }}>
