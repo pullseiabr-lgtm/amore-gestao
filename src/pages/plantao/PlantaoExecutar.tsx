@@ -133,7 +133,10 @@ function Checklist({ plantao, userName, onVoltar, onAbrirOcorrencia }: { plantao
 
   const conf = useMemo(() => conformidadeDe(plantao.estrutura, Object.values(resp)), [plantao.estrutura, resp])
 
-  const valida = (r?: Resposta) => !!r && r.resposta === 'nao_conforme' && !!(r.obs || '').trim() && ((r.evidencias || []).length > 0 || !!(r.sem_evidencia || '').trim())
+  const temEv = (r?: Resposta) => !!r && (r.evidencias || []).length > 0
+  const valida = (r?: Resposta) => !!r && r.resposta === 'nao_conforme' && !!(r.obs || '').trim() && temEv(r)
+  // TODA etapa exige foto/vídeo; N/A exige justificativa
+  const completo = (r?: Resposta) => !!r && (r.resposta === 'na' ? !!(r.obs || '').trim() : r.resposta === 'nao_conforme' ? valida(r) : temEv(r))
 
   const registrarOcorrencia = async (s: Setor, it: Item, r: Resposta) => {
     const existente = oc[it.id]
@@ -164,12 +167,12 @@ function Checklist({ plantao, userName, onVoltar, onAbrirOcorrencia }: { plantao
   }
 
   const pendentes = Object.values(oc).filter(o => o.status !== 'concluido').length
-  const faltam = conf.total - conf.respondidos
-  const invalidas = plantao.estrutura.flatMap(s => s.itens).filter(i => resp[i.id]?.resposta === 'nao_conforme' && !valida(resp[i.id]))
+  const todos = plantao.estrutura.flatMap(s => s.itens)
+  const incompletos = todos.filter(i => !completo(resp[i.id]))
+  const feitos = todos.length - incompletos.length
 
   const encerrar = async () => {
-    if (faltam > 0 && !confirm(`Ainda há ${faltam} item(ns) sem resposta. Encerrar mesmo assim?`)) return
-    if (invalidas.length) return alert('Há itens "Não conforme" sem justificativa/evidência: ' + invalidas.map(i => i.texto).join('; '))
+    if (incompletos.length) return alert('Para encerrar, todas as etapas precisam de foto/vídeo (N/A: justificativa). Faltam ' + incompletos.length + ':\n• ' + incompletos.slice(0, 8).map(i => i.texto).join('\n• '))
     setEncerrando(true)
     await sincronizarFila()
     if (filaTamanho() > 0) { setEncerrando(false); return alert('Ainda há registros aguardando conexão para sincronizar. Conecte-se e tente encerrar novamente — nada foi perdido.') }
@@ -211,17 +214,17 @@ function Checklist({ plantao, userName, onVoltar, onAbrirOcorrencia }: { plantao
           <Btn tone="ghost" small onClick={onVoltar}>← Voltar</Btn>
         </div>
         <div style={{ height: 8, borderRadius: 99, background: 'var(--border)', margin: '8px 0 4px', overflow: 'hidden' }}>
-          <div style={{ width: `${conf.total ? (conf.respondidos / conf.total) * 100 : 0}%`, height: '100%', background: 'var(--bordo)' }} />
+          <div style={{ width: `${conf.total ? (feitos / conf.total) * 100 : 0}%`, height: '100%', background: 'var(--bordo)' }} />
         </div>
         <div style={{ fontSize: 12, color: 'var(--muted)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-          <span>{conf.respondidos}/{conf.total} itens · conformidade {conf.pct ?? '—'}%</span>
+          <span>{feitos}/{conf.total} etapas com evidência · conformidade {conf.pct ?? '—'}%</span>
           <span>{fila > 0 ? `🕓 ${fila} registro(s) aguardando conexão` : '💾 Salvo automaticamente'}</span>
         </div>
       </div>
 
       {plantao.estrutura.map((s, idx) => {
         const itens = s.itens
-        const feitos = itens.filter(i => resp[i.id]).length
+        const feitos = itens.filter(i => completo(resp[i.id])).length
         const nc = itens.filter(i => resp[i.id]?.resposta === 'nao_conforme').length
         const open = aberto === s.id
         return (
@@ -251,19 +254,13 @@ function Checklist({ plantao, userName, onVoltar, onAbrirOcorrencia }: { plantao
                       {r && (
                         <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
                           <div>
-                            <label style={lbl}>{r.resposta === 'nao_conforme' ? 'Justificativa (obrigatória)' : 'Observação (opcional)'}</label>
+                            <label style={lbl}>{r.resposta === 'nao_conforme' ? 'Justificativa (obrigatória)' : r.resposta === 'na' ? 'Por que não se aplica? (obrigatório)' : 'Observação (opcional)'}</label>
                             <textarea value={r.obs || ''} onChange={e => gravar(s, it, { obs: e.target.value })} rows={2} style={{ ...inp, resize: 'vertical' }} placeholder={r.resposta === 'nao_conforme' ? 'Descreva o desvio encontrado…' : ''} />
                           </div>
-                          {(r.resposta === 'nao_conforme' || it.ev || (r.evidencias || []).length > 0) && (
-                            <Evidencias urls={r.evidencias || []} onChange={u => gravar(s, it, { evidencias: u })} rotulo={r.resposta === 'nao_conforme' ? '📷 Foto / vídeo do desvio (obrigatório)' : '📷 Foto / vídeo (opcional)'} />
+                          {r.resposta !== 'na' && (
+                            <Evidencias urls={r.evidencias || []} onChange={u => gravar(s, it, { evidencias: u })} rotulo={r.resposta === 'nao_conforme' ? '📷 Foto / vídeo do desvio (obrigatório)' : '📷 Foto / vídeo desta etapa (obrigatório)'} />
                           )}
-                          {r.resposta === 'nao_conforme' && (r.evidencias || []).length === 0 && (
-                            <div>
-                              <label style={lbl}>Sem foto/vídeo? Justifique a ausência de evidência</label>
-                              <input value={r.sem_evidencia || ''} onChange={e => gravar(s, it, { sem_evidencia: e.target.value })} style={inp} placeholder="Ex.: loja pediu para não fotografar clientes…" />
-                            </div>
-                          )}
-                          {r.resposta === 'nao_conforme' && !valida(r) && <div style={{ fontSize: 12.5, color: '#dc2626', fontWeight: 700 }}>⚠️ Falta justificativa e foto/vídeo (ou justificativa da ausência) para registrar a ocorrência.</div>}
+                          {!completo(r) && <div style={{ fontSize: 12.5, color: '#dc2626', fontWeight: 700 }}>⚠️ {r.resposta === 'na' ? 'Falta a justificativa.' : r.resposta === 'nao_conforme' ? 'Falta a justificativa e a foto/vídeo do desvio.' : 'Falta a foto/vídeo desta etapa.'}</div>}
                           {o && (
                             <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: 8, fontSize: 13 }}>
                               🚨 Ocorrência registrada{o.numero ? ` nº ${o.numero}` : ''} {o.rnc_numero ? `· RNC ${o.rnc_numero}` : ''}

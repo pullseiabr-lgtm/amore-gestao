@@ -67,7 +67,10 @@ async function upload(file){
   return `${SB}/storage/v1/object/public/anexos/${path}`;
 }
 const todosItens=()=>S.plantao.estrutura.flatMap(s=>s.itens);
-const valida=r=>r&&r.resposta==='nao_conforme'&&(r.obs||'').trim()&&((r.evidencias||[]).length||(r.sem_evidencia||'').trim());
+const temEv=r=>!!(r&&(r.evidencias||[]).length);
+const valida=r=>!!(r&&r.resposta==='nao_conforme'&&(r.obs||'').trim()&&temEv(r));
+// TODA etapa exige evidência em foto/vídeo; N/A exige justificativa
+const completo=r=>!!r&&(r.resposta==='na'?!!(r.obs||'').trim():r.resposta==='nao_conforme'?valida(r):temEv(r));
 
 async function main(){
   const e=q.get('e'),p=q.get('p');
@@ -117,7 +120,7 @@ async function carregarResp(){
 function stats(){
   const ids=new Set(todosItens().map(i=>i.id));const rs=Object.values(S.resp).filter(r=>ids.has(r.item_id));
   const c=rs.filter(r=>r.resposta==='conforme').length,n=rs.filter(r=>r.resposta==='nao_conforme').length;
-  return{c,n,feitos:rs.length,total:ids.size,pct:(c+n)?Math.round(c/(c+n)*1000)/10:null};
+  return{c,n,feitos:rs.filter(completo).length,total:ids.size,pct:(c+n)?Math.round(c/(c+n)*1000)/10:null};
 }
 function topo(){
   const s=stats();
@@ -129,7 +132,7 @@ function telaChecklist(){
   if(P.status==='encerrado'){app.innerHTML=`<div class="card"><h1>✅ Visita encerrada</h1><div class="sub">Saída ${dh(P.saida_em)}</div><p><a href="/plantao-relatorio.html?id=${P.id}">Abrir relatório final</a></p></div>`;return}
   let h=topo();
   P.estrutura.forEach((s,i)=>{
-    const f=s.itens.filter(x=>S.resp[x.id]).length,aberto=S.aberto===s.id||(S.aberto===null&&i===0);
+    const f=s.itens.filter(x=>completo(S.resp[x.id])).length,aberto=S.aberto===s.id||(S.aberto===null&&i===0);
     h+=`<div class="card"><div class="sec" data-s="${s.id}"><span>${String(i+1).padStart(2,'0')} · ${esc(s.nome)}</span><span class="pill" style="color:${f===s.itens.length?'#16a34a':'#6f656a'}">${f}/${s.itens.length} ${aberto?'▲':'▼'}</span></div>`;
     if(aberto)s.itens.forEach(it=>{h+=itemHtml(s,it)});
     h+='</div>';
@@ -148,15 +151,14 @@ function telaChecklist(){
 }
 function itemHtml(s,it){
   const r=S.resp[it.id],nc=r&&r.resposta==='nao_conforme';
-  let h=`<div class="item ${r?(nc?'nc':'done'):''}"><div style="font-weight:600">${esc(it.texto)}</div><div class="opt">`;
+  let h=`<div class="item ${r?(!completo(r)||nc?'nc':'done'):''}"><div style="font-weight:600">${esc(it.texto)}</div><div class="opt">`;
   [['conforme','✅ Conforme','#16a34a'],['nao_conforme','❌ Não conforme','#dc2626'],['na','➖ N/A','#6b7280']].forEach(([v,t,c])=>{h+=`<button data-i="${it.id}" data-r="${v}" style="${r&&r.resposta===v?`background:${c};border-color:${c};color:#fff`:''}">${t}</button>`});
   h+='</div>';
   if(r){
-    h+=`<textarea data-obs="${it.id}" rows="2" placeholder="${nc?'Justificativa obrigatória — descreva o desvio':'Observação (opcional)'}">${esc(r.obs||'')}</textarea>`;
-    if(nc||it.ev||(r.evidencias||[]).length)h+=`<label class="up">${nc?'📷 Foto / vídeo do desvio (obrigatório)':'📷 Foto / vídeo'}<input type="file" accept="image/*,video/*" multiple data-file="${it.id}" style="display:none"></label>`;
+    h+=`<textarea data-obs="${it.id}" rows="2" placeholder="${nc?'Justificativa obrigatória — descreva o desvio':r.resposta==='na'?'Justifique por que não se aplica (obrigatório)':'Observação (opcional)'}">${esc(r.obs||'')}</textarea>`;
+    if(r.resposta!=='na')h+=`<label class="up">${nc?'📷 Foto / vídeo do desvio (obrigatório)':'📷 Foto / vídeo desta etapa (obrigatório)'}<input type="file" accept="image/*,video/*" multiple data-file="${it.id}" style="display:none"></label>`;
     if((r.evidencias||[]).length)h+='<div class="m">'+r.evidencias.map(u=>`<div style="position:relative">${vid(u)?`<video src="${esc(u)}" controls></video>`:`<img src="${esc(u)}">`}<button data-rm="${it.id}|${esc(u)}" style="position:absolute;top:-6px;right:-6px;border:0;border-radius:99px;background:#dc2626;color:#fff;width:22px;height:22px">✕</button></div>`).join('')+'</div>';
-    if(nc&&!(r.evidencias||[]).length)h+=`<input data-sem="${it.id}" placeholder="Sem foto? Justifique a ausência de evidência" value="${esc(r.sem_evidencia||'')}">`;
-    if(nc&&!valida(r))h+='<div class="warn">⚠️ Falta justificativa e foto/vídeo para registrar a ocorrência.</div>';
+    if(!completo(r))h+='<div class="warn">⚠️ '+(r.resposta==='na'?'Falta a justificativa.':nc?'Falta a justificativa e a foto/vídeo do desvio.':'Falta a foto/vídeo desta etapa.')+'</div>';
     if(S.oc[it.id])h+=`<div class="warn" style="color:#b91c1c">🚨 Ocorrência registrada${S.oc[it.id].numero?' nº '+S.oc[it.id].numero:''} — será tratada pela gestão.</div>`;
   }
   return h+'</div>';
@@ -190,9 +192,8 @@ async function anexar(id,input){
 }
 async function encerrar(){
   const s=stats(),falta=s.total-s.feitos;
-  const inval=todosItens().filter(i=>S.resp[i.id]?.resposta==='nao_conforme'&&!valida(S.resp[i.id]));
-  if(inval.length)return alert('Há itens "Não conforme" sem justificativa/foto: '+inval.map(i=>i.texto).join('; '));
-  if(falta>0&&!confirm(`Ainda há ${falta} tarefa(s) sem resposta. Encerrar mesmo assim?`))return;
+  const inval=todosItens().filter(i=>!completo(S.resp[i.id]));
+  if(inval.length)return alert('Para encerrar, todas as etapas precisam de evidência em foto/vídeo (N/A: justificativa). Faltam '+inval.length+':\n• '+inval.slice(0,8).map(i=>i.texto).join('\n• ')+(inval.length>8?'\n…':''));
   await sincronizar();
   if(lerF().length)return alert('Há registros aguardando conexão. Conecte-se e tente encerrar de novo — nada foi perdido.');
   const b=document.getElementById('fim');b.disabled=true;b.textContent='Encerrando…';
