@@ -109,7 +109,7 @@ export async function sincronizarFila(): Promise<void> {
         if (rede) break
         console.error('plantão: operação descartada', op, error)
       }
-      f = lerFila().filter(x => x.k !== op.k)
+      const js = JSON.stringify(op.row); f = lerFila().filter(x => !(x.k === op.k && JSON.stringify(x.row) === js))
       gravarFila(f)
       avisar()
     }

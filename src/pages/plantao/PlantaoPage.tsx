@@ -232,6 +232,17 @@ function EscalaTab({ cfg, lojas, userName }: { cfg: PltConfig; lojas: string[]; 
       </div>
       <div style={{ fontSize: 13.5 }}>👥 {e.dupla.map(n => (e.confirmados || []).includes(n) ? `${n} ✔` : n).join(' + ')}</div>
       <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>🏪 {e.lojas.join(' → ') || 'Roteiro livre'}{e.motivo ? ` · Motivo: ${e.motivo}` : ''}</div>
+      {e.status === 'agendado' && (() => {
+        const link = `${siteOrigin()}/plantao.html?e=${e.id}`
+        const msg = `🚩 *Plantão de Gestão — ${fmtD(e.data)}${e.horario ? ' às ' + e.horario : ''}*\nDupla: ${e.dupla.join(' + ')}\nLojas: ${e.lojas.join(' → ') || 'a definir'}\n\nAbra o link pelo celular para fazer o checklist e as tarefas do plantão:\n${link}`
+        return (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <Btn small onClick={() => window.open(link, '_blank')}>📱 Abrir checklist</Btn>
+            <Btn small tone="ghost" onClick={() => { void navigator.clipboard?.writeText(msg); alert('Mensagem com o link do plantonista copiada.') }}>Copiar link</Btn>
+            <Btn small tone="ghost" onClick={() => window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank')}>Enviar por WhatsApp</Btn>
+          </div>
+        )
+      })()}
       <div><Btn small tone="ghost" onClick={() => setEd(e)}>Editar / confirmar</Btn></div>
     </div>
   )

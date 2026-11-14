@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Plantão de Gestão — Amore</title>
+<style>
+:root{--vinho:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.45}
+.wrap{max-width:640px;margin:0 auto;padding:14px 12px 80px}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
+h1{font-size:20px;margin:2px 0 4px}.sub{color:var(--muted);font-size:13px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:10px}
+.btn{background:var(--vinho);color:#fff;border:1px solid var(--vinho);border-radius:12px;padding:13px 16px;font-weight:700;font-size:15px;width:100%;cursor:pointer}
+.btn.g{background:transparent;color:var(--text);border-color:var(--border)}.btn.ok{background:#16a34a;border-color:#16a34a}.btn:disabled{opacity:.5}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}.chip{padding:11px 16px;border-radius:99px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-weight:700;font-size:15px;cursor:pointer}.chip.on{background:var(--vinho);color:#fff;border-color:var(--vinho)}
+.top{position:sticky;top:0;background:var(--bg);padding:8px 0;z-index:5}
+.bar{height:8px;background:var(--border);border-radius:99px;overflow:hidden;margin:6px 0 2px}.bar i{display:block;height:100%;background:var(--vinho)}
+.sec{display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-weight:800}
+.item{border:1px solid var(--border);border-radius:12px;padding:10px;margin-top:10px;background:var(--bg)}
+.item.done{border-color:#16a34a66}.item.nc{border-color:#dc2626}
+.opt{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px}
+.opt button{padding:13px 2px;border-radius:10px;border:2px solid var(--border);background:var(--card);color:var(--text);font-weight:700;font-size:13px;cursor:pointer}
+textarea,input,select{width:100%;padding:11px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:15px;font-family:inherit;margin-top:6px}
+label.up{display:block;text-align:center;padding:12px;border:1px dashed var(--vinho);color:var(--vinho);font-weight:700;border-radius:10px;margin-top:8px;cursor:pointer}
+.m{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.m img{width:84px;height:84px;object-fit:cover;border-radius:8px}.m video{width:130px;border-radius:8px}
+.warn{color:#dc2626;font-size:12.5px;font-weight:700;margin-top:6px}.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11.5px;font-weight:800;border:1px solid currentColor}
+.msg{padding:40px 0;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Carregando…</div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+const q=new URLSearchParams(location.search);
+const app=document.getElementById('app');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const dh=d=>d?new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+const d0=d=>d?String(d).slice(0,10).split('-').reverse().join('/'):'—';
+const vid=u=>/\.(mp4|mov|webm|3gp|m4v)(\?|$)/i.test(u);
+const api=async(path,method='GET',body,extra={})=>{const r=await fetch(SB+'/rest/v1/'+path,{method,headers:{...H,Prefer:'return=representation,resolution=merge-duplicates',...extra},body:body?JSON.stringify(body):undefined});const t=await r.text();if(!r.ok)throw new Error(t);return t?JSON.parse(t):[]};
+const S={esc:null,plantao:null,resp:{},oc:{},quem:'',loja:'',aberto:null,fila:[]};
+// fila local (conexão instável)
+const FK='plt_pub_fila';
+const lerF=()=>{try{return JSON.parse(localStorage.getItem(FK)||'[]')}catch{return[]}};
+const gravF=f=>{try{localStorage.setItem(FK,JSON.stringify(f))}catch{}};
+let sinc=false;
+async function sincronizar(){
+  if(sinc)return;sinc=true;
+  try{let f=lerF();while(f.length){const o=f[0];try{await api(o.path,'POST',o.row)}catch(e){if(/fetch|network|Failed/i.test(e.message))break}
+    const js=JSON.stringify(o.row);f=lerF().filter(x=>!(x.k===o.k&&JSON.stringify(x.row)===js));gravF(f)}}catch{}finally{sinc=false;const el=document.getElementById('fila');if(el)el.textContent=statusFila()}
+}
+const statusFila=()=>lerF().length?`🕓 ${lerF().length} registro(s) aguardando conexão`:'💾 Salvo automaticamente';
+function salvar(k,path,row){const f=lerF().filter(x=>x.k!==k);f.push({k,path,row});gravF(f);const el=document.getElementById('fila');if(el)el.textContent=statusFila();sincronizar()}
+window.addEventListener('online',sincronizar);setInterval(sincronizar,20000);
+async function detUuid(t){const b=await crypto.subtle.digest('SHA-1',new TextEncoder().encode(t));const h=[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,32).split('');h[12]='5';h[16]='8';const s=h.join('');return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`}
+const audit=(ent,id,acao,antes,depois)=>{const i=crypto.randomUUID();salvar('aud:'+i,'plt_auditoria?on_conflict=id',{id:i,entidade:ent,entidade_id:id,acao,antes:antes||null,depois:depois||null,usuario:S.quem,quando:new Date().toISOString()})};
+async function upload(file){
+  const ext=(file.name.split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const path=`plantao/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+  const r=await fetch(`${SB}/storage/v1/object/anexos/${path}`,{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':file.type||'application/octet-stream'},body:file});
+  if(!r.ok)throw new Error(await r.text());
+  return `${SB}/storage/v1/object/public/anexos/${path}`;
+}
+const todosItens=()=>S.plantao.estrutura.flatMap(s=>s.itens);
+const valida=r=>r&&r.resposta==='nao_conforme'&&(r.obs||'').trim()&&((r.evidencias||[]).length||(r.sem_evidencia||'').trim());
+
+async function main(){
+  const e=q.get('e'),p=q.get('p');
+  if(p){await abrirPlantao(p);return}
+  if(!e){app.innerHTML='<div class="msg">Link inválido.</div>';return}
+  const r=await api('plt_escala?id=eq.'+e);S.esc=r[0];
+  if(!S.esc){app.innerHTML='<div class="msg">Plantão não encontrado.</div>';return}
+  telaInicio();
+}
+function telaInicio(){
+  const E=S.esc;
+  app.innerHTML=`<div class="eyebrow">Plantão de Gestão</div><h1>Plantão de ${d0(E.data)}${E.horario?' · '+esc(E.horario):''}</h1><div class="sub">👥 ${esc(E.dupla.join(' + '))}</div>
+  <div class="card"><b>1. Quem é você?</b><div class="chips" id="quem">${E.dupla.map(n=>`<button class="chip" data-v="${esc(n)}">${esc(n)}</button>`).join('')}</div>
+  <b>2. Em qual loja você está?</b><div class="chips" id="loja">${(E.lojas.length?E.lojas:['Amore CD','Amore Paiva','Flow CD']).map(n=>`<button class="chip" data-v="${esc(n)}">${esc(n)}</button>`).join('')}</div>
+  <div class="sub">⏱ A chegada é registrada ao tocar em iniciar. Para visitar outra loja, volte a este link e escolha a outra.</div></div>
+  <button class="btn" id="ini">Registrar chegada e abrir checklist</button>`;
+  for(const g of ['quem','loja'])document.querySelectorAll('#'+g+' .chip').forEach(b=>b.onclick=()=>{document.querySelectorAll('#'+g+' .chip').forEach(x=>x.classList.remove('on'));b.classList.add('on');S[g]=b.dataset.v});
+  document.getElementById('ini').onclick=iniciar;
+}
+async function iniciar(){
+  if(!S.quem||!S.loja)return alert('Escolha quem é você e a loja.');
+  const btn=document.getElementById('ini');btn.disabled=true;btn.textContent='Abrindo…';
+  try{
+    const ex=await api(`plt_plantoes?escala_id=eq.${S.esc.id}&loja=eq.${encodeURIComponent(S.loja)}&status=eq.em_andamento&limit=1`);
+    if(ex[0]){S.plantao=ex[0]}else{
+      const v=(await api('plt_checklist_versoes?ativa=eq.true&order=versao.desc&limit=1'))[0];
+      if(!v)throw new Error('Checklist não configurado.');
+      const hoje=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+      S.plantao=(await api('plt_plantoes','POST',{escala_id:S.esc.id,loja:S.loja,data:hoje,integrantes:S.esc.dupla,versao_id:v.id,versao:v.versao,estrutura:v.estrutura,chegada_em:new Date().toISOString(),created_by:S.quem}))[0];
+      audit('plantao',S.plantao.id,'Plantão iniciado (link do plantonista)',null,{loja:S.loja,por:S.quem});
+    }
+    await carregarResp();telaChecklist();
+  }catch(e){alert('Sem conexão ou falha: '+e.message);btn.disabled=false;btn.textContent='Registrar chegada e abrir checklist'}
+}
+async function abrirPlantao(id){
+  S.plantao=(await api('plt_plantoes?id=eq.'+id))[0];
+  if(!S.plantao){app.innerHTML='<div class="msg">Plantão não encontrado.</div>';return}
+  S.quem=q.get('u')||S.plantao.integrantes[0]||'';S.loja=S.plantao.loja;
+  await carregarResp();telaChecklist();
+}
+async function carregarResp(){
+  const [r,o]=await Promise.all([api('plt_respostas?plantao_id=eq.'+S.plantao.id),api('plt_ocorrencias?plantao_id=eq.'+S.plantao.id+'&select=id,item_id,numero')]);
+  S.resp={};r.forEach(x=>S.resp[x.item_id]=x);
+  lerF().filter(o=>o.path.startsWith('plt_respostas')&&o.row.plantao_id===S.plantao.id).forEach(o=>S.resp[o.row.item_id]=o.row);
+  S.oc={};o.forEach(x=>{if(x.item_id)S.oc[x.item_id]=x});
+}
+function stats(){
+  const ids=new Set(todosItens().map(i=>i.id));const rs=Object.values(S.resp).filter(r=>ids.has(r.item_id));
+  const c=rs.filter(r=>r.resposta==='conforme').length,n=rs.filter(r=>r.resposta==='nao_conforme').length;
+  return{c,n,feitos:rs.length,total:ids.size,pct:(c+n)?Math.round(c/(c+n)*1000)/10:null};
+}
+function topo(){
+  const s=stats();
+  return `<div class="top"><div class="eyebrow">Plantão de Gestão</div><b>${esc(S.plantao.loja)} · nº ${S.plantao.numero}</b> <span class="sub">chegada ${dh(S.plantao.chegada_em)}</span>
+  <div class="bar"><i style="width:${s.total?s.feitos/s.total*100:0}%"></i></div><div class="sub" style="display:flex;justify-content:space-between"><span>${s.feitos}/${s.total} tarefas · conformidade ${s.pct==null?'—':s.pct+'%'}</span><span id="fila">${statusFila()}</span></div></div>`;
+}
+function telaChecklist(){
+  const P=S.plantao;
+  if(P.status==='encerrado'){app.innerHTML=`<div class="card"><h1>✅ Visita encerrada</h1><div class="sub">Saída ${dh(P.saida_em)}</div><p><a href="/plantao-relatorio.html?id=${P.id}">Abrir relatório final</a></p></div>`;return}
+  let h=topo();
+  P.estrutura.forEach((s,i)=>{
+    const f=s.itens.filter(x=>S.resp[x.id]).length,aberto=S.aberto===s.id||(S.aberto===null&&i===0);
+    h+=`<div class="card"><div class="sec" data-s="${s.id}"><span>${String(i+1).padStart(2,'0')} · ${esc(s.nome)}</span><span class="pill" style="color:${f===s.itens.length?'#16a34a':'#6f656a'}">${f}/${s.itens.length} ${aberto?'▲':'▼'}</span></div>`;
+    if(aberto)s.itens.forEach(it=>{h+=itemHtml(s,it)});
+    h+='</div>';
+  });
+  h+=`<div class="card"><b>🏁 Encerrar visita</b><div class="sub" id="pend"></div><textarea id="parecer" rows="3" placeholder="Parecer da gestão: resumo, pontos fortes, riscos para o fim de semana…"></textarea><button class="btn ok" id="fim" style="margin-top:10px">Registrar saída e encerrar visita</button></div>`;
+  const y=window.scrollY,pv=document.getElementById('parecer')?.value;
+  app.innerHTML=h;window.scrollTo(0,y);if(pv)document.getElementById('parecer').value=pv;
+  document.querySelectorAll('.sec').forEach(e=>e.onclick=()=>{S.aberto=S.aberto===e.dataset.s?'':e.dataset.s;telaChecklist()});
+  document.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>responder(b.dataset.i,b.dataset.r));
+  document.querySelectorAll('textarea[data-obs]').forEach(t=>{t.oninput=()=>gravarCampo(t.dataset.obs,{obs:t.value});t.onchange=()=>telaChecklist()});
+  document.querySelectorAll('input[data-sem]').forEach(t=>{t.oninput=()=>gravarCampo(t.dataset.sem,{sem_evidencia:t.value},true);t.onchange=()=>telaChecklist()});
+  document.querySelectorAll('input[data-file]').forEach(t=>t.onchange=()=>anexar(t.dataset.file,t));
+  document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{const [id,u]=b.dataset.rm.split('|');const r=S.resp[id];gravarCampo(id,{evidencias:r.evidencias.filter(x=>x!==u)});telaChecklist()});
+  document.getElementById('fim').onclick=encerrar;
+  const pend=Object.keys(S.oc).length;if(pend)document.getElementById('pend').textContent=`🚨 ${pend} ocorrência(s) registrada(s) nesta visita — seguem em acompanhamento mesmo após encerrar.`;
+}
+function itemHtml(s,it){
+  const r=S.resp[it.id],nc=r&&r.resposta==='nao_conforme';
+  let h=`<div class="item ${r?(nc?'nc':'done'):''}"><div style="font-weight:600">${esc(it.texto)}</div><div class="opt">`;
+  [['conforme','✅ Conforme','#16a34a'],['nao_conforme','❌ Não conforme','#dc2626'],['na','➖ N/A','#6b7280']].forEach(([v,t,c])=>{h+=`<button data-i="${it.id}" data-r="${v}" style="${r&&r.resposta===v?`background:${c};border-color:${c};color:#fff`:''}">${t}</button>`});
+  h+='</div>';
+  if(r){
+    h+=`<textarea data-obs="${it.id}" rows="2" placeholder="${nc?'Justificativa obrigatória — descreva o desvio':'Observação (opcional)'}">${esc(r.obs||'')}</textarea>`;
+    if(nc||it.ev||(r.evidencias||[]).length)h+=`<label class="up">${nc?'📷 Foto / vídeo do desvio (obrigatório)':'📷 Foto / vídeo'}<input type="file" accept="image/*,video/*" multiple data-file="${it.id}" style="display:none"></label>`;
+    if((r.evidencias||[]).length)h+='<div class="m">'+r.evidencias.map(u=>`<div style="position:relative">${vid(u)?`<video src="${esc(u)}" controls></video>`:`<img src="${esc(u)}">`}<button data-rm="${it.id}|${esc(u)}" style="position:absolute;top:-6px;right:-6px;border:0;border-radius:99px;background:#dc2626;color:#fff;width:22px;height:22px">✕</button></div>`).join('')+'</div>';
+    if(nc&&!(r.evidencias||[]).length)h+=`<input data-sem="${it.id}" placeholder="Sem foto? Justifique a ausência de evidência" value="${esc(r.sem_evidencia||'')}">`;
+    if(nc&&!valida(r))h+='<div class="warn">⚠️ Falta justificativa e foto/vídeo para registrar a ocorrência.</div>';
+    if(S.oc[it.id])h+=`<div class="warn" style="color:#b91c1c">🚨 Ocorrência registrada${S.oc[it.id].numero?' nº '+S.oc[it.id].numero:''} — será tratada pela gestão.</div>`;
+  }
+  return h+'</div>';
+}
+function itemSetor(id){for(const s of S.plantao.estrutura){const it=s.itens.find(x=>x.id===id);if(it)return[s,it]}}
+function responder(id,v){gravarCampo(id,{resposta:v});telaChecklist()}
+function gravarCampo(id,patch,semRender){
+  const [s]=itemSetor(id);
+  const base=S.resp[id]||{plantao_id:S.plantao.id,setor_id:s.id,item_id:id,resposta:'conforme',obs:null,evidencias:[],sem_evidencia:null};
+  const r={...base,...patch,plantao_id:S.plantao.id,setor_id:s.id,item_id:id,updated_by:S.quem,updated_at:new Date().toISOString()};
+  S.resp[id]=r;
+  salvar('r:'+S.plantao.id+':'+id,'plt_respostas?on_conflict=plantao_id,item_id',r);
+  if(valida(r))registrarOc(s,id,r);
+}
+async function registrarOc(s,id,r){
+  const it=s.itens.find(x=>x.id===id),ex=S.oc[id],oid=ex?.id||await detUuid(S.plantao.id+':'+id);
+  const base={id:oid,plantao_id:S.plantao.id,loja:S.plantao.loja,descricao:(r.obs||'').trim(),evidencias:r.evidencias||[],sem_evidencia:r.sem_evidencia||null};
+  if(ex){salvar('oc:'+oid,'plt_ocorrencias?on_conflict=id',{...base,updated_at:new Date().toISOString()});return}
+  S.oc[id]={id:oid,item_id:id,numero:0};
+  let reinc=false;try{const x=await api(`plt_ocorrencias?select=id&loja=eq.${encodeURIComponent(S.plantao.loja)}&setor_id=eq.${s.id}&tipo=eq.${encodeURIComponent(s.nome)}&identificado_em=gte.${new Date(Date.now()-90*864e5).toISOString()}&id=neq.${oid}&limit=1`);reinc=x.length>0}catch{}
+  salvar('oc:'+oid,'plt_ocorrencias?on_conflict=id',{...base,setor_id:s.id,setor_nome:s.nome,item_id:id,item_texto:it.texto,tipo:s.nome,prioridade:'media',identificado_por:S.quem,identificado_em:new Date().toISOString(),status:'identificado',reincidente:reinc});
+  audit('ocorrencia',oid,'Ocorrência gerada pelo checklist (link do plantonista)',null,{item:it.texto,setor:s.nome,loja:S.plantao.loja});
+}
+async function anexar(id,input){
+  const files=[...input.files];if(!files.length)return;
+  const label=input.parentElement;label.firstChild.textContent='⏳ Enviando…';
+  const novos=[];
+  for(const f of files){try{novos.push(await upload(f))}catch(e){alert('Sem conexão ao enviar '+f.name+'. Tente de novo quando a internet voltar.')}}
+  if(novos.length){gravarCampo(id,{evidencias:[...(S.resp[id].evidencias||[]),...novos]})}
+  telaChecklist();
+}
+async function encerrar(){
+  const s=stats(),falta=s.total-s.feitos;
+  const inval=todosItens().filter(i=>S.resp[i.id]?.resposta==='nao_conforme'&&!valida(S.resp[i.id]));
+  if(inval.length)return alert('Há itens "Não conforme" sem justificativa/foto: '+inval.map(i=>i.texto).join('; '));
+  if(falta>0&&!confirm(`Ainda há ${falta} tarefa(s) sem resposta. Encerrar mesmo assim?`))return;
+  await sincronizar();
+  if(lerF().length)return alert('Há registros aguardando conexão. Conecte-se e tente encerrar de novo — nada foi perdido.');
+  const b=document.getElementById('fim');b.disabled=true;b.textContent='Encerrando…';
+  try{
+    const saida=new Date().toISOString();
+    const r=await api('plt_plantoes?id=eq.'+S.plantao.id,'PATCH',{status:'encerrado',saida_em:saida,parecer:(document.getElementById('parecer').value||'').trim()||null,conformidade:s.pct});
+    S.plantao=r[0];
+    if(S.plantao.escala_id)await api('plt_escala?id=eq.'+S.plantao.escala_id,'PATCH',{status:'realizado',updated_at:saida});
+    audit('plantao',S.plantao.id,'Plantão encerrado (link do plantonista)',{status:'em_andamento'},{status:'encerrado',conformidade:s.pct});
+    telaChecklist();
+  }catch(e){alert('Falha ao encerrar: '+e.message);b.disabled=false;b.textContent='Registrar saída e encerrar visita'}
+}
+main().catch(e=>{app.innerHTML='<div class="msg">Falha ao carregar: '+esc(e.message)+'</div>'});
+</script>
+</body>
+</html>
