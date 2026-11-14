@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Relatório de Plantão — Amore</title>
+<style>
+:root{--vinho:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--crit:#DC2626}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+.wrap{max-width:760px;margin:0 auto;padding:22px 16px 60px}
+header{border-bottom:2px solid var(--vinho);padding-bottom:12px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
+h1{font-size:21px;margin:4px 0}h2{font-size:15px;margin:22px 0 8px;color:var(--vinho)}
+.sub{color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.k{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
+.k b{display:block;font-size:24px}.k span{font-size:12px;color:var(--muted);font-weight:700}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11.5px;font-weight:800;border:1px solid currentColor}
+.bar{height:8px;background:var(--border);border-radius:99px;overflow:hidden}.bar i{display:block;height:100%}
+.m{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.m img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--border)}.m video{width:140px;border-radius:8px}
+.btn{background:var(--vinho);color:#fff;border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer}
+.msg{padding:40px 0;text-align:center;color:var(--muted)}
+@media print{.btn{display:none}body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Carregando relatório…</div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const id=new URLSearchParams(location.search).get('id');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const dh=d=>d?new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+const d0=d=>d?String(d).slice(0,10).split('-').reverse().join('/'):'—';
+const cor=v=>v==null?'#6f656a':v>=90?'#15803D':v>=70?'#B45309':'#DC2626';
+const vid=u=>/\.(mp4|mov|webm|3gp|m4v)(\?|$)/i.test(u);
+const midias=a=>(a&&a.length)?'<div class="m">'+a.map(u=>vid(u)?`<video src="${esc(u)}" controls></video>`:`<a href="${esc(u)}" target="_blank"><img src="${esc(u)}"></a>`).join('')+'</div>':'';
+const PRIO={baixa:['Baixa','#16a34a'],media:['Média','#ca8a04'],alta:['Alta','#ea580c'],critica:['Crítica','#dc2626']};
+const ST={identificado:'Identificado',encaminhado:'Encaminhado',em_execucao:'Em execução',aguardando_validacao:'Aguardando validação',concluido:'Concluído'};
+async function main(){
+  const app=document.getElementById('app');
+  if(!id){app.innerHTML='<div class="msg">Link inválido.</div>';return}
+  const r=await fetch(SB+'/rest/v1/rpc/plantao_relatorio',{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'},body:JSON.stringify({p_id:id})});
+  const j=await r.json();
+  if(!j||!j.plantao){app.innerHTML='<div class="msg">Relatório não encontrado.</div>';return}
+  const p=j.plantao,resp=j.respostas||[],oc=j.ocorrencias||[];
+  const por={};resp.forEach(x=>por[x.item_id]=x);
+  let C=0,N=0,A=0;resp.forEach(x=>{if(x.resposta==='conforme')C++;else if(x.resposta==='nao_conforme')N++;else A++});
+  const conf=(C+N)?Math.round(C/(C+N)*1000)/10:null;
+  const pend=oc.filter(o=>o.status!=='concluido');
+  let h=`<header><div><div class="eyebrow">Plantão de Gestão</div><h1>${esc(p.loja)} · plantão nº ${p.numero}</h1><div class="sub">${d0(p.data)} · ${p.status==='encerrado'?'Encerrado':'Em andamento'}</div></div><button class="btn" onclick="print()">Salvar em PDF</button></header>`;
+  h+=`<div class="grid"><div class="k"><b style="color:${cor(conf)}">${conf==null?'—':conf+'%'}</b><span>Conformidade geral</span></div><div class="k"><b style="color:#15803D">${C}</b><span>Conformes</span></div><div class="k"><b style="color:#DC2626">${N}</b><span>Não conformes</span></div><div class="k"><b>${oc.length}</b><span>Ocorrências (${pend.length} pendentes)</span></div></div>`;
+  h+=`<h2>Identificação</h2><div class="card"><div><b>Chegada:</b> ${dh(p.chegada_em)}</div><div><b>Saída:</b> ${dh(p.saida_em)}</div><div><b>Integrantes:</b> ${esc((p.integrantes||[]).join(' + '))}</div><div class="sub">Checklist versão ${p.versao}</div></div>`;
+  h+='<h2>Resultado por setor</h2>';
+  (p.estrutura||[]).forEach(s=>{
+    const its=s.itens.map(i=>({i,r:por[i.id]})).filter(x=>x.r);
+    const c=its.filter(x=>x.r.resposta==='conforme').length,n=its.filter(x=>x.r.resposta==='nao_conforme').length,pc=(c+n)?Math.round(c/(c+n)*1000)/10:null;
+    h+=`<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(s.nome)}</b><b style="color:${cor(pc)}">${pc==null?'—':pc+'%'}</b></div><div class="bar"><i style="width:${pc||0}%;background:${cor(pc)}"></i></div>`;
+    its.filter(x=>x.r.resposta!=='conforme'||x.r.obs||(x.r.evidencias||[]).length).forEach(x=>{
+      const tag=x.r.resposta==='nao_conforme'?'<span class="pill" style="color:#DC2626">Não conforme</span>':x.r.resposta==='na'?'<span class="pill" style="color:#6f656a">N/A</span>':'<span class="pill" style="color:#15803D">Conforme</span>';
+      h+=`<div style="margin-top:8px;font-size:13.5px">${tag} ${esc(x.i.texto)}${x.r.obs?`<div class="sub">${esc(x.r.obs)}</div>`:''}${x.r.sem_evidencia?`<div class="sub">Sem evidência: ${esc(x.r.sem_evidencia)}</div>`:''}${midias(x.r.evidencias)}</div>`;
+    });
+    h+='</div>';
+  });
+  h+=`<h2>Ocorrências e tratativas (${oc.length})</h2>`;
+  if(!oc.length)h+='<div class="card sub">Nenhuma ocorrência registrada neste plantão.</div>';
+  oc.forEach(o=>{
+    const pr=PRIO[o.prioridade]||PRIO.media;
+    h+=`<div class="card" style="border-left:5px solid ${pr[1]}"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>#${o.numero} · ${esc(o.setor_nome||'')}</b><span class="pill" style="color:${pr[1]}">${pr[0]}</span></div><div style="font-size:13.5px">${esc(o.item_texto?o.item_texto+': ':'')}${esc(o.descricao)}</div>${midias(o.evidencias)}<div class="sub" style="margin-top:6px">Status: <b>${ST[o.status]||o.status}</b>${o.reincidente?' · 🔁 Reincidente':''}${o.rnc_numero?' · RNC '+esc(o.rnc_numero):''}</div>${o.resp_nome?`<div class="sub">Tratativa: ${esc(o.acao||'')} — responsável <b>${esc(o.resp_nome)}</b>${o.prazo?', prazo '+dh(o.prazo):''}</div>`:'<div class="sub">Sem tratativa direcionada.</div>'}</div>`;
+  });
+  if(pend.length)h+=`<h2>Pendências em aberto</h2><div class="card">${pend.map(o=>`<div style="font-size:13.5px">• #${o.numero} ${esc(o.item_texto||o.setor_nome||'')} — ${ST[o.status]||o.status}${o.resp_nome?' ('+esc(o.resp_nome)+')':''}</div>`).join('')}</div>`;
+  h+=`<h2>Parecer da gestão</h2><div class="card">${p.parecer?esc(p.parecer).replace(/\n/g,'<br>'):'<span class="sub">Sem parecer registrado.</span>'}</div><div class="sub" style="margin-top:16px">Amore Gestão · O plantão só termina quando os desvios são registrados, direcionados, acompanhados e tratados.</div>`;
+  app.innerHTML=h;document.title='Plantão '+p.loja+' — '+d0(p.data);
+}
+main().catch(e=>{document.getElementById('app').innerHTML='<div class="msg">Falha ao carregar: '+esc(e.message)+'</div>'});
+</script>
+</body>
+</html>

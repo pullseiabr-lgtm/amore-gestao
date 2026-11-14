@@ -243,6 +243,11 @@ for (const r of Object.keys(ROLE_PERMISSIONS)) {
   ROLE_PERMISSIONS[r]['entregas'] = ROLE_PERMISSIONS[r]['requisicoes'] || { view: false, create: false, edit: false, delete: false, export: false }
 }
 
+// Módulo "Plantão de Gestão" — admin/super_admin; equipe de plantão liberada por e-mail (canPlantao, no AuthContext)
+for (const r of Object.keys(ROLE_PERMISSIONS)) {
+  ROLE_PERMISSIONS[r]['plantao'] = (r === 'admin' || r === 'super_admin') ? { view: true, create: true, edit: true, delete: true, export: true } : { view: false, create: false, edit: false, delete: false, export: false }
+}
+
 // Módulo "Créditos & Prestação de Contas" — chave própria (antes dependia de 'financeiro' no menu)
 for (const r of Object.keys(ROLE_PERMISSIONS)) {
   ROLE_PERMISSIONS[r]['creditos'] = ROLE_PERMISSIONS[r]['financeiro'] || { view: false, create: false, edit: false, delete: false, export: false }
@@ -384,6 +389,16 @@ export const APPROVER_EMAILS: string[] = [
 ]
 export function canApproveReq(user: Profile | null): boolean {
   return isOwner(user) || APPROVER_EMAILS.includes(_email(user))
+}
+
+/** Plantão de Gestão: donos + equipe de plantão (Aline, Aristela, Wagner) + administradores. */
+export const PLANTAO_EMAILS: string[] = [
+  'lwsantana@icloud.com',          // Wagner
+  'aline.s.claudino@icloud.com',   // Aline
+  'aristelamota@gmail.com',        // Aristela Mota
+]
+export function canPlantao(user: Profile | null): boolean {
+  return !!user && (isOwner(user) || user.role === 'admin' || PLANTAO_EMAILS.includes(_email(user)))
 }
 
 /** Quem vê TODAS as lojas: donos + Wagner + Aline + Eduarda. Os demais só a sua. */

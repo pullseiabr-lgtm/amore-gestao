@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchProfile, upsertProfile, updateProfile, insertAuditLog } from '../lib/db'
-import { ROLE_PERMISSIONS, isOwner as isOwnerProfile, hasFullAccess, colabPermissions } from '../lib/permissions'
+import { ROLE_PERMISSIONS, isOwner as isOwnerProfile, hasFullAccess, colabPermissions, canPlantao } from '../lib/permissions'
 import type { Profile, PermissionsMap } from '../types/database'
 
 // Modo demo DESLIGADO em qualquer ambiente: nada de credencial fixa, nada de
@@ -203,6 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const can = (module: string, action: keyof PermissionsMap[string] = 'view'): boolean => {
     if (!user) return false
+    if (module === 'plantao') return canPlantao(user)   // Plantão de Gestão: equipe de plantão por e-mail
     if (owner) return true   // DONO (Esdras/Esdras Santana/Rodrigo) = acesso TOTAL a todos os módulos
     const mod = effectivePermissions[module]
     return mod ? Boolean(mod[action]) : false

@@ -55,6 +55,7 @@ import AgenteCMVPage from './pages/agente/AgenteCMVPage'
 import NotificacoesPage from './pages/notificacoes/NotificacoesPage'
 import CaixasPage from './pages/caixas/CaixasPage'
 import CreditosPage from './pages/creditos/CreditosPage'
+import PlantaoPage from './pages/plantao/PlantaoPage'
 import AvaliacoesPage from './pages/avaliacoes/AvaliacoesPage'
 import RaspadinhaPage from './pages/raspadinha/RaspadinhaPage'
 import LizCentralPage from './pages/liz/LizCentralPage'
@@ -152,6 +153,7 @@ export type PageId =
   | 'requisicao-nova'
   | 'requisicoes-status'
   | 'creditos'
+  | 'plantao'
 
 const PAGE_TITLES: Record<PageId, string> = {
   dashboard: 'Início',
@@ -226,6 +228,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'requisicao-nova': 'Nova Requisição de Compra',
   'requisicoes-status': 'Status das Requisições',
   creditos: 'Créditos & Prestação de Contas',
+  plantao: 'Plantão de Gestão',
 }
 
 // Aplica a paleta Flow (verde) no painel quando a loja ativa é "Flow CD".
@@ -285,6 +288,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'site-leads': return <SiteLeadsPage />
     case 'financeiro': return <FinanceiroPage />
     case 'creditos': return <CreditosPage />
+    case 'plantao': return <PlantaoPage />
     case 'marketing': return <MarketingPage />
     case 'mkt-contatos': return <ContatosPage />
     case 'gamificacao': return <GamificacaoPage />
@@ -357,7 +361,7 @@ function permForPage(p: PageId): string { return PAGE_PERM[p] ?? p }
 // Ordem de fallback: primeira página que o usuário PODE ver (colaborador cai em Central de Tarefas).
 const PAGE_FALLBACK_ORDER: PageId[] = [
   'dashboard', 'tarefas', 'checklists', 'recebimento', 'etiquetas',
-  'relatorios-precos', 'avaliacoes', 'entregas', 'requisicoes', 'creditos',
+  'relatorios-precos', 'avaliacoes', 'entregas', 'requisicoes', 'creditos', 'plantao',
 ]
 
 export default function App() {
