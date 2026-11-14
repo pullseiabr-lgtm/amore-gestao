@@ -133,10 +133,11 @@ function Checklist({ plantao, userName, onVoltar, onAbrirOcorrencia }: { plantao
 
   const conf = useMemo(() => conformidadeDe(plantao.estrutura, Object.values(resp)), [plantao.estrutura, resp])
 
+  const itemDe = (id: string) => plantao.estrutura.flatMap(s => s.itens).find(i => i.id === id)
   const temEv = (r?: Resposta) => !!r && (r.evidencias || []).length > 0
-  const valida = (r?: Resposta) => !!r && r.resposta === 'nao_conforme' && !!(r.obs || '').trim() && temEv(r)
-  // TODA etapa exige foto/vídeo; N/A exige justificativa
-  const completo = (r?: Resposta) => !!r && (r.resposta === 'na' ? !!(r.obs || '').trim() : r.resposta === 'nao_conforme' ? valida(r) : temEv(r))
+  const valida = (r?: Resposta) => !!r && r.resposta === 'nao_conforme' && !!(r.obs || '').trim() && (!!itemDe(r.item_id)?.semEv || temEv(r))
+  // TODA etapa exige foto/vídeo, exceto o nome do gestor/líder e itens informados pelo líder (semEv); N/A exige justificativa
+  const completo = (r?: Resposta) => { if (!r) return false; const it = itemDe(r.item_id); if (it?.tipo === 'nome' || r.resposta === 'na') return !!(r.obs || '').trim(); if (r.resposta === 'nao_conforme') return valida(r); return it?.semEv ? true : temEv(r) }
 
   const registrarOcorrencia = async (s: Setor, it: Item, r: Resposta) => {
     const existente = oc[it.id]
@@ -245,19 +246,26 @@ function Checklist({ plantao, userName, onVoltar, onAbrirOcorrencia }: { plantao
                   return (
                     <div key={it.id} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 10, background: 'var(--bg)' }}>
                       <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>{it.texto}</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                      {it.tipo === 'nome' && (
+                        <div>
+                          <input value={r?.obs || ''} onChange={e => { gravar(s, it, { resposta: 'na', obs: e.target.value }); void sb.from('plt_plantoes').update({ responsavel_loja: e.target.value.trim() || null }).eq('id', plantao.id) }} placeholder="Nome do gestor / líder da loja" style={inp} />
+                          {!completo(r) && <div style={{ fontSize: 12.5, color: '#dc2626', fontWeight: 700, marginTop: 4 }}>⚠️ Informe o nome do responsável da loja.</div>}
+                        </div>
+                      )}
+                      {it.tipo !== 'nome' && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
                         {([['conforme', '✅ Conforme', '#16a34a'], ['nao_conforme', '❌ Não conforme', '#dc2626'], ['na', '➖ N/A', '#6b7280']] as const).map(([v, t, cor]) => (
                           <button key={v} onClick={() => gravar(s, it, { resposta: v })}
                             style={{ padding: '12px 4px', borderRadius: 10, border: `2px solid ${r?.resposta === v ? cor : 'var(--border)'}`, background: r?.resposta === v ? cor : 'var(--card, #fff)', color: r?.resposta === v ? '#fff' : 'var(--text)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>{t}</button>
                         ))}
-                      </div>
-                      {r && (
+                      </div>}
+                      {r && it.tipo !== 'nome' && (
                         <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
                           <div>
                             <label style={lbl}>{r.resposta === 'nao_conforme' ? 'Justificativa (obrigatória)' : r.resposta === 'na' ? 'Por que não se aplica? (obrigatório)' : 'Observação (opcional)'}</label>
                             <textarea value={r.obs || ''} onChange={e => gravar(s, it, { obs: e.target.value })} rows={2} style={{ ...inp, resize: 'vertical' }} placeholder={r.resposta === 'nao_conforme' ? 'Descreva o desvio encontrado…' : ''} />
                           </div>
-                          {r.resposta !== 'na' && (
+                          {it.semEv && <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>ℹ️ Informado pelo líder/gestor da loja — não precisa de foto.</div>}
+                          {r.resposta !== 'na' && !it.semEv && (
                             <Evidencias urls={r.evidencias || []} onChange={u => gravar(s, it, { evidencias: u })} rotulo={r.resposta === 'nao_conforme' ? '📷 Foto / vídeo do desvio (obrigatório)' : '📷 Foto / vídeo desta etapa (obrigatório)'} />
                           )}
                           {!completo(r) && <div style={{ fontSize: 12.5, color: '#dc2626', fontWeight: 700 }}>⚠️ {r.resposta === 'na' ? 'Falta a justificativa.' : r.resposta === 'nao_conforme' ? 'Falta a justificativa e a foto/vídeo do desvio.' : 'Falta a foto/vídeo desta etapa.'}</div>}

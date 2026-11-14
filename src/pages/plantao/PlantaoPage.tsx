@@ -364,7 +364,7 @@ function Config({ cfg, onSalvo, podeEditar, userName }: { cfg: PltConfig; onSalv
             {s.itens.map((it, j) => (
               <div key={it.id} style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 <input value={it.texto} onChange={e => upSetor(i, { itens: s.itens.map((x, k) => k === j ? { ...x, texto: e.target.value } : x) })} style={{ ...inp, flex: '1 1 220px', width: 'auto' }} />
-                <label style={{ fontSize: 12.5, display: 'flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={it.ev} onChange={e => upSetor(i, { itens: s.itens.map((x, k) => k === j ? { ...x, ev: e.target.checked } : x) })} />📷 foto</label>
+                <label style={{ fontSize: 12.5, display: 'flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={!!it.semEv} onChange={e => upSetor(i, { itens: s.itens.map((x, k) => k === j ? { ...x, semEv: e.target.checked } : x) })} />sem foto</label>
                 <select value={it.pront || ''} onChange={e => upSetor(i, { itens: s.itens.map((x, k) => k === j ? { ...x, pront: e.target.value || undefined } : x) })} style={{ ...inp, width: 'auto', fontSize: 13 }}><option value="">Prontidão: —</option>{PRONT.map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select>
                 <Btn small tone="ghost" onClick={() => upSetor(i, { itens: mover(s.itens, j, -1) })}>↑</Btn><Btn small tone="ghost" onClick={() => upSetor(i, { itens: mover(s.itens, j, 1) })}>↓</Btn>
                 <Btn small tone="danger" onClick={() => upSetor(i, { itens: s.itens.filter((_, k) => k !== j) })}>✕</Btn>

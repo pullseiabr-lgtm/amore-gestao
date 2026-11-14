@@ -132,3 +132,7 @@ select 1, true, '[
  {"id":"s08i3","texto":"Estrutura física sem avarias (iluminação, ar, mobiliário)","ev":true,"pront":"estrutura"}]}
 ]'::jsonb, 'sistema'
 where not exists (select 1 from plt_checklist_versoes);
+
+-- Ajustes (v2): link_aberto_em, responsavel_loja, checklist v2
+alter table plt_escala add column if not exists link_aberto_em timestamptz;
+alter table plt_plantoes add column if not exists responsavel_loja text;

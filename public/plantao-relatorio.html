@@ -53,13 +53,13 @@ async function main(){
   const pend=oc.filter(o=>o.status!=='concluido');
   let h=`<header><div><div class="eyebrow">Plantão de Gestão</div><h1>${esc(p.loja)} · plantão nº ${p.numero}</h1><div class="sub">${d0(p.data)} · ${p.status==='encerrado'?'Encerrado':'Em andamento'}</div></div><button class="btn" onclick="print()">Salvar em PDF</button></header>`;
   h+=`<div class="grid"><div class="k"><b style="color:${cor(conf)}">${conf==null?'—':conf+'%'}</b><span>Conformidade geral</span></div><div class="k"><b style="color:#15803D">${C}</b><span>Conformes</span></div><div class="k"><b style="color:#DC2626">${N}</b><span>Não conformes</span></div><div class="k"><b>${oc.length}</b><span>Ocorrências (${pend.length} pendentes)</span></div></div>`;
-  h+=`<h2>Identificação</h2><div class="card"><div><b>Chegada:</b> ${dh(p.chegada_em)}</div><div><b>Saída:</b> ${dh(p.saida_em)}</div><div><b>Integrantes:</b> ${esc((p.integrantes||[]).join(' + '))}</div><div class="sub">Checklist versão ${p.versao}</div></div>`;
+  h+=`<h2>Identificação</h2><div class="card"><div><b>Chegada:</b> ${dh(p.chegada_em)}</div><div><b>Saída:</b> ${dh(p.saida_em)}</div><div><b>Gestor / líder da loja:</b> ${esc(p.responsavel_loja||'—')}</div><div><b>Integrantes:</b> ${esc((p.integrantes||[]).join(' + '))}</div><div class="sub">Checklist versão ${p.versao}</div></div>`;
   h+='<h2>Resultado por setor</h2>';
   (p.estrutura||[]).forEach(s=>{
     const its=s.itens.map(i=>({i,r:por[i.id]})).filter(x=>x.r);
     const c=its.filter(x=>x.r.resposta==='conforme').length,n=its.filter(x=>x.r.resposta==='nao_conforme').length,pc=(c+n)?Math.round(c/(c+n)*1000)/10:null;
     h+=`<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(s.nome)}</b><b style="color:${cor(pc)}">${pc==null?'—':pc+'%'}</b></div><div class="bar"><i style="width:${pc||0}%;background:${cor(pc)}"></i></div>`;
-    its.filter(x=>x.r.resposta!=='conforme'||x.r.obs||(x.r.evidencias||[]).length).forEach(x=>{
+    its.filter(x=>x.i.tipo!=='nome').filter(x=>x.r.resposta!=='conforme'||x.r.obs||(x.r.evidencias||[]).length).forEach(x=>{
       const tag=x.r.resposta==='nao_conforme'?'<span class="pill" style="color:#DC2626">Não conforme</span>':x.r.resposta==='na'?'<span class="pill" style="color:#6f656a">N/A</span>':'<span class="pill" style="color:#15803D">Conforme</span>';
       h+=`<div style="margin-top:8px;font-size:13.5px">${tag} ${esc(x.i.texto)}${x.r.obs?`<div class="sub">${esc(x.r.obs)}</div>`:''}${x.r.sem_evidencia?`<div class="sub">Sem evidência: ${esc(x.r.sem_evidencia)}</div>`:''}${midias(x.r.evidencias)}</div>`;
     });

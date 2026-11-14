@@ -68,9 +68,10 @@ async function upload(file){
 }
 const todosItens=()=>S.plantao.estrutura.flatMap(s=>s.itens);
 const temEv=r=>!!(r&&(r.evidencias||[]).length);
-const valida=r=>!!(r&&r.resposta==='nao_conforme'&&(r.obs||'').trim()&&temEv(r));
-// TODA etapa exige evidência em foto/vídeo; N/A exige justificativa
-const completo=r=>!!r&&(r.resposta==='na'?!!(r.obs||'').trim():r.resposta==='nao_conforme'?valida(r):temEv(r));
+const itDe=id=>{for(const s of S.plantao.estrutura){const it=s.itens.find(x=>x.id===id);if(it)return it}};
+const valida=r=>{const it=r&&itDe(r.item_id);return !!(r&&r.resposta==='nao_conforme'&&(r.obs||'').trim()&&((it&&it.semEv)||temEv(r)))};
+// TODA etapa exige evidência em foto/vídeo, exceto: item de nome do gestor/líder e itens "semEv" (informados pelo líder/gestor da loja). N/A exige justificativa.
+const completo=r=>{if(!r)return false;const it=itDe(r.item_id);if(it&&it.tipo==='nome')return !!(r.obs||'').trim();if(r.resposta==='na')return !!(r.obs||'').trim();if(r.resposta==='nao_conforme')return valida(r);return (it&&it.semEv)?true:temEv(r)};
 
 async function main(){
   const e=q.get('e'),p=q.get('p');
@@ -78,32 +79,43 @@ async function main(){
   if(!e){app.innerHTML='<div class="msg">Link inválido.</div>';return}
   const r=await api('plt_escala?id=eq.'+e);S.esc=r[0];
   if(!S.esc){app.innerHTML='<div class="msg">Plantão não encontrado.</div>';return}
+  // abrir o link = INÍCIO do plantão (o primeiro a abrir marca o horário; o segundo plantonista vê o mesmo)
+  if(!S.esc.link_aberto_em){try{await api('plt_escala?id=eq.'+e+'&link_aberto_em=is.null','PATCH',{link_aberto_em:new Date().toISOString()})}catch{}S.esc=(await api('plt_escala?id=eq.'+e))[0]||S.esc}
+  let eq=null;try{eq=(await api('app_config?chave=eq.plt_config&select=valor'))[0]?.valor?.equipe}catch{}
+  S.equipe=(eq&&eq.length)?eq:['Aline','Aristela','Esdras','Wagner'];
+  S.equipe=[...new Set([...S.equipe,...S.esc.dupla])];
+  S.pessoas=[...S.esc.dupla];S.quem=q.get('u')&&S.equipe.includes(q.get('u'))?q.get('u'):'';
   telaInicio();
 }
 function telaInicio(){
-  const E=S.esc;
-  app.innerHTML=`<div class="eyebrow">Plantão de Gestão</div><h1>Plantão de ${d0(E.data)}${E.horario?' · '+esc(E.horario):''}</h1><div class="sub">👥 ${esc(E.dupla.join(' + '))}</div>
-  <div class="card"><b>1. Quem é você?</b><div class="chips" id="quem">${E.dupla.map(n=>`<button class="chip" data-v="${esc(n)}">${esc(n)}</button>`).join('')}</div>
-  <b>2. Em qual loja você está?</b><div class="chips" id="loja">${(E.lojas.length?E.lojas:['Amore CD','Amore Paiva','Flow CD']).map(n=>`<button class="chip" data-v="${esc(n)}">${esc(n)}</button>`).join('')}</div>
-  <div class="sub">⏱ A chegada é registrada ao tocar em iniciar. Para visitar outra loja, volte a este link e escolha a outra.</div></div>
-  <button class="btn" id="ini">Registrar chegada e abrir checklist</button>`;
+  const E=S.esc,chips=(arr,sel)=>arr.map(n=>`<button class="chip${sel(n)?' on':''}" data-v="${esc(n)}">${esc(n)}</button>`).join('');
+  app.innerHTML=`<div class="eyebrow">Plantão de Gestão</div><h1>Plantão de ${d0(E.data)}${E.horario?' · '+esc(E.horario):''}</h1>
+  <div class="card" style="border-color:#16a34a"><b>⏱ Plantão iniciado às ${dh(E.link_aberto_em)}</b><div class="sub">O horário é registrado automaticamente quando o link é aberto.</div></div>
+  <div class="card"><b>1. Quem está no plantão?</b><div class="sub">Marque as pessoas da gestão presentes (pode ser feito por qualquer um dos dois).</div><div class="chips" id="pessoas">${chips(S.equipe,n=>S.pessoas.includes(n))}</div>
+  <b>2. Quem é você?</b><div class="chips" id="quem">${chips(S.equipe,n=>S.quem===n)}</div>
+  <b>3. Em qual loja você está?</b><div class="chips" id="loja">${chips(E.lojas.length?E.lojas:['Amore CD','Amore Paiva','Flow CD'],n=>S.loja===n)}</div>
+  <div class="sub">Para visitar outra loja, volte a este link e escolha a outra.</div></div>
+  <button class="btn" id="ini">Abrir checklist</button>`;
+  document.querySelectorAll('#pessoas .chip').forEach(b=>b.onclick=()=>{const n=b.dataset.v;S.pessoas=S.pessoas.includes(n)?S.pessoas.filter(x=>x!==n):[...S.pessoas,n];b.classList.toggle('on')});
   for(const g of ['quem','loja'])document.querySelectorAll('#'+g+' .chip').forEach(b=>b.onclick=()=>{document.querySelectorAll('#'+g+' .chip').forEach(x=>x.classList.remove('on'));b.classList.add('on');S[g]=b.dataset.v});
   document.getElementById('ini').onclick=iniciar;
 }
 async function iniciar(){
+  if(!S.pessoas.length)return alert('Marque quem está no plantão.');
   if(!S.quem||!S.loja)return alert('Escolha quem é você e a loja.');
   const btn=document.getElementById('ini');btn.disabled=true;btn.textContent='Abrindo…';
   try{
     const ex=await api(`plt_plantoes?escala_id=eq.${S.esc.id}&loja=eq.${encodeURIComponent(S.loja)}&status=eq.em_andamento&limit=1`);
-    if(ex[0]){S.plantao=ex[0]}else{
+    if(ex[0]){S.plantao=ex[0];if(S.pessoas.join()!==S.plantao.integrantes.join())await api('plt_plantoes?id=eq.'+S.plantao.id,'PATCH',{integrantes:S.pessoas})}else{
       const v=(await api('plt_checklist_versoes?ativa=eq.true&order=versao.desc&limit=1'))[0];
       if(!v)throw new Error('Checklist não configurado.');
+      const ja=await api('plt_plantoes?escala_id=eq.'+S.esc.id+'&select=id&limit=1');
       const hoje=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
-      S.plantao=(await api('plt_plantoes','POST',{escala_id:S.esc.id,loja:S.loja,data:hoje,integrantes:S.esc.dupla,versao_id:v.id,versao:v.versao,estrutura:v.estrutura,chegada_em:new Date().toISOString(),created_by:S.quem}))[0];
-      audit('plantao',S.plantao.id,'Plantão iniciado (link do plantonista)',null,{loja:S.loja,por:S.quem});
+      S.plantao=(await api('plt_plantoes','POST',{escala_id:S.esc.id,loja:S.loja,data:hoje,integrantes:S.pessoas,versao_id:v.id,versao:v.versao,estrutura:v.estrutura,chegada_em:(!ja.length&&S.esc.link_aberto_em)||new Date().toISOString(),created_by:S.quem}))[0];
+      audit('plantao',S.plantao.id,'Plantão iniciado (link do plantonista)',null,{loja:S.loja,por:S.quem,integrantes:S.pessoas});
     }
     await carregarResp();telaChecklist();
-  }catch(e){alert('Sem conexão ou falha: '+e.message);btn.disabled=false;btn.textContent='Registrar chegada e abrir checklist'}
+  }catch(e){alert('Sem conexão ou falha: '+e.message);btn.disabled=false;btn.textContent='Abrir checklist'}
 }
 async function abrirPlantao(id){
   S.plantao=(await api('plt_plantoes?id=eq.'+id))[0];
@@ -129,7 +141,7 @@ function topo(){
 }
 function telaChecklist(){
   const P=S.plantao;
-  if(P.status==='encerrado'){app.innerHTML=`<div class="card"><h1>✅ Visita encerrada</h1><div class="sub">Saída ${dh(P.saida_em)}</div><p><a href="/plantao-relatorio.html?id=${P.id}">Abrir relatório final</a></p></div>`;return}
+  if(P.status==='encerrado'){app.innerHTML=`<div class="card"><h1>✅ Plantão encerrado — ${esc(P.loja)}</h1><div class="sub">Chegada ${dh(P.chegada_em)} · saída ${dh(P.saida_em)}</div><p><a href="/plantao-relatorio.html?id=${P.id}">Abrir relatório final</a></p>${P.escala_id?`<a class="btn g" style="display:block;text-align:center;text-decoration:none" href="/plantao.html?e=${P.escala_id}">🏪 Visitar outra loja</a>`:''}</div>`;return}
   let h=topo();
   P.estrutura.forEach((s,i)=>{
     const f=s.itens.filter(x=>completo(S.resp[x.id])).length,aberto=S.aberto===s.id||(S.aberto===null&&i===0);
@@ -137,13 +149,14 @@ function telaChecklist(){
     if(aberto)s.itens.forEach(it=>{h+=itemHtml(s,it)});
     h+='</div>';
   });
-  h+=`<div class="card"><b>🏁 Encerrar visita</b><div class="sub" id="pend"></div><textarea id="parecer" rows="3" placeholder="Parecer da gestão: resumo, pontos fortes, riscos para o fim de semana…"></textarea><button class="btn ok" id="fim" style="margin-top:10px">Registrar saída e encerrar visita</button></div>`;
+  h+=`<div class="card"><b>🏁 Encerramento do plantão nesta loja</b><div class="sub" id="pend"></div><textarea id="parecer" rows="3" placeholder="Parecer da gestão: resumo, pontos fortes, riscos para o fim de semana…"></textarea><button class="btn ok" id="fim" style="margin-top:10px">🏁 Registrar o encerramento do plantão</button></div>`;
   const y=window.scrollY,pv=document.getElementById('parecer')?.value;
   app.innerHTML=h;window.scrollTo(0,y);if(pv)document.getElementById('parecer').value=pv;
   document.querySelectorAll('.sec').forEach(e=>e.onclick=()=>{S.aberto=S.aberto===e.dataset.s?'':e.dataset.s;telaChecklist()});
   document.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>responder(b.dataset.i,b.dataset.r));
   document.querySelectorAll('textarea[data-obs]').forEach(t=>{t.oninput=()=>gravarCampo(t.dataset.obs,{obs:t.value});t.onchange=()=>telaChecklist()});
   document.querySelectorAll('input[data-sem]').forEach(t=>{t.oninput=()=>gravarCampo(t.dataset.sem,{sem_evidencia:t.value},true);t.onchange=()=>telaChecklist()});
+  document.querySelectorAll('input[data-nome]').forEach(t=>{t.oninput=()=>gravarCampo(t.dataset.nome,{resposta:'na',obs:t.value});t.onchange=()=>{api('plt_plantoes?id=eq.'+S.plantao.id,'PATCH',{responsavel_loja:t.value.trim()||null}).catch(()=>{});telaChecklist()}});
   document.querySelectorAll('input[data-file]').forEach(t=>t.onchange=()=>anexar(t.dataset.file,t));
   document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{const [id,u]=b.dataset.rm.split('|');const r=S.resp[id];gravarCampo(id,{evidencias:r.evidencias.filter(x=>x!==u)});telaChecklist()});
   document.getElementById('fim').onclick=encerrar;
@@ -151,14 +164,16 @@ function telaChecklist(){
 }
 function itemHtml(s,it){
   const r=S.resp[it.id],nc=r&&r.resposta==='nao_conforme';
+  if(it.tipo==='nome')return `<div class="item ${completo(r)?'done':'nc'}"><div style="font-weight:600">${esc(it.texto)}</div><input data-nome="${it.id}" placeholder="Nome do gestor / líder da loja" value="${esc(r?r.obs||'':'')}">${completo(r)?'':'<div class="warn">⚠️ Informe o nome do responsável da loja.</div>'}</div>`;
   let h=`<div class="item ${r?(!completo(r)||nc?'nc':'done'):''}"><div style="font-weight:600">${esc(it.texto)}</div><div class="opt">`;
   [['conforme','✅ Conforme','#16a34a'],['nao_conforme','❌ Não conforme','#dc2626'],['na','➖ N/A','#6b7280']].forEach(([v,t,c])=>{h+=`<button data-i="${it.id}" data-r="${v}" style="${r&&r.resposta===v?`background:${c};border-color:${c};color:#fff`:''}">${t}</button>`});
   h+='</div>';
   if(r){
     h+=`<textarea data-obs="${it.id}" rows="2" placeholder="${nc?'Justificativa obrigatória — descreva o desvio':r.resposta==='na'?'Justifique por que não se aplica (obrigatório)':'Observação (opcional)'}">${esc(r.obs||'')}</textarea>`;
-    if(r.resposta!=='na')h+=`<label class="up">${nc?'📷 Foto / vídeo do desvio (obrigatório)':'📷 Foto / vídeo desta etapa (obrigatório)'}<input type="file" accept="image/*,video/*" multiple data-file="${it.id}" style="display:none"></label>`;
+    if(it.semEv)h+='<div class="sub" style="margin-top:6px">ℹ️ Informado pelo líder/gestor da loja — não precisa de foto.</div>';
+    else if(r.resposta!=='na')h+=`<label class="up">${nc?'📷 Foto / vídeo do desvio (obrigatório)':'📷 Foto / vídeo desta etapa (obrigatório)'}<input type="file" accept="image/*,video/*" multiple data-file="${it.id}" style="display:none"></label>`;
     if((r.evidencias||[]).length)h+='<div class="m">'+r.evidencias.map(u=>`<div style="position:relative">${vid(u)?`<video src="${esc(u)}" controls></video>`:`<img src="${esc(u)}">`}<button data-rm="${it.id}|${esc(u)}" style="position:absolute;top:-6px;right:-6px;border:0;border-radius:99px;background:#dc2626;color:#fff;width:22px;height:22px">✕</button></div>`).join('')+'</div>';
-    if(!completo(r))h+='<div class="warn">⚠️ '+(r.resposta==='na'?'Falta a justificativa.':nc?'Falta a justificativa e a foto/vídeo do desvio.':'Falta a foto/vídeo desta etapa.')+'</div>';
+    if(!completo(r))h+='<div class="warn">⚠️ '+(r.resposta==='na'?'Falta a justificativa.':nc?(it.semEv?'Falta a justificativa.':'Falta a justificativa e a foto/vídeo do desvio.'):'Falta a foto/vídeo desta etapa.')+'</div>';
     if(S.oc[it.id])h+=`<div class="warn" style="color:#b91c1c">🚨 Ocorrência registrada${S.oc[it.id].numero?' nº '+S.oc[it.id].numero:''} — será tratada pela gestão.</div>`;
   }
   return h+'</div>';
@@ -204,7 +219,7 @@ async function encerrar(){
     if(S.plantao.escala_id)await api('plt_escala?id=eq.'+S.plantao.escala_id,'PATCH',{status:'realizado',updated_at:saida});
     audit('plantao',S.plantao.id,'Plantão encerrado (link do plantonista)',{status:'em_andamento'},{status:'encerrado',conformidade:s.pct});
     telaChecklist();
-  }catch(e){alert('Falha ao encerrar: '+e.message);b.disabled=false;b.textContent='Registrar saída e encerrar visita'}
+  }catch(e){alert('Falha ao encerrar: '+e.message);b.disabled=false;b.textContent='🏁 Registrar o encerramento do plantão'}
 }
 main().catch(e=>{app.innerHTML='<div class="msg">Falha ao carregar: '+esc(e.message)+'</div>'});
 </script>

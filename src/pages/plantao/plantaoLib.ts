@@ -5,7 +5,7 @@ import { fetchAppConfig, saveAppConfig } from '../../lib/db'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const sb = supabase as any
 
-export type Item = { id: string; texto: string; ev: boolean; pront?: string }
+export type Item = { id: string; texto: string; ev: boolean; pront?: string; semEv?: boolean; tipo?: 'nome' }
 export type Setor = { id: string; nome: string; itens: Item[] }
 export type Resposta = { id?: string; plantao_id: string; setor_id: string; item_id: string; resposta: 'conforme' | 'nao_conforme' | 'na'; obs: string | null; evidencias: string[]; sem_evidencia: string | null; updated_by?: string }
 export type Plantao = {
