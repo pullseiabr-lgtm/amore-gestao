@@ -6,7 +6,7 @@ import { fetchAppConfig, saveAppConfig } from '../../lib/db'
 export const sb = supabase as any
 
 export type Item = { id: string; texto: string; ev: boolean; pront?: string; semEv?: boolean; tipo?: 'nome' }
-export type Setor = { id: string; nome: string; itens: Item[] }
+export type Setor = { id: string; nome: string; itens: Item[]; evObrig?: boolean }
 export type Resposta = { id?: string; plantao_id: string; setor_id: string; item_id: string; resposta: 'conforme' | 'nao_conforme' | 'na'; obs: string | null; evidencias: string[]; sem_evidencia: string | null; updated_by?: string }
 export type Plantao = {
   id: string; numero: number; escala_id: string | null; loja: string; data: string; integrantes: string[]; versao: number; estrutura: Setor[]

@@ -136,8 +136,8 @@ function Checklist({ plantao, userName, onVoltar, onAbrirOcorrencia }: { plantao
   const itemDe = (id: string) => plantao.estrutura.flatMap(s => s.itens).find(i => i.id === id)
   const temEv = (r?: Resposta) => !!r && (r.evidencias || []).length > 0
   const valida = (r?: Resposta) => !!r && r.resposta === 'nao_conforme' && !!(r.obs || '').trim() && (!!itemDe(r.item_id)?.semEv || temEv(r))
-  // TODA etapa exige foto/vídeo, exceto o nome do gestor/líder e itens informados pelo líder (semEv); N/A exige justificativa
-  const completo = (r?: Resposta) => { if (!r) return false; const it = itemDe(r.item_id); if (it?.tipo === 'nome' || r.resposta === 'na') return !!(r.obs || '').trim(); if (r.resposta === 'nao_conforme') return valida(r); return it?.semEv ? true : temEv(r) }
+  // Foto/vídeo obrigatória só em desvio (Não conforme) e em setores marcados (Frente de loja); nos demais é opcional. N/A exige justificativa
+  const completo = (r?: Resposta) => { if (!r) return false; const it = itemDe(r.item_id); if (it?.tipo === 'nome' || r.resposta === 'na') return !!(r.obs || '').trim(); if (r.resposta === 'nao_conforme') return valida(r); const st = plantao.estrutura.find(x => x.itens.some(i => i.id === r.item_id)); return (it?.semEv || !st?.evObrig) ? true : temEv(r) }
 
   const registrarOcorrencia = async (s: Setor, it: Item, r: Resposta) => {
     const existente = oc[it.id]
@@ -265,8 +265,8 @@ function Checklist({ plantao, userName, onVoltar, onAbrirOcorrencia }: { plantao
                             <textarea value={r.obs || ''} onChange={e => gravar(s, it, { obs: e.target.value })} rows={2} style={{ ...inp, resize: 'vertical' }} placeholder={r.resposta === 'nao_conforme' ? 'Descreva o desvio encontrado…' : ''} />
                           </div>
                           {it.semEv && <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>ℹ️ Informado pelo líder/gestor da loja — não precisa de foto.</div>}
-                          {r.resposta !== 'na' && !it.semEv && (
-                            <Evidencias urls={r.evidencias || []} onChange={u => gravar(s, it, { evidencias: u })} rotulo={r.resposta === 'nao_conforme' ? '📷 Foto / vídeo do desvio (obrigatório)' : '📷 Foto / vídeo desta etapa (obrigatório)'} />
+                          {r.resposta !== 'na' && !it.semEv && it.tipo !== 'nome' && (
+                            <Evidencias urls={r.evidencias || []} onChange={u => gravar(s, it, { evidencias: u })} rotulo={r.resposta === 'nao_conforme' ? '📷 Foto / vídeo do desvio (obrigatório)' : (plantao.estrutura.find(x => x.itens.some(i => i.id === it.id))?.evObrig ? '📷 Foto / vídeo desta etapa (obrigatório)' : '📷 Foto / vídeo (opcional)')} />
                           )}
                           {!completo(r) && <div style={{ fontSize: 12.5, color: '#dc2626', fontWeight: 700 }}>⚠️ {r.resposta === 'na' ? 'Falta a justificativa.' : r.resposta === 'nao_conforme' ? 'Falta a justificativa e a foto/vídeo do desvio.' : 'Falta a foto/vídeo desta etapa.'}</div>}
                           {o && (

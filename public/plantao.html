@@ -79,7 +79,10 @@ const temEv=r=>!!(r&&(r.evidencias||[]).length);
 const itDe=id=>{for(const s of S.plantao.estrutura){const it=s.itens.find(x=>x.id===id);if(it)return it}};
 const valida=r=>{const it=r&&itDe(r.item_id);return !!(r&&r.resposta==='nao_conforme'&&(r.obs||'').trim()&&((it&&it.semEv)||temEv(r)))};
 // TODA etapa exige evidência em foto/vídeo, exceto: item de nome do gestor/líder e itens "semEv" (informados pelo líder/gestor da loja). N/A exige justificativa.
-const completo=r=>{if(!r)return false;const it=itDe(r.item_id);if(it&&it.tipo==='nome')return !!(r.obs||'').trim();if(r.resposta==='na')return !!(r.obs||'').trim();if(r.resposta==='nao_conforme')return valida(r);return (it&&it.semEv)?true:temEv(r)};
+const setorDe=id=>{for(const s of S.plantao.estrutura){if(s.itens.find(x=>x.id===id))return s}};
+const evObr=(r,it)=>{if(!it||it.semEv)return false;const st=setorDe(it.id);return r.resposta==='nao_conforme'||!!(st&&st.evObrig)};
+// Foto/vídeo: SEMPRE disponível; obrigatória só em desvio (Não conforme), RNC e setores marcados (Frente de loja). N/A exige justificativa.
+const completo=r=>{if(!r)return false;const it=itDe(r.item_id);if(it&&it.tipo==='nome')return !!(r.obs||'').trim();if(r.resposta==='na')return !!(r.obs||'').trim();if(r.resposta==='nao_conforme')return valida(r);return evObr(r,it)?temEv(r):true};
 
 async function main(){
   const e=q.get('e'),p=q.get('p');
@@ -132,7 +135,7 @@ async function abrirPlantao(id){
   await carregarResp();telaChecklist();
 }
 async function carregarResp(){
-  const [r,o]=await Promise.all([api('plt_respostas?plantao_id=eq.'+S.plantao.id),api('plt_ocorrencias?plantao_id=eq.'+S.plantao.id+'&order=numero.asc')]);
+  const [r,o,pr]=await Promise.all([api('plt_respostas?plantao_id=eq.'+S.plantao.id),api('plt_ocorrencias?plantao_id=eq.'+S.plantao.id+'&order=numero.asc'),api('plt_pratos?plantao_id=eq.'+S.plantao.id+'&order=created_at.asc')]);S.pratos=pr;
   S.resp={};r.forEach(x=>S.resp[x.item_id]=x);
   lerF().filter(o=>o.path.startsWith('plt_respostas')&&o.row.plantao_id===S.plantao.id).forEach(o=>S.resp[o.row.item_id]=o.row);
   S.ocs=o;S.oc={};o.forEach(x=>{if(x.item_id)S.oc[x.item_id]=x});
@@ -150,13 +153,14 @@ function topo(){
 function telaChecklist(){
   const P=S.plantao;
   if(P.status==='encerrado'){app.innerHTML=`<div class="card"><h1>✅ Plantão encerrado — ${esc(P.loja)}</h1><div class="sub">Chegada ${dh(P.chegada_em)} · saída ${dh(P.saida_em)}</div><p><a href="/plantao-relatorio.html?id=${P.id}">Abrir relatório final</a></p>${P.escala_id?`<a class="btn g" style="display:block;text-align:center;text-decoration:none" href="/plantao.html?e=${P.escala_id}">🏪 Visitar outra loja</a>`:''}</div>`;return}
-  let h=topo();
+  let h=topo();h+=pendCard();
   P.estrutura.forEach((s,i)=>{
     const f=s.itens.filter(x=>completo(S.resp[x.id])).length,aberto=S.aberto===s.id||(S.aberto===null&&i===0);
     h+=`<div class="card"><div class="sec" data-s="${s.id}"><span>${String(i+1).padStart(2,'0')} · ${esc(s.nome)}</span><span class="pill" style="color:${f===s.itens.length?'#2FBF8F':'#6f656a'}">${f}/${s.itens.length} ${aberto?'▲':'▼'}</span></div>`;
     if(aberto)s.itens.forEach(it=>{h+=itemHtml(s,it)});
     h+='</div>';
   });
+  h+=pratosCard();
   h+=ocsCard();
   h+=`<div class="card"><b>🏁 Encerramento do plantão nesta loja</b><div class="sub" id="pend"></div><textarea id="parecer" rows="3" placeholder="Parecer da gestão: resumo, pontos fortes, riscos para o fim de semana…"></textarea><button class="btn ok" id="fim" style="margin-top:10px">🏁 Registrar o encerramento do plantão</button></div>`;
   const y=window.scrollY,pv=document.getElementById('parecer')?.value;
@@ -174,13 +178,13 @@ function telaChecklist(){
 function itemHtml(s,it){
   const r=S.resp[it.id],nc=r&&r.resposta==='nao_conforme';
   if(it.tipo==='nome')return `<div class="item ${completo(r)?'done':'nc'}"><div style="font-weight:600">${esc(it.texto)}</div><input data-nome="${it.id}" placeholder="Nome do gestor / líder da loja" value="${esc(r?r.obs||'':'')}">${completo(r)?'':'<div class="warn">⚠️ Informe o nome do responsável da loja.</div>'}</div>`;
-  let h=`<div class="item ${r?(!completo(r)||nc?'nc':'done'):''}"><div style="font-weight:600">${esc(it.texto)}</div><div class="opt">`;
+  let h=`<div id="it_${it.id}" class="item ${r?(!completo(r)||nc?'nc':'done'):''}"><div style="font-weight:600">${esc(it.texto)}</div><div class="opt">`;
   [['conforme','✅ Conforme','#2FBF8F'],['nao_conforme','❌ Não conforme','#EF5B73'],['na','➖ N/A','#8A97AD']].forEach(([v,t,c])=>{h+=`<button data-i="${it.id}" data-r="${v}" style="${r&&r.resposta===v?`background:${c};border-color:${c};color:#fff`:''}">${t}</button>`});
   h+='</div>';
   if(r){
     h+=`<textarea data-obs="${it.id}" rows="2" placeholder="${nc?'Justificativa obrigatória — descreva o desvio':r.resposta==='na'?'Justifique por que não se aplica (obrigatório)':'Observação (opcional)'}">${esc(r.obs||'')}</textarea>`;
     if(it.semEv)h+='<div class="sub" style="margin-top:6px">ℹ️ Informado pelo líder/gestor da loja — não precisa de foto.</div>';
-    else if(r.resposta!=='na')h+=`<label class="up">${nc?'📷 Foto / vídeo do desvio (obrigatório)':'📷 Foto / vídeo desta etapa (obrigatório)'}<input type="file" accept="image/*,video/*" multiple data-file="${it.id}" style="display:none"></label>`;
+    else if(r.resposta!=='na')h+=`<label class="up">${nc?'📷 Foto / vídeo do desvio (obrigatório)':(evObr(r,it)?'📷 Foto / vídeo desta etapa (obrigatório)':'📷 Foto / vídeo (opcional — anexe se achar necessário)')}<input type="file" accept="image/*,video/*" multiple data-file="${it.id}" style="display:none"></label>`;
     if((r.evidencias||[]).length)h+='<div class="m">'+r.evidencias.map(u=>`<div style="position:relative">${vid(u)?`<video src="${esc(u)}" controls></video>`:`<img src="${esc(u)}">`}<button data-rm="${it.id}|${esc(u)}" style="position:absolute;top:-6px;right:-6px;border:0;border-radius:99px;background:#EF5B73;color:#fff;width:22px;height:22px">✕</button></div>`).join('')+'</div>';
     if(!completo(r))h+='<div class="warn">⚠️ '+(r.resposta==='na'?'Falta a justificativa.':nc?(it.semEv?'Falta a justificativa.':'Falta a justificativa e a foto/vídeo do desvio.'):'Falta a foto/vídeo desta etapa.')+'</div>';
     if(S.oc[it.id])h+=`<div class="warn" style="color:#E0445F">🚨 Ocorrência registrada${S.oc[it.id].numero?' nº '+S.oc[it.id].numero:''}${S.oc[it.id].resp_nome?' · responsável: '+esc(S.oc[it.id].resp_nome):''}${S.oc[it.id].rnc_numero?' · RNC '+esc(S.oc[it.id].rnc_numero):''}</div><button class="btn g" style="margin-top:8px" onclick="openOcItem('${it.id}')">🛠 Solicitar tratativa / abrir RNC / avisar por WhatsApp</button>`;
@@ -216,8 +220,8 @@ async function anexar(id,input){
 }
 async function encerrar(){
   const s=stats(),falta=s.total-s.feitos;
-  const inval=todosItens().filter(i=>!completo(S.resp[i.id]));
-  if(inval.length)return alert('Para encerrar, todas as etapas precisam de evidência em foto/vídeo (N/A: justificativa). Faltam '+inval.length+':\n• '+inval.slice(0,8).map(i=>i.texto).join('\n• ')+(inval.length>8?'\n…':''));
+  const pl=pendList();
+  if(pl.length)return alert('Para finalizar, preencha os itens pendentes ('+pl.length+'):\n• '+pl.slice(0,8).map(x=>x.t).join('\n• ')+(pl.length>8?'\n…':''));
   await sincronizar();
   if(lerF().length)return alert('Há registros aguardando conexão. Conecte-se e tente encerrar de novo — nada foi perdido.');
   const b=document.getElementById('fim');b.disabled=true;b.textContent='Encerrando…';
@@ -317,6 +321,7 @@ async function openOc(id,aba){
   };
   document.getElementById('t_save').onclick=async()=>{try{if(await salvarTrat()){alert('Tratativa salva.');openOc(id);telaChecklist()}}catch(e){alert('Falha: '+e.message)}};
   document.getElementById('t_rnc').onclick=async()=>{
+    if(!((o.evidencias||[]).length+(o.evid_inicial||[]).length))return alert('A RNC exige evidência: anexe foto ou vídeo na ocorrência antes de abrir a RNC.');
     if(!confirm('Abrir uma RNC na Central de Tarefas a partir desta ocorrência? Evidências e histórico serão importados.'))return;
     try{const r=await rpc('plantao_abrir_rnc',{p_oc:o.id,p_usuario:S.quem});if(r.erro)throw new Error(r.erro);alert('RNC '+r.numero+' aberta.');await recarregarOcs();openOc(id);telaChecklist()}catch(e){alert('Falha ao abrir a RNC: '+e.message)}
   };
@@ -352,6 +357,61 @@ function previaWpp(o){
     try{await api('plt_ocorrencias?id=eq.'+o.id,'PATCH',{whatsapp_enviado_em:new Date().toISOString()})}catch{}
     audit('ocorrencia',o.id,'WhatsApp enviado',null,{para:dest.map(d=>d[0])});
     alert('Resultado do envio:\n'+res.join('\n'));await recarregarOcs();openOc(o.id);telaChecklist();
+  };
+}
+
+// ───────── Pendências para finalizar ─────────
+const pratoCompleto=x=>!!(x.prato||'').trim()&&x.tempo_entrega_min!=null&&x.tempo_entrega_min!==''&&!!x.nota_apresentacao&&!!x.nota_sabor&&!!x.nota_prazo;
+const pratoOk=()=>(S.pratos||[]).some(pratoCompleto);
+function pendList(){
+  const out=[];
+  S.plantao.estrutura.forEach((st,i)=>st.itens.forEach(it=>{const r=S.resp[it.id];if(completo(r))return;
+    out.push({sid:st.id,id:it.id,t:it.texto,sn:String(i+1).padStart(2,'0')+' · '+st.nome,why:!r?'não respondido':(it.tipo==='nome'?'informar o nome':r.resposta==='na'?'falta a justificativa':r.resposta==='nao_conforme'?(it.semEv?'falta a justificativa':'falta justificativa/foto'):'falta foto/vídeo')})}));
+  if(!pratoOk())out.push({sid:'__pratos',id:'pratos',t:'Avaliação do prato: qual prato pediu, tempo de entrega, apresentação, sabor e notas',sn:'🍽 Avaliação do prato',why:'preencher'});
+  return out;
+}
+function pendCard(){
+  const l=pendList();
+  if(!l.length)return '<div class="card" style="border-color:#9FE3C9;background:#F1FCF7"><b>✅ Tudo preenchido — pode registrar o encerramento do plantão.</b></div>';
+  return `<details class="card" open style="border-color:#FFD08A;background:#FFF9EC"><summary style="font-weight:800;cursor:pointer;font-size:17px">⚠️ Faltam ${l.length} item(ns) para finalizar <span class="sub">(toque para ir ao item)</span></summary>`+l.map(x=>`<div class="h" style="cursor:pointer" onclick="irPara('${x.sid}','${x.id}')"><b>${esc(x.sn)}</b><br>${esc(x.t)} <span class="pill" style="color:#E9A23B">${x.why}</span></div>`).join('')+'</details>';
+}
+function irPara(sid,id){
+  if(sid==='__pratos'){document.getElementById('pratosCard')?.scrollIntoView({behavior:'smooth'});return}
+  S.aberto=sid;telaChecklist();setTimeout(()=>document.getElementById('it_'+id)?.scrollIntoView({behavior:'smooth',block:'center'}),120);
+}
+// ───────── Avaliação do prato ─────────
+function pratosCard(){
+  const l=S.pratos||[];
+  let h='<div class="card" id="pratosCard"><b>🍽 Avaliação do prato</b><div class="sub">Peça um prato e avalie: qual foi o prato, tempo de entrega, apresentação e sabor, com nota de 1 a 10. Foto/vídeo é opcional em cada ponto.</div>';
+  l.forEach(x=>{h+=`<div class="item ${pratoCompleto(x)?'done':'nc'}" style="cursor:pointer" onclick="pratoForm('${x.id}')"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(x.prato)}</b><span class="pill" style="color:#4C9BF0">Nota ${x.nota_geral??'—'}</span></div><div class="sub">⏱ ${x.tempo_entrega_min??'—'} min · apresentação ${x.nota_apresentacao??'—'} · sabor ${x.nota_sabor??'—'} · prazo ${x.nota_prazo??'—'}</div>${pratoCompleto(x)?'':'<div class="warn">⚠️ Complete os campos do prato.</div>'}</div>`});
+  return h+'<button class="btn" onclick="pratoForm()">➕ Avaliar um prato</button></div>';
+}
+function pratoForm(id){
+  const ex=id?(S.pratos||[]).find(x=>x.id===id):null;
+  const P=ex?{...ex}:{id:crypto.randomUUID(),prato:'',tempo_entrega_min:null,nota_apresentacao:null,nota_sabor:null,nota_prazo:null,obs_apresentacao:'',obs_sabor:'',obs_prazo:'',ev_apresentacao:[],ev_sabor:[],ev_prazo:[]};
+  const bloco=(k,t,dica)=>`<div class="card" style="margin-top:12px"><b>${t}</b><div class="sub">${dica}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px" id="nt_${k}">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<button type="button" data-k="${k}" data-n="${n}" style="flex:0 0 17%;padding:13px 0;border-radius:12px;border:2px solid var(--border);background:var(--tint);font-weight:800;font-size:17px;cursor:pointer">${n}</button>`).join('')}</div>
+    <textarea id="ob_${k}" rows="2" placeholder="Observação (opcional)">${esc(P['obs_'+k]||'')}</textarea>
+    <label class="up">📷 Foto / vídeo (opcional)<input type="file" data-ek="${k}" accept="image/*,video/*" multiple style="display:none"></label><div class="m" id="pe_${k}"></div></div>`;
+  sheet(`<div style="display:flex;justify-content:space-between"><b style="font-size:18px">🍽 Avaliação do prato</b><button onclick="closeSheet()" style="background:none;border:0;font-size:24px;color:var(--muted)">✕</button></div>
+   <label class="sub">Qual prato você pediu? *</label><input id="p_prato" value="${esc(P.prato)}" placeholder="Ex.: Strogonoff de frango">
+   <label class="sub" style="margin-top:8px;display:block">Tempo de entrega (minutos do pedido até chegar à mesa) *</label><input id="p_tempo" type="number" inputmode="decimal" min="0" value="${P.tempo_entrega_min??''}" placeholder="Ex.: 18">
+   ${bloco('apresentacao','Apresentação do prato *','Montagem, aparência, porcionamento, limpeza do prato.')}
+   ${bloco('sabor','Sabor *','Tempero, ponto, temperatura.')}
+   ${bloco('prazo','Prazo de entrega *','Nota para o tempo de entrega em relação ao esperado.')}
+   <div style="display:flex;gap:8px;margin-top:14px"><button class="btn g" onclick="closeSheet()">Cancelar</button><button class="btn ok" id="p_ok">Salvar avaliação</button></div>`);
+  const pinta=k=>{const el=document.getElementById('pe_'+k);if(el)el.innerHTML=(P['ev_'+k]||[]).map(u=>vid(u)?`<video src="${esc(u)}" controls></video>`:`<img src="${esc(u)}">`).join('')};
+  const marca=k=>document.querySelectorAll('#nt_'+k+' button').forEach(b=>{const on=Number(b.dataset.n)===P['nota_'+k];b.style.background=on?'linear-gradient(135deg,#E0566B,#F58CA0)':'var(--tint)';b.style.color=on?'#fff':'var(--text)';b.style.borderColor=on?'transparent':'var(--border)'});
+  ['apresentacao','sabor','prazo'].forEach(k=>{marca(k);pinta(k);document.querySelectorAll('#nt_'+k+' button').forEach(b=>b.onclick=()=>{P['nota_'+k]=Number(b.dataset.n);marca(k)})});
+  document.querySelectorAll('input[data-ek]').forEach(inp=>inp.onchange=async()=>{const k=inp.dataset.ek,lab=inp.parentElement;lab.firstChild.textContent='⏳ Enviando…';for(const f of inp.files){try{P['ev_'+k].push(await upload(f))}catch{alert('Sem conexão ao enviar '+f.name)}}lab.firstChild.textContent='📷 Foto / vídeo (opcional)';pinta(k)});
+  document.getElementById('p_ok').onclick=async()=>{
+    const prato=document.getElementById('p_prato').value.trim(),tempo=document.getElementById('p_tempo').value;
+    if(!prato)return alert('Informe qual prato você pediu.');if(tempo==='')return alert('Informe o tempo de entrega em minutos.');
+    if(!P.nota_apresentacao||!P.nota_sabor||!P.nota_prazo)return alert('Dê uma nota de 1 a 10 para apresentação, sabor e prazo de entrega.');
+    const geral=Math.round((P.nota_apresentacao+P.nota_sabor+P.nota_prazo)/3*10)/10;
+    const row={id:P.id,plantao_id:S.plantao.id,prato,tempo_entrega_min:Number(tempo),nota_apresentacao:P.nota_apresentacao,nota_sabor:P.nota_sabor,nota_prazo:P.nota_prazo,nota_geral:geral,obs_apresentacao:document.getElementById('ob_apresentacao').value.trim()||null,obs_sabor:document.getElementById('ob_sabor').value.trim()||null,obs_prazo:document.getElementById('ob_prazo').value.trim()||null,ev_apresentacao:P.ev_apresentacao,ev_sabor:P.ev_sabor,ev_prazo:P.ev_prazo,criado_por:S.quem,updated_at:new Date().toISOString()};
+    salvar('pr:'+P.id,'plt_pratos?on_conflict=id',row);audit('plantao',S.plantao.id,ex?'Avaliação de prato atualizada':'Avaliação de prato registrada',null,{prato,nota_geral:geral,tempo_min:Number(tempo)});
+    await sincronizar();S.pratos=await api('plt_pratos?plantao_id=eq.'+S.plantao.id+'&order=created_at.asc');closeSheet();telaChecklist();
   };
 }
 

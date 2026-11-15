@@ -358,6 +358,7 @@ function Config({ cfg, onSalvo, podeEditar, userName }: { cfg: PltConfig; onSalv
           <div key={s.id} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 10, marginBottom: 8 }}>
             <div style={{ display: 'flex', gap: 6 }}>
               <input value={s.nome} onChange={e => upSetor(i, { nome: e.target.value })} style={{ ...inp, fontWeight: 700 }} />
+              <label style={{ fontSize: 12.5, display: 'flex', gap: 4, alignItems: 'center', whiteSpace: 'nowrap' }}><input type="checkbox" checked={!!s.evObrig} onChange={e => upSetor(i, { evObrig: e.target.checked })} />foto obrigatória</label>
               <Btn small tone="ghost" onClick={() => setEst(mover(est, i, -1))}>↑</Btn><Btn small tone="ghost" onClick={() => setEst(mover(est, i, 1))}>↓</Btn>
               <Btn small tone="danger" onClick={() => confirm('Remover o setor?') && setEst(est.filter((_, k) => k !== i))}>🗑</Btn>
             </div>

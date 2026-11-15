@@ -64,6 +64,10 @@ async function main(){
     });
     h+='</div>';
   });
+  const pr=j.pratos||[];
+  h+=`<h2>Avaliação de pratos (${pr.length})</h2>`;
+  if(!pr.length)h+='<div class="card sub">Nenhum prato avaliado.</div>';
+  pr.forEach(x=>{h+=`<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>🍽 ${esc(x.prato)}</b><b style="color:${cor(Number(x.nota_geral)*10)}">Nota ${x.nota_geral??'—'}</b></div><div class="sub">⏱ Tempo de entrega: <b>${x.tempo_entrega_min??'—'} min</b> · por ${esc(x.criado_por||'')}</div><div style="font-size:14px;margin-top:6px">Apresentação: <b>${x.nota_apresentacao}</b>${x.obs_apresentacao?' — '+esc(x.obs_apresentacao):''}${midias(x.ev_apresentacao)}</div><div style="font-size:14px;margin-top:6px">Sabor: <b>${x.nota_sabor}</b>${x.obs_sabor?' — '+esc(x.obs_sabor):''}${midias(x.ev_sabor)}</div><div style="font-size:14px;margin-top:6px">Prazo de entrega: <b>${x.nota_prazo}</b>${x.obs_prazo?' — '+esc(x.obs_prazo):''}${midias(x.ev_prazo)}</div></div>`});
   h+=`<h2>Ocorrências e tratativas (${oc.length})</h2>`;
   if(!oc.length)h+='<div class="card sub">Nenhuma ocorrência registrada neste plantão.</div>';
   oc.forEach(o=>{
