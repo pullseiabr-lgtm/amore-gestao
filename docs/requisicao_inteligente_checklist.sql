@@ -66,6 +66,9 @@ begin
     select ri_norm(nome) k, (array_agg(nome order by length(nome)))[1] nome, (array_agg(categoria order by (categoria='Geral'), nivel_atual desc))[1] cat,
            sum(coalesce(nivel_atual,0)) saldo, max(nivel_minimo) mn, max(nivel_ideal) ide
     from estoque_produtos where coalesce(ativo,true) and loja=p_loja group by 1
+  ), cat as (
+    select ri_norm(nome) k, (array_agg(nome order by length(nome)))[1] nome, (array_agg(categoria order by (categoria='Geral'), nivel_atual desc))[1] cat
+    from estoque_produtos where coalesce(ativo,true) and loja in ('Amore CD','Amore Paiva','Flow CD') and ri_norm(nome)<>'' group by 1
   ), mv as (
     select ri_norm(produto_nome) k, (array_agg(produto_nome order by created_at desc))[1] nome,
       (array_agg(unidade order by created_at desc) filter (where unidade is not null))[1] un,
@@ -96,13 +99,14 @@ begin
     where ri_loja(c.loja)=p_loja and ri_norm(ci.descricao)<>'' group by 1
   ), chaves as (
     select k from est
+    union select k from cat
     union select k from mv where n_mov>0
     union select k from pd where n_ped>0
     union select k from cx where n_cx>0
   ), linhas as (
     select c.k,
-      coalesce(est.nome, pd.nome, mv.nome, cx.nome) nome,
-      coalesce(est.cat,'Sem categoria') cat,
+      coalesce(est.nome, cat.nome, pd.nome, mv.nome, cx.nome) nome,
+      coalesce(est.cat, cat.cat, 'Sem categoria') cat,
       coalesce(mv.un, pd.un, cx.un, 'Unidade') un,
       coalesce(est.saldo,0) saldo, est.mn, est.ide, (est.k is not null) no_cadastro,
       coalesce(mv.entradas,0) entradas, coalesce(mv.saidas,0) saidas, coalesce(mv.s30,0) s30, coalesce(mv.s60,0) s60,
@@ -110,7 +114,7 @@ begin
       coalesce(pd.n_ped,0)+coalesce(cx.n_cx,0) compras_n,
       coalesce(pd.qtd_ped,0)+coalesce(cx.qtd_cx,0) compras_qtd,
       greatest(pd.ult_ped, cx.ult_cx::timestamptz, mv.ult_entrada) ult_compra
-    from chaves c left join est on est.k=c.k left join mv on mv.k=c.k left join pd on pd.k=c.k left join cx on cx.k=c.k
+    from chaves c left join est on est.k=c.k left join cat on cat.k=c.k left join mv on mv.k=c.k left join pd on pd.k=c.k left join cx on cx.k=c.k
     where c.k<>''
   )
   select coalesce(jsonb_agg(jsonb_build_object(
