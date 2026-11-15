@@ -46,8 +46,8 @@ input:focus{outline:none;border-color:var(--v)}
 .btn{border:1px solid var(--v);background:var(--v);color:#fff;border-radius:12px;padding:13px 16px;font:inherit;font-size:15px;font-weight:800;cursor:pointer;width:100%}
 .btn.g{background:var(--card);color:var(--text);border-color:var(--border)}
 .btn:disabled{opacity:.5}
-.foot{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--border);padding:10px 12px;z-index:30}
-.foot .in{max-width:720px;margin:0 auto;display:grid;grid-template-columns:1fr 1.4fr;gap:8px}
+.foot{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--border);padding:8px 12px;z-index:30}
+.foot .btn{padding:9px 6px;font-size:13px;border-radius:10px}.foot .in{max-width:720px;margin:0 auto;display:grid;grid-template-columns:1fr 1.4fr;gap:8px}
 .step{display:flex;gap:10px;padding:8px 0;border-bottom:1px dashed var(--border);font-size:13.5px}
 .step:last-child{border:0}.step small{color:var(--muted)}
 .badge{display:inline-block;padding:4px 12px;border-radius:99px;font-weight:800;font-size:13px}
@@ -76,7 +76,7 @@ const fmtD=d=>d?new Date(d).toLocaleDateString('pt-BR'):'—';
 const fmtDH=d=>d?new Date(d).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):'—';
 const num=v=>{if(v===''||v==null)return null;const n=parseFloat(String(v).replace(',','.'));return isNaN(n)?null:n};
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200)}
-function head(sub){return `<div class="top"><div class="brand"><img src="/logo-amore-red.png" alt="" onerror="this.style.display='none'"><b>Amore</b></div><div class="eyebrow">Requisição Inteligente</div><h1>${esc(D?.loja||'')}</h1><div class="sub">${sub||''}</div></div>`}
+function head(sub){return `<div class="top"><div class="brand"><img src="/logo-amore-red.png" alt="" onerror="this.style.display='none'"></div><div class="eyebrow">Requisição Inteligente</div><h1>${esc(D?.loja||'')}</h1><div class="sub">${sub||''}</div></div>`}
 function aviso(ic,t,p){$('app').innerHTML=`<div class="card msg"><div class="ic">${ic}</div><h2>${t}</h2><p>${p}</p></div>`}
 
 async function init(){
