@@ -201,9 +201,9 @@ begin
 end $$;
 
 create or replace function ri_finalizar(p_token text, p_itens jsonb, p_por text default null) returns jsonb
-language plpgsql security definer set search_path=public as $$
+language plpgsql security definer set search_path=public as $
 declare v ri_conf; base jsonb; snap jsonb := '[]'; x jsonb; b jsonb; n_pedir int := 0; n_conf int := 0;
-  prot text; rq requisicoes; qtd numeric; fis numeric; por text;
+  prot text; rq requisicoes; qtd numeric; fis numeric; por text; modo text; st_ini text; tot numeric := 0;
 begin
   select * into v from ri_conf where token=p_token for update;
   if not found then raise exception 'Link inválido.'; end if;
@@ -228,9 +228,11 @@ begin
     if qtd>0 then n_pedir := n_pedir+1; end if;
   end loop;
   if n_pedir=0 then raise exception 'Informe a quantidade de pelo menos um produto a repor antes de enviar.'; end if;
+  modo := coalesce((select valor #>> '{}' from app_config where chave='ri_estimativa_modo'),'manual');
+  st_ini := case when modo='automatica' then 'enviada' else 'em_estimativa' end;
   prot := 'RI-'||to_char(now(),'YYYY')||'-'||lpad(nextval('ri_seq')::text,6,'0');
   insert into requisicoes(loja,titulo,status,prioridade,responsavel_nome,created_by,observacoes,total_estimado,total_final)
-  values (v.loja,'Requisição Inteligente '||prot||' — '||v.solicitante,'enviada','media',v.solicitante,
+  values (v.loja,'Requisição Inteligente '||prot||' — '||v.solicitante,st_ini,'media',v.solicitante,
           case when v.origem='link' then 'Link: '||v.solicitante else por end,
           'Gerada pela Requisição Inteligente ('||prot||'), origem '||v.origem||'. '||n_conf||' produto(s) conferido(s), '||n_pedir||' a repor.',0,0)
   returning * into rq;
@@ -239,16 +241,17 @@ begin
          nullif(concat_ws(' · ', case when (s->>'extra')::boolean then 'Produto incluído manualmente' end,
            case when s->>'fisico' is not null then 'Estoque físico informado: '||(s->>'fisico') end, s->>'obs'),'')
   from jsonb_array_elements(snap) s where (s->>'qtd')::numeric>0;
+  if modo='automatica' then tot := ri_estimar_auto(rq.id); end if;
   insert into req_timeline(requisicao_id,tipo,descricao,usuario) values
     (rq.id,'criacao','Requisição criada automaticamente pela Requisição Inteligente ('||prot||') — solicitante '||v.solicitante,por),
-    (rq.id,'envio','Enviada para análise e aprovação via '||case when v.origem='link' then 'link individual' else 'painel' end||' ('||n_pedir||' item(ns) a repor, '||n_conf||' conferidos)',por);
+    (rq.id,'envio',case when modo='automatica' then 'Estimativa de preço AUTOMÁTICA concluída (R$ '||to_char(tot,'FM999G990D00')||') — enviada para aprovação via ' else 'Enviada ao COMPRADOR (Setor de Compras) para estimativa de preço via ' end||case when v.origem='link' then 'link individual' else 'painel' end||' ('||n_pedir||' item(ns) a repor, '||n_conf||' conferidos)',por);
   insert into req_auditoria(requisicao_id,entidade,entidade_id,campo,valor_novo,acao,usuario)
   values (rq.id,'requisicao',rq.id,'(requisição)','Criada pela Requisição Inteligente '||prot||' com '||n_pedir||' item(ns)','criacao',por);
   update ri_conf set status='enviada', itens=coalesce(p_itens,'[]'), itens_final=snap, protocolo=prot, requisicao_id=rq.id,
     requisicao_numero=rq.numero, enviado_em=now(), enviado_por=por, updated_at=now() where id=v.id;
   perform ri_aud(v.id,'enviou',por,format('%s · req #%s · %s conferidos · %s a repor',prot,rq.numero,n_conf,n_pedir));
-  return jsonb_build_object('protocolo',prot,'numero',rq.numero,'requisicao_id',rq.id,'conferidos',n_conf,'a_repor',n_pedir);
-end $$;
+  return jsonb_build_object('protocolo',prot,'numero',rq.numero,'requisicao_id',rq.id,'conferidos',n_conf,'a_repor',n_pedir,'proximo',case when modo='automatica' then 'aprovacao' else 'comprador' end,'total_estimado',tot);
+end $;
 
 create or replace function ri_cancelar(p_id uuid, p_por text, p_motivo text) returns void
 language plpgsql security definer set search_path=public as $$

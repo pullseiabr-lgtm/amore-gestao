@@ -69,9 +69,9 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const T=new URLSearchParams(location.search).get('t')||'';
 const LS='ri_'+T;
-let D=null,items={},filtro='todos',busca='',abertas={},enviadoAgora=false,catalogo=null,saveT=null,dirty=false,enviando=false;
+let D=null,items={},filtro='todos',busca='',abertas={},enviadoAgora=false,proximoPasso='comprador',catalogo=null,saveT=null,dirty=false,enviando=false;
 
-const REQ_ST={enviada:['⏳ Em análise / aguardando aprovação','warn'],aprovada:['✅ Aprovada','ok'],em_cotacao:['💰 Em cotação','info'],compra_realizada:['🛒 Compra realizada','ok'],concluida:['🏁 Concluída','ok'],reprovada:['⛔ Reprovada','bad'],cancelada:['🚫 Cancelada','bad'],rascunho:['📝 Rascunho','warn']};
+const REQ_ST={em_estimativa:['💰 Em estimativa de preço (Setor de Compras)','info'],enviada:['⏳ Aguardando aprovação','warn'],aprovada:['✅ Aprovada','ok'],em_cotacao:['💰 Em cotação','info'],compra_realizada:['🛒 Compra realizada','ok'],concluida:['🏁 Concluída','ok'],reprovada:['⛔ Reprovada','bad'],cancelada:['🚫 Cancelada','bad'],rascunho:['📝 Rascunho','warn']};
 const fmtD=d=>d?new Date(d).toLocaleDateString('pt-BR'):'—';
 const fmtDH=d=>d?new Date(d).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):'—';
 const num=v=>{if(v===''||v==null)return null;const n=parseFloat(String(v).replace(',','.'));return isNaN(n)?null:n};
@@ -183,16 +183,27 @@ async function finalizar(){
   if(!confirm(`Enviar a requisição?\n\n• ${st.pedir} produto(s) a pedir\n• ${st.conf} de ${st.total} conferidos${pend>0?`\n• ${pend} ainda não conferido(s)`:''}\n\nDepois de enviada não é possível alterar.`))return;
   enviando=true;$('bf').disabled=true;$('bf').textContent='Enviando…';
   try{const r=await rpc('ri_finalizar',{p_token:T,p_itens:payload(),p_por:D.solicitante});try{localStorage.removeItem(LS)}catch(e){}
-    avisarAprovadores(r);enviadoAgora=true;await init();toast('Enviada! Protocolo '+r.protocolo)}
+    avisar(r);enviadoAgora=true;proximoPasso=r.proximo;await init();toast('Enviada! Protocolo '+r.protocolo)}
   catch(e){enviando=false;$('bf').disabled=false;$('bf').textContent='✅ Finalizar e enviar';if(/já foi enviada/i.test(e.message))return init();alert(e.message)}
 }
 // Ao finalizar, a requisição já segue para APROVAÇÃO: avisa os aprovadores (intervalo aleatório entre envios).
+// Etapa 1: a requisição vai ao COMPRADOR (Esdras) para estimar o custo; só depois segue para aprovação.
+function avisar(r){
+  if(r.proximo==='comprador'){
+    const lojaLabel={'Amore CD':'Amore Costa Dourada','Flow CD':'Flow Costa Dourada'}[D.loja]||D.loja;
+    const msg=['💰 *Requisição para ESTIMATIVA DE PREÇO — #'+r.numero+'* ('+r.protocolo+')','🏪 '+lojaLabel,'👤 Solicitante: '+D.solicitante,'📦 '+r.a_repor+' item(ns) a repor','','Revise os preços e envie para aprovação:',location.origin+'/?page=req-checklist&aba=estimativa','','_Painel Amore_'].join(String.fromCharCode(10));
+    fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:'5581982710008',message:msg,nome:'Esdras'}),keepalive:true}).catch(()=>{});
+    rpc('ri_notificado',{p_token:T}).catch(()=>{});
+    return;
+  }
+  avisarAprovadores(r);
+}
 function avisarAprovadores(r){
   const lojaLabel={'Amore CD':'Amore Costa Dourada','Flow CD':'Flow Costa Dourada'}[D.loja]||D.loja;
   const link=location.origin+'/requisicao-editar.html?id='+r.requisicao_id;
   const ap=[{n:'Wagner',f:'5581994135602'},{n:'Aline',f:'5581994573420'}];
   ap.forEach((a,i)=>{
-    const msg=`🧾 *Requisição para APROVAÇÃO — #${r.numero}* (${r.protocolo})\n🏪 ${lojaLabel}\n👤 Solicitante: ${D.solicitante}\n📦 ${r.a_repor} item(ns) a repor\n\nRevise, ajuste se precisar e *aprove*:\n${link}\n\n_Painel Amore_`;
+    const msg=`🧾 *Requisição para APROVAÇÃO — #${r.numero}* (${r.protocolo})\n🏪 ${lojaLabel}\n👤 Solicitante: ${D.solicitante}\n📦 ${r.a_repor} item(ns) a repor${r.total_estimado?`\n💰 Estimativa (automática): R$ ${Number(r.total_estimado).toFixed(2).replace('.',',')}`:''}\n\nRevise, ajuste se precisar e *aprove*:\n${link}\n\n_Painel Amore_`;
     setTimeout(()=>fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:a.f,message:msg,nome:a.n}),keepalive:true}).catch(()=>{}),i===0?0:3000+Math.random()*4000);
   });
   rpc('ri_notificado',{p_token:T}).catch(()=>{});
@@ -201,7 +212,7 @@ function renderStatus(){
   const s=REQ_ST[D.req_status]||[D.req_status||'—','warn'];
   const itens=(D.itens||[]).filter(i=>i.qtd>0);
   $('app').innerHTML=head(`Solicitante: <b>${esc(D.solicitante)}</b>`)+
-  (enviadoAgora?`<div class="card" style="background:var(--okbg);border-color:var(--ok)"><b style="color:var(--ok)">✅ Requisição enviada com sucesso!</b><p class="sub" style="color:var(--text)">Os itens e quantidades abaixo viraram uma requisição oficial e já entraram no processo de requisição e compra da semana. Ela foi enviada para aprovação e os aprovadores já foram avisados.</p></div>`:'')+
+  (enviadoAgora?`<div class="card" style="background:var(--okbg);border-color:var(--ok)"><b style="color:var(--ok)">✅ Requisição enviada com sucesso!</b><p class="sub" style="color:var(--text)">Os itens e quantidades abaixo viraram uma requisição oficial e já entraram no processo de requisição e compra da semana. ${proximoPasso==='comprador'?'Ela foi enviada ao Setor de Compras para a estimativa de preço e depois segue para aprovação.':'A estimativa de preço foi feita automaticamente e ela já foi enviada para aprovação.'}</p></div>`:'')+
   `<div class="card"><div style="font-size:12px;color:var(--muted);font-weight:700">PROTOCOLO</div><div style="font-size:24px;font-weight:800;color:var(--v)">${esc(D.protocolo)}</div>
    <div class="sub">Requisição de compra nº ${esc(D.requisicao_numero)} · enviada em ${fmtDH(D.enviado_em)}</div>
    <div style="margin-top:10px"><span class="badge" style="background:var(--${s[1]}bg);color:var(--${s[1]})">${s[0]}</span></div>

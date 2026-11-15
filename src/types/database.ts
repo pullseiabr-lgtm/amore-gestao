@@ -204,7 +204,7 @@ export interface Pendencia {
 // ── Requisições de Compra ────────────────────────────────────
 
 export type ReqStatus =
-  | 'rascunho' | 'enviada' | 'em_analise'
+  | 'rascunho' | 'em_estimativa' | 'enviada' | 'em_analise'
   | 'aguardando_cotacao' | 'em_cotacao' | 'cotacao_recebida'
   | 'parcialmente_aprovada' | 'aprovada' | 'reprovada'
   | 'em_separacao' | 'compra_realizada' | 'prestacao_pendente' | 'em_auditoria'

@@ -67,6 +67,7 @@ const cotacaoLabel = (s: ReqStatus): React.ReactNode => {
 
 const CFG_STATUS: Record<ReqStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
   rascunho:              { label:'Rascunho',           color:'#64748b', bg:'#F1F5F9', icon:<FileText size={11} /> },
+  em_estimativa:         { label:'Estimativa (Compras)', color:'#7C3AED', bg:'#EDE9FE', icon:<ShoppingCart size={11} /> },
   enviada:               { label:'Aguard. Aprovação',  color:'#B45309', bg:'#FEF3C7', icon:<Send size={11} /> },
   em_analise:            { label:'Em Análise',         color:'#0369A1', bg:'#E0F2FE', icon:<Clock size={11} /> },
   aguardando_cotacao:    { label:'Aguard. Cotação',    color:'#7C3AED', bg:'#EDE9FE', icon:<ShoppingCart size={11} /> },

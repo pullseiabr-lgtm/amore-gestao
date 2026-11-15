@@ -131,6 +131,7 @@ const STEPS=[
 function stageOf(status){
   switch(status){
     case 'rascunho': return 0;
+    case 'em_estimativa': return 0;
     case 'enviada': return 0;
     case 'em_analise': return 1;
     case 'em_cotacao': return 2;
@@ -147,7 +148,8 @@ function stageOf(status){
   }
 }
 const PILL={
-  enviada:{l:'Enviada',c:'var(--warn)',b:'var(--warnbg)'},
+  em_estimativa:{l:'Estimativa de preço (Compras)',c:'var(--purple)',b:'var(--purplebg)'},
+  enviada:{l:'Aguardando aprovação',c:'var(--warn)',b:'var(--warnbg)'},
   em_analise:{l:'Em análise',c:'var(--warn)',b:'var(--warnbg)'},
   em_cotacao:{l:'Em cotação',c:'var(--purple)',b:'var(--purplebg)'},
   parcialmente_aprovada:{l:'Parc. aprovada',c:'var(--ok)',b:'var(--okbg)'},
@@ -174,7 +176,7 @@ async function carregar(){
 function renderKpis(list){
   const c={total:list.length,aguard:0,cot:0,aprov:0,ped:0,concl:0,neg:0,valor:0};
   list.forEach(r=>{ const s=r.status; c.valor+=Number(r.total_estimado)||0;
-    if(['rascunho','enviada','em_analise'].includes(s))c.aguard++;
+    if(['rascunho','em_estimativa','enviada','em_analise'].includes(s))c.aguard++;
     else if(s==='em_cotacao')c.cot++;
     else if(['aprovada','parcialmente_aprovada'].includes(s))c.aprov++;
     else if(['compra_realizada','em_separacao','prestacao_pendente','em_auditoria'].includes(s))c.ped++;

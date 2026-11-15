@@ -100,7 +100,7 @@ function nivelAprovadoPor(r: Requisicao, n: NivelAprovacao): string | null | und
 }
 
 const STATUS_LABEL: Record<ReqStatus, string> = {
-  rascunho: 'Rascunho', enviada: 'Aguard. aprovação', em_analise: 'Em análise',
+  rascunho: 'Rascunho', em_estimativa: 'Estimativa (Compras)', enviada: 'Aguard. aprovação', em_analise: 'Em análise',
   aguardando_cotacao: 'Aguard. cotação', em_cotacao: 'Em cotação', cotacao_recebida: 'Cotação recebida',
   parcialmente_aprovada: 'Aprov. parcial', aprovada: 'Aprovada', reprovada: 'Reprovada',
   em_separacao: 'Em separação', compra_realizada: 'Compra realizada', prestacao_pendente: 'Prestação pendente',

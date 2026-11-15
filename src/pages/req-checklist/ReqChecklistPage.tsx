@@ -6,6 +6,7 @@ import { useLoja } from '../../contexts/LojaContext'
 import { siteOrigin } from '../../lib/site'
 import { enviarWhatsApp } from '../../lib/notify'
 import { rpcErro } from '../alimentacao/aliLib'
+import { fetchAppConfig, saveAppConfig } from '../../lib/db'
 import { Btn, Modal, Pill, card, grid, inp, lbl } from '../plantao/plantaoUi'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -30,9 +31,12 @@ type Ocorrencia = { id: string; conf_id: string; produto: string; unidade: strin
 
 const LOJAS_PADRAO = ['Amore CD', 'Amore Paiva', 'Flow CD']
 const REQ_ST: Record<string, [string, string]> = {
+  em_estimativa: ['Em estimativa de preço (Compras)', '#7C3AED'],
   enviada: ['Aguardando análise/aprovação', '#B45309'], aprovada: ['Aprovada', '#15803D'], em_cotacao: ['Em cotação', '#0369A1'],
   compra_realizada: ['Compra realizada', '#15803D'], concluida: ['Concluída', '#15803D'], reprovada: ['Reprovada', '#B91C1C'], cancelada: ['Cancelada', '#B91C1C'], rascunho: ['Rascunho', '#6b7280'],
 }
+const COMPRADOR = { nome: 'Esdras', fone: '5581982710008' }
+const brl = (n: number) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const APROVADORES = [{ nome: 'Wagner', fone: '5581994135602' }, { nome: 'Aline', fone: '5581994573420' }]
 const fmtD = (d?: string | null) => (d ? new Date(d).toLocaleDateString('pt-BR') : '—')
 const fmtDH = (d?: string | null) => (d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—')
@@ -52,12 +56,21 @@ const statusConf = (c: Conf): [string, string] => {
   return c.status === 'aguardando' ? ['Aguardando abertura', '#0369A1'] : ['Em preenchimento', '#B45309']
 }
 const linkDe = (c: Conf) => `${siteOrigin()}/requisicao-inteligente.html?t=${c.token}`
-async function avisarAprovadores(c: { id: string; token?: string; loja: string; solicitante: string }, r: { requisicao_id: string; numero: number; protocolo: string; a_repor: number }, quem: string) {
+async function avisarCompradorOuAprovadores(c: { id: string; token?: string; loja: string; solicitante: string }, r: { requisicao_id: string; numero: number; protocolo: string; a_repor: number; proximo?: string; total_estimado?: number }, quem: string) {
+  if (r.proximo === 'comprador') {
+    const lojaLabel = ({ 'Amore CD': 'Amore Costa Dourada', 'Flow CD': 'Flow Costa Dourada' } as Record<string, string>)[c.loja] || c.loja
+    const msg = `💰 *Requisição para ESTIMATIVA DE PREÇO — #${r.numero}* (${r.protocolo})\n🏪 ${lojaLabel}\n👤 Solicitante: ${c.solicitante}\n📦 ${r.a_repor} item(ns) a repor\n\nRevise os preços e envie para aprovação:\n${siteOrigin()}/?page=req-checklist&aba=estimativa\n\n_Painel Amore_`
+    try { await enviarWhatsApp(COMPRADOR.fone, msg, undefined, { tipo: 'compra', modulo: 'requisicoes', titulo: `Estimativa #${r.numero}`, loja: c.loja, created_by: quem }) } catch { /* segue */ }
+    return
+  }
+  await avisarAprovadores(c, r, quem)
+}
+async function avisarAprovadores(c: { id: string; token?: string; loja: string; solicitante: string }, r: { requisicao_id: string; numero: number; protocolo: string; a_repor: number; total_estimado?: number }, quem: string) {
   const lojaLabel = ({ 'Amore CD': 'Amore Costa Dourada', 'Flow CD': 'Flow Costa Dourada' } as Record<string, string>)[c.loja] || c.loja
   const msg = `🧾 *Requisição para APROVAÇÃO — #${r.numero}* (${r.protocolo})
 🏪 ${lojaLabel}
 👤 Solicitante: ${c.solicitante}
-📦 ${r.a_repor} item(ns) a repor
+📦 ${r.a_repor} item(ns) a repor${r.total_estimado ? `\n💰 Estimativa revisada (Compras): ${brl(r.total_estimado)}` : ''}
 
 Revise, ajuste se precisar e *aprove*:
 ${siteOrigin()}/requisicao-editar.html?id=${r.requisicao_id}
@@ -71,7 +84,7 @@ _Painel Amore_`
 }
 async function copiar(t: string) { try { await navigator.clipboard.writeText(t); return true } catch { return false } }
 
-type Aba = 'conferencia' | 'links' | 'historico'
+type Aba = 'conferencia' | 'estimativa' | 'links' | 'historico'
 
 export default function ReqChecklistPage() {
   const { user } = useAuth()
@@ -79,7 +92,9 @@ export default function ReqChecklistPage() {
   const { loja: lojaCtx } = useLoja()
   const lojas = theme.stores?.length ? theme.stores : LOJAS_PADRAO
   const quem = (user?.name || 'Usuário').trim()
-  const [aba, setAba] = useState<Aba>('conferencia')
+  const [aba, setAba] = useState<Aba>(() => { try { return new URLSearchParams(location.search).get('aba') === 'estimativa' ? 'estimativa' : 'conferencia' } catch { return 'conferencia' } })
+  const [nEst, setNEst] = useState(0)
+  useEffect(() => { sb.from('requisicoes').select('id', { count: 'exact', head: true }).eq('status', 'em_estimativa').then((r: { count: number | null }) => setNEst(r.count || 0)) }, [aba])
   const [msg, setMsg] = useState('')
   const toast = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 3500) }
 
@@ -89,11 +104,12 @@ export default function ReqChecklistPage() {
       <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 2 }}>🧠 Requisição Inteligente + Checklist de Consumo</div>
       <div style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 12 }}>A requisição não começa vazia: parte de tudo que a loja comprou, consumiu ou movimentou. Enviar não é aprovar — gera uma requisição oficial no fluxo de Compras.</div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-        {([['conferencia', '📊 Consumo & Conferência'], ['links', '🔗 Requisição por link'], ['historico', '🗂️ Histórico & Ocorrências']] as [Aba, string][]).map(([id, l]) => (
+        {([['conferencia', '📊 Consumo & Conferência'], ['estimativa', `💰 Estimativa de Compras${nEst ? ` (${nEst})` : ''}`], ['links', '🔗 Requisição por link'], ['historico', '🗂️ Histórico & Ocorrências']] as [Aba, string][]).map(([id, l]) => (
           <button key={id} onClick={() => setAba(id)} style={{ padding: '8px 15px', fontSize: 13, fontWeight: 700, borderRadius: 10, cursor: 'pointer', border: aba === id ? '1px solid var(--bordo)' : '1px solid var(--border)', background: aba === id ? 'var(--bordo)' : 'transparent', color: aba === id ? '#fff' : 'var(--muted)' }}>{l}</button>
         ))}
       </div>
       {aba === 'conferencia' && <Conferencia lojas={lojas} lojaInicial={lojas.includes(lojaCtx) ? lojaCtx : lojas[0]} quem={quem} toast={toast} />}
+      {aba === 'estimativa' && <Estimativa quem={quem} toast={toast} />}
       {aba === 'links' && <Links lojas={lojas} quem={quem} toast={toast} modo="links" />}
       {aba === 'historico' && <Links lojas={lojas} quem={quem} toast={toast} modo="historico" />}
     </div>
@@ -231,8 +247,8 @@ function Conferencia({ lojas, lojaInicial, quem, toast }: { lojas: string[]; loj
       }
       const { data, error } = await sb.rpc('ri_finalizar', { p_token: c.token, p_itens: payload(linhas), p_por: quem })
       if (error) throw error
-      toast(`Requisição ${data.protocolo} criada (nº ${data.numero}) — enviada para aprovação (aprovadores sendo avisados).`)
-      avisarAprovadores(c, data, quem).catch(() => {})
+      toast(`Requisição ${data.protocolo} criada (nº ${data.numero}) — ${data.proximo === 'comprador' ? 'enviada ao Setor de Compras para estimativa de preço.' : 'estimativa automática feita e enviada para aprovação.'}`)
+      avisarCompradorOuAprovadores(c, data, quem).catch(() => {})
       setResultado({ protocolo: data.protocolo, numero: data.numero, loja, itens: payload(linhas).filter(i => i.qtd > 0) })
       setConf(null); setLinhas({})
     } catch (e) { toast('Erro: ' + rpcErro(e)) } finally { setEnviando(false) }
@@ -251,7 +267,7 @@ function Conferencia({ lojas, lojaInicial, quem, toast }: { lojas: string[]; loj
     return (
       <div style={card}>
         <div style={{ fontSize: 18, fontWeight: 800, color: '#15803D' }}>✅ Requisição {resultado.protocolo} criada — {resultado.loja}</div>
-        <div style={{ color: 'var(--muted)', fontSize: 13, margin: '4px 0 10px' }}>Requisição nº {resultado.numero}, já enviada para aprovação (Wagner e Aline avisados) e integrada ao fluxo de Requisições e à aba “Pedido da Semana” (análise → aprovação → cotação → pedido).</div>
+        <div style={{ color: 'var(--muted)', fontSize: 13, margin: '4px 0 10px' }}>Requisição nº {resultado.numero}, enviada ao Setor de Compras (Esdras) para estimativa de preço e, depois, segue para aprovação. Integrada ao fluxo de Requisições e à aba “Pedido da Semana”.</div>
         {Object.entries(g).sort((a, b) => a[0].localeCompare(b[0])).map(([c, arr]) => (
           <div key={c} style={{ marginBottom: 8 }}><div style={{ fontWeight: 800, fontSize: 12, color: 'var(--bordo)', textTransform: 'uppercase' }}>{c} ({arr.length})</div>
             {arr.map(i => <div key={i.k} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}><span>{i.nome}</span><b>{n2(i.qtd)} {i.un}</b></div>)}</div>
@@ -518,5 +534,136 @@ function Detalhe({ c, quem, toast, reqStatus, onClose, onMudou }: { c: Conf; que
       {oc.length > 0 && <div style={{ marginTop: 12 }}><b style={{ fontSize: 13 }}>Ocorrências</b>{oc.map(o => <div key={o.id} style={{ fontSize: 12.5, padding: '5px 0', borderBottom: '1px solid var(--border)' }}>⚠️ <b>{o.produto}</b> — sistema {n2(o.saldo_sistema)} × físico {n2(o.qtd_fisica)} (dif. {n2(o.diferenca)}) · <i>{o.status}</i>{o.obs ? ` · ${o.obs}` : ''} <span style={{ color: 'var(--muted)' }}>({o.criado_por}, {fmtDH(o.created_at)})</span></div>)}</div>}
       <div style={{ marginTop: 12 }}><b style={{ fontSize: 13 }}>Auditoria</b>{aud.map((a, i) => <div key={i} style={{ fontSize: 12, padding: '3px 0', color: 'var(--muted)' }}>{fmtDH(a.em)} — {a.por || '—'}: {a.acao}{a.detalhe ? ` (${a.detalhe})` : ''}</div>)}</div>
     </Modal>
+  )
+}
+
+// ───────────────────────── Estimativa de preço (Setor de Compras) ─────────────────────────
+type ReqEst = { id: string; numero: number; loja: string; titulo: string; responsavel_nome: string; created_at: string; total_estimado: number }
+type ItemEst = { id: string; produto_nome: string; categoria: string | null; quantidade: number; unidade: string; preco_referencia: number | null; observacoes: string | null }
+
+function Estimativa({ quem, toast }: { quem: string; toast: (m: string) => void }) {
+  const [lista, setLista] = useState<ReqEst[]>([])
+  const [modo, setModo] = useState<'manual' | 'automatica'>('manual')
+  const [sel, setSel] = useState<ReqEst | null>(null)
+  const [itens, setItens] = useState<ItemEst[]>([])
+  const [precos, setPrecos] = useState<Record<string, string>>({})
+  const [fontes, setFontes] = useState<Record<string, string>>({})
+  const [obs, setObs] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const carregar = useCallback(async () => {
+    const { data } = await sb.from('requisicoes').select('id,numero,loja,titulo,responsavel_nome,created_at,total_estimado').eq('status', 'em_estimativa').order('created_at', { ascending: true })
+    setLista((data || []) as ReqEst[])
+    const m = await fetchAppConfig<string>('ri_estimativa_modo').catch(() => null)
+    setModo(m === 'automatica' ? 'automatica' : 'manual')
+  }, [])
+  useEffect(() => { carregar() }, [carregar])
+
+  const abrir = async (r: ReqEst) => {
+    const { data } = await sb.from('requisicao_itens').select('id,produto_nome,categoria,quantidade,unidade,preco_referencia,observacoes').eq('requisicao_id', r.id).neq('status', 'cancelado').order('categoria')
+    const its = (data || []) as ItemEst[]
+    setSel(r); setItens(its); setObs(''); setFontes({})
+    const p: Record<string, string> = {}
+    its.forEach(i => { if (i.preco_referencia) p[i.id] = String(i.preco_referencia).replace('.', ',') })
+    setPrecos(p)
+  }
+  const trocarModo = async (m: 'manual' | 'automatica') => {
+    await saveAppConfig('ri_estimativa_modo', m); setModo(m)
+    toast(m === 'automatica' ? 'Modo AUTOMÁTICO: as próximas requisições são estimadas pelo sistema e seguem direto para aprovação.' : 'Modo MANUAL: as próximas requisições aguardam a revisão do comprador.')
+  }
+  const estimar = async () => {
+    setBusy(true)
+    try {
+      const { data, error } = await sb.rpc('ri_preco_ref', { p_nomes: itens.map(i => i.produto_nome) })
+      if (error) throw error
+      const p = { ...precos }; const f: Record<string, string> = { ...fontes }; let n = 0
+      for (const r of (data || []) as { nome: string; preco: number | null; fonte: string | null; data: string | null }[]) {
+        const it = itens.find(i => i.produto_nome === r.nome); if (!it || r.preco == null) continue
+        if (!p[it.id]) { p[it.id] = String(Math.round(r.preco * 100) / 100).replace('.', ','); f[it.id] = `${r.fonte} (${fmtD(r.data)})`; n++ }
+      }
+      setPrecos(p); setFontes(f); toast(`${n} preço(s) estimado(s) automaticamente. Confira as unidades e ajuste o que precisar.`)
+    } catch (e) { toast('Erro: ' + rpcErro(e)) } finally { setBusy(false) }
+  }
+  const total = itens.reduce((a, i) => a + (num(precos[i.id] || '') || 0) * i.quantidade, 0)
+  const semPreco = itens.filter(i => !(num(precos[i.id] || '') || 0)).length
+  const concluir = async () => {
+    if (!sel) return
+    if (semPreco > 0 && !confirm(`${semPreco} item(ns) ficarão SEM preço estimado. Enviar para aprovação mesmo assim?`)) return
+    setBusy(true)
+    try {
+      const { data, error } = await sb.rpc('ri_concluir_estimativa', { p_req: sel.id, p_itens: itens.map(i => ({ id: i.id, preco: num(precos[i.id] || '') })), p_por: quem, p_obs: obs })
+      if (error) throw error
+      const lojaLabel = ({ 'Amore CD': 'Amore Costa Dourada', 'Flow CD': 'Flow Costa Dourada' } as Record<string, string>)[sel.loja] || sel.loja
+      const msg = `🧾 *Requisição para APROVAÇÃO — #${sel.numero}*\n🏪 ${lojaLabel}\n👤 Solicitante: ${sel.responsavel_nome}\n📦 ${itens.length} item(ns)\n💰 Estimativa revisada pelo Setor de Compras: *${brl(data.total)}*${data.sem_preco ? ` (${data.sem_preco} sem preço)` : ''}\n\nRevise, ajuste se precisar e *aprove*:\n${siteOrigin()}/requisicao-editar.html?id=${sel.id}\n\n_Painel Amore_`
+      for (const a of APROVADORES) {
+        try { await enviarWhatsApp(a.fone, msg, undefined, { tipo: 'compra', modulo: 'requisicoes', titulo: `Aprovação #${sel.numero}`, loja: sel.loja, created_by: quem }) } catch { /* segue */ }
+        await new Promise(res => setTimeout(res, 2500 + Math.random() * 3500))
+      }
+      toast(`Estimativa de ${brl(data.total)} concluída — enviada para aprovação (Wagner e Aline avisados).`)
+      setSel(null); carregar()
+    } catch (e) { toast('Erro: ' + rpcErro(e)) } finally { setBusy(false) }
+  }
+
+  const th: React.CSSProperties = { textAlign: 'left', fontSize: 11, color: 'var(--muted)', padding: '6px 8px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }
+  const td: React.CSSProperties = { padding: '6px 8px', fontSize: 13, borderBottom: '1px solid var(--border)' }
+  return (
+    <div>
+      <div style={{ ...card, marginBottom: 12 }}>
+        <div style={{ fontWeight: 800, marginBottom: 6 }}>Como as estimativas de preço são feitas</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Btn tone={modo === 'manual' ? 'primary' : 'ghost'} onClick={() => trocarModo('manual')}>✍️ Manual — o comprador revisa antes da aprovação</Btn>
+          <Btn tone={modo === 'automatica' ? 'primary' : 'ghost'} onClick={() => trocarModo('automatica')}>⚙️ Automática — sistema estima e envia para aprovação</Btn>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>Fluxo: requisição finalizada → <b>Setor de Compras (Esdras) estima o custo</b> → aprovação (Wagner/Aline) já com a estimativa revisada → cotação → pedido. Preço automático usa: último pedido → última compra do caixa → cadastro do estoque.</div>
+      </div>
+
+      {!sel && (
+        <div style={{ ...card, padding: 0, overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th style={th}>Nº</th><th style={th}>Loja</th><th style={th}>Solicitante</th><th style={th}>Requisição</th><th style={th}>Chegou</th><th style={th}></th></tr></thead>
+            <tbody>
+              {!lista.length && <tr><td style={{ ...td, color: 'var(--muted)' }} colSpan={6}>Nenhuma requisição aguardando estimativa de preço.</td></tr>}
+              {lista.map(r => (
+                <tr key={r.id}><td style={td}><b>#{r.numero}</b></td><td style={td}>{r.loja}</td><td style={td}>{r.responsavel_nome}</td><td style={td}>{r.titulo}</td><td style={td}>{fmtDH(r.created_at)}</td>
+                  <td style={td}><Btn small onClick={() => abrir(r)}>💰 Estimar</Btn></td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {sel && (
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+            <div><b>Requisição #{sel.numero}</b> — {sel.loja} · {sel.responsavel_nome}<div style={{ fontSize: 12, color: 'var(--muted)' }}>{sel.titulo}</div></div>
+            <div style={{ display: 'flex', gap: 6 }}><Btn small tone="ghost" onClick={() => setSel(null)}>← Voltar</Btn><Btn small tone="ghost" onClick={estimar} disabled={busy}>⚙️ Estimar automaticamente</Btn></div>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr><th style={th}>Produto</th><th style={th}>Qtd</th><th style={th}>Un.</th><th style={th}>Preço unit. (R$)</th><th style={th}>Subtotal</th><th style={th}>Origem</th></tr></thead>
+              <tbody>
+                {itens.map(i => {
+                  const p = num(precos[i.id] || '') || 0
+                  return (
+                    <tr key={i.id} style={{ background: !p ? 'rgba(245,158,11,.08)' : undefined }}>
+                      <td style={td}>{i.produto_nome}<div style={{ fontSize: 11, color: 'var(--muted)' }}>{i.categoria}</div></td>
+                      <td style={{ ...td, fontWeight: 700 }}>{n2(i.quantidade)}</td><td style={td}>{i.unidade}</td>
+                      <td style={td}><input style={{ ...inp, width: 100, padding: '6px 8px', fontSize: 13, textAlign: 'right' }} inputMode="decimal" value={precos[i.id] || ''} onChange={e => setPrecos(prev => ({ ...prev, [i.id]: e.target.value }))} placeholder="0,00" /></td>
+                      <td style={{ ...td, fontWeight: 700 }}>{brl(p * i.quantidade)}</td>
+                      <td style={{ ...td, fontSize: 11, color: 'var(--muted)' }}>{fontes[i.id] || (precos[i.id] ? 'manual' : '—')}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 800, marginTop: 10 }}>Custo estimado: {brl(total)} {semPreco > 0 && <span style={{ fontSize: 12, color: '#B45309', fontWeight: 600 }}>· {semPreco} item(ns) sem preço</span>}</div>
+          <label style={{ ...lbl, marginTop: 10 }}>Observação do comprador (opcional)</label>
+          <input style={inp} value={obs} onChange={e => setObs(e.target.value)} placeholder="Ex.: preço do atacado, validar frete…" />
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', margin: '6px 0' }}>Os preços automáticos podem estar em outra unidade (kg × caixa): confira antes de enviar.</div>
+          <Btn tone="ok" onClick={concluir} disabled={busy}>{busy ? 'Enviando…' : '✅ Concluir estimativa e enviar para aprovação'}</Btn>
+        </div>
+      )}
+    </div>
   )
 }
