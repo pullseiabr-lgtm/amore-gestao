@@ -19,7 +19,7 @@ const ICON_BY_ID: Record<string, React.ComponentType<{ size?: number }>> = {
   compras: ShoppingCart, 'notas-fiscais': Receipt, 'compras-inteligencia': LineChart, 'cmv-abc': Trophy,
   'comprador-ia': Bot, requisicoes: ClipboardList, 'requisicoes-status': Activity, cotacao: DollarSign,
   pedidos: Receipt, 'ciclo-compras': RefreshCw, 'relatorio-diario': CalendarDays,
-  'requisicao-inteligente': Brain, 'analise-semanal': LineChart, 'inteligencia-compras': Brain,
+  'requisicao-inteligente': Brain, 'req-checklist': Brain, 'analise-semanal': LineChart, 'inteligencia-compras': Brain,
   entregas: Truck, 'req-automaticas': Zap, estoque: Package, transferencias: ArrowLeftRight,
   fornecedores: Truck, 'compras-agente': Bot, creditos: CreditCard, boletos: FileSpreadsheet,
   financeiro: Wallet, pdv: Monitor, usuarios: Users, configuracoes: Settings,
@@ -107,6 +107,7 @@ const COMPRAS_SUBMENU: NavItem[] = [
   { id: 'ciclo-compras',          label: '🔄 Ciclo de Compras', icon: <span style={{ fontSize: 13, lineHeight: 1 }}>🔄</span>, perm: 'requisicoes' },
   { id: 'relatorio-diario',       label: '📅 Relatório Diário', icon: <ClipboardList size={16} />, perm: 'requisicoes' },
   { id: 'requisicao-inteligente', label: '🧠 Requisição Inteligente', icon: <ClipboardList size={16} />, perm: 'requisicoes' },
+  { id: 'req-checklist', label: '🧠 Req. Inteligente + Checklist', icon: <ClipboardList size={16} />, perm: 'requisicoes' },
   { id: 'analise-semanal', label: '📈 Análise Semanal de Compra', icon: <ClipboardList size={16} />, perm: 'requisicoes' },
   { id: 'inteligencia-compras', label: '🧠 Inteligência de Compras', icon: <TrendingUp size={16} />, perm: 'requisicoes' },
   { id: 'entregas', label: '🚚 Agendamento de Entregas', icon: <ClipboardList size={16} />, perm: 'requisicoes' },
@@ -171,7 +172,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
   const isProdutosGroup = (p: string) => p === 'produtos' || p === 'produtos-categorias'
 
   // Abre o dropdown automaticamente se a página ativa for do grupo Compras
-  const isComprasGroup = (p: string) => p === 'pipeline-suprimentos' || p === 'dashboard-suprimentos' || p === 'lista-padrao' || p === 'compras' || p === 'requisicoes' || p === 'requisicoes-status' || p === 'cotacao' || p === 'pedidos' || p === 'ciclo-compras' || p === 'relatorio-diario' || p === 'requisicao-inteligente' || p === 'analise-semanal' || p === 'inteligencia-compras' || p === 'entregas' || p === 'req-automaticas' || p === 'estoque' || p === 'transferencias' || p === 'fornecedores' || p === 'compras-agente'
+  const isComprasGroup = (p: string) => p === 'pipeline-suprimentos' || p === 'dashboard-suprimentos' || p === 'lista-padrao' || p === 'compras' || p === 'requisicoes' || p === 'requisicoes-status' || p === 'cotacao' || p === 'pedidos' || p === 'ciclo-compras' || p === 'relatorio-diario' || p === 'requisicao-inteligente' || p === 'req-checklist' || p === 'analise-semanal' || p === 'inteligencia-compras' || p === 'entregas' || p === 'req-automaticas' || p === 'estoque' || p === 'transferencias' || p === 'fornecedores' || p === 'compras-agente'
   const isRelatoriosGroup = (p: string) => p === 'relatorio-cvl' || p === 'ruptura' || p === 'market'
 
   const [gestaoOpen, setGestaoOpen] = useState(isGestaoGroup(activePage))

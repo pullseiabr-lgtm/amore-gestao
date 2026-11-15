@@ -32,6 +32,7 @@ import CotacaoPage from './pages/cotacao/CotacaoPage'
 import PedidosPage from './pages/pedidos/PedidosPage'
 import RelatorioDiarioPage from './pages/relatorio-diario/RelatorioDiarioPage'
 import CicloComprasPage from './pages/ciclo-compras/CicloComprasPage'
+import ReqChecklistPage from './pages/req-checklist/ReqChecklistPage'
 import RequisicaoInteligentePage from './pages/requisicao-inteligente/RequisicaoInteligentePage'
 import AnaliseSemanalPage from './pages/analise-semanal/AnaliseSemanalPage'
 import EntregasPage from './pages/entregas/EntregasPage'
@@ -95,6 +96,7 @@ export type PageId =
   | 'relatorio-diario'
   | 'ciclo-compras'
   | 'requisicao-inteligente'
+  | 'req-checklist'
   | 'analise-semanal'
   | 'inteligencia-compras'
   | 'entregas'
@@ -171,6 +173,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'relatorio-diario': 'Relatório Diário',
   'ciclo-compras': 'Ciclo de Compras & Recebimento',
   'requisicao-inteligente': 'Requisição Inteligente',
+  'req-checklist': 'Requisição Inteligente + Checklist',
   'analise-semanal': 'Análise Semanal de Compra',
   'inteligencia-compras': 'Inteligência de Compras',
   'entregas': 'Agendamento de Entregas',
@@ -274,6 +277,7 @@ function PageContent({ page }: { page: PageId }) {
     case 'relatorio-diario': return <RelatorioDiarioPage />
     case 'ciclo-compras': return <CicloComprasPage />
     case 'requisicao-inteligente': return <RequisicaoInteligentePage />
+    case 'req-checklist': return <ReqChecklistPage />
     case 'analise-semanal': return <AnaliseSemanalPage />
     case 'inteligencia-compras': return <InteligenciaComprasMercadoPage />
     case 'entregas': return <EntregasPage />
@@ -356,7 +360,7 @@ function setUrlPage(p: PageId) {
 const PAGE_PERM: Partial<Record<PageId, string>> = {
   'requisicao-nova': 'requisicoes', 'requisicoes-status': 'requisicoes', 'gestao-lista': 'requisicoes', 'cotacao': 'requisicoes',
   'pedidos': 'requisicoes', 'ciclo-compras': 'requisicoes', 'relatorio-diario': 'requisicoes',
-  'requisicao-inteligente': 'requisicoes', 'analise-semanal': 'requisicoes', 'inteligencia-compras': 'requisicoes',
+  'requisicao-inteligente': 'requisicoes', 'req-checklist': 'requisicoes', 'analise-semanal': 'requisicoes', 'inteligencia-compras': 'requisicoes',
   'pipeline-suprimentos': 'requisicoes', 'dashboard-suprimentos': 'requisicoes',
   'boletos': 'financeiro', 'pesquisa-aura': 'campanhas', 'produtos-categorias': 'produtos',
   'site-leads': 'clientes', 'transferencias': 'estoque',

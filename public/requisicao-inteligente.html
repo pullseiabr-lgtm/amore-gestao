@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Requisição Inteligente — Amore</title>
+<style>
+:root{--v:#8B1212;--v2:#B03A3A;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;
+  --ok:#15803D;--okbg:#DCFCE7;--warn:#B45309;--warnbg:#FEF3C7;--bad:#B91C1C;--badbg:#FEE2E2;--info:#0369A1;--infobg:#E0F2FE;
+  --shadow:0 1px 2px rgba(80,20,25,.05),0 10px 30px -14px rgba(80,20,25,.16)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c;--v2:#D06A6A;
+  --okbg:#14351f;--warnbg:#3a2c10;--badbg:#3a1616;--infobg:#0d2a3a;--shadow:0 1px 2px rgba(0,0,0,.3),0 12px 34px -14px rgba(0,0,0,.6)}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.45;-webkit-font-smoothing:antialiased;padding:12px 12px 120px}
+.wrap{max-width:720px;margin:0 auto}
+.top{border-bottom:2px solid var(--v);padding-bottom:10px;margin-bottom:10px}
+.brand{display:flex;align-items:center;gap:10px}.brand img{height:24px}
+.brand b{font-size:18px;font-weight:800;color:var(--v)}
+.eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--v2);font-weight:800;margin-top:6px}
+h1{font-size:20px;margin-top:2px}
+.sub{color:var(--muted);font-size:13px;margin-top:2px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:12px;margin-bottom:10px}
+.msg{padding:28px 16px;text-align:center}
+.msg .ic{font-size:40px}.msg h2{margin:8px 0 4px;font-size:19px}.msg p{color:var(--muted);font-size:14px}
+.sticky{position:sticky;top:0;z-index:20;background:var(--bg);padding:8px 0 6px}
+.bar{height:8px;background:var(--border);border-radius:9px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ok);width:0;transition:width .2s}
+.prog{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin:5px 2px}
+input,select,textarea{font:inherit;font-size:16px;padding:10px 11px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);width:100%}
+input:focus{outline:none;border-color:var(--v)}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:8px 0 2px;-webkit-overflow-scrolling:touch}
+.chip{flex:0 0 auto;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:99px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer}
+.chip.on{background:var(--v);border-color:var(--v);color:#fff}
+.cat{font-size:12px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--v2);margin:14px 2px 6px;display:flex;justify-content:space-between;cursor:pointer}
+.p{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:10px 12px;margin-bottom:7px}
+.p.ok{border-color:var(--ok);background:var(--okbg)}
+.p .n{font-weight:700;font-size:15px}
+.p .m{font-size:12px;color:var(--muted);margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tag{font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:.04em}
+.tag.h{background:var(--okbg);color:var(--ok)}.tag.e{background:var(--warnbg);color:var(--warn)}.tag.x{background:var(--infobg);color:var(--info)}
+.row{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-top:8px;align-items:end}
+.row label{font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:2px}
+.row input{padding:9px;text-align:center;font-weight:700}
+.okb{border:1px solid var(--border);background:var(--card);color:var(--muted);border-radius:10px;width:46px;height:42px;font-size:20px;cursor:pointer}
+.okb.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn{border:1px solid var(--v);background:var(--v);color:#fff;border-radius:12px;padding:13px 16px;font:inherit;font-size:15px;font-weight:800;cursor:pointer;width:100%}
+.btn.g{background:var(--card);color:var(--text);border-color:var(--border)}
+.btn:disabled{opacity:.5}
+.foot{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--border);padding:10px 12px;z-index:30}
+.foot .in{max-width:720px;margin:0 auto;display:grid;grid-template-columns:1fr 1.4fr;gap:8px}
+.step{display:flex;gap:10px;padding:8px 0;border-bottom:1px dashed var(--border);font-size:13.5px}
+.step:last-child{border:0}.step small{color:var(--muted)}
+.badge{display:inline-block;padding:4px 12px;border-radius:99px;font-weight:800;font-size:13px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.modal .box{background:var(--card);width:100%;max-width:720px;max-height:88vh;overflow:auto;border-radius:18px 18px 0 0;padding:14px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:84px;background:#222;color:#fff;padding:10px 16px;border-radius:99px;font-size:13px;z-index:60;opacity:0;transition:.2s;pointer-events:none}
+.toast.on{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="card msg"><div class="ic">⏳</div><p>Carregando…</p></div></div>
+<div class="toast" id="toast"></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+const rpc=async(fn,body)=>{const r=await fetch(SB+'/rest/v1/rpc/'+fn,{method:'POST',headers:H,body:JSON.stringify(body)});const t=await r.text();if(!r.ok){let m=t;try{m=JSON.parse(t).message}catch(e){}throw new Error(String(m).replace(/^.*ERROR:\s*/,''))}return t?JSON.parse(t):null};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const T=new URLSearchParams(location.search).get('t')||'';
+const LS='ri_'+T;
+let D=null,items={},filtro='todos',busca='',fechadas={},catalogo=null,saveT=null,dirty=false,enviando=false;
+
+const REQ_ST={enviada:['⏳ Em análise / aguardando aprovação','warn'],aprovada:['✅ Aprovada','ok'],em_cotacao:['💰 Em cotação','info'],compra_realizada:['🛒 Compra realizada','ok'],concluida:['🏁 Concluída','ok'],reprovada:['⛔ Reprovada','bad'],cancelada:['🚫 Cancelada','bad'],rascunho:['📝 Rascunho','warn']};
+const fmtD=d=>d?new Date(d).toLocaleDateString('pt-BR'):'—';
+const fmtDH=d=>d?new Date(d).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):'—';
+const num=v=>{if(v===''||v==null)return null;const n=parseFloat(String(v).replace(',','.'));return isNaN(n)?null:n};
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2200)}
+function head(sub){return `<div class="top"><div class="brand"><img src="/logo-amore-red.png" alt="" onerror="this.style.display='none'"><b>Amore</b></div><div class="eyebrow">Requisição Inteligente</div><h1>${esc(D?.loja||'')}</h1><div class="sub">${sub||''}</div></div>`}
+function aviso(ic,t,p){$('app').innerHTML=`<div class="card msg"><div class="ic">${ic}</div><h2>${t}</h2><p>${p}</p></div>`}
+
+async function init(){
+  if(!T){aviso('🔗','Link incompleto','Peça um novo link ao gestor.');return}
+  try{D=await rpc('ri_abrir',{p_token:T})}catch(e){aviso('⚠️','Não foi possível abrir',esc(e.message));return}
+  if(D.erro==='invalido')return aviso('🔗','Link inválido','Este link não existe. Peça um novo link ao gestor.');
+  if(D.erro==='cancelado')return aviso('🚫','Link cancelado','Este link foi cancelado pela gestão.');
+  if(D.erro==='expirado')return aviso('⌛','Link expirado',`O prazo deste link terminou em ${fmtDH(D.validade)}. Peça um novo link ao gestor.`);
+  if(D.status==='enviada')return renderStatus();
+  // rascunho: servidor + cópia local (vale a mais recente)
+  items={};(D.itens||[]).forEach(i=>items[i.k]=i);
+  try{const l=JSON.parse(localStorage.getItem(LS)||'null');if(l&&l.t>new Date(D.updated_at).getTime()){items={};l.itens.forEach(i=>items[i.k]=i)}}catch(e){}
+  render();
+}
+
+function baseMap(){const m={};(D.base||[]).forEach(b=>m[b.k]=b);Object.values(items).forEach(i=>{if(i.extra&&!m[i.k])m[i.k]={k:i.k,nome:i.nome,cat:i.cat,un:i.un,extra:true}});return m}
+function isConf(k){const i=items[k];return !!i&&(i.conf||(num(i.qtd)>0)||num(i.fisico)!=null)}
+function lista(){
+  const m=baseMap();return Object.values(m);
+}
+function stats(){const l=lista();const c=l.filter(b=>isConf(b.k)).length;const pedir=l.filter(b=>num(items[b.k]?.qtd)>0).length;return{total:l.length,conf:c,pedir}}
+
+function render(){
+  const st=stats();
+  const dias=ruleDias(D.validade);
+  $('app').innerHTML=head(`Solicitante: <b>${esc(D.solicitante)}</b> · produtos dos últimos ${D.dias} dias${D.validade?` · link válido até ${fmtDH(D.validade)}`:''}`)+
+  `<div class="sticky"><input id="q" placeholder="🔎 Buscar produto…" value="${esc(busca)}" oninput="busca=this.value;lis()"><div class="chips">${
+    [['todos','Todos'],['hab','Compra habitual'],['ev','Eventuais'],['marc','Com quantidade'],['pend','Não conferidos']].map(([k,l])=>`<button class="chip${filtro===k?' on':''}" onclick="filtro='${k}';render()">${l}</button>`).join('')}</div>
+   <div class="prog"><span id="pg">${st.conf} de ${st.total} conferidos</span><span id="pg2">${st.pedir} a pedir</span></div><div class="bar"><i id="pb" style="width:${st.total?Math.round(st.conf/st.total*100):0}%"></i></div></div>
+   <div id="lista"></div>
+   <div class="foot"><div class="in"><button class="btn g" onclick="salvar(true)">💾 Salvar e continuar depois</button><button class="btn" onclick="resumo()">📋 Copiar resumo</button><button class="btn g" onclick="abrirCatalogo()">➕ Incluir produto novo</button><button class="btn" id="bf" onclick="finalizar()">✅ Finalizar e enviar</button></div></div>`;
+  lis();
+}
+function ruleDias(){return 0}
+function lis(){
+  const q=busca.trim().toLowerCase();
+  let l=lista().filter(b=>!q||b.nome.toLowerCase().includes(q));
+  l=l.filter(b=>filtro==='todos'||(filtro==='hab'&&b.habitual)||(filtro==='ev'&&!b.habitual&&!b.extra)||(filtro==='marc'&&num(items[b.k]?.qtd)>0)||(filtro==='pend'&&!isConf(b.k)));
+  const cats={};l.forEach(b=>(cats[b.cat||'Sem categoria']=cats[b.cat||'Sem categoria']||[]).push(b));
+  const out=Object.keys(cats).sort().map(c=>{
+    const arr=cats[c].sort((a,b)=>(b.habitual?1:0)-(a.habitual?1:0)||a.nome.localeCompare(b.nome));
+    const feitos=arr.filter(b=>isConf(b.k)).length;const aberta=!fechadas[c]||q;
+    return `<div class="cat" onclick="fechadas['${esc(c).replace(/'/g,"\\'")}']=${aberta&&!q?'true':'false'};lis()"><span>${aberta?'▾':'▸'} ${esc(c)}</span><span>${feitos}/${arr.length}</span></div>`+(aberta?arr.map(card).join(''):'');
+  }).join('');
+  $('lista').innerHTML=out||'<div class="card msg"><p>Nenhum produto neste filtro.</p></div>';
+}
+function tag(b){if(b.extra)return '<span class="tag x">incluído</span>';return b.habitual?'<span class="tag h">compra habitual</span>':'<span class="tag e">eventual</span>'}
+function card(b){
+  const i=items[b.k]||{};const ok=isConf(b.k);const kk=esc(b.k).replace(/'/g,"\\'");
+  const uc=b.ult_compra?`última compra ${fmtD(b.ult_compra)}`:(b.sem_mov?'sem movimentação':'');
+  return `<div class="p${ok?' ok':''}" id="p_${esc(b.k).replace(/ /g,'_')}"><div class="n">${esc(b.nome)}</div><div class="m"><span>${esc(b.un||'Unidade')}</span>${tag(b)}${uc?`<span>· ${uc}</span>`:''}${b.consumo_mensal>0?`<span>· ~${b.consumo_mensal} ${esc(b.un||'')}/mês</span>`:''}</div>
+  <div class="row"><div><label>Tenho aqui (contagem)</label><input inputmode="decimal" value="${esc(i.fisico??'')}" onchange="setV('${kk}','fisico',this.value)" placeholder="—"></div>
+  <div><label>Pedir (${esc(b.un||'un')})</label><input inputmode="decimal" value="${esc(i.qtd??'')}" onchange="setV('${kk}','qtd',this.value)" placeholder="0"></div>
+  <button class="okb${i.conf?' on':''}" title="Conferido — não preciso pedir" onclick="toggleOk('${kk}')">✓</button></div></div>`;
+}
+function ensure(k){if(!items[k]){const b=baseMap()[k];items[k]={k,nome:b.nome,cat:b.cat,un:b.un,conf:false,fisico:'',qtd:'',obs:'',extra:!!b.extra}}return items[k]}
+function setV(k,c,v){const i=ensure(k);i[c]=v;mudou()}
+function toggleOk(k){const i=ensure(k);i.conf=!i.conf;mudou();lis()}
+function mudou(){dirty=true;const st=stats();if($('pg')){$('pg').textContent=`${st.conf} de ${st.total} conferidos`;$('pg2').textContent=`${st.pedir} a pedir`;$('pb').style.width=(st.total?Math.round(st.conf/st.total*100):0)+'%'}
+  try{localStorage.setItem(LS,JSON.stringify({t:Date.now(),itens:payload()}))}catch(e){}
+  clearTimeout(saveT);saveT=setTimeout(()=>salvar(false),1500);
+  // atualiza só o destaque do card sem perder o foco
+}
+function payload(){return Object.values(items).filter(i=>i.conf||num(i.qtd)>0||num(i.fisico)!=null||i.extra).map(i=>({k:i.k,nome:i.nome,cat:i.cat,un:i.un,conf:!!i.conf,fisico:num(i.fisico),qtd:num(i.qtd)||0,obs:i.obs||'',extra:!!i.extra}))}
+async function salvar(msg){
+  try{await rpc('ri_salvar',{p_token:T,p_itens:payload()});dirty=false;if(msg)toast('Rascunho salvo. Você pode continuar depois pelo mesmo link.')}
+  catch(e){if(msg)toast('Erro ao salvar: '+e.message)}
+}
+function resumo(){
+  const l=lista().filter(b=>num(items[b.k]?.qtd)>0);
+  const t=`*Requisição — ${D.loja}*\nSolicitante: ${D.solicitante}\n${new Date().toLocaleDateString('pt-BR')}\n\n`+(l.length?l.map(b=>`• ${b.nome}: ${num(items[b.k].qtd)} ${b.un||''}`).join('\n'):'(nenhum item com quantidade)');
+  (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('Resumo copiado!')).catch(()=>{const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');toast('Resumo copiado!')}catch(e){toast('Não foi possível copiar')}a.remove()});
+}
+async function abrirCatalogo(){
+  if(!catalogo){try{catalogo=await rpc('ri_catalogo',{p_token:T})}catch(e){return toast(e.message)}}
+  const m=document.createElement('div');m.className='modal';m.id='mdl';
+  m.innerHTML=`<div class="box"><div style="display:flex;justify-content:space-between;font-weight:800;margin-bottom:8px"><span>➕ Incluir produto do catálogo</span><span style="cursor:pointer" onclick="$('mdl').remove()">✕</span></div><input id="cq" placeholder="Digite para buscar…" oninput="catLis()"><div id="cl" style="margin-top:8px"></div></div>`;
+  document.body.appendChild(m);catLis();
+}
+function catLis(){const q=($('cq').value||'').toLowerCase().trim();const r=catalogo.filter(c=>!q||c.nome.toLowerCase().includes(q)).slice(0,60);
+  $('cl').innerHTML=r.map(c=>`<div class="p" style="cursor:pointer" onclick="addCat('${esc(c.k).replace(/'/g,"\\'")}')"><div class="n">${esc(c.nome)}</div><div class="m">${esc(c.cat)} · ${esc(c.un)}</div></div>`).join('')||'<p class="sub">Nada encontrado.</p>'}
+function addCat(k){const c=catalogo.find(x=>x.k===k);if(!c)return;items[k]={k,nome:c.nome,cat:c.cat,un:c.un,conf:false,fisico:'',qtd:'',obs:'',extra:true};catalogo=catalogo.filter(x=>x.k!==k);$('mdl').remove();mudou();filtro='todos';busca=c.nome;render();toast('Produto incluído — informe a quantidade.')}
+async function finalizar(){
+  if(enviando)return;const st=stats();
+  if(st.pedir===0)return alert('Informe a quantidade de pelo menos um produto a pedir.');
+  const pend=st.total-st.conf;
+  if(!confirm(`Enviar a requisição?\n\n• ${st.pedir} produto(s) a pedir\n• ${st.conf} de ${st.total} conferidos${pend>0?`\n• ${pend} ainda não conferido(s)`:''}\n\nDepois de enviada não é possível alterar.`))return;
+  enviando=true;$('bf').disabled=true;$('bf').textContent='Enviando…';
+  try{const r=await rpc('ri_finalizar',{p_token:T,p_itens:payload(),p_por:D.solicitante});try{localStorage.removeItem(LS)}catch(e){}
+    await init();toast('Enviada! Protocolo '+r.protocolo)}
+  catch(e){enviando=false;$('bf').disabled=false;$('bf').textContent='✅ Finalizar e enviar';if(/já foi enviada/i.test(e.message))return init();alert(e.message)}
+}
+function renderStatus(){
+  const s=REQ_ST[D.req_status]||[D.req_status||'—','warn'];
+  const itens=(D.itens||[]).filter(i=>i.qtd>0);
+  $('app').innerHTML=head(`Solicitante: <b>${esc(D.solicitante)}</b>`)+
+  `<div class="card"><div style="font-size:12px;color:var(--muted);font-weight:700">PROTOCOLO</div><div style="font-size:24px;font-weight:800;color:var(--v)">${esc(D.protocolo)}</div>
+   <div class="sub">Requisição de compra nº ${esc(D.requisicao_numero)} · enviada em ${fmtDH(D.enviado_em)}</div>
+   <div style="margin-top:10px"><span class="badge" style="background:var(--${s[1]}bg);color:var(--${s[1]})">${s[0]}</span></div>
+   <p class="sub" style="margin-top:8px">Enviar a requisição não significa compra aprovada: ela passa por análise e aprovação da gestão.</p></div>
+   <div class="card"><b>Andamento</b>${(D.timeline||[]).map(t=>`<div class="step"><div>${esc(t.descricao)}<br><small>${fmtDH(t.em)}</small></div></div>`).join('')||'<p class="sub">Sem eventos.</p>'}</div>
+   <div class="card"><b>Itens solicitados (${itens.length})</b>${itens.map(i=>`<div class="step"><div style="flex:1">${esc(i.nome)}</div><b>${i.qtd} ${esc(i.un||'')}</b></div>`).join('')}</div>
+   <button class="btn g" onclick="init()">🔄 Atualizar status</button>`;
+}
+window.addEventListener('beforeunload',e=>{if(dirty)salvar(false)});
+init();
+</script>
+</body>
+</html>
