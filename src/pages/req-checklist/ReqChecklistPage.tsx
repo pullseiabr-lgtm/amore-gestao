@@ -52,6 +52,23 @@ const statusConf = (c: Conf): [string, string] => {
   return c.status === 'aguardando' ? ['Aguardando abertura', '#0369A1'] : ['Em preenchimento', '#B45309']
 }
 const linkDe = (c: Conf) => `${siteOrigin()}/requisicao-inteligente.html?t=${c.token}`
+async function avisarAprovadores(c: { id: string; token?: string; loja: string; solicitante: string }, r: { requisicao_id: string; numero: number; protocolo: string; a_repor: number }, quem: string) {
+  const lojaLabel = ({ 'Amore CD': 'Amore Costa Dourada', 'Flow CD': 'Flow Costa Dourada' } as Record<string, string>)[c.loja] || c.loja
+  const msg = `🧾 *Requisição para APROVAÇÃO — #${r.numero}* (${r.protocolo})
+🏪 ${lojaLabel}
+👤 Solicitante: ${c.solicitante}
+📦 ${r.a_repor} item(ns) a repor
+
+Revise, ajuste se precisar e *aprove*:
+${siteOrigin()}/requisicao-editar.html?id=${r.requisicao_id}
+
+_Painel Amore_`
+  for (const a of APROVADORES) {
+    try { await enviarWhatsApp(a.fone, msg, undefined, { tipo: 'compra', modulo: 'requisicoes', titulo: `Aprovação #${r.numero}`, loja: c.loja, created_by: quem }) } catch { /* segue */ }
+    await new Promise(res => setTimeout(res, 2500 + Math.random() * 3500))
+  }
+  if (c.token) await sb.rpc('ri_notificado', { p_token: c.token })
+}
 async function copiar(t: string) { try { await navigator.clipboard.writeText(t); return true } catch { return false } }
 
 type Aba = 'conferencia' | 'links' | 'historico'
@@ -214,7 +231,8 @@ function Conferencia({ lojas, lojaInicial, quem, toast }: { lojas: string[]; loj
       }
       const { data, error } = await sb.rpc('ri_finalizar', { p_token: c.token, p_itens: payload(linhas), p_por: quem })
       if (error) throw error
-      toast(`Requisição ${data.protocolo} criada (nº ${data.numero}) — aguardando análise/aprovação.`)
+      toast(`Requisição ${data.protocolo} criada (nº ${data.numero}) — enviada para aprovação (aprovadores sendo avisados).`)
+      avisarAprovadores(c, data, quem).catch(() => {})
       setResultado({ protocolo: data.protocolo, numero: data.numero, loja, itens: payload(linhas).filter(i => i.qtd > 0) })
       setConf(null); setLinhas({})
     } catch (e) { toast('Erro: ' + rpcErro(e)) } finally { setEnviando(false) }
@@ -233,7 +251,7 @@ function Conferencia({ lojas, lojaInicial, quem, toast }: { lojas: string[]; loj
     return (
       <div style={card}>
         <div style={{ fontSize: 18, fontWeight: 800, color: '#15803D' }}>✅ Requisição {resultado.protocolo} criada — {resultado.loja}</div>
-        <div style={{ color: 'var(--muted)', fontSize: 13, margin: '4px 0 10px' }}>Requisição nº {resultado.numero}, já integrada ao fluxo de Requisições e à aba “Pedido da Semana” (análise → aprovação → cotação → pedido).</div>
+        <div style={{ color: 'var(--muted)', fontSize: 13, margin: '4px 0 10px' }}>Requisição nº {resultado.numero}, já enviada para aprovação (Wagner e Aline avisados) e integrada ao fluxo de Requisições e à aba “Pedido da Semana” (análise → aprovação → cotação → pedido).</div>
         {Object.entries(g).sort((a, b) => a[0].localeCompare(b[0])).map(([c, arr]) => (
           <div key={c} style={{ marginBottom: 8 }}><div style={{ fontWeight: 800, fontSize: 12, color: 'var(--bordo)', textTransform: 'uppercase' }}>{c} ({arr.length})</div>
             {arr.map(i => <div key={i.k} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}><span>{i.nome}</span><b>{n2(i.qtd)} {i.un}</b></div>)}</div>

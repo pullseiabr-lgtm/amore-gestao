@@ -166,14 +166,25 @@ async function finalizar(){
   if(!confirm(`Enviar a requisição?\n\n• ${st.pedir} produto(s) a pedir\n• ${st.conf} de ${st.total} conferidos${pend>0?`\n• ${pend} ainda não conferido(s)`:''}\n\nDepois de enviada não é possível alterar.`))return;
   enviando=true;$('bf').disabled=true;$('bf').textContent='Enviando…';
   try{const r=await rpc('ri_finalizar',{p_token:T,p_itens:payload(),p_por:D.solicitante});try{localStorage.removeItem(LS)}catch(e){}
-    enviadoAgora=true;await init();toast('Enviada! Protocolo '+r.protocolo)}
+    avisarAprovadores(r);enviadoAgora=true;await init();toast('Enviada! Protocolo '+r.protocolo)}
   catch(e){enviando=false;$('bf').disabled=false;$('bf').textContent='✅ Finalizar e enviar';if(/já foi enviada/i.test(e.message))return init();alert(e.message)}
+}
+// Ao finalizar, a requisição já segue para APROVAÇÃO: avisa os aprovadores (intervalo aleatório entre envios).
+function avisarAprovadores(r){
+  const lojaLabel={'Amore CD':'Amore Costa Dourada','Flow CD':'Flow Costa Dourada'}[D.loja]||D.loja;
+  const link=location.origin+'/requisicao-editar.html?id='+r.requisicao_id;
+  const ap=[{n:'Wagner',f:'5581994135602'},{n:'Aline',f:'5581994573420'}];
+  ap.forEach((a,i)=>{
+    const msg=`🧾 *Requisição para APROVAÇÃO — #${r.numero}* (${r.protocolo})\n🏪 ${lojaLabel}\n👤 Solicitante: ${D.solicitante}\n📦 ${r.a_repor} item(ns) a repor\n\nRevise, ajuste se precisar e *aprove*:\n${link}\n\n_Painel Amore_`;
+    setTimeout(()=>fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:a.f,message:msg,nome:a.n}),keepalive:true}).catch(()=>{}),i===0?0:3000+Math.random()*4000);
+  });
+  rpc('ri_notificado',{p_token:T}).catch(()=>{});
 }
 function renderStatus(){
   const s=REQ_ST[D.req_status]||[D.req_status||'—','warn'];
   const itens=(D.itens||[]).filter(i=>i.qtd>0);
   $('app').innerHTML=head(`Solicitante: <b>${esc(D.solicitante)}</b>`)+
-  (enviadoAgora?`<div class="card" style="background:var(--okbg);border-color:var(--ok)"><b style="color:var(--ok)">✅ Requisição enviada com sucesso!</b><p class="sub" style="color:var(--text)">Os itens e quantidades abaixo viraram uma requisição oficial e já entraram no processo de requisição e compra da semana.</p></div>`:'')+
+  (enviadoAgora?`<div class="card" style="background:var(--okbg);border-color:var(--ok)"><b style="color:var(--ok)">✅ Requisição enviada com sucesso!</b><p class="sub" style="color:var(--text)">Os itens e quantidades abaixo viraram uma requisição oficial e já entraram no processo de requisição e compra da semana. Ela foi enviada para aprovação e os aprovadores já foram avisados.</p></div>`:'')+
   `<div class="card"><div style="font-size:12px;color:var(--muted);font-weight:700">PROTOCOLO</div><div style="font-size:24px;font-weight:800;color:var(--v)">${esc(D.protocolo)}</div>
    <div class="sub">Requisição de compra nº ${esc(D.requisicao_numero)} · enviada em ${fmtDH(D.enviado_em)}</div>
    <div style="margin-top:10px"><span class="badge" style="background:var(--${s[1]}bg);color:var(--${s[1]})">${s[0]}</span></div>

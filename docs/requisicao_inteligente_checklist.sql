@@ -63,9 +63,9 @@ declare d int := greatest(coalesce(p_dias,90),1); v_ini timestamptz; r jsonb;
 begin
   v_ini := now() - make_interval(days => d);
   with est as (
-    select ri_norm(nome) k, (array_agg(nome order by length(nome)))[1] nome, max(categoria) cat,
+    select ri_norm(nome) k, (array_agg(nome order by length(nome)))[1] nome, (array_agg(categoria order by (categoria='Geral'), nivel_atual desc))[1] cat,
            sum(coalesce(nivel_atual,0)) saldo, max(nivel_minimo) mn, max(nivel_ideal) ide
-    from estoque_produtos where coalesce(ativo,true) and ri_loja(loja)=p_loja group by 1
+    from estoque_produtos where coalesce(ativo,true) and loja=p_loja group by 1
   ), mv as (
     select ri_norm(produto_nome) k, (array_agg(produto_nome order by created_at desc))[1] nome,
       (array_agg(unidade order by created_at desc) filter (where unidade is not null))[1] un,
@@ -282,4 +282,14 @@ end $$;
 
 grant execute on function ri_norm(text), ri_loja(text), ri_abrir(text), ri_catalogo(text), ri_salvar(text,jsonb), ri_finalizar(text,jsonb,text) to anon, authenticated;
 grant execute on function ri_base(text,int), ri_criar(text,text,int,int,text,text), ri_cancelar(uuid,text,text), ri_renovar(uuid,int,text), ri_ocorrencia(uuid,text,text,text), ri_aud(uuid,text,text,text) to authenticated;
+notify pgrst, 'reload schema';
+create or replace function ri_notificado(p_token text) returns void language plpgsql security definer set search_path=public as $$
+declare v ri_conf;
+begin
+  select * into v from ri_conf where token=p_token and status='enviada' and notificado_em is null;
+  if not found then return; end if;
+  update ri_conf set notificado_em=now(), notificado_por='automático (ao finalizar)' where id=v.id;
+  perform ri_aud(v.id,'aprovadores avisados automaticamente',v.solicitante,'Wagner + Aline');
+end $$;
+grant execute on function ri_notificado(text) to anon, authenticated;
 notify pgrst, 'reload schema';
