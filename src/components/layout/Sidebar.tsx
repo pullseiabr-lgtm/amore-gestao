@@ -81,6 +81,7 @@ const GESTAO_SUBMENU: NavItem[] = [
   { id: 'gestao-perdas',   label: '⚠️ Gestão de Perdas',   icon: <span style={{ fontSize: 13, lineHeight: 1 }}>⚠️</span> },
   { id: 'central-alertas', label: '🚨 Central de Alertas', icon: <span style={{ fontSize: 13, lineHeight: 1 }}>🚨</span> },
   { id: 'plantao',         label: '🚩 Plantão de Gestão',  icon: <span style={{ fontSize: 13, lineHeight: 1 }}>🚩</span> },
+  { id: 'alimentacao',     label: '🍽️ Controle de Alimentação', icon: <span style={{ fontSize: 13, lineHeight: 1 }}>🍽️</span> },
 ]
 
 // Sub-itens do grupo Produtos
@@ -141,6 +142,7 @@ const COLAB_MENU: NavItem[] = [
   { id: 'requisicoes-status',label: 'Status das Requisições',    icon: <Activity size={16} />, perm: 'requisicoes' },
   { id: 'creditos',          label: '💳 Créditos & Prestação de Contas', icon: <DollarSign size={16} /> },
   { id: 'plantao',           label: '🚩 Plantão de Gestão', icon: <span style={{ fontSize: 13, lineHeight: 1 }}>🚩</span> },
+  { id: 'alimentacao',       label: '🍽️ Controle de Alimentação', icon: <span style={{ fontSize: 13, lineHeight: 1 }}>🍽️</span> },
 ]
 
 const ADMIN_MENU: NavItem[] = [
@@ -164,7 +166,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
   const isAdmin = isOwner || user?.role === 'admin' || user?.role === 'super_admin'
   const isSuperAdmin = isOwner || user?.role === 'super_admin'
 
-  const isGestaoGroup = (p: string) => ['painel-gestao', 'custos', 'compras-consumo', 'gestao-perdas', 'central-alertas', 'plantao'].includes(p)
+  const isGestaoGroup = (p: string) => ['painel-gestao', 'custos', 'compras-consumo', 'gestao-perdas', 'central-alertas', 'plantao', 'alimentacao'].includes(p)
   // Abre o dropdown automaticamente se a página ativa for do grupo Produtos
   const isProdutosGroup = (p: string) => p === 'produtos' || p === 'produtos-categorias'
 
@@ -281,7 +283,7 @@ export default function Sidebar({ activePage, onNav, mobileOpen, onOverlayClick 
             </div>
             {gestaoOpen && (
               <div style={{ overflow: 'hidden' }}>
-                {GESTAO_SUBMENU.filter(m => m.id !== 'plantao' || can('plantao', 'view')).map(m => (
+                {GESTAO_SUBMENU.filter(m => (m.id !== 'plantao' && m.id !== 'alimentacao') || can(m.id, 'view')).map(m => (
                   <div
                     key={m.id}
                     className={`nav-item${activePage === m.id ? ' active' : ''}`}

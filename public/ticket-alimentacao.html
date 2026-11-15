@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Ticket de Alimentação — Amore</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#eee;font-family:"Courier New",ui-monospace,monospace;color:#000}
+.bar{max-width:420px;margin:12px auto;display:flex;gap:8px;padding:0 12px;font-family:system-ui,sans-serif}
+.bar button{flex:1;padding:14px;border:0;border-radius:10px;font-weight:800;font-size:16px;background:#E0566B;color:#fff;cursor:pointer}
+.bar button.g{background:#fff;color:#333;border:1px solid #ccc}
+.bar button:disabled{opacity:.4}
+#t{width:80mm;margin:0 auto 20px;background:#fff;padding:5mm 4mm;font-size:13px;line-height:1.35}
+.c{text-align:center}.b{font-weight:700}.big{font-size:19px;font-weight:800}
+hr{border:0;border-top:1px dashed #000;margin:6px 0}
+.cod{font-size:22px;font-weight:800;letter-spacing:1px;border:2px solid #000;padding:4px;margin:6px 0;text-align:center}
+.aviso{padding:16px 6px;text-align:center;font-family:system-ui,sans-serif;font-size:17px;font-weight:800;color:#b91c1c}
+@page{size:80mm auto;margin:0}
+@media print{body{background:#fff}.bar,.nop{display:none!important}#t{margin:0;width:80mm}}
+</style>
+</head>
+<body>
+<div class="bar"><button id="bp" onclick="imprimir()" disabled>🖨 Imprimir ticket</button><button class="g" onclick="window.close();history.back()">Fechar</button></div>
+<div id="t"><div class="c">Carregando…</div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+const q=new URLSearchParams(location.search);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const dh=d=>d?new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+const rpc=async(fn,body)=>{const r=await fetch(SB+'/rest/v1/rpc/'+fn,{method:'POST',headers:H,body:JSON.stringify(body)});const t=await r.text();if(!r.ok){let m=t;try{m=JSON.parse(t).message}catch(e){}throw new Error(m.replace(/^.*ERROR:\s*/,''))}return t?JSON.parse(t):null};
+let T=null;
+async function init(){
+  const el=document.getElementById('t');
+  try{
+    T=await rpc('ali_ticket_publico',{p_id:q.get('id')});
+    if(!T){el.innerHTML='<div class="aviso">Ticket não encontrado.</div>';return}
+    const ok=T.status==='emitido';
+    const ads=(T.adicionais||[]).map(a=>esc(a.nome)).join(', ');
+    el.innerHTML=
+      '<div class="c b big">AMORE FOOD</div><div class="c b">CONTROLE DE ALIMENTAÇÃO</div><hr>'
+      +'<div class="c">TICKET Nº</div><div class="c big">'+String(T.numero).padStart(6,'0')+'</div>'
+      +'<div class="cod">'+esc(T.codigo)+'</div><hr>'
+      +'<div><b>Loja:</b> '+esc(T.loja)+'</div>'
+      +'<div><b>Solicitante:</b> '+esc(T.nome)+'</div>'
+      +'<div><b>Tipo:</b> '+esc(T.tipo_solicitante)+'</div>'
+      +(T.empresa?'<div><b>Empresa:</b> '+esc(T.empresa)+'</div>':'')
+      +'<div><b>Autorizado por:</b> '+esc(T.autorizado_por)+'</div>'
+      +'<div><b>Data/hora:</b> '+dh(T.emitido_em)+'</div><hr>'
+      +'<div class="c big">'+Number(T.qtd)+'x '+esc(T.prato_nome)+'</div>'
+      +(ads?'<div class="c">+ '+ads+'</div>':'')
+      +(T.obs_cozinha?'<div class="c">Obs: '+esc(T.obs_cozinha)+'</div>':'')
+      +'<hr><div class="c b">Apresentar este ticket para retirada da refeição</div>'
+      +'<div class="c">Uso único — não reutilizável</div><hr>'
+      +'<div class="c b">AMORE FOOD – CONTROLE DE ALIMENTAÇÃO</div>'
+      +(ok?'':'<div class="aviso nop">'+(T.status==='entregue'?'⛔ TICKET JÁ UTILIZADO em '+dh(T.entregue_em):'⛔ TICKET CANCELADO')+'</div>');
+    if(!ok){return}
+    document.getElementById('bp').disabled=false;
+    if(q.get('auto')==='1')setTimeout(imprimir,500);
+  }catch(e){el.innerHTML='<div class="aviso">Erro: '+esc(e.message)+'</div>'}
+}
+let impr=false;
+async function imprimir(){
+  if(!T||T.status!=='emitido'||impr)return;impr=true;
+  try{await rpc('ali_marcar_impresso',{p_id:T.id,p_por:q.get('por')||'Painel'})}catch(e){alert('Não foi possível registrar a impressão: '+e.message);impr=false;return}
+  window.print();
+  setTimeout(function(){impr=false},1500);
+}
+init();
+</script>
+</body></html>

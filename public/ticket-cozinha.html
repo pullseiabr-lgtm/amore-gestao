@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Cozinha — Tickets de Alimentação</title>
+<style>
+:root{--bg:#FFF6F8;--text:#33262B;--muted:#80707A;--border:#F7D9E0}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:17px;line-height:1.5}
+.wrap{max-width:680px;margin:0 auto;padding:16px 14px 80px}
+h1{font-size:22px;margin:0 0 4px}.sub{color:var(--muted);font-size:14px}
+.card{background:#fff;border:1.5px solid var(--border);border-radius:18px;padding:16px;margin:12px 0}
+input{width:100%;padding:14px;border-radius:14px;border:2px solid #F3B9C6;font-size:17px;font-family:inherit;margin-top:6px}
+.btn{width:100%;border:0;border-radius:14px;padding:16px;font-weight:800;font-size:18px;color:#fff;background:linear-gradient(135deg,#2FBF8F,#5ED8B0);margin-top:10px;min-height:56px;cursor:pointer}
+.big{font-size:22px;font-weight:800}.pill{display:inline-block;padding:3px 11px;border-radius:99px;font-size:13px;font-weight:800;background:#dcfce7;color:#166534}
+.err{color:#b91c1c;font-weight:700;margin-top:6px}
+</style>
+</head>
+<body><div class="wrap">
+<h1>🍳 Tickets de alimentação</h1><div class="sub" id="sub">—</div>
+<div class="card"><label class="sub">Seu nome (quem entrega)</label><input id="quem" placeholder="Ex.: Carlos" />
+<label class="sub" style="display:block;margin-top:10px">Buscar pelo código do ticket</label><input id="busca" placeholder="AMR-000125" oninput="render()" /></div>
+<div id="lista"><div class="sub">Carregando…</div></div>
+</div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+const loja=new URLSearchParams(location.search).get('loja')||'';
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const dh=d=>d?new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+const rpc=async(fn,body)=>{const r=await fetch(SB+'/rest/v1/rpc/'+fn,{method:'POST',headers:H,body:JSON.stringify(body)});const t=await r.text();if(!r.ok){let m=t;try{m=JSON.parse(t).message}catch(e){}throw new Error(m.replace(/^.*ERROR:\s*/,''))}return t?JSON.parse(t):null};
+let L=[];const nq=document.getElementById('quem');try{nq.value=localStorage.getItem('ali_quem')||''}catch(e){}
+document.getElementById('sub').textContent=loja||'Informe ?loja= na URL';
+async function carregar(){try{L=await rpc('ali_cozinha_lista',{p_loja:loja})||[];render()}catch(e){document.getElementById('lista').innerHTML='<div class="err">'+esc(e.message)+'</div>'}}
+function render(){
+  const b=document.getElementById('busca').value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const l=L.filter(t=>!b||(t.codigo.replace(/[^A-Z0-9]/g,'')).includes(b)||String(t.numero).padStart(6,'0').includes(b));
+  document.getElementById('lista').innerHTML=l.length?l.map(t=>'<div class="card"><div class="big">'+Number(t.qtd)+'x '+esc(t.prato_nome)+'</div>'
+    +'<div>'+esc(t.codigo)+' · '+esc(t.nome)+' <span class="sub">('+esc(t.tipo_solicitante)+(t.empresa?' · '+esc(t.empresa):'')+')</span></div>'
+    +((t.adicionais||[]).length?'<div>Adicionais: '+t.adicionais.map(a=>esc(a.nome)).join(', ')+'</div>':'')
+    +(t.obs_cozinha?'<div style="color:#92400e">📝 '+esc(t.obs_cozinha)+'</div>':'')
+    +'<div class="sub">Autorizado por '+esc(t.autorizado_por)+' · '+dh(t.emitido_em)+'</div>'
+    +(t.status==='entregue'?'<span class="pill">✔ entregue '+dh(t.entregue_em)+'</span>'
+      :'<input id="c'+t.id+'" placeholder="Digite o código do ticket impresso" /><button class="btn" onclick="conf(&quot;'+t.id+'&quot;)">✅ Confirmar entrega</button><div class="err" id="e'+t.id+'"></div>')
+    +'</div>').join(''):'<div class="card sub">Nenhum ticket aguardando retirada.</div>';
+}
+async function conf(id){
+  const quem=nq.value.trim();const cod=document.getElementById('c'+id).value.trim();const er=document.getElementById('e'+id);er.textContent='';
+  if(!quem){er.textContent='Informe seu nome no topo.';return}
+  if(!cod){er.textContent='Digite o código impresso no ticket (ex.: AMR-000125).';return}
+  try{localStorage.setItem('ali_quem',quem)}catch(e){}
+  try{await rpc('ali_confirmar_entrega',{p_ticket:id,p_por:quem+' (cozinha)',p_codigo:cod});await carregar()}catch(e){er.textContent='⛔ '+e.message}
+}
+carregar();setInterval(carregar,30000);
+</script></body></html>

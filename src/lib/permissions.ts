@@ -248,6 +248,11 @@ for (const r of Object.keys(ROLE_PERMISSIONS)) {
   ROLE_PERMISSIONS[r]['plantao'] = (r === 'admin' || r === 'super_admin') ? { view: true, create: true, edit: true, delete: true, export: true } : { view: false, create: false, edit: false, delete: false, export: false }
 }
 
+// Módulo "Controle de Alimentação" — admin/super_admin; demais por e-mail (canAlimentacao, no AuthContext)
+for (const r of Object.keys(ROLE_PERMISSIONS)) {
+  ROLE_PERMISSIONS[r]['alimentacao'] = (r === 'admin' || r === 'super_admin') ? { view: true, create: true, edit: true, delete: true, export: true } : { view: false, create: false, edit: false, delete: false, export: false }
+}
+
 // Módulo "Créditos & Prestação de Contas" — chave própria (antes dependia de 'financeiro' no menu)
 for (const r of Object.keys(ROLE_PERMISSIONS)) {
   ROLE_PERMISSIONS[r]['creditos'] = ROLE_PERMISSIONS[r]['financeiro'] || { view: false, create: false, edit: false, delete: false, export: false }
@@ -399,6 +404,17 @@ export const PLANTAO_EMAILS: string[] = [
 ]
 export function canPlantao(user: Profile | null): boolean {
   return !!user && (isOwner(user) || user.role === 'admin' || PLANTAO_EMAILS.includes(_email(user)))
+}
+
+/** Controle de Alimentação (Ticket): donos + admins + gestão/equipe liberada por e-mail. Perfis finos ficam em app_config 'ali_config'. */
+export const ALIMENTACAO_EMAILS: string[] = [
+  'lwsantana@icloud.com',          // Wagner
+  'aline.s.claudino@icloud.com',   // Aline
+  'aristelamota@gmail.com',        // Aristela Mota
+  'dudarocha4683@gmail.com',       // Maria Eduarda
+]
+export function canAlimentacao(user: Profile | null): boolean {
+  return !!user && (isOwner(user) || user.role === 'admin' || ALIMENTACAO_EMAILS.includes(_email(user)))
 }
 
 /** Quem vê TODAS as lojas: donos + Wagner + Aline + Eduarda. Os demais só a sua. */
