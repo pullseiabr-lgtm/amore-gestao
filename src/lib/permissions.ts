@@ -447,3 +447,8 @@ export function colabPermissions(): PermissionsMap {
   for (const id of COLAB_MODULES) if (id in map) map[id] = { ...COLAB_PERM }
   return map
 }
+
+/** COMPRADOR (Setor de Compras): quem pode estimar/editar o gasto estimado das requisições. Hoje: donos (Esdras). */
+export function canComprador(user: Profile | null): boolean {
+  return isOwner(user)
+}

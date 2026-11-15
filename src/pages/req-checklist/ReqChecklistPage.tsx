@@ -7,6 +7,7 @@ import { siteOrigin } from '../../lib/site'
 import { enviarWhatsApp } from '../../lib/notify'
 import { rpcErro } from '../alimentacao/aliLib'
 import { fetchAppConfig, saveAppConfig } from '../../lib/db'
+import { canComprador } from '../../lib/permissions'
 import { Btn, Modal, Pill, card, grid, inp, lbl } from '../plantao/plantaoUi'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -104,12 +105,12 @@ export default function ReqChecklistPage() {
       <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 2 }}>🧠 Requisição Inteligente + Checklist de Consumo</div>
       <div style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 12 }}>A requisição não começa vazia: parte de tudo que a loja comprou, consumiu ou movimentou. Enviar não é aprovar — gera uma requisição oficial no fluxo de Compras.</div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-        {([['conferencia', '📊 Consumo & Conferência'], ['estimativa', `💰 Estimativa de Compras${nEst ? ` (${nEst})` : ''}`], ['links', '🔗 Requisição por link'], ['historico', '🗂️ Histórico & Ocorrências']] as [Aba, string][]).map(([id, l]) => (
+        {([['conferencia', '📊 Consumo & Conferência'], ['estimativa', `💰 Estimativa de Compras${nEst ? ` (${nEst})` : ''}`], ['links', '🔗 Requisição por link'], ['historico', '🗂️ Histórico & Ocorrências']] as [Aba, string][]).filter(([id]) => id !== 'estimativa' || canComprador(user)).map(([id, l]) => (
           <button key={id} onClick={() => setAba(id)} style={{ padding: '8px 15px', fontSize: 13, fontWeight: 700, borderRadius: 10, cursor: 'pointer', border: aba === id ? '1px solid var(--bordo)' : '1px solid var(--border)', background: aba === id ? 'var(--bordo)' : 'transparent', color: aba === id ? '#fff' : 'var(--muted)' }}>{l}</button>
         ))}
       </div>
       {aba === 'conferencia' && <Conferencia lojas={lojas} lojaInicial={lojas.includes(lojaCtx) ? lojaCtx : lojas[0]} quem={quem} toast={toast} />}
-      {aba === 'estimativa' && <Estimativa quem={quem} toast={toast} />}
+      {aba === 'estimativa' && canComprador(user) && <Estimativa quem={quem} toast={toast} />}
       {aba === 'links' && <Links lojas={lojas} quem={quem} toast={toast} modo="links" />}
       {aba === 'historico' && <Links lojas={lojas} quem={quem} toast={toast} modo="historico" />}
     </div>
