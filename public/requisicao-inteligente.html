@@ -69,7 +69,7 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const T=new URLSearchParams(location.search).get('t')||'';
 const LS='ri_'+T;
-let D=null,items={},filtro='todos',busca='',fechadas={},catalogo=null,saveT=null,dirty=false,enviando=false;
+let D=null,items={},filtro='todos',busca='',abertas={},enviadoAgora=false,catalogo=null,saveT=null,dirty=false,enviando=false;
 
 const REQ_ST={enviada:['⏳ Em análise / aguardando aprovação','warn'],aprovada:['✅ Aprovada','ok'],em_cotacao:['💰 Em cotação','info'],compra_realizada:['🛒 Compra realizada','ok'],concluida:['🏁 Concluída','ok'],reprovada:['⛔ Reprovada','bad'],cancelada:['🚫 Cancelada','bad'],rascunho:['📝 Rascunho','warn']};
 const fmtD=d=>d?new Date(d).toLocaleDateString('pt-BR'):'—';
@@ -118,8 +118,8 @@ function lis(){
   const cats={};l.forEach(b=>(cats[b.cat||'Sem categoria']=cats[b.cat||'Sem categoria']||[]).push(b));
   const out=Object.keys(cats).sort().map(c=>{
     const arr=cats[c].sort((a,b)=>(b.habitual?1:0)-(a.habitual?1:0)||a.nome.localeCompare(b.nome));
-    const feitos=arr.filter(b=>isConf(b.k)).length;const aberta=!fechadas[c]||q;
-    return `<div class="cat" onclick="fechadas['${esc(c).replace(/'/g,"\\'")}']=${aberta&&!q?'true':'false'};lis()"><span>${aberta?'▾':'▸'} ${esc(c)}</span><span>${feitos}/${arr.length}</span></div>`+(aberta?arr.map(card).join(''):'');
+    const feitos=arr.filter(b=>isConf(b.k)).length;const pedir=arr.filter(b=>num(items[b.k]?.qtd)>0).length;const aberta=!!abertas[c]||!!q;
+    return `<div class="cat" onclick="abertas['${esc(c).replace(/'/g,"\\'")}']=${aberta&&!q?'false':'true'};lis()"><span>${aberta?'▾':'▸'} ${esc(c)}</span><span>${pedir?pedir+' a pedir · ':''}${feitos}/${arr.length}</span></div>`+(aberta?arr.map(card).join(''):'');
   }).join('');
   $('lista').innerHTML=out||'<div class="card msg"><p>Nenhum produto neste filtro.</p></div>';
 }
@@ -166,19 +166,20 @@ async function finalizar(){
   if(!confirm(`Enviar a requisição?\n\n• ${st.pedir} produto(s) a pedir\n• ${st.conf} de ${st.total} conferidos${pend>0?`\n• ${pend} ainda não conferido(s)`:''}\n\nDepois de enviada não é possível alterar.`))return;
   enviando=true;$('bf').disabled=true;$('bf').textContent='Enviando…';
   try{const r=await rpc('ri_finalizar',{p_token:T,p_itens:payload(),p_por:D.solicitante});try{localStorage.removeItem(LS)}catch(e){}
-    await init();toast('Enviada! Protocolo '+r.protocolo)}
+    enviadoAgora=true;await init();toast('Enviada! Protocolo '+r.protocolo)}
   catch(e){enviando=false;$('bf').disabled=false;$('bf').textContent='✅ Finalizar e enviar';if(/já foi enviada/i.test(e.message))return init();alert(e.message)}
 }
 function renderStatus(){
   const s=REQ_ST[D.req_status]||[D.req_status||'—','warn'];
   const itens=(D.itens||[]).filter(i=>i.qtd>0);
   $('app').innerHTML=head(`Solicitante: <b>${esc(D.solicitante)}</b>`)+
+  (enviadoAgora?`<div class="card" style="background:var(--okbg);border-color:var(--ok)"><b style="color:var(--ok)">✅ Requisição enviada com sucesso!</b><p class="sub" style="color:var(--text)">Os itens e quantidades abaixo viraram uma requisição oficial e já entraram no processo de requisição e compra da semana.</p></div>`:'')+
   `<div class="card"><div style="font-size:12px;color:var(--muted);font-weight:700">PROTOCOLO</div><div style="font-size:24px;font-weight:800;color:var(--v)">${esc(D.protocolo)}</div>
    <div class="sub">Requisição de compra nº ${esc(D.requisicao_numero)} · enviada em ${fmtDH(D.enviado_em)}</div>
    <div style="margin-top:10px"><span class="badge" style="background:var(--${s[1]}bg);color:var(--${s[1]})">${s[0]}</span></div>
    <p class="sub" style="margin-top:8px">Enviar a requisição não significa compra aprovada: ela passa por análise e aprovação da gestão.</p></div>
    <div class="card"><b>Andamento</b>${(D.timeline||[]).map(t=>`<div class="step"><div>${esc(t.descricao)}<br><small>${fmtDH(t.em)}</small></div></div>`).join('')||'<p class="sub">Sem eventos.</p>'}</div>
-   <div class="card"><b>Itens solicitados (${itens.length})</b>${itens.map(i=>`<div class="step"><div style="flex:1">${esc(i.nome)}</div><b>${i.qtd} ${esc(i.un||'')}</b></div>`).join('')}</div>
+   <div class="card"><b>Itens solicitados (${itens.length})</b>${(()=>{const g={};itens.forEach(i=>(g[i.cat||'Sem categoria']=g[i.cat||'Sem categoria']||[]).push(i));return Object.keys(g).sort().map(c=>`<div class="cat" style="cursor:default"><span>${esc(c)}</span><span>${g[c].length}</span></div>`+g[c].map(i=>`<div class="step"><div style="flex:1">${esc(i.nome)}</div><b>${i.qtd} ${esc(i.un||'')}</b></div>`).join('')).join('')})()}</div>
    <button class="btn g" onclick="init()">🔄 Atualizar status</button>`;
 }
 window.addEventListener('beforeunload',e=>{if(dirty)salvar(false)});

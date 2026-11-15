@@ -96,6 +96,7 @@ function Conferencia({ lojas, lojaInicial, quem, toast }: { lojas: string[]; loj
   const [filtro, setFiltro] = useState<Filtro>('todos')
   const [busca, setBusca] = useState('')
   const [enviando, setEnviando] = useState(false)
+  const [resultado, setResultado] = useState<{ protocolo: string; numero: number; loja: string; itens: Linha[] } | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const confRef = useRef<Conf | null>(null)
   confRef.current = conf
@@ -214,6 +215,7 @@ function Conferencia({ lojas, lojaInicial, quem, toast }: { lojas: string[]; loj
       const { data, error } = await sb.rpc('ri_finalizar', { p_token: c.token, p_itens: payload(linhas), p_por: quem })
       if (error) throw error
       toast(`Requisição ${data.protocolo} criada (nº ${data.numero}) — aguardando análise/aprovação.`)
+      setResultado({ protocolo: data.protocolo, numero: data.numero, loja, itens: payload(linhas).filter(i => i.qtd > 0) })
       setConf(null); setLinhas({})
     } catch (e) { toast('Erro: ' + rpcErro(e)) } finally { setEnviando(false) }
   }
@@ -224,6 +226,22 @@ function Conferencia({ lojas, lojaInicial, quem, toast }: { lojas: string[]; loj
   const th: React.CSSProperties = { textAlign: 'left', fontSize: 11, color: 'var(--muted)', padding: '6px 8px', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }
   const td: React.CSSProperties = { padding: '6px 8px', fontSize: 13, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }
   const mini: React.CSSProperties = { ...inp, width: 78, padding: '6px 8px', fontSize: 13, textAlign: 'center' }
+
+  if (resultado) {
+    const g: Record<string, Linha[]> = {}
+    resultado.itens.forEach(i => { (g[i.cat || 'Sem categoria'] = g[i.cat || 'Sem categoria'] || []).push(i) })
+    return (
+      <div style={card}>
+        <div style={{ fontSize: 18, fontWeight: 800, color: '#15803D' }}>✅ Requisição {resultado.protocolo} criada — {resultado.loja}</div>
+        <div style={{ color: 'var(--muted)', fontSize: 13, margin: '4px 0 10px' }}>Requisição nº {resultado.numero}, já integrada ao fluxo de Requisições e à aba “Pedido da Semana” (análise → aprovação → cotação → pedido).</div>
+        {Object.entries(g).sort((a, b) => a[0].localeCompare(b[0])).map(([c, arr]) => (
+          <div key={c} style={{ marginBottom: 8 }}><div style={{ fontWeight: 800, fontSize: 12, color: 'var(--bordo)', textTransform: 'uppercase' }}>{c} ({arr.length})</div>
+            {arr.map(i => <div key={i.k} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}><span>{i.nome}</span><b>{n2(i.qtd)} {i.un}</b></div>)}</div>
+        ))}
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}><Btn onClick={() => setResultado(null)}>Nova conferência</Btn></div>
+      </div>
+    )
+  }
 
   return (
     <div>
