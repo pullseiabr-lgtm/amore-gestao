@@ -137,7 +137,7 @@ function Checklist({ plantao, userName, onVoltar, onAbrirOcorrencia }: { plantao
   const temEv = (r?: Resposta) => !!r && (r.evidencias || []).length > 0
   const valida = (r?: Resposta) => !!r && r.resposta === 'nao_conforme' && !!(r.obs || '').trim() && (!!itemDe(r.item_id)?.semEv || temEv(r))
   // Foto/vídeo obrigatória só em desvio (Não conforme) e em setores marcados (Frente de loja); nos demais é opcional. N/A exige justificativa
-  const completo = (r?: Resposta) => { if (!r) return false; const it = itemDe(r.item_id); if (it?.tipo === 'nome' || r.resposta === 'na') return !!(r.obs || '').trim(); if (r.resposta === 'nao_conforme') return valida(r); const st = plantao.estrutura.find(x => x.itens.some(i => i.id === r.item_id)); return (it?.semEv || !st?.evObrig) ? true : temEv(r) }
+  const completo = (r?: Resposta) => { if (!r) return false; const it = itemDe(r.item_id); if (it?.tipo === 'nome' || r.resposta === 'na') return !!(r.obs || '').trim(); if (r.resposta === 'nao_conforme') return valida(r); const st = plantao.estrutura.find(x => x.itens.some(i => i.id === r.item_id)); return (it?.semEv || !(st?.evObrig || it?.evObrig)) ? true : temEv(r) }
 
   const registrarOcorrencia = async (s: Setor, it: Item, r: Resposta) => {
     const existente = oc[it.id]

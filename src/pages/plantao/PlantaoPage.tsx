@@ -54,6 +54,20 @@ export default function PlantaoPage() {
 }
 
 // ── Painel ───────────────────────────────────────────────────
+const TEXTOS: [string, string, string][] = [
+  ['intro', 'Mensagem de boas-vindas (topo da página inicial)', 'Ex.: Bom plantão! Faça o checklist com calma e registre tudo com evidências.'],
+  ['orient_prato', 'Orientação da avaliação do prato', 'Peça um prato e avalie: qual foi o prato, tempo de entrega, apresentação e sabor, com nota de 1 a 10.'],
+  ['orient_ocorrencias', 'Orientação de ocorrências / demandas / observações', 'Registre qualquer ocorrência, solicitação de demanda ou observação — mesmo fora do checklist.'],
+  ['placeholder_parecer', 'Texto de ajuda do parecer final', 'Parecer da gestão: resumo, pontos fortes, riscos para o fim de semana…'],
+  ['aviso_encerramento', 'Aviso no encerramento do plantão', ''],
+]
+const SUGESTOES = [
+  'Temperatura das câmaras frias e freezers dentro do padrão', 'Validade e identificação dos alimentos (etiquetas)', 'Lixeiras limpas e com sacos trocados',
+  'Ausência de pragas ou sinais de infestação', 'Extintores e saídas de emergência desobstruídos', 'Ar-condicionado e ventilação funcionando',
+  'Iluminação do salão e da vitrine em ordem', 'Música / ambiente adequados', 'Máquina de cartão / PDV funcionando', 'Caixa organizado e troco disponível',
+  'Equipe usando touca, avental e EPIs', 'Cardápio impresso / QR code atualizado', 'Mesas e cadeiras limpas, sem avarias', 'Balcão de apoio abastecido (guardanapo, talheres, condimentos)',
+  'Pratos principais disponíveis conforme cardápio', 'Bebidas geladas e reposição da geladeira', 'Gelo e insumos de bar suficientes', 'Fila / tempo de espera aceitável',
+]
 const PRONT: [string, string][] = [['estoque', 'Estoque'], ['equipe', 'Equipe'], ['mise', 'Mise en place'], ['bebidas', 'Bebidas'], ['estrutura', 'Estrutura'], ['frente', 'Frente de loja']]
 function Painel({ lojas, onAbrir }: { lojas: string[]; onAbrir: (id: string) => void }) {
   const [pl, setPl] = useState<Plantao[]>([])
@@ -318,7 +332,7 @@ function Config({ cfg, onSalvo, podeEditar, userName }: { cfg: PltConfig; onSalv
   const [ver, setVer] = useState<{ id: string; versao: number } | null>(null)
   const [c, setC] = useState({
     equipe: cfg.equipe.join(', '), duplas: cfg.duplas.map(d => d.join(' + ')).join('\n'), tipos: cfg.tipos.join('\n'),
-    resp: Object.entries(cfg.responsaveis).map(([k, v]) => `${k} = ${v}`).join('\n'), prazos: { ...cfg.prazos },
+    resp: Object.entries(cfg.responsaveis).map(([k, v]) => `${k} = ${v}`).join('\n'), prazos: { ...cfg.prazos }, textos: { ...(cfg.textos || {}) } as Record<string, string>,
   })
   useEffect(() => {
     void sb.from('plt_checklist_versoes').select('*').eq('ativa', true).order('versao', { ascending: false }).limit(1).single().then((r: { data: { id: string; versao: number; estrutura: Setor[] } | null }) => {
@@ -345,6 +359,7 @@ function Config({ cfg, onSalvo, podeEditar, userName }: { cfg: PltConfig; onSalv
       duplas: c.duplas.split('\n').map(l => l.split('+').map(s => s.trim()).filter(Boolean)).filter(d => d.length),
       tipos: c.tipos.split('\n').map(s => s.trim()).filter(Boolean),
       prazos: c.prazos,
+      textos: Object.fromEntries(Object.entries(c.textos).filter(([, v]) => (v || '').trim())),
       responsaveis: Object.fromEntries(c.resp.split('\n').map(l => l.split('=').map(s => s.trim())).filter(p => p[0] && p[1]).map(p => [p[0], p[1]])),
     }
     await salvarConfig(n); onSalvo(n); alert('Configurações salvas.')
@@ -366,12 +381,13 @@ function Config({ cfg, onSalvo, podeEditar, userName }: { cfg: PltConfig; onSalv
               <div key={it.id} style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 <input value={it.texto} onChange={e => upSetor(i, { itens: s.itens.map((x, k) => k === j ? { ...x, texto: e.target.value } : x) })} style={{ ...inp, flex: '1 1 220px', width: 'auto' }} />
                 <label style={{ fontSize: 12.5, display: 'flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={!!it.semEv} onChange={e => upSetor(i, { itens: s.itens.map((x, k) => k === j ? { ...x, semEv: e.target.checked } : x) })} />sem foto</label>
+                <label style={{ fontSize: 12.5, display: 'flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={!!it.evObrig} onChange={e => upSetor(i, { itens: s.itens.map((x, k) => k === j ? { ...x, evObrig: e.target.checked } : x) })} />foto obrigatória</label>
                 <select value={it.pront || ''} onChange={e => upSetor(i, { itens: s.itens.map((x, k) => k === j ? { ...x, pront: e.target.value || undefined } : x) })} style={{ ...inp, width: 'auto', fontSize: 13 }}><option value="">Prontidão: —</option>{PRONT.map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select>
                 <Btn small tone="ghost" onClick={() => upSetor(i, { itens: mover(s.itens, j, -1) })}>↑</Btn><Btn small tone="ghost" onClick={() => upSetor(i, { itens: mover(s.itens, j, 1) })}>↓</Btn>
                 <Btn small tone="danger" onClick={() => upSetor(i, { itens: s.itens.filter((_, k) => k !== j) })}>✕</Btn>
               </div>
             ))}
-            <div style={{ marginTop: 6 }}><Btn small tone="ghost" onClick={() => upSetor(i, { itens: [...s.itens, { id: `${s.id}i${Date.now().toString(36)}`, texto: '', ev: false }] })}>+ item</Btn></div>
+            <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}><select value="" onChange={e => { if (e.target.value) upSetor(i, { itens: [...s.itens, { id: `${s.id}i${Date.now().toString(36)}`, texto: e.target.value, ev: false }] }) }} style={{ ...inp, width: 'auto', fontSize: 13 }}><option value="">💡 Adicionar item sugerido…</option>{SUGESTOES.filter(t => !s.itens.some(x => x.texto === t)).map(t => <option key={t} value={t}>{t}</option>)}</select><Btn small tone="ghost" onClick={() => upSetor(i, { itens: [...s.itens, { id: `${s.id}i${Date.now().toString(36)}`, texto: '', ev: false }] })}>+ item</Btn></div>
           </div>
         ))}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -389,7 +405,10 @@ function Config({ cfg, onSalvo, podeEditar, userName }: { cfg: PltConfig; onSalv
           <label style={lbl}>Prazo padrão das tratativas (dias; 0 = imediato)</label>
           <div style={grid(110)}>{(['baixa', 'media', 'alta', 'critica'] as const).map(k => <div key={k}><div style={{ fontSize: 12 }}>{{ baixa: 'Baixa', media: 'Média', alta: 'Alta', critica: 'Crítica' }[k]}</div><input type="number" min={0} value={c.prazos[k]} onChange={e => setC({ ...c, prazos: { ...c.prazos, [k]: Number(e.target.value) } })} style={inp} /></div>)}</div>
         </div>
-        <Btn onClick={salvarRegras}>Salvar regras</Btn>
+        <div style={{ fontWeight: 800, marginTop: 6 }}>✏️ Textos exibidos no link do plantonista</div>
+        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Deixe em branco para usar o texto padrão.</div>
+        {TEXTOS.map(([k, t, ph]) => <div key={k}><label style={lbl}>{t}</label><textarea rows={2} value={c.textos[k] || ''} placeholder={ph} onChange={e => setC({ ...c, textos: { ...c.textos, [k]: e.target.value } })} style={inp} /></div>)}
+        <Btn onClick={salvarRegras}>Salvar regras e textos</Btn>
       </div>
     </div>
   )

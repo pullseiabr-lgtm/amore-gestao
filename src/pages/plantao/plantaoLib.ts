@@ -5,7 +5,7 @@ import { fetchAppConfig, saveAppConfig } from '../../lib/db'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const sb = supabase as any
 
-export type Item = { id: string; texto: string; ev: boolean; pront?: string; semEv?: boolean; tipo?: 'nome' }
+export type Item = { id: string; texto: string; ev: boolean; pront?: string; semEv?: boolean; evObrig?: boolean; tipo?: 'nome' }
 export type Setor = { id: string; nome: string; itens: Item[]; evObrig?: boolean }
 export type Resposta = { id?: string; plantao_id: string; setor_id: string; item_id: string; resposta: 'conforme' | 'nao_conforme' | 'na'; obs: string | null; evidencias: string[]; sem_evidencia: string | null; updated_by?: string }
 export type Plantao = {
@@ -27,6 +27,7 @@ export type PltConfig = {
   tipos: string[]
   prazos: Record<string, number>          // dias por prioridade
   responsaveis: Record<string, string>    // setor/competência → nome do responsável padrão
+  textos?: Record<string, string>         // textos editáveis exibidos no link do plantonista
 }
 export const CONFIG_PADRAO: PltConfig = {
   equipe: ['Aline', 'Aristela', 'Esdras', 'Wagner'],
@@ -34,6 +35,7 @@ export const CONFIG_PADRAO: PltConfig = {
   tipos: ['Estoque / ruptura', 'Limpeza e organização', 'Equipe e atendimento', 'Produção / mise en place', 'Estrutura e manutenção', 'Frente de loja', 'Bebidas', 'Tempo de produção', 'Segurança alimentar', 'Outros'],
   prazos: { baixa: 7, media: 2, alta: 1, critica: 0 },
   responsaveis: {},
+  textos: {},
 }
 export async function carregarConfig(): Promise<PltConfig> {
   const c = await fetchAppConfig<Partial<PltConfig>>('plt_config')

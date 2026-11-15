@@ -74,13 +74,14 @@ async function upload(file){
   if(!r.ok)throw new Error(await r.text());
   return `${SB}/storage/v1/object/public/anexos/${path}`;
 }
+const T=(k,d)=>((S.textos&&S.textos[k])||'').trim()||d;
 const todosItens=()=>S.plantao.estrutura.flatMap(s=>s.itens);
 const temEv=r=>!!(r&&(r.evidencias||[]).length);
 const itDe=id=>{for(const s of S.plantao.estrutura){const it=s.itens.find(x=>x.id===id);if(it)return it}};
 const valida=r=>{const it=r&&itDe(r.item_id);return !!(r&&r.resposta==='nao_conforme'&&(r.obs||'').trim()&&((it&&it.semEv)||temEv(r)))};
 // TODA etapa exige evidência em foto/vídeo, exceto: item de nome do gestor/líder e itens "semEv" (informados pelo líder/gestor da loja). N/A exige justificativa.
 const setorDe=id=>{for(const s of S.plantao.estrutura){if(s.itens.find(x=>x.id===id))return s}};
-const evObr=(r,it)=>{if(!it||it.semEv)return false;const st=setorDe(it.id);return r.resposta==='nao_conforme'||!!(st&&st.evObrig)};
+const evObr=(r,it)=>{if(!it||it.semEv)return false;const st=setorDe(it.id);return r.resposta==='nao_conforme'||!!(st&&st.evObrig)||!!it.evObrig};
 // Foto/vídeo: SEMPRE disponível; obrigatória só em desvio (Não conforme), RNC e setores marcados (Frente de loja). N/A exige justificativa.
 const completo=r=>{if(!r)return false;const it=itDe(r.item_id);if(it&&it.tipo==='nome')return !!(r.obs||'').trim();if(r.resposta==='na')return !!(r.obs||'').trim();if(r.resposta==='nao_conforme')return valida(r);return evObr(r,it)?temEv(r):true};
 
@@ -93,6 +94,7 @@ async function main(){
   // abrir o link = INÍCIO do plantão (o primeiro a abrir marca o horário; o segundo plantonista vê o mesmo)
   if(!S.esc.link_aberto_em){try{await api('plt_escala?id=eq.'+e+'&link_aberto_em=is.null','PATCH',{link_aberto_em:new Date().toISOString()})}catch{}S.esc=(await api('plt_escala?id=eq.'+e))[0]||S.esc}
   let eq=null;try{eq=(await api('app_config?chave=eq.plt_config&select=valor'))[0]?.valor?.equipe}catch{}
+  try{const cf=(await api('app_config?chave=eq.plt_config&select=valor'))[0]?.valor;S.textos=(cf&&cf.textos)||{}}catch{S.textos={}}
   S.equipe=(eq&&eq.length)?eq:['Aline','Aristela','Esdras','Wagner'];
   S.equipe=[...new Set([...S.equipe,...S.esc.dupla])];
   S.pessoas=[...S.esc.dupla];S.quem=q.get('u')&&S.equipe.includes(q.get('u'))?q.get('u'):'';
@@ -101,7 +103,7 @@ async function main(){
 function telaInicio(){
   const E=S.esc,chips=(arr,sel)=>arr.map(n=>`<button class="chip${sel(n)?' on':''}" data-v="${esc(n)}">${esc(n)}</button>`).join('');
   app.innerHTML=`<div class="eyebrow">Plantão de Gestão</div><h1>Plantão de ${d0(E.data)}${E.horario?' · '+esc(E.horario):''}</h1>
-  <div class="card" style="border-color:#2FBF8F"><b>⏱ Plantão iniciado às ${dh(E.link_aberto_em)}</b><div class="sub">O horário é registrado automaticamente quando o link é aberto.</div></div>
+  <div class="card" style="border-color:#2FBF8F"><b>⏱ Plantão iniciado às ${dh(E.link_aberto_em)}</b><div class="sub">O horário é registrado automaticamente quando o link é aberto.</div></div>${T('intro','')?`<div class="card" style="background:#EEF6FF;border-color:#BBD9FA">${esc(T('intro','')).replace(/\n/g,'<br>')}</div>`:''}
   <div class="card"><b>1. Quem está no plantão?</b><div class="sub">Marque as pessoas da gestão presentes (pode ser feito por qualquer um dos dois).</div><div class="chips" id="pessoas">${chips(S.equipe,n=>S.pessoas.includes(n))}</div>
   <b>2. Quem é você?</b><div class="chips" id="quem">${chips(S.equipe,n=>S.quem===n)}</div>
   <b>3. Em qual loja você está?</b><div class="chips" id="loja">${chips(E.lojas.length?E.lojas:['Amore CD','Amore Paiva','Flow CD'],n=>S.loja===n)}</div>
@@ -162,7 +164,7 @@ function telaChecklist(){
   });
   h+=pratosCard();
   h+=ocsCard();
-  h+=`<div class="card"><b>🏁 Encerramento do plantão nesta loja</b><div class="sub" id="pend"></div><textarea id="parecer" rows="3" placeholder="Parecer da gestão: resumo, pontos fortes, riscos para o fim de semana…"></textarea><button class="btn ok" id="fim" style="margin-top:10px">🏁 Registrar o encerramento do plantão</button></div>`;
+  h+=`<div class="card"><b>🏁 Encerramento do plantão nesta loja</b><div class="sub" id="pend"></div>${T('aviso_encerramento','')?`<div class="sub">${esc(T('aviso_encerramento',''))}</div>`:''}<textarea id="parecer" rows="3" placeholder="${esc(T('placeholder_parecer','Parecer da gestão: resumo, pontos fortes, riscos para o fim de semana…'))}"></textarea><button class="btn ok" id="fim" style="margin-top:10px">🏁 Registrar o encerramento do plantão</button></div>`;
   const y=window.scrollY,pv=document.getElementById('parecer')?.value;
   app.innerHTML=h;window.scrollTo(0,y);if(pv)document.getElementById('parecer').value=pv;
   document.querySelectorAll('.sec').forEach(e=>e.onclick=()=>{S.aberto=S.aberto===e.dataset.s?'':e.dataset.s;telaChecklist()});
@@ -253,7 +255,7 @@ const opts=(arr,sel)=>arr.map(x=>`<option${x===sel?' selected':''}>${esc(x)}</op
 async function recarregarOcs(){const o=await api('plt_ocorrencias?plantao_id=eq.'+S.plantao.id+'&order=numero.asc');S.ocs=o;S.oc={};o.forEach(x=>{if(x.item_id)S.oc[x.item_id]=x})}
 function ocsCard(){
   const l=S.ocs||[];
-  let h='<div class="card"><b>🚨 Ocorrências, demandas e observações</b><div class="sub">Registre qualquer ocorrência, solicitação de demanda ou observação — mesmo fora do checklist.</div>';
+  let h='<div class="card"><b>🚨 Ocorrências, demandas e observações</b><div class="sub">'+esc(T('orient_ocorrencias','Registre qualquer ocorrência, solicitação de demanda ou observação — mesmo fora do checklist.'))+'</div>';
   h+='<button class="btn" style="margin-top:8px" onclick="novaOc()">➕ Registrar ocorrência / demanda / observação</button>';
   l.forEach(o=>{h+=`<div class="item" style="cursor:pointer" onclick="openOc('${o.id}')"><div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap"><b>#${o.numero} · ${(CAT[o.categoria]||CAT.ocorrencia)[0]}</b><span class="pill">${ST[o.status]||o.status}</span></div><div class="sub">${esc(o.setor_nome||'')}${o.item_texto?' · '+esc(o.item_texto):''}</div><div style="font-size:13.5px">${esc(o.descricao).slice(0,140)}</div><div class="sub">${(PR[o.prioridade]||PR.media).join(' ')}${o.resp_nome?' · 👤 '+esc(o.resp_nome):''}${o.prazo?' · ⏰ '+dh(o.prazo):''}${o.rnc_numero?' · RNC '+esc(o.rnc_numero):''}</div></div>`});
   return h+'</div>';
@@ -382,7 +384,7 @@ function irPara(sid,id){
 // ───────── Avaliação do prato ─────────
 function pratosCard(){
   const l=S.pratos||[];
-  let h='<div class="card" id="pratosCard"><b>🍽 Avaliação do prato</b><div class="sub">Peça um prato e avalie: qual foi o prato, tempo de entrega, apresentação e sabor, com nota de 1 a 10. Foto/vídeo é opcional em cada ponto.</div>';
+  let h='<div class="card" id="pratosCard"><b>🍽 Avaliação do prato</b><div class="sub">'+esc(T('orient_prato','Peça um prato e avalie: qual foi o prato, tempo de entrega, apresentação e sabor, com nota de 1 a 10. Foto/vídeo é opcional em cada ponto.'))+'</div>';
   l.forEach(x=>{h+=`<div class="item ${pratoCompleto(x)?'done':'nc'}" style="cursor:pointer" onclick="pratoForm('${x.id}')"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(x.prato)}</b><span class="pill" style="color:#4C9BF0">Nota ${x.nota_geral??'—'}</span></div><div class="sub">⏱ ${x.tempo_entrega_min??'—'} min · apresentação ${x.nota_apresentacao??'—'} · sabor ${x.nota_sabor??'—'} · prazo ${x.nota_prazo??'—'}</div>${pratoCompleto(x)?'':'<div class="warn">⚠️ Complete os campos do prato.</div>'}</div>`});
   return h+'<button class="btn" onclick="pratoForm()">➕ Avaliar um prato</button></div>';
 }
