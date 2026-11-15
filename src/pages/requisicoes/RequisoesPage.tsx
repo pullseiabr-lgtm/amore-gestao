@@ -24,6 +24,7 @@ import {
 } from '../../lib/db'
 import { enviarWhatsApp, perfisDoSetor, soDigitos } from '../../lib/notify'
 import { siteOrigin } from '../../lib/site'
+import { supabase } from '../../lib/supabase'
 import ReconciliacaoView from './ReconciliacaoView'
 import PedidoSemanaView from './PedidoSemanaView'
 import type {
@@ -211,12 +212,38 @@ function useToast() {
 
 // Aprovadores da requisição — disparo AUTOMÁTICO ao enviar para aprovação (Wagner + Aline).
 const REQ_APROVADORES = [{ nome: 'Wagner', fone: '5581994135602' }, { nome: 'Aline', fone: '5581994573420' }]
+const REQ_COMPRADOR = [{ nome: 'Esdras', fone: '5581982710008' }]
+// Etapa 1 (obrigatória): requisição nova/reenviada vai ao COMPRADOR (Esdras) para estimar o preço; só depois segue para aprovação.
+// (O banco converte 'enviada' → 'em_estimativa'; no modo AUTOMÁTICO o sistema estima e segue direto para aprovação.)
 async function dispararAprovacaoReq(req: any, nItens: number, userName: string) {
+  let totalEst: number | null = null
+  if (req.status === 'em_estimativa') {
+    const modo = await fetchAppConfig<string>('ri_estimativa_modo').catch(() => null)
+    let auto = false
+    if (modo === 'automatica') {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sbx = supabase as any
+        await sbx.rpc('ri_estimar_auto', { p_req: req.id })
+        const { data, error } = await sbx.rpc('ri_concluir_estimativa', { p_req: req.id, p_itens: [], p_por: 'Estimativa automática', p_obs: null })
+        if (!error) { auto = true; totalEst = Number(data?.total) || 0 }
+      } catch { /* cai no fluxo manual */ }
+    }
+    if (!auto) {
+      const lojaL = ({ 'Amore CD': 'Amore Costa Dourada', 'Flow CD': 'Flow Costa Dourada' } as Record<string, string>)[req.loja] || req.loja
+      const msgE = `💰 *Requisição para ESTIMATIVA DE PREÇO — #${req.numero}*\n🏪 ${lojaL}\n👤 Solicitante: ${req.responsavel_nome || '—'}\n📦 ${nItens} item(ns)${req.titulo ? `\n📝 ${req.titulo}` : ''}\n\nRevise os preços e envie para aprovação:\n${siteOrigin()}/?page=req-checklist&aba=estimativa\n\n_Painel Amore_`
+      for (const a of REQ_COMPRADOR) {
+        try { await enviarWhatsApp(a.fone, msgE, undefined, { tipo: 'compra', modulo: 'requisicoes', titulo: `Estimativa #${req.numero}`, loja: req.loja, created_by: userName }) } catch { /* segue */ }
+        await new Promise(r => setTimeout(r, 2500 + Math.random() * 3000))
+      }
+      return
+    }
+  }
   snapshotRequisicao(req.id, 'envio', userName) // Inteligência de Compras: guarda a análise de preços do momento do envio
   const lojaLabel = ({ 'Amore CD': 'Amore Costa Dourada', 'Flow CD': 'Flow Costa Dourada' } as Record<string, string>)[req.loja] || req.loja
   const num = req.numero != null ? `#${req.numero}` : (req.codigo || 'nova')
   const link = `${siteOrigin()}/requisicao-editar.html?id=${req.id}`
-  const msg = `🧾 *Requisição para APROVAÇÃO — ${num}*\n🏪 ${lojaLabel}\n👤 Solicitante: ${req.responsavel_nome || '—'}\n📦 ${nItens} item(ns)${req.titulo ? `\n📝 ${req.titulo}` : ''}\n\nRevise, ajuste se precisar e *aprove*:\n${link}\n\n_Painel Amore_`
+  const msg = `🧾 *Requisição para APROVAÇÃO — ${num}*\n🏪 ${lojaLabel}\n👤 Solicitante: ${req.responsavel_nome || '—'}\n📦 ${nItens} item(ns)${totalEst ? `\n💰 Estimativa (automática): ${totalEst.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : ''}${req.titulo ? `\n📝 ${req.titulo}` : ''}\n\nRevise, ajuste se precisar e *aprove*:\n${link}\n\n_Painel Amore_`
   for (const a of REQ_APROVADORES) {
     try { await enviarWhatsApp(a.fone, msg, undefined, { tipo: 'compra', modulo: 'requisicoes', titulo: `Aprovação ${num}`, loja: req.loja, created_by: userName }) } catch { /* segue */ }
     await new Promise(r => setTimeout(r, 2500 + Math.random() * 3000))
@@ -899,10 +926,10 @@ function DetalheView({ req, loja, userName, produtos, creditos, onEditar, onVolt
 
   const handleEnviar = async () => {
     const u = await updateRequisicao(req.id, { status:'enviada' })
-    await tEntry('envio',`Enviada para aprovação por ${userName}`)
+    await tEntry('envio',`Enviada ao Setor de Compras para estimativa de preço por ${userName}`)
     // Disparo AUTOMÁTICO aos aprovadores (Wagner + Aline) — restaura o comportamento anterior.
     dispararAprovacaoReq(u, itens.length, userName).catch(() => {})
-    onAtualizar(u); toast('Enviada para aprovação — avisando os aprovadores!'); load()
+    onAtualizar(u); toast('Enviada ao Setor de Compras para estimativa de preço — Esdras avisado!'); load()
   }
 
   // Enviar a requisição por WhatsApp como LINK da página no layout do painel
@@ -2016,12 +2043,12 @@ export default function RequisoesPage() {
       await insertReqTimeline({ requisicao_id:req.id, tipo:'ajuste', descricao:`Requisição editada por ${userName} (nova versão salva)`, usuario:userName, dados:null })
     }
     if (submit) {
-      await insertReqTimeline({ requisicao_id:req.id, tipo:'envio', descricao:`Enviada para aprovação por ${userName}`, usuario:userName, dados:null })
+      await insertReqTimeline({ requisicao_id:req.id, tipo:'envio', descricao:`Enviada ao Setor de Compras para estimativa de preço por ${userName}`, usuario:userName, dados:null })
       // Disparo AUTOMÁTICO aos aprovadores (Wagner + Aline) — restaura o comportamento anterior.
       dispararAprovacaoReq(req, (itens || []).length, userName).catch(() => {})
     }
     setReqs(p=>editando?p.map(r=>r.id===req.id?req:r):[req,...p])
-    toast(submit?'Enviada para aprovação — avisando os aprovadores!':(editando?'Alterações salvas (histórico preservado).':'Rascunho salvo!')); setView('lista'); setSel(null)
+    toast(submit?'Enviada ao Setor de Compras para estimativa de preço — Esdras avisado!':(editando?'Alterações salvas (histórico preservado).':'Rascunho salvo!')); setView('lista'); setSel(null)
   }
 
   // Regra de segurança (ponto #8): requisição NUNCA é apagada — vira "Cancelada"

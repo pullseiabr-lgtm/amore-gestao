@@ -246,18 +246,18 @@ async function gerar(){
     try{
       await fetch(SB+'/rest/v1/req_timeline',{method:'POST',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify([
         {requisicao_id:id,tipo:'criacao',descricao:'Requisição criada por '+solic+' ('+loja+')',usuario:solic,dados:null},
-        {requisicao_id:id,tipo:'envio',descricao:'Enviada para análise/aprovação (Wagner e Esdras)',usuario:solic,dados:null}
+        {requisicao_id:id,tipo:'envio',descricao:'Enviada ao COMPRADOR (Setor de Compras) para estimativa de preço — depois segue para aprovação',usuario:solic,dados:null}
       ])});
     }catch(e){}
     const link='https://painel.amorefood.com.br/requisicao-editar.html?id='+id;
     const entregaTxt=el('entrega').value?el('entrega').value.split('-').reverse().join('/'):'a definir';
     // avisa Wagner + Esdras para VALIDAR (podem editar: inserir/alterar/excluir antes da cotação)
-    const msg='📝 *Nova requisição para validar* — '+loja+'\n'+num+' · '+nome+'\n👤 Solicitante: '+solic+'\n🏷️ Tipo: '+el('tipo').value+' · Prioridade: '+el('prio').value+'\n📅 Entrega: '+entregaTxt+'\n🧾 '+ITENS.length+' itens · 💰 estimado '+brl(total)+'\n\n✏️ Abrir para *revisar/editar e validar* (depois segue p/ cotação):\n'+link;
-    const alvos = TESTE ? NOTIFICAR.filter(n=>n.nome==='Esdras') : NOTIFICAR;
+    const msg='💰 *Nova requisição para ESTIMATIVA DE PREÇO* — '+loja+'\n'+num+' · '+nome+'\n👤 Solicitante: '+solic+'\n🏷️ Tipo: '+el('tipo').value+' · Prioridade: '+el('prio').value+'\n📅 Entrega: '+entregaTxt+'\n🧾 '+ITENS.length+' itens · 💰 estimado '+brl(total)+'\n\n💰 Revise a *estimativa de preço* e envie para aprovação:\n'+location.origin+'/?page=req-checklist&aba=estimativa';
+    const alvos = NOTIFICAR.filter(n=>n.nome==='Esdras'); // etapa 1: comprador estima o preço; aprovadores só depois
     let okSend=0;
     for(const n of alvos){ try{ const rr=await fetch('/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:n.fone,message:(TESTE?'🧪 *TESTE* — ignore o fluxo normal\n':'')+msg})}); if(rr&&rr.ok) okSend++; }catch(e){} }
     const avisoEnvio = okSend>0
-      ? '<p style="color:var(--muted);margin-top:6px">Enviada para Wagner e Esdras validarem. 📲</p>'
+      ? '<p style="color:var(--muted);margin-top:6px">Enviada ao Setor de Compras (Esdras) para estimar o preço; depois segue para aprovação. 📲</p>'
       : '<p style="margin-top:8px;padding:10px 12px;border-radius:10px;background:#FEF3C7;color:#92400E;font-size:13px">⚠️ Requisição <b>salva</b>, mas o aviso automático no WhatsApp <b>falhou</b>. Avise Wagner/Esdras manualmente e mande o link abaixo. Ela já está no <b>Status das Requisições</b>.</p>';
     el('app').innerHTML='<div class="done"><div class="big">✅ '+num+' gerada!</div><p>Requisição <b>'+esc(nome)+'</b> criada para <b>'+esc(loja)+'</b> por <b>'+esc(solic)+'</b> · '+ITENS.length+' itens · estimado '+brl(total)+'.</p>'+avisoEnvio+'<a class="link" href="'+link+'" target="_blank">Abrir para validar</a> <a class="link" href="requisicoes-status.html" style="background:#0369A1">📊 Ver status</a> <a class="link" href="requisicao-nova.html" style="background:#6b7280">Nova requisição</a></div>';
     window.scrollTo({top:0,behavior:'smooth'});

@@ -24,7 +24,7 @@ const PEDIDO_CFG: Record<PedidoStatus, { label: string; cor: string }> = {
 type EtapaId = 'solicitacao' | 'cotacao' | 'aprovacao' | 'pedido' | 'recebimento' | 'finalizado'
 
 const ETAPAS: { id: EtapaId; label: string; cor: string; bg: string; status: ReqStatus[] }[] = [
-  { id: 'solicitacao', label: '1 · Solicitação',        cor: '#64748b', bg: '#f1f5f9', status: ['rascunho'] },
+  { id: 'solicitacao', label: '1 · Solicitação',        cor: '#64748b', bg: '#f1f5f9', status: ['rascunho', 'em_estimativa'] },
   { id: 'cotacao',     label: '2 · Cotação',            cor: '#7c3aed', bg: '#ede9fe', status: ['aguardando_cotacao', 'em_cotacao', 'cotacao_recebida', 'em_analise'] },
   { id: 'aprovacao',   label: '3 · Aprovação',          cor: '#ca8a04', bg: '#fef9c3', status: ['enviada', 'parcialmente_aprovada', 'aprovada', 'reprovada'] },
   { id: 'pedido',      label: '4 · Pedido / Compra',    cor: '#0891b2', bg: '#cffafe', status: ['em_separacao', 'compra_realizada'] },
