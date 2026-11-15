@@ -50,7 +50,7 @@ const lerF=()=>{try{return JSON.parse(localStorage.getItem(FK)||'[]')}catch{retu
 const gravF=f=>{try{localStorage.setItem(FK,JSON.stringify(f))}catch{}};
 let sinc=false;
 async function sincronizar(){
-  if(sinc)return;sinc=true;
+  while(sinc)await new Promise(r=>setTimeout(r,80));sinc=true;
   try{let f=lerF();while(f.length){const o=f[0];try{await api(o.path,'POST',o.row)}catch(e){if(/fetch|network|Failed/i.test(e.message))break}
     const js=JSON.stringify(o.row);f=lerF().filter(x=>!(x.k===o.k&&JSON.stringify(x.row)===js));gravF(f)}}catch{}finally{sinc=false;const el=document.getElementById('fila');if(el)el.textContent=statusFila()}
 }
@@ -124,10 +124,10 @@ async function abrirPlantao(id){
   await carregarResp();telaChecklist();
 }
 async function carregarResp(){
-  const [r,o]=await Promise.all([api('plt_respostas?plantao_id=eq.'+S.plantao.id),api('plt_ocorrencias?plantao_id=eq.'+S.plantao.id+'&select=id,item_id,numero')]);
+  const [r,o]=await Promise.all([api('plt_respostas?plantao_id=eq.'+S.plantao.id),api('plt_ocorrencias?plantao_id=eq.'+S.plantao.id+'&order=numero.asc')]);
   S.resp={};r.forEach(x=>S.resp[x.item_id]=x);
   lerF().filter(o=>o.path.startsWith('plt_respostas')&&o.row.plantao_id===S.plantao.id).forEach(o=>S.resp[o.row.item_id]=o.row);
-  S.oc={};o.forEach(x=>{if(x.item_id)S.oc[x.item_id]=x});
+  S.ocs=o;S.oc={};o.forEach(x=>{if(x.item_id)S.oc[x.item_id]=x});
 }
 function stats(){
   const ids=new Set(todosItens().map(i=>i.id));const rs=Object.values(S.resp).filter(r=>ids.has(r.item_id));
@@ -149,6 +149,7 @@ function telaChecklist(){
     if(aberto)s.itens.forEach(it=>{h+=itemHtml(s,it)});
     h+='</div>';
   });
+  h+=ocsCard();
   h+=`<div class="card"><b>🏁 Encerramento do plantão nesta loja</b><div class="sub" id="pend"></div><textarea id="parecer" rows="3" placeholder="Parecer da gestão: resumo, pontos fortes, riscos para o fim de semana…"></textarea><button class="btn ok" id="fim" style="margin-top:10px">🏁 Registrar o encerramento do plantão</button></div>`;
   const y=window.scrollY,pv=document.getElementById('parecer')?.value;
   app.innerHTML=h;window.scrollTo(0,y);if(pv)document.getElementById('parecer').value=pv;
@@ -174,7 +175,7 @@ function itemHtml(s,it){
     else if(r.resposta!=='na')h+=`<label class="up">${nc?'📷 Foto / vídeo do desvio (obrigatório)':'📷 Foto / vídeo desta etapa (obrigatório)'}<input type="file" accept="image/*,video/*" multiple data-file="${it.id}" style="display:none"></label>`;
     if((r.evidencias||[]).length)h+='<div class="m">'+r.evidencias.map(u=>`<div style="position:relative">${vid(u)?`<video src="${esc(u)}" controls></video>`:`<img src="${esc(u)}">`}<button data-rm="${it.id}|${esc(u)}" style="position:absolute;top:-6px;right:-6px;border:0;border-radius:99px;background:#dc2626;color:#fff;width:22px;height:22px">✕</button></div>`).join('')+'</div>';
     if(!completo(r))h+='<div class="warn">⚠️ '+(r.resposta==='na'?'Falta a justificativa.':nc?(it.semEv?'Falta a justificativa.':'Falta a justificativa e a foto/vídeo do desvio.'):'Falta a foto/vídeo desta etapa.')+'</div>';
-    if(S.oc[it.id])h+=`<div class="warn" style="color:#b91c1c">🚨 Ocorrência registrada${S.oc[it.id].numero?' nº '+S.oc[it.id].numero:''} — será tratada pela gestão.</div>`;
+    if(S.oc[it.id])h+=`<div class="warn" style="color:#b91c1c">🚨 Ocorrência registrada${S.oc[it.id].numero?' nº '+S.oc[it.id].numero:''}${S.oc[it.id].resp_nome?' · responsável: '+esc(S.oc[it.id].resp_nome):''}${S.oc[it.id].rnc_numero?' · RNC '+esc(S.oc[it.id].rnc_numero):''}</div><button class="btn g" style="margin-top:8px" onclick="openOcItem('${it.id}')">🛠 Solicitar tratativa / abrir RNC / avisar por WhatsApp</button>`;
   }
   return h+'</div>';
 }
@@ -221,6 +222,131 @@ async function encerrar(){
     telaChecklist();
   }catch(e){alert('Falha ao encerrar: '+e.message);b.disabled=false;b.textContent='🏁 Registrar o encerramento do plantão'}
 }
+
+// ───────── Ocorrências avulsas, demandas, observações, tratativa, RNC e WhatsApp ─────────
+const rpc=async(fn,body)=>{const r=await fetch(SB+'/rest/v1/rpc/'+fn,{method:'POST',headers:H,body:JSON.stringify(body||{})});const t=await r.text();if(!r.ok)throw new Error(t);return t?JSON.parse(t):null};
+const PR={baixa:['Baixa','🟢'],media:['Média','🟡'],alta:['Alta','🟠'],critica:['Crítica','🔴']};
+const CAT={ocorrencia:['🚨 Ocorrência'],demanda:['📋 Solicitação de demanda'],observacao:['📝 Observação']};
+const ST={identificado:'Identificado',encaminhado:'Encaminhado',em_execucao:'Em execução',aguardando_validacao:'Aguardando validação',concluido:'Concluído'};
+const ORIGEM='https://painel.amorefood.com.br';
+let RESP=null,CFG=null;
+async function carregarAux(){
+  if(!RESP){try{RESP=await rpc('plantao_responsaveis')}catch{RESP=[]}}
+  if(!CFG){try{CFG=(await api('app_config?chave=eq.plt_config&select=valor'))[0]?.valor||{}}catch{CFG={}}}
+}
+const prazoPadrao=p=>{const d=(CFG&&CFG.prazos&&CFG.prazos[p]!=null)?CFG.prazos[p]:({baixa:7,media:2,alta:1,critica:0})[p];const x=new Date(Date.now()+d*864e5);return new Date(x.getTime()-x.getTimezoneOffset()*6e4).toISOString().slice(0,16)};
+function sheet(html){let o=document.getElementById('sheet');if(!o){o=document.createElement('div');o.id='sheet';o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;display:flex;align-items:flex-end;justify-content:center';o.onclick=e=>{if(e.target===o)closeSheet()};document.body.appendChild(o)}o.innerHTML='<div style="background:var(--card);color:var(--text);width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:14px">'+html+'</div>';return o}
+const closeSheet=()=>{document.getElementById('sheet')?.remove()};
+const opts=(arr,sel)=>arr.map(x=>`<option${x===sel?' selected':''}>${esc(x)}</option>`).join('');
+async function recarregarOcs(){const o=await api('plt_ocorrencias?plantao_id=eq.'+S.plantao.id+'&order=numero.asc');S.ocs=o;S.oc={};o.forEach(x=>{if(x.item_id)S.oc[x.item_id]=x})}
+function ocsCard(){
+  const l=S.ocs||[];
+  let h='<div class="card"><b>🚨 Ocorrências, demandas e observações</b><div class="sub">Registre qualquer ocorrência, solicitação de demanda ou observação — mesmo fora do checklist.</div>';
+  h+='<button class="btn" style="margin-top:8px" onclick="novaOc()">➕ Registrar ocorrência / demanda / observação</button>';
+  l.forEach(o=>{h+=`<div class="item" style="cursor:pointer" onclick="openOc('${o.id}')"><div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap"><b>#${o.numero} · ${(CAT[o.categoria]||CAT.ocorrencia)[0]}</b><span class="pill">${ST[o.status]||o.status}</span></div><div class="sub">${esc(o.setor_nome||'')}${o.item_texto?' · '+esc(o.item_texto):''}</div><div style="font-size:13.5px">${esc(o.descricao).slice(0,140)}</div><div class="sub">${(PR[o.prioridade]||PR.media).join(' ')}${o.resp_nome?' · 👤 '+esc(o.resp_nome):''}${o.prazo?' · ⏰ '+dh(o.prazo):''}${o.rnc_numero?' · RNC '+esc(o.rnc_numero):''}</div></div>`});
+  return h+'</div>';
+}
+async function novaOc(){
+  await carregarAux();
+  const setores=[...S.plantao.estrutura.map(x=>x.nome),'Geral / Outros'];
+  const ev=[];window.__ev=ev;
+  sheet(`<b style="font-size:16px">➕ Novo registro</b>
+  <label class="sub">Tipo</label><select id="n_cat"><option value="ocorrencia">🚨 Ocorrência</option><option value="demanda">📋 Solicitação de demanda</option><option value="observacao">📝 Observação</option></select>
+  <label class="sub">Setor</label><select id="n_setor">${opts(setores)}</select>
+  <label class="sub">Descrição *</label><textarea id="n_desc" rows="4" placeholder="Descreva o que foi visto ou o que precisa ser feito…"></textarea>
+  <label class="sub">Prioridade</label><select id="n_prio"><option value="baixa">🟢 Baixa</option><option value="media" selected>🟡 Média</option><option value="alta">🟠 Alta</option><option value="critica">🔴 Crítica</option></select>
+  <label class="up">📷 Foto / vídeo (obrigatório para ocorrência)<input type="file" id="n_file" accept="image/*,video/*" multiple style="display:none"></label><div class="m" id="n_ev"></div>
+  <div style="display:flex;gap:8px;margin-top:12px"><button class="btn g" onclick="closeSheet()">Cancelar</button><button class="btn" id="n_ok">Salvar</button></div>`);
+  const pinta=()=>{document.getElementById('n_ev').innerHTML=ev.map(u=>vid(u)?`<video src="${esc(u)}" controls></video>`:`<img src="${esc(u)}">`).join('')};
+  document.getElementById('n_file').onchange=async e=>{const lab=e.target.parentElement;lab.firstChild.textContent='⏳ Enviando…';for(const f of e.target.files){try{ev.push(await upload(f))}catch{alert('Sem conexão ao enviar '+f.name)}}lab.firstChild.textContent='📷 Foto / vídeo';pinta()};
+  document.getElementById('n_ok').onclick=async()=>{
+    const cat=document.getElementById('n_cat').value,desc=document.getElementById('n_desc').value.trim();
+    if(!desc)return alert('Descreva o registro.');
+    if(cat==='ocorrencia'&&!ev.length)return alert('Ocorrência exige foto ou vídeo.');
+    const id=crypto.randomUUID(),setor=document.getElementById('n_setor').value,now=new Date().toISOString();
+    const row={id,plantao_id:S.plantao.id,loja:S.plantao.loja,descricao:desc,evidencias:ev,setor_nome:setor,tipo:setor,prioridade:document.getElementById('n_prio').value,identificado_por:S.quem,identificado_em:now,status:cat==='observacao'?'concluido':'identificado',origem:'avulsa',categoria:cat};
+    if(cat==='observacao'){row.concluido_em=now;row.concluido_por=S.quem}
+    salvar('oc:'+id,'plt_ocorrencias?on_conflict=id',row);audit('ocorrencia',id,'Registro avulso criado ('+cat+')',null,{setor,loja:S.plantao.loja});
+    await sincronizar();await recarregarOcs();closeSheet();telaChecklist();
+    if(cat!=='observacao'&&confirm('Registro salvo. Deseja solicitar a tratativa agora?'))openOc(id);
+  };
+}
+async function openOcItem(itemId){await sincronizar();await recarregarOcs();const o=S.oc[itemId];if(!o)return alert('A ocorrência ainda está sincronizando. Tente novamente em instantes.');openOc(o.id)}
+async function openOc(id,aba){
+  await carregarAux();await sincronizar();await recarregarOcs();
+  const o=S.ocs.find(x=>x.id===id);if(!o)return;
+  const setores=[...S.plantao.estrutura.map(x=>x.nome),'Compras','Estoque','Cozinha','Salão','Manutenção','Limpeza','Gerência','Geral / Outros'];
+  const prazoV=o.prazo?new Date(new Date(o.prazo).getTime()-new Date(o.prazo).getTimezoneOffset()*6e4).toISOString().slice(0,16):prazoPadrao(o.prioridade);
+  const tem=!!o.resp_nome;
+  sheet(`<div style="display:flex;justify-content:space-between"><b style="font-size:16px">#${o.numero} · ${(CAT[o.categoria]||CAT.ocorrencia)[0]}</b><button onclick="closeSheet()" style="background:none;border:0;font-size:22px;color:var(--muted)">✕</button></div>
+  <div class="sub">${esc(S.plantao.loja)} · ${esc(o.setor_nome||'')}${o.item_texto?' · '+esc(o.item_texto):''} · ${ST[o.status]||o.status}${o.reincidente?' · 🔁 Reincidente':''}${o.rnc_numero?' · RNC '+esc(o.rnc_numero):''}</div>
+  <div class="card" style="margin-top:8px">${esc(o.descricao)}</div>
+  ${(o.evidencias&&o.evidencias.length)?'<div class="m">'+o.evidencias.map(u=>vid(u)?`<video src="${esc(u)}" controls></video>`:`<a href="${esc(u)}" target="_blank"><img src="${esc(u)}"></a>`).join('')+'</div>':''}
+  ${o.devolutiva?`<div class="card" style="border-color:#16a34a;margin-top:8px"><b>↩ Devolutiva de ${esc(o.devolutiva_por||'')}</b> <span class="sub">${dh(o.devolutiva_em)}</span><div>${esc(o.devolutiva)}</div></div>`:''}
+  <div class="card" style="margin-top:10px"><b>🛠 Tratativa</b>
+   <label class="sub">Setor responsável</label><select id="t_setor">${opts(setores,o.resp_setor||o.setor_nome)}</select>
+   <label class="sub">Responsável pela tratativa *</label><select id="t_resp"><option value="">— escolher —</option>${opts(RESP,o.resp_nome)}</select>
+   <label class="sub">Prioridade</label><select id="t_prio"><option value="baixa">🟢 Baixa</option><option value="media">🟡 Média</option><option value="alta">🟠 Alta</option><option value="critica">🔴 Crítica</option></select>
+   <label class="sub">Prazo *</label><input type="datetime-local" id="t_prazo" value="${prazoV}">
+   <label class="sub">Ação a ser executada *</label><textarea id="t_acao" rows="3">${esc(o.acao||'')}</textarea>
+   <label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px"><input type="checkbox" id="t_aprov" style="width:auto;margin:0" ${o.exige_aprovacao?'checked':''}> Necessita aprovação da gestão para concluir</label>
+   <label class="sub">Observação da gestão</label><input id="t_obs" value="${esc(o.obs_gestao||'')}">
+   <button class="btn" style="margin-top:10px" id="t_save">${tem?'💾 Atualizar tratativa':'📨 Solicitar tratativa'}</button></div>
+  <div style="display:grid;gap:8px;margin-top:10px">
+   <button class="btn g" id="t_rnc" ${o.rnc_id?'disabled':''}>${o.rnc_id?'🚫 RNC '+esc(o.rnc_numero)+' já aberta':'🚫 Abrir RNC (Central de Tarefas)'}</button>
+   <button class="btn g" id="t_wpp">📲 Enviar por WhatsApp (com pré-visualização)</button>
+   <a class="btn g" style="text-align:center;text-decoration:none;display:block" target="_blank" href="/plantao-tratativa.html?o=${o.id}">📄 Abrir página da tratativa / devolutiva</a></div>`);
+  document.getElementById('t_prio').value=o.prioridade;
+  document.getElementById('t_prio').onchange=e=>{if(!o.prazo)document.getElementById('t_prazo').value=prazoPadrao(e.target.value)};
+  const salvarTrat=async()=>{
+    const resp=document.getElementById('t_resp').value,acao=document.getElementById('t_acao').value.trim(),prazo=document.getElementById('t_prazo').value;
+    if(!resp)return alert('Escolha o responsável pela tratativa.');if(!prazo)return alert('Informe o prazo.');if(!acao)return alert('Descreva a ação a executar.');
+    const patch={resp_setor:document.getElementById('t_setor').value,resp_nome:resp,acao,prazo:new Date(prazo).toISOString(),prioridade:document.getElementById('t_prio').value,exige_aprovacao:document.getElementById('t_aprov').checked,obs_gestao:document.getElementById('t_obs').value.trim()||null,updated_at:new Date().toISOString()};
+    if(o.status==='identificado'){patch.status='encaminhado';patch.encaminhado_em=new Date().toISOString()}
+    await api('plt_ocorrencias?id=eq.'+o.id,'PATCH',patch);
+    audit('ocorrencia',o.id,tem?'Tratativa atualizada':'Tratativa solicitada',{resp:o.resp_nome,prazo:o.prazo,acao:o.acao},{resp:patch.resp_nome,prazo:patch.prazo,acao:patch.acao});
+    await recarregarOcs();return true;
+  };
+  document.getElementById('t_save').onclick=async()=>{try{if(await salvarTrat()){alert('Tratativa salva.');openOc(id);telaChecklist()}}catch(e){alert('Falha: '+e.message)}};
+  document.getElementById('t_rnc').onclick=async()=>{
+    if(!confirm('Abrir uma RNC na Central de Tarefas a partir desta ocorrência? Evidências e histórico serão importados.'))return;
+    try{const r=await rpc('plantao_abrir_rnc',{p_oc:o.id,p_usuario:S.quem});if(r.erro)throw new Error(r.erro);alert('RNC '+r.numero+' aberta.');await recarregarOcs();openOc(id);telaChecklist()}catch(e){alert('Falha ao abrir a RNC: '+e.message)}
+  };
+  document.getElementById('t_wpp').onclick=async()=>{try{if(!tem||o.resp_nome!==document.getElementById('t_resp').value||o.acao!==document.getElementById('t_acao').value.trim()){if(!await salvarTrat())return}const o2=S.ocs.find(x=>x.id===id);previaWpp(o2)}catch(e){alert('Falha: '+e.message)}};
+}
+function msgWpp(o,copia){
+  const cat=(CAT[o.categoria]||CAT.ocorrencia)[0];
+  return [copia?'📣 *Plantão de Gestão — cópia para a gestão*':'🚩 *Plantão de Gestão — solicitação de tratativa*',
+   '🏪 '+o.loja+' · #'+o.numero+' · '+cat,
+   '📌 '+(o.item_texto?o.item_texto+': ':(o.setor_nome?o.setor_nome+': ':''))+o.descricao.slice(0,300),
+   '🛠 Ação solicitada: '+(o.acao||'—'),
+   '👤 Responsável: '+o.resp_nome+(o.resp_setor?' ('+o.resp_setor+')':''),
+   '⏰ Prazo: '+dh(o.prazo)+' · '+(PR[o.prioridade]||PR.media).join(' '),
+   'Solicitante: '+S.quem,'',
+   copia?'Acompanhe a tratativa neste link:':'Veja os detalhes e registre a devolutiva neste link:',
+   ORIGEM+'/plantao-tratativa.html?o='+o.id].join('\n');
+}
+function previaWpp(o){
+  const outros=S.plantao.integrantes.filter(n=>n!==S.quem&&n!==o.resp_nome);
+  sheet(`<b style="font-size:16px">📲 Pré-visualização do WhatsApp</b>
+  <div class="sub">Confira antes de enviar. Nada é enviado sem a sua confirmação.</div>
+  <div class="card" style="white-space:pre-wrap;margin-top:8px;font-size:14px">${esc(msgWpp(o,false))}</div>
+  <div class="sub"><b>Para:</b> ${esc(o.resp_nome)} (responsável pela tratativa)</div>
+  ${outros.length?'<div class="sub" style="margin-top:6px"><b>Cópia para a gestão do plantão:</b></div>'+outros.map(n=>`<label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-top:4px"><input type="checkbox" class="cp" value="${esc(n)}" checked style="width:auto;margin:0"> ${esc(n)}</label>`).join(''):''}
+  <div style="display:flex;gap:8px;margin-top:12px"><button class="btn g" onclick="openOc('${o.id}')">← Voltar</button><button class="btn ok" id="w_ok">✅ Confirmar e enviar</button></div>`);
+  document.getElementById('w_ok').onclick=async()=>{
+    const b=document.getElementById('w_ok');b.disabled=true;b.textContent='Enviando…';
+    const dest=[[o.resp_nome,false],...[...document.querySelectorAll('.cp:checked')].map(c=>[c.value,true])],res=[];
+    for(let i=0;i<dest.length;i++){
+      try{const r=await fetch(ORIGEM+'/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nome_destino:dest[i][0],message:msgWpp(o,dest[i][1]),nome:dest[i][0]})});const j=await r.json().catch(()=>({}));res.push((r.ok&&j.ok!==false?'✅ ':'⚠️ ')+dest[i][0]+(r.ok?'':' — '+(j.error||'falha')))}catch(e){res.push('⚠️ '+dest[i][0]+' — '+e.message)}
+      if(i<dest.length-1)await new Promise(r=>setTimeout(r,3000+Math.random()*3500));
+    }
+    try{await api('plt_ocorrencias?id=eq.'+o.id,'PATCH',{whatsapp_enviado_em:new Date().toISOString()})}catch{}
+    audit('ocorrencia',o.id,'WhatsApp enviado',null,{para:dest.map(d=>d[0])});
+    alert('Resultado do envio:\n'+res.join('\n'));await recarregarOcs();openOc(o.id);telaChecklist();
+  };
+}
+
 main().catch(e=>{app.innerHTML='<div class="msg">Falha ao carregar: '+esc(e.message)+'</div>'});
 </script>
 </body>

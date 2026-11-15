@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Tratativa — Plantão de Gestão</title>
+<style>
+:root{--vinho:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.45}
+.wrap{max-width:640px;margin:0 auto;padding:14px 12px 80px}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
+h1{font-size:19px;margin:2px 0 4px}.sub{color:var(--muted);font-size:13px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:10px}
+.btn{background:var(--vinho);color:#fff;border:1px solid var(--vinho);border-radius:12px;padding:13px 16px;font-weight:700;font-size:15px;width:100%;cursor:pointer;margin-top:8px}
+.btn.g{background:transparent;color:var(--text);border-color:var(--border)}.btn.ok{background:#16a34a;border-color:#16a34a}.btn:disabled{opacity:.5}
+textarea,input,select{width:100%;padding:11px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:15px;font-family:inherit;margin-top:6px}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11.5px;font-weight:800;border:1px solid currentColor}
+.m{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.m img{width:92px;height:92px;object-fit:cover;border-radius:8px}.m video{width:140px;border-radius:8px}
+label.up{display:block;text-align:center;padding:12px;border:1px dashed var(--vinho);color:var(--vinho);font-weight:700;border-radius:10px;margin-top:8px;cursor:pointer}
+.h{border-bottom:1px solid var(--border);padding:5px 0;font-size:12.5px}
+.msg{padding:40px 0;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Carregando…</div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+const id=new URLSearchParams(location.search).get('o');
+const app=document.getElementById('app');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const dh=d=>d?new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+const vid=u=>/\.(mp4|mov|webm|3gp|m4v)(\?|$)/i.test(u);
+const rpc=async(fn,b)=>{const r=await fetch(SB+'/rest/v1/rpc/'+fn,{method:'POST',headers:H,body:JSON.stringify(b||{})});const t=await r.text();if(!r.ok)throw new Error(t);return t?JSON.parse(t):null};
+const patch=async(b)=>{const r=await fetch(SB+'/rest/v1/plt_ocorrencias?id=eq.'+id,{method:'PATCH',headers:H,body:JSON.stringify({...b,updated_at:new Date().toISOString()})});if(!r.ok)throw new Error(await r.text())};
+const audit=(acao,antes,depois)=>fetch(SB+'/rest/v1/plt_auditoria',{method:'POST',headers:H,body:JSON.stringify({entidade:'ocorrencia',entidade_id:id,acao,antes:antes||null,depois:depois||null,usuario:D.quem})});
+const ST={identificado:['Identificado','#dc2626'],encaminhado:['Encaminhado','#7c3aed'],em_execucao:['Em execução','#2563eb'],aguardando_validacao:['Aguardando validação','#ca8a04'],concluido:['Concluído','#16a34a']};
+const PR={baixa:'🟢 Baixa',media:'🟡 Média',alta:'🟠 Alta',critica:'🔴 Crítica'};
+const CAT={ocorrencia:'🚨 Ocorrência',demanda:'📋 Solicitação de demanda',observacao:'📝 Observação'};
+let D={quem:localStorage.getItem('plt_quem')||'',ev:[],nomes:[]};
+async function upload(f){const ext=(f.name.split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'');const path=`plantao/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;const r=await fetch(`${SB}/storage/v1/object/anexos/${path}`,{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':f.type||'application/octet-stream'},body:f});if(!r.ok)throw new Error(await r.text());return `${SB}/storage/v1/object/public/anexos/${path}`}
+const midias=a=>(a&&a.length)?'<div class="m">'+a.map(u=>vid(u)?`<video src="${esc(u)}" controls></video>`:`<a href="${esc(u)}" target="_blank"><img src="${esc(u)}"></a>`).join('')+'</div>':'';
+async function main(){
+  if(!id){app.innerHTML='<div class="msg">Link inválido.</div>';return}
+  const [j,n]=await Promise.all([rpc('plantao_tratativa',{p_id:id}),rpc('plantao_responsaveis').catch(()=>[])]);
+  if(!j||!j.ocorrencia){app.innerHTML='<div class="msg">Registro não encontrado.</div>';return}
+  D.j=j;D.nomes=n||[];tela();
+}
+function tela(){
+  const j=D.j,o=j.ocorrencia,p=j.plantao||{},st=ST[o.status]||ST.identificado;
+  const atras=o.prazo&&o.status!=='concluido'&&new Date(o.prazo)<new Date();
+  const pn=x=>String(x||'').trim().split(/\s+/)[0].toLowerCase(),gestao=!!D.quem&&(p.integrantes||[]).some(n=>pn(n)===pn(D.quem)),resp=!!o.resp_nome&&o.resp_nome===D.quem;
+  let h=`<div class="eyebrow">Plantão de Gestão · Tratativa</div><h1>#${o.numero} · ${CAT[o.categoria]||CAT.ocorrencia}</h1>
+  <div class="sub">${esc(o.loja)} · ${esc(o.setor_nome||'')}${o.item_texto?' · '+esc(o.item_texto):''} · identificada por ${esc(o.identificado_por||'—')} em ${dh(o.identificado_em)}</div>
+  <div style="margin:8px 0"><span class="pill" style="color:${st[1]}">${st[0]}</span> <span class="pill" style="color:#4b5563">${PR[o.prioridade]||''}</span>${atras?' <span class="pill" style="color:#b91c1c">⏰ Prazo vencido</span>':''}${o.reincidente?' <span class="pill" style="color:#7c2d12">🔁 Reincidente</span>':''}${o.rnc_numero?' <span class="pill" style="color:#0f766e">RNC '+esc(o.rnc_numero)+'</span>':''}</div>
+  <div class="card">${esc(o.descricao)}${midias(o.evidencias)}</div>`;
+  h+=o.resp_nome?`<div class="card"><b>🛠 Tratativa</b><div style="margin-top:4px">${esc(o.acao||'—')}</div><div class="sub" style="margin-top:6px">Responsável: <b>${esc(o.resp_nome)}</b>${o.resp_setor?' ('+esc(o.resp_setor)+')':''}<br>Prazo: <b style="color:${atras?'#b91c1c':'inherit'}">${dh(o.prazo)}</b>${o.exige_aprovacao?' · exige aprovação da gestão':''}${o.obs_gestao?'<br>Obs. da gestão: '+esc(o.obs_gestao):''}</div></div>`:'<div class="card sub">Ainda sem tratativa direcionada — a gestão do plantão vai definir responsável e prazo.</div>';
+  if(o.devolutiva)h+=`<div class="card" style="border-color:#16a34a"><b>↩ Devolutiva de ${esc(o.devolutiva_por||'')}</b> <span class="sub">${dh(o.devolutiva_em)}</span><div>${esc(o.devolutiva)}</div>${midias(o.devolutiva_evid)}</div>`;
+  if(o.status==='concluido'&&o.categoria!=='observacao')h+=`<div class="card" style="border-color:#16a34a">✅ Concluída em ${dh(o.concluido_em)} por ${esc(o.concluido_por||'')}${o.obs_conclusao?'<div>'+esc(o.obs_conclusao)+'</div>':''}${midias(o.evid_conclusao)}</div>`;
+  h+=`<div class="card"><b>👤 Quem é você?</b><select id="quem"><option value="">— escolher —</option>${D.nomes.map(n=>`<option${n===D.quem?' selected':''}>${esc(n)}</option>`).join('')}</select><div class="sub">Necessário para registrar devolutiva ou validar.</div></div>`;
+  if(D.quem&&o.status!=='concluido'){
+    if(resp||(!o.resp_nome&&gestao)){
+      h+=`<div class="card"><b>↩ Devolutiva do responsável</b>`;
+      if(o.status==='encaminhado')h+=`<button class="btn g" id="b_ini">▶️ Iniciar execução</button>`;
+      h+=`<textarea id="dev" rows="3" placeholder="O que foi feito? Descreva a resolução…"></textarea><label class="up">📷 Foto / vídeo da resolução<input type="file" id="f" accept="image/*,video/*" multiple style="display:none"></label><div class="m" id="ev"></div><button class="btn ok" id="b_dev">📤 Enviar devolutiva para validação</button></div>`;
+    }
+    if(gestao&&o.status==='aguardando_validacao'){
+      h+=`<div class="card"><b>✅ Validação da gestão do plantão</b><textarea id="val" rows="2" placeholder="Parecer / observação da gestão"></textarea><button class="btn ok" id="b_ok">Validar e concluir</button><button class="btn g" id="b_back">↩ Devolver para execução</button></div>`;
+    }
+    if(!resp&&!gestao&&o.resp_nome)h+=`<div class="card sub">Apenas ${esc(o.resp_nome)} (responsável) e a gestão do plantão (${esc((p.integrantes||[]).join(', '))}) podem agir nesta tratativa.</div>`;
+  }
+  h+=`<div class="card"><b>🧾 Gestão do plantão</b><div class="sub">Plantão nº ${p.numero||''} · ${esc(p.loja||'')} · chegada ${dh(p.chegada_em)} · 👥 ${esc((p.integrantes||[]).join(' + '))}</div><a href="/plantao-relatorio.html?id=${p.id}" style="color:var(--vinho);font-weight:700">Abrir relatório do plantão ↗</a>`;
+  (j.outras||[]).forEach(x=>{const s=ST[x.status]||ST.identificado;h+=`<div class="h"><a href="?o=${x.id}" style="color:inherit"><b>#${x.numero}</b> ${CAT[x.categoria]||''} — ${esc((x.descricao||'').slice(0,70))} <span class="pill" style="color:${s[1]}">${s[0]}</span>${x.resp_nome?' · '+esc(x.resp_nome):''}</a></div>`});
+  h+='</div>';
+  h+='<div class="card"><b>🧾 Histórico</b>'+((j.historico||[]).length?j.historico.map(a=>`<div class="h"><b>${esc(a.acao)}</b> · ${esc(a.usuario||'')} · ${dh(a.quando)}</div>`).join(''):'<div class="sub">Sem registros.</div>')+'</div>';
+  app.innerHTML=h;
+  const q=document.getElementById('quem');q.onchange=()=>{D.quem=q.value;localStorage.setItem('plt_quem',D.quem);tela()};
+  const f=document.getElementById('f');if(f){D.ev=[];f.onchange=async()=>{const lab=f.parentElement;lab.firstChild.textContent='⏳ Enviando…';for(const x of f.files){try{D.ev.push(await upload(x))}catch{alert('Sem conexão ao enviar '+x.name)}}lab.firstChild.textContent='📷 Foto / vídeo da resolução';document.getElementById('ev').innerHTML=D.ev.map(u=>vid(u)?`<video src="${esc(u)}" controls></video>`:`<img src="${esc(u)}">`).join('')}}
+  const run=async(fn)=>{try{await fn();await main()}catch(e){alert('Falha: '+e.message)}};
+  const bi=document.getElementById('b_ini');if(bi)bi.onclick=()=>run(async()=>{await patch({status:'em_execucao'});await audit('Status: em execução',{status:o.status},{status:'em_execucao'})});
+  const bd=document.getElementById('b_dev');if(bd)bd.onclick=()=>run(async()=>{const t=document.getElementById('dev').value.trim();if(!t)throw new Error('Descreva a devolutiva.');await patch({devolutiva:t,devolutiva_por:D.quem,devolutiva_em:new Date().toISOString(),devolutiva_evid:D.ev,status:'aguardando_validacao'});await audit('Devolutiva enviada',{status:o.status},{status:'aguardando_validacao',devolutiva:t})});
+  const bk=document.getElementById('b_ok');if(bk)bk.onclick=()=>run(async()=>{const t=document.getElementById('val').value.trim();await patch({status:'concluido',concluido_em:new Date().toISOString(),concluido_por:D.quem,obs_conclusao:t||null,evid_conclusao:o.devolutiva_evid||[]});await audit('Tratativa validada e concluída',{status:o.status},{status:'concluido',parecer:t})});
+  const bb=document.getElementById('b_back');if(bb)bb.onclick=()=>run(async()=>{const t=document.getElementById('val').value.trim();if(!t)throw new Error('Explique o que falta na devolutiva.');await patch({status:'em_execucao',obs_gestao:t});await audit('Devolvida para execução',{status:o.status},{status:'em_execucao',motivo:t})});
+}
+main().catch(e=>{app.innerHTML='<div class="msg">Falha ao carregar: '+esc(e.message)+'</div>'});
+</script>
+</body>
+</html>

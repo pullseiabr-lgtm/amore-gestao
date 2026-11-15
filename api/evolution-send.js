@@ -103,7 +103,18 @@ export default async function handler(req, res) {
     }
   }
 
-  const { phone, message, image, caption, document, fileName } = body || {}
+  let { phone, message, image, caption, document, fileName } = body || {}
+  // Destino pelo NOME do usuário do painel (o telefone nunca vai ao navegador): usado pelo Plantão de Gestão
+  if (!phone && body && body.nome_destino) {
+    const alvo = String(body.nome_destino).trim().toLowerCase()
+    const rows = await perfisComFone()
+    const fn = (x) => String(x?.name || '').trim().toLowerCase().split(/\s+/)[0]
+    let p = rows.find(x => String(x?.name || '').trim().toLowerCase() === alvo)
+    if (!p) { const c = rows.filter(x => fn(x) === alvo.split(/\s+/)[0]); if (c.length === 1) p = c[0] }
+    const w = String(p?.permissions_override?.__perfil__?.whatsapp || '').replace(/\D/g, '')
+    if (w) { phone = w.startsWith('55') ? w : '55' + w }
+    else return res.status(404).json({ error: 'Usuário sem WhatsApp cadastrado: ' + body.nome_destino })
+  }
   if (!phone) return res.status(400).json({ error: 'Informe o número (phone).' })
   // Aceita: só texto (message), imagem (image[+caption]) ou documento PDF por URL pública (document+fileName[+caption]).
   if (!message && !image && !document) return res.status(400).json({ error: 'Envie message, image ou document.' })

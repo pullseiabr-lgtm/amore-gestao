@@ -202,6 +202,16 @@ function Detalhe({ o, cfg, userName, nomes, setores, onClose, onMudou }: { o: Oc
             <Midias urls={o.evid_inicial || []} />
           </div>
         )}
+        {(o as unknown as { devolutiva?: string }).devolutiva && (
+          <div style={{ ...card, background: '#f0fdf4' }}>
+            <b>↩ Devolutiva de {(o as unknown as { devolutiva_por?: string }).devolutiva_por}</b> · {fmtDH((o as unknown as { devolutiva_em?: string }).devolutiva_em)}<div>{(o as unknown as { devolutiva?: string }).devolutiva}</div>
+            <Midias urls={(o as unknown as { devolutiva_evid?: string[] }).devolutiva_evid || []} />
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Btn small tone="ghost" onClick={() => window.open(`${siteOrigin()}/plantao-tratativa.html?o=${o.id}`, '_blank')}>📄 Página da tratativa / devolutiva</Btn>
+          <Btn small tone="ghost" onClick={() => { void navigator.clipboard?.writeText(`${siteOrigin()}/plantao-tratativa.html?o=${o.id}`); alert('Link da tratativa copiado.') }}>Copiar link</Btn>
+        </div>
         {o.status === 'concluido' && <div style={{ ...card, background: '#f0fdf4' }}>✅ Concluída em {fmtDH(o.concluido_em)} por {o.concluido_por}{o.obs_conclusao ? ` — ${o.obs_conclusao}` : ''}<Midias urls={o.evid_conclusao || []} /></div>}
 
         {o.status !== 'concluido' && !trat && (

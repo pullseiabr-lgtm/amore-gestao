@@ -96,7 +96,7 @@ export const onFila = (f: (n: number) => void) => { ouvintes.add(f); return () =
 let sincronizando = false
 
 export async function sincronizarFila(): Promise<void> {
-  if (sincronizando) return
+  while (sincronizando) await new Promise(r => setTimeout(r, 80))
   sincronizando = true
   try {
     let f = lerFila()
