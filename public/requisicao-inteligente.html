@@ -119,17 +119,19 @@ function lis(){
   const out=Object.keys(cats).sort().map(c=>{
     const arr=cats[c].sort((a,b)=>(b.habitual?1:0)-(a.habitual?1:0)||a.nome.localeCompare(b.nome));
     const feitos=arr.filter(b=>isConf(b.k)).length;const pedir=arr.filter(b=>num(items[b.k]?.qtd)>0).length;const aberta=!!abertas[c]||!!q;
-    return `<div class="cat" onclick="abertas['${esc(c).replace(/'/g,"\\'")}']=${aberta&&!q?'false':'true'};lis()"><span>${aberta?'▾':'▸'} ${esc(c)}</span><span>${pedir?pedir+' a pedir · ':''}${feitos}/${arr.length}</span></div>`+(aberta?arr.map(card).join(''):'');
+    return `<div class="cat" onclick="abertas['${esc(c).replace(/'/g,"\\'")}']=${aberta&&!q?'false':'true'};lis()"><span>${aberta?'▾':'▸'} ${esc(c)}</span><span>${pedir?pedir+' a pedir · ':''}${feitos}/${arr.length} <button class="chip" style="padding:2px 9px;font-size:11px;margin-left:6px" onclick="event.stopPropagation();incluirEm('${esc(c).replace(/'/g,"\'")}')">➕ Incluir</button></span></div>`+(aberta?arr.map(card).join(''):'');
   }).join('');
   $('lista').innerHTML=out||'<div class="card msg"><p>Nenhum produto neste filtro.</p></div>';
 }
+const UNS=['Unidade(s)','Quilograma(s)','Caixa(s)','Pacote(s)','Fardo(s)','Litro(s)','Saco(s)','Balde(s)','Bandeja(s)','Frasco(s)','Galão(ões)','Grama(s)','Dúzia(s)'];
+function unOpts(sel){const l=UNS.slice();if(sel&&!l.includes(sel))l.unshift(sel);return l.map(u=>`<option${u===sel?' selected':''}>${esc(u)}</option>`).join('')}
 function tag(b){if(b.extra)return '<span class="tag x">incluído</span>';return b.habitual?'<span class="tag h">compra habitual</span>':'<span class="tag e">eventual</span>'}
 function card(b){
   const i=items[b.k]||{};const ok=isConf(b.k);const kk=esc(b.k).replace(/'/g,"\\'");
   const uc=b.ult_compra?`última compra ${fmtD(b.ult_compra)}`:(b.sem_mov?'sem movimentação':'');
   return `<div class="p${ok?' ok':''}" id="p_${esc(b.k).replace(/ /g,'_')}"><div class="n">${esc(b.nome)}</div><div class="m"><span>${esc(b.un||'Unidade')}</span>${tag(b)}${uc?`<span>· ${uc}</span>`:''}${b.consumo_mensal>0?`<span>· ~${b.consumo_mensal} ${esc(b.un||'')}/mês</span>`:''}</div>
   <div class="row"><div><label>Tenho aqui (contagem)</label><input inputmode="decimal" value="${esc(i.fisico??'')}" onchange="setV('${kk}','fisico',this.value)" placeholder="—"></div>
-  <div><label>Pedir (${esc(b.un||'un')})</label><input inputmode="decimal" value="${esc(i.qtd??'')}" onchange="setV('${kk}','qtd',this.value)" placeholder="0"></div>
+  <div><label>Pedir (peso / unidade / caixa…)</label><div style="display:flex;gap:4px"><input style="width:46%" inputmode="decimal" value="${esc(i.qtd??'')}" onchange="setV('${kk}','qtd',this.value)" placeholder="0"><select style="width:54%;padding:8px 4px;font-size:13px" onchange="setV('${kk}','un',this.value)">${unOpts(i.un||b.un)}</select></div></div>
   <button class="okb${i.conf?' on':''}" title="Conferido — não preciso pedir" onclick="toggleOk('${kk}')">✓</button></div></div>`;
 }
 function ensure(k){if(!items[k]){const b=baseMap()[k];items[k]={k,nome:b.nome,cat:b.cat,un:b.un,conf:false,fisico:'',qtd:'',obs:'',extra:!!b.extra}}return items[k]}
@@ -149,6 +151,21 @@ function resumo(){
   const l=lista().filter(b=>num(items[b.k]?.qtd)>0);
   const t=`*Requisição — ${D.loja}*\nSolicitante: ${D.solicitante}\n${new Date().toLocaleDateString('pt-BR')}\n\n`+(l.length?l.map(b=>`• ${b.nome}: ${num(items[b.k].qtd)} ${b.un||''}`).join('\n'):'(nenhum item com quantidade)');
   (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('Resumo copiado!')).catch(()=>{const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');toast('Resumo copiado!')}catch(e){toast('Não foi possível copiar')}a.remove()});
+}
+function incluirEm(cat){
+  const m=document.createElement('div');m.className='modal';m.id='mdl';
+  m.innerHTML=`<div class="box"><div style="display:flex;justify-content:space-between;font-weight:800;margin-bottom:8px"><span>➕ Incluir produto em ${esc(cat)}</span><span style="cursor:pointer" onclick="$('mdl').remove()">✕</span></div>
+  <input id="np" placeholder="Nome do produto" autocomplete="off"><div style="height:8px"></div><select id="nu" style="width:100%;padding:10px">${unOpts('Unidade(s)')}</select>
+  <div style="height:10px"></div><button class="btn" onclick="confirmaInclusao('${esc(cat).replace(/'/g,"\'")}')">Incluir na lista</button></div>`;
+  document.body.appendChild(m);setTimeout(()=>$('np').focus(),50);
+}
+function confirmaInclusao(cat){
+  const nome=($('np').value||'').trim().toUpperCase();if(nome.length<3)return toast('Digite o nome do produto.');
+  const k='novo:'+nome.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+  const ex=lista().find(b=>b.k===k||b.nome.toUpperCase()===nome);
+  if(ex){$('mdl').remove();busca=ex.nome;render();return toast('Esse produto já está na lista.')}
+  items[k]={k,nome,cat,un:$('nu').value,conf:false,fisico:'',qtd:'',obs:'',extra:true};
+  abertas[cat]=true;$('mdl').remove();mudou();render();toast('Produto incluído em '+cat+' — informe a quantidade.');
 }
 async function abrirCatalogo(){
   if(!catalogo){try{catalogo=await rpc('ri_catalogo',{p_token:T})}catch(e){return toast(e.message)}}
