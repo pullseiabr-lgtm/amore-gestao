@@ -6,21 +6,36 @@
 <meta name="robots" content="noindex,nofollow" />
 <title>Tratativa — Plantão de Gestão</title>
 <style>
-:root{--vinho:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5}
-@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.45}
-.wrap{max-width:640px;margin:0 auto;padding:14px 12px 80px}
-.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
-h1{font-size:19px;margin:2px 0 4px}.sub{color:var(--muted);font-size:13px}
-.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:10px}
-.btn{background:var(--vinho);color:#fff;border:1px solid var(--vinho);border-radius:12px;padding:13px 16px;font-weight:700;font-size:15px;width:100%;cursor:pointer;margin-top:8px}
-.btn.g{background:transparent;color:var(--text);border-color:var(--border)}.btn.ok{background:#16a34a;border-color:#16a34a}.btn:disabled{opacity:.5}
-textarea,input,select{width:100%;padding:11px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:15px;font-family:inherit;margin-top:6px}
-.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11.5px;font-weight:800;border:1px solid currentColor}
-.m{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.m img{width:92px;height:92px;object-fit:cover;border-radius:8px}.m video{width:140px;border-radius:8px}
-label.up{display:block;text-align:center;padding:12px;border:1px dashed var(--vinho);color:var(--vinho);font-weight:700;border-radius:10px;margin-top:8px;cursor:pointer}
-.h{border-bottom:1px solid var(--border);padding:5px 0;font-size:12.5px}
-.msg{padding:40px 0;text-align:center;color:var(--muted)}
+:root{--vinho:#E0566B;--vinho2:#F58CA0;--bg:#FFF6F8;--card:#FFFFFF;--text:#33262B;--muted:#80707A;--border:#F7D9E0;--tint:#FFF1F4;--azul:#5AA9F5;--verde:#34C79A;--ambar:#F6B04C;--erro:#F0627A;color-scheme:light}
+*{box-sizing:border-box}html{font-size:17px}
+body{margin:0;background:linear-gradient(180deg,#FFEEF2 0,#F2F8FF 420px,#FFF6F8 100%) fixed;color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5;font-size:17px}
+.wrap{max-width:680px;margin:0 auto;padding:16px 14px 96px}
+.eyebrow{font-size:12.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--vinho);font-weight:800}
+h1{font-size:23px;margin:4px 0 6px;line-height:1.25}.sub{color:var(--muted);font-size:14.5px}
+.card{background:var(--card);border:1.5px solid var(--border);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 6px 18px -10px rgba(224,86,107,.28)}
+.btn{background:linear-gradient(135deg,var(--vinho),var(--vinho2));color:#fff;border:0;border-radius:16px;padding:17px 18px;font-weight:800;font-size:18px;width:100%;cursor:pointer;margin-top:10px;box-shadow:0 8px 18px -8px rgba(224,86,107,.55);min-height:56px}
+.btn.g{background:#fff;color:var(--vinho);border:2px solid var(--vinho2);box-shadow:none}
+.btn.ok{background:linear-gradient(135deg,#2FBF8F,#5ED8B0);box-shadow:0 8px 18px -8px rgba(47,191,143,.55)}
+.btn:disabled{opacity:.5}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}
+.chip{padding:14px 20px;border-radius:99px;border:2px solid var(--border);background:var(--tint);color:var(--text);font-weight:800;font-size:17px;cursor:pointer;min-height:52px}
+.chip.on{background:linear-gradient(135deg,var(--vinho),var(--vinho2));color:#fff;border-color:transparent;box-shadow:0 6px 14px -6px rgba(224,86,107,.6)}
+.top{position:sticky;top:0;background:rgba(255,246,248,.94);backdrop-filter:blur(8px);padding:10px 0;z-index:5}
+.bar{height:12px;background:#FDE3E9;border-radius:99px;overflow:hidden;margin:8px 0 4px}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--azul),var(--verde));border-radius:99px}
+.sec{display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-weight:800;font-size:18px;gap:8px}
+.item{border:2px solid var(--border);border-radius:16px;padding:14px;margin-top:12px;background:var(--tint)}
+.item.done{border-color:#9FE3C9;background:#F1FCF7}.item.nc{border-color:#FFB4C0;background:#FFF3F5}
+.opt{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
+.opt button{padding:16px 4px;border-radius:14px;border:2px solid var(--border);background:#fff;color:var(--text);font-weight:800;font-size:15px;cursor:pointer;min-height:58px}
+button{font-family:inherit}
+textarea,input,select{width:100%;padding:15px;border-radius:14px;border:2px solid #F3B9C6;background:#fff;color:var(--text);font-size:17px;font-family:inherit;margin-top:8px;box-shadow:0 2px 0 rgba(224,86,107,.08)}
+textarea:focus,input:focus,select:focus{outline:none;border-color:var(--azul);box-shadow:0 0 0 4px rgba(90,169,245,.22)}
+label.up{display:block;text-align:center;padding:16px;border:2px dashed var(--azul);background:#EEF6FF;color:#2F7FD6;font-weight:800;font-size:17px;border-radius:16px;margin-top:10px;cursor:pointer}
+.m{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.m img{width:96px;height:96px;object-fit:cover;border-radius:12px}.m video{width:150px;border-radius:12px}
+.warn{color:#E0445F;font-size:14px;font-weight:800;margin-top:8px}
+.pill{display:inline-block;padding:3px 11px;border-radius:99px;font-size:12.5px;font-weight:800;border:1.5px solid currentColor;background:#fff}
+.h{border-bottom:1px solid var(--border);padding:7px 0;font-size:14px}
+.msg{padding:48px 0;text-align:center;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -37,7 +52,7 @@ const vid=u=>/\.(mp4|mov|webm|3gp|m4v)(\?|$)/i.test(u);
 const rpc=async(fn,b)=>{const r=await fetch(SB+'/rest/v1/rpc/'+fn,{method:'POST',headers:H,body:JSON.stringify(b||{})});const t=await r.text();if(!r.ok)throw new Error(t);return t?JSON.parse(t):null};
 const patch=async(b)=>{const r=await fetch(SB+'/rest/v1/plt_ocorrencias?id=eq.'+id,{method:'PATCH',headers:H,body:JSON.stringify({...b,updated_at:new Date().toISOString()})});if(!r.ok)throw new Error(await r.text())};
 const audit=(acao,antes,depois)=>fetch(SB+'/rest/v1/plt_auditoria',{method:'POST',headers:H,body:JSON.stringify({entidade:'ocorrencia',entidade_id:id,acao,antes:antes||null,depois:depois||null,usuario:D.quem})});
-const ST={identificado:['Identificado','#dc2626'],encaminhado:['Encaminhado','#7c3aed'],em_execucao:['Em execução','#2563eb'],aguardando_validacao:['Aguardando validação','#ca8a04'],concluido:['Concluído','#16a34a']};
+const ST={identificado:['Identificado','#EF5B73'],encaminhado:['Encaminhado','#8E7CF0'],em_execucao:['Em execução','#4C9BF0'],aguardando_validacao:['Aguardando validação','#E9A23B'],concluido:['Concluído','#2FBF8F']};
 const PR={baixa:'🟢 Baixa',media:'🟡 Média',alta:'🟠 Alta',critica:'🔴 Crítica'};
 const CAT={ocorrencia:'🚨 Ocorrência',demanda:'📋 Solicitação de demanda',observacao:'📝 Observação'};
 let D={quem:localStorage.getItem('plt_quem')||'',ev:[],nomes:[]};
@@ -55,11 +70,11 @@ function tela(){
   const pn=x=>String(x||'').trim().split(/\s+/)[0].toLowerCase(),gestao=!!D.quem&&(p.integrantes||[]).some(n=>pn(n)===pn(D.quem)),resp=!!o.resp_nome&&o.resp_nome===D.quem;
   let h=`<div class="eyebrow">Plantão de Gestão · Tratativa</div><h1>#${o.numero} · ${CAT[o.categoria]||CAT.ocorrencia}</h1>
   <div class="sub">${esc(o.loja)} · ${esc(o.setor_nome||'')}${o.item_texto?' · '+esc(o.item_texto):''} · identificada por ${esc(o.identificado_por||'—')} em ${dh(o.identificado_em)}</div>
-  <div style="margin:8px 0"><span class="pill" style="color:${st[1]}">${st[0]}</span> <span class="pill" style="color:#4b5563">${PR[o.prioridade]||''}</span>${atras?' <span class="pill" style="color:#b91c1c">⏰ Prazo vencido</span>':''}${o.reincidente?' <span class="pill" style="color:#7c2d12">🔁 Reincidente</span>':''}${o.rnc_numero?' <span class="pill" style="color:#0f766e">RNC '+esc(o.rnc_numero)+'</span>':''}</div>
+  <div style="margin:8px 0"><span class="pill" style="color:${st[1]}">${st[0]}</span> <span class="pill" style="color:#7C8AA0">${PR[o.prioridade]||''}</span>${atras?' <span class="pill" style="color:#E0445F">⏰ Prazo vencido</span>':''}${o.reincidente?' <span class="pill" style="color:#E07A3F">🔁 Reincidente</span>':''}${o.rnc_numero?' <span class="pill" style="color:#22A9A0">RNC '+esc(o.rnc_numero)+'</span>':''}</div>
   <div class="card">${esc(o.descricao)}${midias(o.evidencias)}</div>`;
-  h+=o.resp_nome?`<div class="card"><b>🛠 Tratativa</b><div style="margin-top:4px">${esc(o.acao||'—')}</div><div class="sub" style="margin-top:6px">Responsável: <b>${esc(o.resp_nome)}</b>${o.resp_setor?' ('+esc(o.resp_setor)+')':''}<br>Prazo: <b style="color:${atras?'#b91c1c':'inherit'}">${dh(o.prazo)}</b>${o.exige_aprovacao?' · exige aprovação da gestão':''}${o.obs_gestao?'<br>Obs. da gestão: '+esc(o.obs_gestao):''}</div></div>`:'<div class="card sub">Ainda sem tratativa direcionada — a gestão do plantão vai definir responsável e prazo.</div>';
-  if(o.devolutiva)h+=`<div class="card" style="border-color:#16a34a"><b>↩ Devolutiva de ${esc(o.devolutiva_por||'')}</b> <span class="sub">${dh(o.devolutiva_em)}</span><div>${esc(o.devolutiva)}</div>${midias(o.devolutiva_evid)}</div>`;
-  if(o.status==='concluido'&&o.categoria!=='observacao')h+=`<div class="card" style="border-color:#16a34a">✅ Concluída em ${dh(o.concluido_em)} por ${esc(o.concluido_por||'')}${o.obs_conclusao?'<div>'+esc(o.obs_conclusao)+'</div>':''}${midias(o.evid_conclusao)}</div>`;
+  h+=o.resp_nome?`<div class="card"><b>🛠 Tratativa</b><div style="margin-top:4px">${esc(o.acao||'—')}</div><div class="sub" style="margin-top:6px">Responsável: <b>${esc(o.resp_nome)}</b>${o.resp_setor?' ('+esc(o.resp_setor)+')':''}<br>Prazo: <b style="color:${atras?'#E0445F':'inherit'}">${dh(o.prazo)}</b>${o.exige_aprovacao?' · exige aprovação da gestão':''}${o.obs_gestao?'<br>Obs. da gestão: '+esc(o.obs_gestao):''}</div></div>`:'<div class="card sub">Ainda sem tratativa direcionada — a gestão do plantão vai definir responsável e prazo.</div>';
+  if(o.devolutiva)h+=`<div class="card" style="border-color:#2FBF8F"><b>↩ Devolutiva de ${esc(o.devolutiva_por||'')}</b> <span class="sub">${dh(o.devolutiva_em)}</span><div>${esc(o.devolutiva)}</div>${midias(o.devolutiva_evid)}</div>`;
+  if(o.status==='concluido'&&o.categoria!=='observacao')h+=`<div class="card" style="border-color:#2FBF8F">✅ Concluída em ${dh(o.concluido_em)} por ${esc(o.concluido_por||'')}${o.obs_conclusao?'<div>'+esc(o.obs_conclusao)+'</div>':''}${midias(o.evid_conclusao)}</div>`;
   h+=`<div class="card"><b>👤 Quem é você?</b><select id="quem"><option value="">— escolher —</option>${D.nomes.map(n=>`<option${n===D.quem?' selected':''}>${esc(n)}</option>`).join('')}</select><div class="sub">Necessário para registrar devolutiva ou validar.</div></div>`;
   if(D.quem&&o.status!=='concluido'){
     if(resp||(!o.resp_nome&&gestao)){

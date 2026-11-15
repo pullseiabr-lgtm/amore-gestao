@@ -6,9 +6,8 @@
 <meta name="robots" content="noindex,nofollow" />
 <title>Relatório de Plantão — Amore</title>
 <style>
-:root{--vinho:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--crit:#DC2626}
-@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+:root{--vinho:#E0566B;--bg:#FFF6F8;--card:#fff;--text:#33262B;--muted:#80707A;--border:#F7D9E0;--ok:#2FBF8F;--warn:#E9A23B;--crit:#EF5B73;color-scheme:light}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#FFEEF2 0,#F2F8FF 420px,#FFF6F8 100%) fixed;font-size:17px;color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
 .wrap{max-width:760px;margin:0 auto;padding:22px 16px 60px}
 header{border-bottom:2px solid var(--vinho);padding-bottom:12px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap}
 .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
@@ -21,7 +20,7 @@ h1{font-size:21px;margin:4px 0}h2{font-size:15px;margin:22px 0 8px;color:var(--v
 .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11.5px;font-weight:800;border:1px solid currentColor}
 .bar{height:8px;background:var(--border);border-radius:99px;overflow:hidden}.bar i{display:block;height:100%}
 .m{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.m img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--border)}.m video{width:140px;border-radius:8px}
-.btn{background:var(--vinho);color:#fff;border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer}
+.btn{background:linear-gradient(135deg,#E0566B,#F58CA0);color:#fff;border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer}
 .msg{padding:40px 0;text-align:center;color:var(--muted)}
 @media print{.btn{display:none}body{background:#fff}}
 </style>
@@ -35,10 +34,10 @@ const id=new URLSearchParams(location.search).get('id');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const dh=d=>d?new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
 const d0=d=>d?String(d).slice(0,10).split('-').reverse().join('/'):'—';
-const cor=v=>v==null?'#6f656a':v>=90?'#15803D':v>=70?'#B45309':'#DC2626';
+const cor=v=>v==null?'#6f656a':v>=90?'#2FBF8F':v>=70?'#E9A23B':'#EF5B73';
 const vid=u=>/\.(mp4|mov|webm|3gp|m4v)(\?|$)/i.test(u);
 const midias=a=>(a&&a.length)?'<div class="m">'+a.map(u=>vid(u)?`<video src="${esc(u)}" controls></video>`:`<a href="${esc(u)}" target="_blank"><img src="${esc(u)}"></a>`).join('')+'</div>':'';
-const PRIO={baixa:['Baixa','#16a34a'],media:['Média','#ca8a04'],alta:['Alta','#ea580c'],critica:['Crítica','#dc2626']};
+const PRIO={baixa:['Baixa','#2FBF8F'],media:['Média','#E9A23B'],alta:['Alta','#F2894A'],critica:['Crítica','#EF5B73']};
 const ST={identificado:'Identificado',encaminhado:'Encaminhado',em_execucao:'Em execução',aguardando_validacao:'Aguardando validação',concluido:'Concluído'};
 async function main(){
   const app=document.getElementById('app');
@@ -52,7 +51,7 @@ async function main(){
   const conf=(C+N)?Math.round(C/(C+N)*1000)/10:null;
   const pend=oc.filter(o=>o.status!=='concluido');
   let h=`<header><div><div class="eyebrow">Plantão de Gestão</div><h1>${esc(p.loja)} · plantão nº ${p.numero}</h1><div class="sub">${d0(p.data)} · ${p.status==='encerrado'?'Encerrado':'Em andamento'}</div></div><button class="btn" onclick="print()">Salvar em PDF</button></header>`;
-  h+=`<div class="grid"><div class="k"><b style="color:${cor(conf)}">${conf==null?'—':conf+'%'}</b><span>Conformidade geral</span></div><div class="k"><b style="color:#15803D">${C}</b><span>Conformes</span></div><div class="k"><b style="color:#DC2626">${N}</b><span>Não conformes</span></div><div class="k"><b>${oc.length}</b><span>Ocorrências (${pend.length} pendentes)</span></div></div>`;
+  h+=`<div class="grid"><div class="k"><b style="color:${cor(conf)}">${conf==null?'—':conf+'%'}</b><span>Conformidade geral</span></div><div class="k"><b style="color:#2FBF8F">${C}</b><span>Conformes</span></div><div class="k"><b style="color:#EF5B73">${N}</b><span>Não conformes</span></div><div class="k"><b>${oc.length}</b><span>Ocorrências (${pend.length} pendentes)</span></div></div>`;
   h+=`<h2>Identificação</h2><div class="card"><div><b>Chegada:</b> ${dh(p.chegada_em)}</div><div><b>Saída:</b> ${dh(p.saida_em)}</div><div><b>Gestor / líder da loja:</b> ${esc(p.responsavel_loja||'—')}</div><div><b>Integrantes:</b> ${esc((p.integrantes||[]).join(' + '))}</div><div class="sub">Checklist versão ${p.versao}</div></div>`;
   h+='<h2>Resultado por setor</h2>';
   (p.estrutura||[]).forEach(s=>{
@@ -60,7 +59,7 @@ async function main(){
     const c=its.filter(x=>x.r.resposta==='conforme').length,n=its.filter(x=>x.r.resposta==='nao_conforme').length,pc=(c+n)?Math.round(c/(c+n)*1000)/10:null;
     h+=`<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(s.nome)}</b><b style="color:${cor(pc)}">${pc==null?'—':pc+'%'}</b></div><div class="bar"><i style="width:${pc||0}%;background:${cor(pc)}"></i></div>`;
     its.filter(x=>x.i.tipo!=='nome').filter(x=>x.r.resposta!=='conforme'||x.r.obs||(x.r.evidencias||[]).length).forEach(x=>{
-      const tag=x.r.resposta==='nao_conforme'?'<span class="pill" style="color:#DC2626">Não conforme</span>':x.r.resposta==='na'?'<span class="pill" style="color:#6f656a">N/A</span>':'<span class="pill" style="color:#15803D">Conforme</span>';
+      const tag=x.r.resposta==='nao_conforme'?'<span class="pill" style="color:#EF5B73">Não conforme</span>':x.r.resposta==='na'?'<span class="pill" style="color:#6f656a">N/A</span>':'<span class="pill" style="color:#2FBF8F">Conforme</span>';
       h+=`<div style="margin-top:8px;font-size:13.5px">${tag} ${esc(x.i.texto)}${x.r.obs?`<div class="sub">${esc(x.r.obs)}</div>`:''}${x.r.sem_evidencia?`<div class="sub">Sem evidência: ${esc(x.r.sem_evidencia)}</div>`:''}${midias(x.r.evidencias)}</div>`;
     });
     h+='</div>';
