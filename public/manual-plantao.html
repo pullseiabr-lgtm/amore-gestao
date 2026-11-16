@@ -4,140 +4,183 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="robots" content="noindex,nofollow" />
-<title>Manual do Plantão de Gestão — Amore</title>
+<title>Manual do módulo Plantão de Gestão — Amore</title>
 <style>
 :root{--v:#8B1212;--v2:#B03A3A;--bg:#f3eeed;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;
   --ok:#15803D;--okbg:#DCFCE7;--warn:#B45309;--warnbg:#FEF3C7;--bad:#B91C1C;--badbg:#FEE2E2;--info:#0369A1;--infobg:#E0F2FE;--rose:#F7E8EA}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.4;-webkit-font-smoothing:antialiased}
-.bar{max-width:1120px;margin:14px auto 0;padding:0 14px;display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.35;-webkit-font-smoothing:antialiased}
+.bar{max-width:1180px;margin:14px auto 0;padding:0 14px;display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap}
 .bar b{color:var(--v);font-size:14px}
 .btn{border:1px solid var(--v);background:var(--v);color:#fff;border-radius:10px;padding:9px 16px;font:inherit;font-size:13px;font-weight:800;cursor:pointer}
-.lam{width:min(1120px,calc(100% - 28px));aspect-ratio:297/210;margin:14px auto;background:var(--card);border-radius:16px;box-shadow:0 10px 34px -14px rgba(80,20,25,.3);display:flex;flex-direction:column;overflow:hidden;position:relative}
-@media(max-width:900px){.lam{aspect-ratio:auto}}
-.top{background:var(--v);color:#fff;padding:14px 26px;display:flex;align-items:center;gap:14px}
-.top img{height:30px;filter:brightness(0) invert(1)}
-.top .t{flex:1}.top .k{font-size:11px;letter-spacing:.16em;text-transform:uppercase;opacity:.85;font-weight:800}
-.top h1{font-size:clamp(18px,2.6vw,26px);line-height:1.1;margin-top:2px}
-.top .n{font-size:34px;font-weight:900;opacity:.35}
-.body{flex:1;padding:16px 26px 12px;display:flex;flex-direction:column;gap:12px;min-height:0}
-.lead{font-size:clamp(12px,1.35vw,15px);color:#3b3236;max-width:980px}
+.lam{width:min(1180px,calc(100% - 28px));aspect-ratio:297/210;margin:14px auto;background:var(--card);border-radius:16px;box-shadow:0 10px 34px -14px rgba(80,20,25,.3);display:flex;flex-direction:column;overflow:hidden}
+@media(max-width:980px){.lam{aspect-ratio:auto}}
+.top{background:var(--v);color:#fff;padding:11px 24px;display:flex;align-items:center;gap:14px}
+.top img{height:28px}
+.top .t{flex:1}.top .k{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;opacity:.85;font-weight:800}
+.top h1{font-size:clamp(16px,2.1vw,23px);line-height:1.1;margin-top:2px}
+.top .n{font-size:30px;font-weight:900;opacity:.35}
+.body{flex:1;padding:12px 24px 8px;display:flex;flex-direction:column;gap:9px;min-height:0}
+.lead{font-size:clamp(11px,1.15vw,13.5px);color:#3b3236}
 .lead b{color:var(--v)}
-.g{display:grid;gap:10px}
+.g{display:grid;gap:8px}
 .g4{grid-template-columns:repeat(4,1fr)}.g3{grid-template-columns:repeat(3,1fr)}.g2{grid-template-columns:repeat(2,1fr)}
-@media(max-width:900px){.g4,.g3,.g2{grid-template-columns:1fr}}
-.c{border:1px solid var(--border);border-radius:12px;padding:9px 11px;background:#fff}
-.c h3{font-size:clamp(11.5px,1.25vw,13.5px);color:var(--v);display:flex;gap:7px;align-items:center;margin-bottom:4px}
-.c h3 i{font-style:normal;background:var(--v);color:#fff;border-radius:99px;min-width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:11px}
-.c p{font-size:clamp(10px,1.05vw,11.8px);color:var(--muted);margin-bottom:3px}
-.c li{font-size:clamp(10px,1.05vw,11.8px);margin-left:14px;line-height:1.35}
-.tag{display:inline-block;font-size:10.5px;font-weight:800;padding:2px 9px;border-radius:99px;margin:2px 3px 0 0}
-.tg{background:var(--okbg);color:var(--ok)}.ty{background:var(--warnbg);color:var(--warn)}.tr{background:var(--badbg);color:var(--bad)}.tb{background:var(--infobg);color:var(--info)}.tn{background:#eee;color:#555}
-.flow{display:flex;gap:6px;align-items:stretch}
-.st{flex:1;background:var(--rose);border-radius:12px;padding:8px 9px;position:relative}
-.st b{display:block;font-size:clamp(10.5px,1.15vw,12.5px);color:var(--v)}.st span{font-size:clamp(9.5px,1vw,11px);color:#4a3f44}
-.st:not(:last-child):after{content:"›";position:absolute;right:-8px;top:50%;transform:translateY(-50%);color:var(--v);font-weight:900;font-size:18px;z-index:2}
-@media(max-width:900px){.flow{flex-direction:column}.st:not(:last-child):after{display:none}}
-.foot{padding:8px 26px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
-.q{background:var(--v);color:#fff;border-radius:12px;padding:10px 14px}
-.q b{display:block;font-size:12px;letter-spacing:.1em;text-transform:uppercase;opacity:.85;margin-bottom:4px}
-.q ol{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;list-style:none;counter-reset:q}
-.q li{counter-increment:q;font-size:clamp(10px,1.1vw,12px);font-weight:700;line-height:1.25}
-.q li:before{content:counter(q);display:inline-block;background:#fff;color:var(--v);width:18px;height:18px;border-radius:99px;text-align:center;font-size:11px;margin-right:6px;font-weight:900}
-@media(max-width:900px){.q ol{grid-template-columns:1fr}}
-table{width:100%;border-collapse:collapse}
-th,td{font-size:clamp(10px,1.05vw,11.8px);text-align:left;padding:4px 6px;border-bottom:1px solid var(--border)}
-th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+@media(max-width:980px){.g4,.g3,.g2{grid-template-columns:1fr}}
+.c{border:1px solid var(--border);border-radius:11px;padding:7px 10px;background:#fff}
+.c h3{font-size:clamp(11px,1.12vw,13px);color:var(--v);display:flex;gap:6px;align-items:center;margin-bottom:3px}
+.c h3 i{font-style:normal;background:var(--v);color:#fff;border-radius:99px;min-width:21px;height:21px;display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;padding:0 5px}
+.c p,.c li{font-size:clamp(9.5px,.98vw,11.4px);color:#3b3236}
+.c li{margin-left:13px;line-height:1.3}
+.c p{margin-bottom:2px}
+.c .tl{font-size:9.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:3px 0 1px}
+.tag{display:inline-block;font-size:10px;font-weight:800;padding:1px 8px;border-radius:99px;margin:1px 2px 0 0}
+.tg{background:var(--okbg);color:var(--ok)}.ty{background:var(--warnbg);color:var(--warn)}.tr{background:var(--badbg);color:var(--bad)}.tb{background:var(--infobg);color:var(--info)}.tn{background:#eee;color:#555}.tp{background:#EDE9FE;color:#6D28D9}
+.flow{display:flex;gap:6px}
+.st{flex:1;background:var(--rose);border-radius:10px;padding:6px 8px;position:relative}
+.st b{display:block;font-size:clamp(10px,1.05vw,12px);color:var(--v)}.st span{font-size:clamp(9px,.92vw,10.6px);color:#4a3f44}
+.st:not(:last-child):after{content:"›";position:absolute;right:-7px;top:50%;transform:translateY(-50%);color:var(--v);font-weight:900;font-size:17px;z-index:2}
+@media(max-width:980px){.flow{flex-direction:column}.st:not(:last-child):after{display:none}}
+.foot{padding:6px 24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)}
+.note{background:var(--warnbg);border-radius:10px;padding:6px 10px;font-size:clamp(9.5px,.98vw,11.4px);color:#6b4a0b}
+.note b{color:#7a3d00}
+.key{background:var(--v);color:#fff;border-radius:11px;padding:8px 12px;font-size:clamp(10px,1.05vw,12px)}
+.key b{text-transform:uppercase;letter-spacing:.08em;font-size:10px;opacity:.85;margin-right:6px}
 @page{size:A4 landscape;margin:0}
 @media print{body{background:#fff}.bar{display:none}.lam{width:297mm;height:210mm;aspect-ratio:auto;margin:0;border-radius:0;box-shadow:none;page-break-after:always;break-after:page}
  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style>
 </head>
 <body>
-<div class="bar"><b>Manual do Plantão de Gestão · 3 lâminas</b><button class="btn" onclick="window.print()">🖨️ Imprimir / salvar em PDF</button></div>
+<div class="bar"><b>Manual do módulo Plantão de Gestão · 3 lâminas</b><button class="btn" onclick="window.print()">🖨️ Imprimir / salvar em PDF</button></div>
 
 <!-- LÂMINA 1 -->
 <section class="lam">
-  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">Painel Amore Food · Plantão de Gestão</div><h1>Para que serve e o que observar</h1></div><div class="n">1/3</div></div>
+  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">Painel Amore Food · Gestão → Plantão de Gestão</div><h1>Visão geral: o que é, quem usa e como tudo se conecta</h1></div><div class="n">1/3</div></div>
   <div class="body">
-    <p class="lead"><b>Gestão presente. Operação eficiente.</b> O plantão deixa de ser uma visita de acompanhamento e passa a ser uma ferramenta de gestão: cada verificação gera uma informação que pode ser <b>acompanhada, corrigida e comparada</b> entre Amore CD, Amore Paiva e Flow CD. Não basta ver se a loja funciona — precisamos entender <b>como</b> funciona, onde estão os gargalos e as oportunidades.</p>
-    <div class="g g4">
-      <div class="c"><h3><i>01</i>Operação e processos</h3><ul><li>Cozinha, salão e atendimento</li><li>Fichas técnicas e porções</li><li>Tempo de preparo e entrega</li><li>Higiene e temperatura dos alimentos</li></ul></div>
-      <div class="c"><h3><i>02</i>Estoque e compras</h3><ul><li>Estoque físico × sistema</li><li>Ruptura e vencimento</li><li>Compras × consumo × cardápio</li><li>Perdas, parados e transferências</li></ul></div>
-      <div class="c"><h3><i>03</i>Administrativo e financeiro</h3><ul><li>Caixa, sangrias e divergências</li><li>Cancelamentos, descontos e cortesias</li><li>Notas fiscais e prestação de contas</li><li>CMV e margem</li></ul></div>
-      <div class="c"><h3><i>04</i>Marketing e vendas</h3><ul><li>Balcão, preços e campanhas</li><li>Ticket médio e clientes atendidos</li><li>Venda adicional e delivery</li><li>Avaliações Google e concorrência</li></ul></div>
-      <div class="c"><h3><i>05</i>Gestão de pessoas</h3><ul><li>Uniforme, pontualidade e escala</li><li>Produtividade e postura</li><li>Conhecimento do cardápio</li><li>Treinamentos e reforço de equipe</li></ul></div>
-      <div class="c"><h3><i>06</i>Estrutura e segurança</h3><ul><li>Conservação e equipamentos</li><li>Coifas, ar-condicionado, refrigeração</li><li>Elétrica, hidráulica e iluminação</li><li>Manutenção preventiva e segurança</li></ul></div>
-      <div class="c"><h3><i>07</i>Experiência do cliente</h3><ul><li>Recepção e tempo de espera</li><li>Qualidade e apresentação dos pratos</li><li>Reclamações e reincidência</li><li>Conforto e oportunidades de encantamento</li></ul></div>
-      <div class="c"><h3><i>08</i>Estratégia e oportunidades</h3><ul><li>Gargalos e redução de custos</li><li>Aumento de faturamento</li><li>Cardápio e integração entre lojas</li><li>Automação e benchmarking</li></ul></div>
+    <p class="lead">O <b>Plantão de Gestão</b> é a ferramenta de acompanhamento das lojas <b>Amore CD, Amore Paiva e Flow CD</b> nos finais de semana. A dupla de plantão visita a loja, preenche um <b>checklist por setor com fotos/vídeos</b>, registra os desvios, cobra as correções com <b>responsável e prazo</b> e fecha a visita com um <b>relatório</b>. Os indicadores do painel mostram conformidade, atrasos e reincidências.</p>
+    <div class="c"><h3>Fluxo completo — da escala ao relatório</h3>
+      <div class="flow">
+        <div class="st"><b>1 · Escala</b><span>Aba Escala: data, dupla, lojas e horário; link do plantonista.</span></div>
+        <div class="st"><b>2 · Chegada</b><span>Executar (ou link no celular): loja, integrantes e registro da chegada.</span></div>
+        <div class="st"><b>3 · Checklist</b><span>Cada item: Conforme, Não conforme ou N/A, com observação e foto/vídeo.</span></div>
+        <div class="st"><b>4 · Ocorrência</b><span>Todo “Não conforme” (ou registro livre) vira ocorrência com prioridade.</span></div>
+        <div class="st"><b>5 · Tratativa</b><span>Responsável, prazo e ação; execução, devolutiva e validação.</span></div>
+        <div class="st"><b>6 · Encerramento</b><span>Parecer da gestão, saída registrada, conformidade calculada.</span></div>
+        <div class="st"><b>7 · Relatório</b><span>Link/PDF por plantão e indicadores no Painel.</span></div>
+      </div>
     </div>
-    <div class="q"><b>Cada visita precisa responder a 5 perguntas</b><ol><li>O que está funcionando bem?</li><li>O que está fora do padrão?</li><li>Onde perdemos dinheiro ou oportunidades?</li><li>O que precisa ser corrigido ou aprimorado?</li><li>Quem será responsável por fazer acontecer?</li></ol></div>
+    <div class="g g3">
+      <div class="c"><h3><i>A</i>3 formas de acessar</h3>
+        <ul><li><b>Painel Amore</b> (computador ou celular): menu Gestão → Plantão de Gestão, com 7 abas.</li>
+        <li><b>Link do plantonista</b> (<i>plantao.html</i>): abre direto no celular, sem login, para fazer o checklist na loja.</li>
+        <li><b>Páginas públicas</b>: <i>tratativa</i> (responsável devolve a correção) e <i>relatório</i> (leitura/PDF).</li></ul></div>
+      <div class="c"><h3><i>B</i>Quem faz o quê</h3>
+        <ul><li><b>Dupla de plantão</b> (Aline, Aristela, Esdras, Wagner): executa a visita e valida as correções.</li>
+        <li><b>Responsável pela tratativa</b>: recebe o desvio, executa e devolve com evidência.</li>
+        <li><b>Administradores</b>: configuram checklist, equipe, duplas, prazos e textos.</li></ul></div>
+      <div class="c"><h3><i>C</i>Conceitos-chave</h3>
+        <p class="tl">Resposta do item</p><span class="tag tg">Conforme</span><span class="tag tr">Não conforme</span><span class="tag tn">N/A</span>
+        <p class="tl">Prioridade</p><span class="tag tg">Baixa</span><span class="tag ty">Média</span><span class="tag" style="background:#FFEDD5;color:#C2410C">Alta</span><span class="tag tr">Crítica</span>
+        <p class="tl">Status da ocorrência</p><span class="tag tr">Identificado</span><span class="tag tp">Encaminhado</span><span class="tag tb">Em execução</span><span class="tag ty">Aguard. validação</span><span class="tag tg">Concluído</span></div>
+    </div>
+    <div class="g g2">
+      <div class="note"><b>Evidência é regra:</b> toda etapa pede foto/vídeo (exceto os itens informados pelo líder/gestor da loja). “Não conforme” exige justificativa + foto/vídeo; “N/A” exige justificativa. Sem isso o plantão não encerra.</div>
+      <div class="note"><b>Sem WhatsApp automático:</b> o painel gera a mensagem e o link, e você decide enviar (copiar, abrir no WhatsApp ou pré-visualizar). Nada é disparado sozinho.</div>
+    </div>
   </div>
-  <div class="foot"><span>Amore Food · Manual do Plantão de Gestão</span><span>Aline · Aristela · Esdras · Wagner</span></div>
+  <div class="foot"><span>Amore Food · Manual do módulo Plantão de Gestão</span><span>Gestão presente. Operação eficiente.</span></div>
 </section>
 
 <!-- LÂMINA 2 -->
 <section class="lam">
-  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">Painel Amore Food · Plantão de Gestão</div><h1>Como preencher e como o plantão acontece</h1></div><div class="n">2/3</div></div>
+  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">Painel Amore Food · Plantão de Gestão</div><h1>As 7 abas do painel e todas as ferramentas de cada uma</h1></div><div class="n">2/3</div></div>
   <div class="body">
-    <p class="lead">Cada item do checklist é respondido em <b>5 passos</b>. Quanto mais claro o registro, mais fácil é transformar a constatação em ação. <b>Toda ocorrência tem responsável, prazo, prioridade e status.</b></p>
-    <div class="g g3" style="grid-template-columns:repeat(5,1fr)">
-      <div class="c"><h3><i>1</i>Situação</h3><span class="tag tg">Conforme</span><span class="tag ty">Parcial</span><span class="tag tr">Não conforme</span><span class="tag tn">Não se aplica</span></div>
-      <div class="c"><h3><i>2</i>Gravidade</h3><span class="tag tg">Baixa</span><span class="tag ty">Média</span><span class="tag tr">Alta</span><span class="tag" style="background:#7f1d1d;color:#fff">Crítica</span><p style="margin-top:4px">Crítica gera alerta para a gestão.</p></div>
-      <div class="c"><h3><i>3</i>Registro</h3><p>Descreva o que viu, de forma objetiva. Ex.: “falta de produto importante do cardápio, com risco de ruptura durante o atendimento”.</p></div>
-      <div class="c"><h3><i>4</i>Evidência</h3><p>Anexe fotos, vídeos ou documentos. Tudo fica vinculado ao gestor, à unidade e à data da visita.</p></div>
-      <div class="c"><h3><i>5</i>Encaminhamento</h3><span class="tag tr">Corrigir agora</span><span class="tag tb">Enviar à gestão</span><span class="tag ty">Monitorar</span><span class="tag tg">Oportunidade de melhoria</span></div>
-    </div>
-    <div class="c"><h3>Fluxo do plantão — do início ao fechamento</h3>
-      <div class="flow">
-        <div class="st"><b>1 · Início</b><span>Gestor, dupla, data, horário e unidade visitada.</span></div>
-        <div class="st"><b>2 · Checklist</b><span>Avalie todas as frentes e registre evidências.</span></div>
-        <div class="st"><b>3 · Diagnóstico</b><span>Conformidades, desvios, riscos e oportunidades.</span></div>
-        <div class="st"><b>4 · Plano de ação</b><span>Cada desvio vira tarefa com responsável, prazo e prioridade.</span></div>
-        <div class="st"><b>5 · Encaminhamento</b><span>Ao gestor da loja ou ao administrativo.</span></div>
-        <div class="st"><b>6 · Acompanhamento</b><span>Verificar correções e validar evidências.</span></div>
-        <div class="st"><b>7 · Fechamento</b><span>Relatório automático com indicadores e avaliação geral.</span></div>
-      </div>
-    </div>
-    <div class="g g2">
-      <div class="c"><h3>Ocorrência fora do checklist</h3><p>Viu algo que não está previsto? Registre uma <b>nova ocorrência</b> livre, com os mesmos campos: gravidade, evidência, responsável, prazo e status.</p></div>
-      <div class="c"><h3>O gestor da loja responde</h3><p>As ocorrências direcionadas à loja aparecem para o gestor responsável, que informa a tratativa e anexa a comprovação. O plantonista valida a correção.</p></div>
+    <div class="g g4" style="flex:1;align-content:start">
+      <div class="c"><h3><i>📊</i>Painel</h3>
+        <p class="tl">Indicadores</p><ul><li>Plantões realizados e conformidade média</li><li>Desvios registrados (e pendentes)</li><li>Tratativas atrasadas e no prazo (%)</li><li>Agendados não realizados</li><li>Reincidentes e tempo médio de resolução</li></ul>
+        <p class="tl">Análises</p><ul><li>Acompanhamento por loja</li><li><b>Índice de Prontidão</b> do fim de semana (estoque, equipe, mise en place, bebidas, estrutura e frente de loja)</li><li>Ocorrências por setor e histórico de conformidade</li><li>Alerta de tratativas atrasadas (clique abre a ocorrência)</li></ul></div>
+      <div class="c"><h3><i>📅</i>Escala</h3>
+        <ul><li><b>➕ Novo plantão:</b> data, horário, dupla, lojas/roteiro, situação (agendado, realizado, não realizado com motivo obrigatório, cancelado).</li>
+        <li><b>🔁 Gerar escala pelo rodízio:</b> cria vários sábados (18:00) alternando as duplas configuradas.</li>
+        <li><b>Confirmar participação</b> de cada integrante (✔).</li>
+        <li>Contador de <b>plantões realizados por integrante</b>.</li>
+        <li>Em cada plantão agendado: <b>📱 abrir checklist</b>, <b>copiar link/mensagem</b> e <b>enviar por WhatsApp</b>.</li>
+        <li>Alterações ficam registradas (quem, quando, antes e depois).</li></ul></div>
+      <div class="c"><h3><i>✅</i>Executar</h3>
+        <ul><li><b>Iniciar plantão:</b> escolher a escala (opcional), a loja e quem está no plantão; <b>registra a chegada</b>.</li>
+        <li><b>Plantões em andamento:</b> botão “Continuar checklist”.</li>
+        <li><b>Checklist por setor:</b> Conforme / Não conforme / N/A, observação, fotos e vídeos.</li>
+        <li><b>Não conforme</b> cria a ocorrência na hora, com prioridade e atalho “Tratativa / RNC →”.</li>
+        <li><b>Encerrar visita:</b> parecer da gestão, registro da saída e conformidade calculada; mostra mensagem com o link do relatório.</li>
+        <li>Se faltar evidência ou houver registro sem sincronizar, o sistema avisa e não deixa perder nada.</li></ul></div>
+      <div class="c"><h3><i>🚨</i>Ocorrências</h3>
+        <ul><li>Lista de todos os desvios, demandas e observações — do checklist ou <b>registrados livremente</b>.</li>
+        <li>Mostra loja, setor, tipo, prioridade, status, quem identificou e quando.</li>
+        <li>Marca <b>reincidência</b> (problema que volta) e traz as evidências iniciais.</li>
+        <li>Ligação com a <b>RNC</b> quando aberta.</li>
+        <li>Abre o detalhe com tratativa, histórico e botão para a página pública da tratativa.</li></ul></div>
+      <div class="c"><h3><i>🛠</i>Tratativas</h3>
+        <ul><li><b>📨 Solicitar tratativa:</b> setor responsável, responsável pela execução*, prioridade, prazo* (sugerido pela prioridade), ação a executar*, exigir aprovação e observação.</li>
+        <li><b>▶️ Iniciar execução</b> → <b>📤 Enviar p/ validação</b>.</li>
+        <li><b>✅ Validar e concluir</b> (observação + evidências) ou <b>↩ devolver</b> para execução; <b>reabrir</b>.</li>
+        <li><b>🚫 Abrir RNC</b> na Central de Tarefas, importando evidências e histórico (sugerida para crítica, alta e reincidente).</li>
+        <li>📄 Página da tratativa / devolutiva e link copiável; histórico de alterações.</li></ul></div>
+      <div class="c"><h3><i>📄</i>Relatórios</h3>
+        <ul><li>Lista dos plantões por loja, com status, horários, integrantes e conformidade.</li>
+        <li><b>Abrir / PDF</b>, <b>copiar link</b> e <b>WhatsApp</b> do relatório.</li>
+        <li>O relatório traz: identificação, resultado por setor, <b>avaliação de pratos</b>, ocorrências e tratativas, pendências em aberto e o parecer da gestão.</li></ul></div>
+      <div class="c" style="grid-column:span 2"><h3><i>⚙️</i>Configurar <span style="font-weight:600;color:var(--muted)">(somente administradores)</span></h3>
+        <div class="g g2" style="gap:4px 14px"><ul><li><b>Checklist por setor:</b> criar, renomear, ordenar e excluir setores e itens; marcar <b>foto obrigatória</b>, <b>sem foto</b> e o vínculo com a <b>Prontidão</b>; sugestões prontas de itens.</li>
+        <li><b>Publicar nova versão:</b> plantões já iniciados continuam na versão que usaram.</li></ul>
+        <ul><li><b>Equipe e duplas do rodízio</b> (1ª a 4ª semana), <b>tipos de ocorrência</b> e <b>responsável padrão</b> por competência.</li>
+        <li><b>Prazos por prioridade</b> (dias; 0 = imediato) e <b>textos do link</b> do plantonista (boas-vindas, orientações, parecer, encerramento).</li></ul></div></div>
     </div>
   </div>
-  <div class="foot"><span>Amore Food · Manual do Plantão de Gestão</span><span>Toda ação tem dono e prazo</span></div>
+  <div class="foot"><span>Amore Food · Manual do módulo Plantão de Gestão</span><span>* campos obrigatórios</span></div>
 </section>
 
 <!-- LÂMINA 3 -->
 <section class="lam">
-  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">Painel Amore Food · Plantão de Gestão</div><h1>Indicadores, relatórios e escala</h1></div><div class="n">3/3</div></div>
+  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">Painel Amore Food · Plantão de Gestão</div><h1>Na loja, pelo celular: link do plantonista, tratativa e relatório</h1></div><div class="n">3/3</div></div>
   <div class="body">
-    <p class="lead">O painel transforma as respostas em informação gerencial. <b>Não usamos só uma nota geral:</b> cada frente tem sua pontuação, a gravidade dos desvios aparece à parte e dá para ver a evolução entre os plantões.</p>
-    <div class="g g2">
-      <div class="c"><h3>Indicadores do painel</h3>
-        <table><tr><th>Indicador</th><th>O que mostra</th></tr>
-          <tr><td><b>Índice de conformidade</b></td><td>Padrões atendidos</td></tr>
-          <tr><td><b>Desvios identificados / críticos</b></td><td>Problemas e riscos prioritários</td></tr>
-          <tr><td><b>Planos de ação abertos</b></td><td>Pendências de correção</td></tr>
-          <tr><td><b>Ações concluídas</b></td><td>Capacidade de execução</td></tr>
-          <tr><td><b>Reincidência</b></td><td>Problemas que voltam a acontecer</td></tr>
-          <tr><td><b>Oportunidades registradas</b></td><td>Potencial de melhoria</td></tr>
-          <tr><td><b>Desempenho por frente</b></td><td>Áreas que pedem atenção</td></tr></table></div>
-      <div class="c"><h3>Relatórios e inteligência</h3><ul>
-          <li>Comparar <b>Amore CD, Amore Paiva e Flow CD</b> e os plantões anteriores.</li>
-          <li>Ver quais setores mais reincidem em problemas.</li>
-          <li>Acompanhar quais gestores estão executando as ações.</li>
-          <li>Separar o que depende de <b>decisão da diretoria</b>.</li>
-          <li>Relatório em PDF por loja e por plantão, com histórico de evidências e correções.</li>
-          <li>Identificar oportunidades que se repetem entre as unidades.</li></ul></div>
-    </div>
     <div class="g g3">
-      <div class="c"><h3>Escala das duplas</h3><p>Revezamento de quatro integrantes:</p><ul><li><b>Aline e Aristela</b> — plantão conforme escala</li><li><b>Esdras e Wagner</b> — plantão conforme escala</li></ul><p style="margin-top:4px">A distribuição das lojas é configurável: cada dupla pode acompanhar lojas diferentes a cada fim de semana.</p></div>
-      <div class="c"><h3>Regras do módulo</h3><ul><li>Checklist configurável: incluir, editar ou excluir perguntas sem mexer no sistema.</li><li>Desvio crítico gera alerta para a gestão.</li><li>Fechamento gera relatório automático.</li><li>Histórico sempre disponível.</li></ul></div>
-      <div class="c"><h3>Como contribuir</h3><p>Este material está em construção e depende de todos. Sugira novas frentes, indicadores e pontos de controle.</p><p><b>Objetivo:</b> identificar desvios, corrigir processos, aprimorar resultados e executar cada vez melhor o básico.</p></div>
+      <div class="c"><h3><i>📱</i>Link do plantonista</h3>
+        <p>Enviado pela aba Escala. Abre no celular, sem instalar nada.</p>
+        <ul><li>Escolha <b>quem é você</b> e toque em <b>Abrir checklist</b>.</li>
+        <li>Responda cada item e anexe <b>fotos/vídeos</b> (câmera ou galeria).</li>
+        <li>Informe o <b>nome do gestor/líder da loja</b> que acompanhou.</li>
+        <li>Veja o andamento por setor e o que falta.</li></ul>
+        <div class="note" style="margin-top:4px"><b>Conexão ruim?</b> Os registros ficam guardados no aparelho e sincronizam sozinhos quando a internet volta. Um aviso mostra quantos estão na fila.</div></div>
+      <div class="c"><h3><i>➕</i>Ferramentas durante a visita</h3>
+        <ul><li><b>➕ Registrar ocorrência / demanda / observação:</b> tipo, setor, descrição*, prioridade e foto/vídeo* — mesmo fora do checklist.</li>
+        <li><b>🛠 Solicitar tratativa / abrir RNC / avisar por WhatsApp</b> direto no item, com <b>pré-visualização</b> da mensagem antes de enviar.</li>
+        <li><b>➕ Avaliar um prato:</b> qual prato, tempo de entrega (min) e notas de apresentação, sabor e prazo, com observação e foto.</li>
+        <li><b>🏁 Encerrar:</b> parecer da gestão e registro da saída; só encerra com as evidências completas.</li></ul></div>
+      <div class="c"><h3><i>↩</i>Página da tratativa (responsável)</h3>
+        <p>O link da tratativa vai para quem vai corrigir.</p>
+        <ul><li>Mostra o desvio, a ação pedida, o prazo e as evidências da visita.</li>
+        <li>O responsável se identifica (<b>Quem é você?</b>), toca em <b>▶️ Iniciar execução</b> e envia a <b>devolutiva</b> com foto/vídeo da resolução.</li>
+        <li>A dupla de plantão faz a <b>validação</b>: <b>Validar e concluir</b> ou <b>Devolver para execução</b>.</li>
+        <li>Todo o histórico fica registrado (quem fez, quando e o quê).</li></ul></div>
     </div>
-    <div class="q" style="text-align:center"><b>Conceito central</b><span style="font-size:clamp(11px,1.3vw,14px);font-weight:700">Transformar cada plantão em oportunidade: melhorar a operação, desenvolver pessoas, vender mais, reduzir custos e fortalecer os resultados de todas as lojas.</span></div>
+    <div class="g g2">
+      <div class="c"><h3>Regras que o sistema aplica</h3>
+        <ul><li><b>Prazo automático</b> por prioridade (padrão: baixa 7 dias, média 2, alta 1, crítica imediato) — ajustável em Configurar.</li>
+        <li>Tratativa passa de <b>atrasada</b> quando vence o prazo sem conclusão; aparece em vermelho no Painel.</li>
+        <li>Encerrar o checklist <b>não</b> encerra as ocorrências: elas seguem em acompanhamento até a validação.</li>
+        <li>Reenvio de registros nunca duplica ocorrência (mesmo vindo da fila offline).</li>
+        <li>Alterações de escala, checklist e ocorrências ficam em <b>auditoria</b>.</li></ul></div>
+      <div class="c"><h3>Passo a passo rápido do plantão</h3>
+        <ol style="margin-left:15px"><li style="font-size:clamp(9.5px,.98vw,11.4px)">Abra a <b>Escala</b>, confirme sua participação e toque em <b>📱 Abrir checklist</b> (ou use <b>Executar</b> no painel).</li>
+        <li style="font-size:clamp(9.5px,.98vw,11.4px)">Registre a <b>chegada</b> e percorra os setores com fotos/vídeos.</li>
+        <li style="font-size:clamp(9.5px,.98vw,11.4px)">Em cada desvio: justifique, dê a prioridade e <b>solicite a tratativa</b>.</li>
+        <li style="font-size:clamp(9.5px,.98vw,11.4px)">Avalie um prato e registre ocorrências extras.</li>
+        <li style="font-size:clamp(9.5px,.98vw,11.4px)">Escreva o <b>parecer</b>, registre a <b>saída</b> e compartilhe o link do <b>relatório</b>.</li>
+        <li style="font-size:clamp(9.5px,.98vw,11.4px)">Nos dias seguintes, acompanhe em <b>Tratativas</b> e valide as correções.</li></ol></div>
+    </div>
+    <div class="key"><b>Objetivo</b>Cada plantão deve responder: o que está bem, o que está fora do padrão, onde perdemos dinheiro ou oportunidade, o que corrigir e <b>quem vai fazer acontecer</b>.</div>
   </div>
-  <div class="foot"><span>Amore Food · Manual do Plantão de Gestão</span><span>Aline · Aristela · Esdras · Wagner</span></div>
+  <div class="foot"><span>Amore Food · Manual do módulo Plantão de Gestão</span><span>Aline · Aristela · Esdras · Wagner</span></div>
 </section>
 </body>
 </html>
