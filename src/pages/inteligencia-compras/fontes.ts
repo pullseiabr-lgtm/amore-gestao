@@ -10,6 +10,7 @@ export type Fonte = 'nota' | 'pedido' | 'estimativa'
 export interface Linha {
   fonte: Fonte; id: string; loja: string; data: string; produto_key: string; descricao: string; fornecedor_key: string
   un_base: string; qtd_base: number; valor: number; preco_base: number; documento: string; ref_id: string; embalagem: string; status_origem: string
+  sem_qtd: boolean   // nota da prestação de contas sem quantidade/unidade informadas (só valor total)
 }
 export const FONTE_INFO: Record<Fonte, { l: string; c: string }> = {
   nota: { l: 'Nota fiscal (pago)', c: '#1D9E75' }, pedido: { l: 'Pedido', c: '#2563EB' }, estimativa: { l: 'Estimativa (não confirmado)', c: '#D97706' },
@@ -27,7 +28,7 @@ export async function carregarFontes(): Promise<Linha[]> {
   }
   return out
 }
-export const num = (r: any): Linha => ({ ...r, qtd_base: Number(r.qtd_base), valor: Number(r.valor), preco_base: Number(r.preco_base), documento: r.documento || '', embalagem: r.embalagem || '' })
+export const num = (r: any): Linha => ({ ...r, qtd_base: Number(r.qtd_base), valor: Number(r.valor), preco_base: Number(r.preco_base), documento: r.documento || '', embalagem: r.embalagem || '', sem_qtd: !!r.sem_qtd })
 
 export interface Filtro { ini: string; fim: string; loja: string; fonte: '' | Fonte; fornecedor?: string; busca?: string }
 export function periodoDe(p: string, ini: string, fim: string): [string, string] {
@@ -74,7 +75,9 @@ export type Freq = 'frequente' | 'regular' | 'eventual'
 export interface Item {
   key: string; nome: string; un: string; categoriaEmb: string
   eventos: Evento[]                       // compras CONFIRMADAS (nota fiscal)
-  compras: number; qtdTotal: number; desembolso: number
+  compras: number; qtdTotal: number; desembolso: number   // compras = só as COM quantidade (formam preço); desembolso = tudo que a NF registrou
+  comprasTotal: number; comprasSemQtd: number; desembolsoSemQtd: number
+  ultimaCompra?: { data: string; loja: string; fornecedor: string; valor: number; preco: number | null }
   melhor?: Evento; pior?: Evento; ultimo?: Evento; media: number; variacaoPct: number | null
   intervaloMedio: number | null; ultimoIntervalo: number | null
   lojas: LojaStat[]; lojaBarata?: LojaStat; lojaCara?: LojaStat; difLojaPct: number
@@ -85,7 +88,7 @@ export interface Item {
   difEst: number | null; difEstPct: number | null; difPed: number | null; difPedPct: number | null
   altaPct: number | null; altaRef?: Evento
   intervaloCurto: boolean
-  fornecedores: { nome: string; compras: number; valor: number; media: number }[]
+  fornecedores: { nome: string; compras: number; valor: number; media: number; qtd: number }[]
   semNota: boolean
 }
 
@@ -102,7 +105,13 @@ export function analisarFontes(ls: Linha[], ini: string, fim: string): Item[] {
     const evPed = semOutlier(eventos(g.filter(l => l.fonte === 'pedido')), refPreco).ok
     const evEst = semOutlier(eventos(g.filter(l => l.fonte === 'estimativa')), refPreco).ok
 
-    const compras = ev.length; const qtdTotal = ev.reduce((s, e) => s + e.qtd, 0); const desembolso = ev.reduce((s, e) => s + e.valor, 0)
+    const evSQ = eventos(g.filter(l => l.fonte === 'nota' && l.sem_qtd))
+    const compras = ev.length; const qtdTotal = ev.reduce((s, e) => s + e.qtd, 0)
+    const desembolsoSemQtd = evSQ.reduce((s, e) => s + e.valor, 0); const desembolso = ev.reduce((s, e) => s + e.valor, 0) + desembolsoSemQtd
+    const comprasTotal = compras + evSQ.length
+    const todasEv = [...ev, ...evSQ].sort((a, b) => a.data.localeCompare(b.data))
+    const ult = todasEv[todasEv.length - 1]
+    const ultimaCompra = ult ? { data: ult.data, loja: ult.loja, fornecedor: ult.fornecedor, valor: ult.valor, preco: Number.isFinite(ult.preco) ? ult.preco : null } : undefined
     const melhor = ev.length ? [...ev].sort((a, b) => a.preco - b.preco)[0] : undefined
     const pior = ev.length ? [...ev].sort((a, b) => b.preco - a.preco)[0] : undefined
     const ultimo = ev[ev.length - 1]
@@ -120,11 +129,11 @@ export function analisarFontes(ls: Linha[], ini: string, fim: string): Item[] {
     const economia = lojas.length > 1 ? lojas.reduce((s, l) => s + Math.max(0, l.media - lojaBarata.media) * l.qtd, 0) : 0
 
     // frequência (eventos, sem contar duas vezes)
-    const datas = [...new Set(ev.map(e => e.data))].sort()
+    const datas = [...new Set(todasEv.map(e => e.data))].sort()
     const ints: number[] = []; for (let i = 1; i < datas.length; i++) ints.push(dd(datas[i - 1], datas[i]))
     const intervaloMedio = ints.length ? ints.reduce((s, x) => s + x, 0) / ints.length : null
     const ultimoIntervalo = ints.length ? ints[ints.length - 1] : null
-    const freq: Freq = compras <= 2 || (intervaloMedio != null && intervaloMedio > LIM.eventual) ? 'eventual' : compras >= 4 && intervaloMedio != null && intervaloMedio <= LIM.frequente ? 'frequente' : 'regular'
+    const freq: Freq = comprasTotal <= 2 || (intervaloMedio != null && intervaloMedio > LIM.eventual) ? 'eventual' : comprasTotal >= 4 && intervaloMedio != null && intervaloMedio <= LIM.frequente ? 'frequente' : 'regular'
     // tendência: metade inicial × metade final do período analisado
     const i0 = ini > '0001' ? ini : datas[0]; const f0 = fim < '9999' ? fim : datas[datas.length - 1]
     let tendencia: Item['tendencia'] = 'estavel'
@@ -133,8 +142,8 @@ export function analisarFontes(ls: Linha[], ini: string, fim: string): Item[] {
       const a = datas.filter(d => d <= meio).length; const b = datas.filter(d => d > meio).length
       if (b >= 3 && b >= a * 1.5) tendencia = 'aumentando'; else if (a >= 3 && b <= a * 0.5) tendencia = 'reduzindo'
     }
-    const valorMedio = compras ? desembolso / compras : 0
-    const fracionado = compras >= 4 && intervaloMedio != null && intervaloMedio <= LIM.frequente && valorMedio < LIM.fracionadoValor
+    const valorMedio = comprasTotal ? desembolso / comprasTotal : 0
+    const fracionado = comprasTotal >= 4 && intervaloMedio != null && intervaloMedio <= LIM.frequente && valorMedio < LIM.fracionadoValor
     const consolidar = desembolso >= LIM.consolidarValor && ((lojas.length >= 2 && difLojaPct >= LIM.difLojaMin) || fracionado)
     const intervaloCurto = ints.length >= 2 && ultimoIntervalo != null && intervaloMedio != null && ultimoIntervalo < intervaloMedio * 0.5 &&
       ultimoIntervalo < ints.slice(0, -1).reduce((s, x) => s + x, 0) / (ints.length - 1) * 0.5
@@ -151,14 +160,15 @@ export function analisarFontes(ls: Linha[], ini: string, fim: string): Item[] {
     const ce = cmp(est); const cp = cmp(ped)
 
     const porForn = new Map<string, Evento[]>(); ev.forEach(e => porForn.set(e.fornecedor, [...(porForn.get(e.fornecedor) || []), e]))
-    const fornecedores = [...porForn.entries()].map(([nomeF, es]) => ({ nome: nomeF, compras: es.length, valor: es.reduce((s, e) => s + e.valor, 0), media: pond(es) }))
+    const porFornT = new Map<string, Evento[]>(); todasEv.forEach(e => porFornT.set(e.fornecedor, [...(porFornT.get(e.fornecedor) || []), e]))
+    const fornecedores = [...porFornT.entries()].map(([nomeF, es]) => { const pr = porForn.get(nomeF) || []; return { nome: nomeF, compras: es.length, valor: es.reduce((s, e) => s + e.valor, 0), media: pond(pr), qtd: pr.reduce((s, e) => s + e.qtd, 0) } })
 
     out.push({
-      key, nome, un: g[0].un_base, categoriaEmb: g[0].embalagem, eventos: ev, compras, qtdTotal, desembolso, melhor, pior, ultimo, media, variacaoPct,
+      key, nome, un: g[0].un_base, categoriaEmb: g[0].embalagem, eventos: ev, compras, qtdTotal, desembolso, comprasTotal, comprasSemQtd: evSQ.length, desembolsoSemQtd, ultimaCompra, melhor, pior, ultimo, media, variacaoPct,
       intervaloMedio, ultimoIntervalo, lojas, lojaBarata, lojaCara, difLojaPct, freq, tendencia, fracionado, consolidar, economia, descartados,
       estimado: est, estimadoN: evEst.length, pedido: ped, pedidoN: evPed.length,
       difEst: ce?.d ?? null, difEstPct: ce?.p ?? null, difPed: cp?.d ?? null, difPedPct: cp?.p ?? null,
-      altaPct, altaRef, intervaloCurto, fornecedores, semNota: compras === 0,
+      altaPct, altaRef, intervaloCurto, fornecedores, semNota: comprasTotal === 0,
     })
   })
   return out.sort((a, b) => b.desembolso - a.desembolso)
@@ -199,7 +209,8 @@ export interface Forn { nome: string; compras: number; valor: number; produtos: 
 export function resumoFornecedores(its: Item[]): Forn[] {
   const m = new Map<string, { c: number; v: number; p: number; s: number; n: number }>()
   its.forEach(it => {
-    const mn = it.fornecedores.length > 1 ? Math.min(...it.fornecedores.map(f => f.media)) : 0
+    const fp = it.fornecedores.filter(f => f.media > 0)
+    const mn = fp.length > 1 ? Math.min(...fp.map(f => f.media)) : 0
     it.fornecedores.forEach(f => { const a = m.get(f.nome) || { c: 0, v: 0, p: 0, s: 0, n: 0 }; a.c += f.compras; a.v += f.valor; a.p++; if (mn > 0 && f.media / mn <= FATOR_SUSPEITO) { a.s += f.media / mn; a.n++ } m.set(f.nome, a) })
   })
   return [...m.entries()].map(([nome, a]) => ({ nome, compras: a.c, valor: a.v, produtos: a.p, indice: a.n ? a.s / a.n : 1 })).sort((a, b) => b.valor - a.valor)

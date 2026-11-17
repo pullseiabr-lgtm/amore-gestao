@@ -42,7 +42,7 @@ const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6
 const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
 const q=new URLSearchParams(location.search);
 let LOJA=(q.get('loja')||'').trim();
-let DIAS=parseInt(q.get('dias')||'90',10)||90;
+let DIAS=parseInt(q.get('dias')||'3650',10)||3650;
 const LOJAS=['Amore Paiva','Amore CD','Flow CD'];
 const FATOR=5;
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -66,7 +66,7 @@ const rz=(a,b)=>Math.max(a,b)/Math.min(a,b);
 const pond=ev=>{const q=ev.reduce((s,e)=>s+e.qtd,0);return q>0?ev.reduce((s,e)=>s+e.valor,0)/q:0};
 function eventos(ls){
   const m={};ls.forEach(l=>{const k=[l.data,l.loja,l.documento,l.fonte].join('|');(m[k]=m[k]||[]).push(l)});
-  return Object.values(m).map(g=>{const qtd=g.reduce((s,l)=>s+l.qtd_base,0),valor=g.reduce((s,l)=>s+l.valor,0);return{data:g[0].data,loja:g[0].loja,preco:valor/qtd,qtd,valor}}).sort((a,b)=>a.data.localeCompare(b.data));
+  return Object.values(m).map(g=>{const qtd=g.reduce((s,l)=>s+l.qtd_base,0),valor=g.reduce((s,l)=>s+l.valor,0);const mx=[...g].sort((x,y)=>y.valor-x.valor)[0];return{data:g[0].data,loja:g[0].loja,forn:mx.fornecedor_key,preco:valor/qtd,qtd,valor}}).sort((a,b)=>a.data.localeCompare(b.data));
 }
 const semOut=(ev,ref)=>{if(!ev.length)return[];const m=ref||med(ev.map(e=>e.preco));return ev.filter(e=>rz(e.preco,m)<=FATOR)};
 const dd=(a,b)=>Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/864e5);
@@ -75,7 +75,8 @@ function analisar(rows){
   const g={};rows.forEach(l=>{const k=l.produto_key+'|'+l.un_base;(g[k]=g[k]||[]).push(l)});
   return Object.entries(g).map(([k,ls])=>{
     const nome=ls[0].descricao;const un=ls[0].un_base;
-    const ev=semOut(eventos(ls.filter(l=>l.fonte==='nota')));
+    const ev=semOut(eventos(ls.filter(l=>l.fonte==='nota'&&!l.sem_qtd)));
+    const sq=eventos(ls.filter(l=>l.fonte==='nota'&&l.sem_qtd));
     const ref=ev.length?pond(ev):undefined;
     const est=semOut(eventos(ls.filter(l=>l.fonte==='estimativa')),ref);
     const ped=semOut(eventos(ls.filter(l=>l.fonte==='pedido')),ref);
@@ -86,16 +87,17 @@ function analisar(rows){
     const lj={};ev.forEach(e=>(lj[e.loja]=lj[e.loja]||[]).push(e));
     const lojas=Object.entries(lj).map(([loja,es])=>({loja,media:pond(es),qtd:es.reduce((s,e)=>s+e.qtd,0),valor:es.reduce((s,e)=>s+e.valor,0),n:es.length})).sort((a,b)=>a.media-b.media);
     const dif=lojas.length>1?(lojas[lojas.length-1].media-lojas[0].media)/lojas[0].media*100:0;
-    const datas=[...new Set(ev.map(e=>e.data))].sort();const ints=[];for(let i=1;i<datas.length;i++)ints.push(dd(datas[i-1],datas[i]));
+    const datas=[...new Set([...ev,...sq].map(e=>e.data))].sort();const ints=[];for(let i=1;i<datas.length;i++)ints.push(dd(datas[i-1],datas[i]));
     const intervalo=ints.length?ints.reduce((s,x)=>s+x,0)/ints.length:null;
     const e=est.length?pond(est):null,p=ped.length?pond(ped):null;
     const cmp=x=>x!=null&&media>0&&rz(x,media)<=FATOR?(x-media)/media*100:null;
     let alta=null;if(ev.length>=2){const a=pond(ev.slice(0,-1));alta=(ultimo.preco-a)/a*100}
-    return{nome,un,ev,compras:ev.length,qtd:ev.reduce((s,x)=>s+x.qtd,0),desemb:ev.reduce((s,x)=>s+x.valor,0),melhor,pior,ultimo,media,
+    const todasEv=[...ev,...sq].sort((a,b)=>a.data.localeCompare(b.data));const ult=todasEv[todasEv.length-1];
+    return{nome,un,ev,sq:sq.length,ult,compras:ev.length,comprasT:ev.length+sq.length,semNF:ev.length+sq.length===0,pedN:ped.length,estN:est.length,qtd:ev.reduce((s,x)=>s+x.qtd,0),desemb:ev.reduce((s,x)=>s+x.valor,0)+sq.reduce((s,x)=>s+x.valor,0),melhor,pior,ultimo,media,
       varp:melhor&&pior&&ev.length>1?(pior.preco-melhor.preco)/melhor.preco*100:null,lojas,dif,
       economia:lojas.length>1&&dif>=3&&dif<=400?lojas.reduce((s,l)=>s+Math.max(0,l.media-lojas[0].media)*l.qtd,0):0,
       intervalo,est:e,ped:p,dEst:cmp(e),dPed:cmp(p),alta};
-  }).filter(i=>i.compras>0).sort((a,b)=>b.desemb-a.desemb);
+  }).filter(i=>i.comprasT>0||i.pedN>0||i.estN>0).sort((a,b)=>b.desemb-a.desemb);
 }
 
 let DADOS=[],ITENS=[];
@@ -104,7 +106,7 @@ function tabela(cab,linhas,vazio){
   return `<div class="tw"><table><thead><tr>${cab.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${linhas.map(r=>`<tr>${r.map(v=>`<td>${v}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 function render(){
-  const it=ITENS,desemb=it.reduce((s,i)=>s+i.desemb,0),eco=it.reduce((s,i)=>s+i.economia,0);
+  const todos=ITENS,it=ITENS.filter(i=>i.compras>0),desemb=todos.reduce((s,i)=>s+i.desemb,0),eco=it.reduce((s,i)=>s+i.economia,0);
   const por={};it.forEach(i=>i.lojas.forEach(l=>{const a=por[l.loja]=por[l.loja]||{v:0,n:0,s:0,k:0,bar:0,car:0};a.v+=l.valor;a.n+=l.n;
     if(i.lojas.length>1&&i.dif<=400){a.s+=l.media/i.lojas[0].media;a.k++;if(i.dif>=3){if(l===i.lojas[0])a.bar++;if(l===i.lojas[i.lojas.length-1])a.car++}}}));
   const lojasR=Object.entries(por).map(([l,a])=>({l,...a,idx:a.k?a.s/a.k:1})).sort((a,b)=>a.idx-b.idx);
@@ -115,18 +117,21 @@ function render(){
     if(i.dEst!=null&&Math.abs(i.dEst)>=10)alertas.push(['⚖️ Estimativa × pago',tit(i.nome),`Estimado ${brl(i.est)} · pago em nota ${brl(i.media)} (${pct(i.dEst)}).`,Math.abs(i.dEst)]);
   });
   alertas.sort((a,b)=>a[0].localeCompare(b[0])||b[3]-a[3]);
-  const chips=[7,30,90,180,365].map(d=>`<button class="chip ${DIAS===d?'on':''}" onclick="setDias(${d})">${d===365?'12 meses':d+' dias'}</button>`).join('');
+  const chips=[7,30,90,180,365,3650].map(d=>`<button class="chip ${DIAS===d?'on':''}" onclick="setDias(${d})">${d===3650?'Tudo':d===365?'12 meses':d+' dias'}</button>`).join('');
   document.getElementById('app').innerHTML=`
   <header class="top"><div><div class="eyebrow">Painel Amore Food · Compras e Estoque</div><h1>Inteligência de Compras</h1>
-    <div class="sub">${LOJA||'Todas as lojas'} · últimos ${DIAS} dias · gerado em ${new Date().toLocaleString('pt-BR')}</div></div></header>
+    <div class="sub">${LOJA||'Todas as lojas'} · ${DIAS>=3650?'todo o histórico':'últimos '+DIAS+' dias'} · gerado em ${new Date().toLocaleString('pt-BR')}</div></div></header>
   <div class="controls">${chips}
     <select onchange="setLoja(this.value)"><option value="">Todas as lojas</option>${LOJAS.map(l=>`<option ${l===LOJA?'selected':''}>${l}</option>`).join('')}</select>
     <button class="btn" onclick="window.print()">PDF / Imprimir</button><button class="btn alt" onclick="excel()">Excel</button></div>
   <div class="kpis"><div class="kpi"><div class="kn">${brl(desemb)}</div><div class="kl">Desembolso confirmado (NF)</div></div>
-    <div class="kpi"><div class="kn">${it.length}</div><div class="kl">Produtos com nota</div></div>
+    <div class="kpi"><div class="kn">${todos.filter(i=>i.comprasT>0).length}</div><div class="kl">Produtos com nota/prestação</div></div>
+    <div class="kpi"><div class="kn">${todos.length}</div><div class="kl">Produtos no total (c/ pedido e requisição)</div></div>
     <div class="kpi ok"><div class="kn">${brl(eco)}</div><div class="kl">Economia potencial</div></div>
     <div class="kpi bad"><div class="kn">${alertas.length}</div><div class="kl">Alertas</div></div></div>
   <div class="note">Melhor/pior/médio e frequência usam somente nota fiscal (preço efetivamente pago). Pedido e estimativa da requisição ficam separados.</div>
+  <h2>Todos os produtos comprados <small>(com e sem pedido; inclui prestação sem quantidade informada)</small></h2>
+  ${tabela(['Produto','Un.','Aparece em','Compras (NF)','Desembolso (NF)','Último preço pago','Última compra','Pedido','Estimado'],todos.slice(0,400).map(i=>[`<b>${esc(tit(i.nome))}</b>`,i.un,[i.comprasT?'Nota/prestação':'',i.pedN?'Pedido':'',i.estN?'Requisição':''].filter(Boolean).join(' + '),i.comprasT+(i.sq?` (${i.sq} s/ qtd)`:''),i.comprasT?brl(i.desemb):'—',i.compras?brl(i.ultimo.preco):'—',i.ult?`${dBR(i.ult.data)} · ${esc(i.ult.loja)} · ${esc(tit(i.ult.forn))}`:'—',i.ped==null?'—':brl(i.ped),i.est==null?'—':brl(i.est)]))}
   <h2>Histórico de preços por produto</h2>
   ${tabela(['Produto','Un.','Melhor preço','Pior preço','Último','Médio pond.','Var.','Compras','Intervalo','Desembolso'],it.slice(0,150).map(i=>[`<b>${esc(tit(i.nome))}</b>`,i.un,`${brl(i.melhor.preco)}<br><span class="mut">${esc(i.melhor.loja)}</span>`,`${brl(i.pior.preco)}<br><span class="mut">${esc(i.pior.loja)}</span>`,brl(i.ultimo.preco),brl(i.media),`<span class="${cls(i.varp)}">${pct(i.varp)}</span>`,i.compras,i.intervalo==null?'—':Math.round(i.intervalo)+' dias',brl(i.desemb)]))}
   <h2>Comparativo entre lojas <small>(1,00 = sempre o menor preço)</small></h2>
