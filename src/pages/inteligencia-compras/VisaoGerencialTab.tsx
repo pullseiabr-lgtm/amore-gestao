@@ -16,8 +16,8 @@ const th: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', fontSi
 const td: React.CSSProperties = { padding: '7px 10px', fontSize: 12.5, borderBottom: '1px solid var(--border)', verticalAlign: 'top' }
 const btn: React.CSSProperties = { background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)' }
 
-type Visao = 'resumo' | 'historico' | 'lojas' | 'frequencia' | 'negociacao' | 'estimado' | 'alertas'
-const VISOES: [Visao, string][] = [['resumo', '📊 Resumo'], ['historico', '🧾 Histórico de preços'], ['lojas', '🏬 Comparativo de lojas'], ['frequencia', '🔁 Frequência'], ['negociacao', '🤝 Negociação'], ['estimado', '⚖️ Estimado × Realizado'], ['alertas', '🔔 Alertas']]
+type Visao = 'produto' | 'resumo' | 'historico' | 'lojas' | 'frequencia' | 'negociacao' | 'estimado' | 'alertas'
+const VISOES: [Visao, string][] = [['produto', '🔎 Buscar produto'], ['resumo', '📊 Resumo'], ['historico', '🧾 Histórico de preços'], ['lojas', '🏬 Comparativo de lojas'], ['frequencia', '🔁 Frequência'], ['negociacao', '🤝 Negociação'], ['estimado', '⚖️ Estimado × Realizado'], ['alertas', '🔔 Alertas']]
 const PERIODOS: [string, string][] = [['7', 'Últimos 7 dias'], ['30', 'Últimos 30 dias'], ['90', 'Últimos 90 dias'], ['180', 'Últimos 180 dias'], ['365', 'Últimos 12 meses'], ['tudo', 'Todo o histórico'], ['custom', 'Personalizado']]
 const TIPOS: [string, string][] = [['todos', 'Todos os produtos'], ['frequentes', 'Comprados com frequência'], ['eventuais', 'Comprados eventualmente'], ['aumentando', 'Frequência aumentando'], ['reduzindo', 'Frequência reduzindo'], ['fracionado', 'Pequenas qtds muitas vezes'], ['consolidar', 'Candidatos a compra consolidada'], ['alta', 'Com aumento de preço'], ['sem_nota', 'Sem nota fiscal (só pedido/estimativa)']]
 
@@ -36,11 +36,12 @@ const FREQ_L = { frequente: '🔁 Frequente', regular: 'Regular', eventual: '�
 export default function VisaoGerencialTab({ lojaInicial }: { lojaInicial: string }) {
   const { toast } = useToast()
   const [todas, setTodas] = useState<Linha[]>([]); const [loading, setLoading] = useState(true)
-  const [visao, setVisao] = useState<Visao>('resumo')
+  const [visao, setVisao] = useState<Visao>('produto')
   const [per, setPer] = useState('90'); const [ini, setIni] = useState(''); const [fim, setFim] = useState('')
   const [loja, setLoja] = useState(lojaInicial); const [fonte, setFonte] = useState<'' | Fonte>(''); const [forn, setForn] = useState(''); const [busca, setBusca] = useState('')
   const [tipo, setTipo] = useState('todos')
   const [ficha, setFicha] = useState<Item | null>(null)
+  const [pBusca, setPBusca] = useState(''); const [pSel, setPSel] = useState<string>('')
   const [aplicado, setAplicado] = useState({ per: '90', ini: '', fim: '', loja: lojaInicial, fonte: '' as '' | Fonte, forn: '', busca: '' })
 
   const carregar = async () => {
@@ -144,6 +145,25 @@ export default function VisaoGerencialTab({ lojaInicial }: { lojaInicial: string
 
       {loading ? <div style={{ ...card, color: 'var(--muted)' }}>Carregando as 3 fontes de compra…</div> : <>
 
+      {visao === 'produto' && (() => {
+        const norm = (t: string) => t.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        const q = norm(pBusca.trim())
+        const achados = todosItens.filter(i => i.compras > 0 && (!q || norm(i.nome).includes(q))).slice(0, 40)
+        const sel = todosItens.find(i => i.key === pSel) || null
+        return <>
+          <div style={{ ...card, marginBottom: 12 }}>
+            <label style={lbl}>Buscar produto (digite parte do nome) — respeita o período e a loja acima</label>
+            <input style={inp} placeholder="Ex.: queijo, arroz, camarão…" value={pBusca} onChange={e => { setPBusca(e.target.value); setPSel('') }} />
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              {achados.map(i => <button key={i.key} className="btn" onClick={() => setPSel(i.key)} style={{ background: pSel === i.key ? 'var(--bordo)' : 'var(--bg)', color: pSel === i.key ? '#fff' : 'var(--text)', border: '1px solid var(--border)', fontSize: 12 }}>{tit(i.nome)} <span style={{ opacity: 0.7 }}>· {i.compras}x</span></button>)}
+              {!achados.length && <span style={{ fontSize: 12, color: 'var(--muted)' }}>Nenhum produto com nota fiscal neste período/loja.</span>}
+            </div>
+          </div>
+          {sel ? <div style={card}><h3 style={{ margin: '0 0 8px' }}>{tit(sel.nome)} <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 400 }}>preço por {sel.un}</span></h3><ProdutoAnalise item={sel} linhas={filtradas.filter(l => l.produto_key + '|' + l.un_base === sel.key)} /></div>
+            : <div style={{ ...card, color: 'var(--muted)', fontSize: 12.5 }}>Escolha um produto acima para ver consumo, períodos, valores, melhor e pior compra (em %) e fornecedores.</div>}
+        </>
+      })()}
+
       {visao === 'resumo' && <>
         <div style={{ ...grid(180), marginBottom: 12 }}>
           <Kpi t="Desembolso confirmado (NF)" v={brl(desembolso)} s={`${nCompras} compras · ${confirmados.length} produtos`} />
@@ -197,21 +217,45 @@ export default function VisaoGerencialTab({ lojaInicial }: { lojaInicial: string
   )
 }
 
-function FichaModal({ item: i, linhas, fechar }: { item: Item; linhas: Linha[]; fechar: () => void }) {
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+function ProdutoAnalise({ item: i, linhas }: { item: Item; linhas: Linha[] }) {
+  const ev = i.eventos
+  const meses = new Map<string, { q: number; v: number; n: number }>()
+  ev.forEach(e => { const k = e.data.slice(0, 7); const a = meses.get(k) || { q: 0, v: 0, n: 0 }; a.q += e.qtd; a.v += e.valor; a.n++; meses.set(k, a) })
+  const span = ev.length > 1 ? Math.max((new Date(ev[ev.length - 1].data).getTime() - new Date(ev[0].data).getTime()) / 86400000 / 30, 1) : 1
+  const melhorP = i.melhor?.preco || 0
+  const fornOrd = [...i.fornecedores].sort((a, b) => a.media - b.media)
+  const fMin = fornOrd[0]?.media || 0
   const ord = [...linhas].sort((a, b) => b.data.localeCompare(a.data))
+  const pv = (x: number, base: number) => base ? <span style={{ color: cor(((x - base) / base) * 100), fontWeight: 700 }}>{pctF(((x - base) / base) * 100)}</span> : '—'
+  return <>
+    <div style={{ ...grid(150), margin: '10px 0' }}>
+      <Kpi t="Melhor compra (NF)" v={i.melhor ? brl(i.melhor.preco) : '—'} s={i.melhor ? `${i.melhor.loja} · ${tit(i.melhor.fornecedor)} · ${dBR(i.melhor.data)}` : ''} c="#1D9E75" />
+      <Kpi t="Pior compra (NF)" v={i.pior ? brl(i.pior.preco) : '—'} s={i.pior ? `${i.pior.loja} · ${tit(i.pior.fornecedor)} · ${dBR(i.pior.data)}` : ''} c="#DC2626" />
+      <Kpi t="Pior vs. melhor" v={pctF(i.variacaoPct)} s={`média ponderada ${brl(i.media)}`} />
+      <Kpi t="Consumo / compras" v={`${i.qtdTotal.toFixed(1)} ${i.un}`} s={`${i.compras} compra(s) · ~${(i.qtdTotal / span).toFixed(1)} ${i.un}/mês · ${(i.qtdTotal / Math.max(i.compras, 1)).toFixed(1)} ${i.un}/compra`} />
+      <Kpi t="Desembolso" v={brl(i.desembolso)} s={i.intervaloMedio == null ? 'compra única' : `compra a cada ~${i.intervaloMedio.toFixed(0)} dias`} />
+      <Kpi t="Estimado / Pedido" v={`${i.estimado == null ? '—' : brl(i.estimado)} / ${i.pedido == null ? '—' : brl(i.pedido)}`} s="médias ponderadas (não confirmados)" c="#D97706" />
+    </div>
+    {i.descartados > 0 && <div style={{ fontSize: 11.5, color: '#B45309', marginBottom: 6 }}>⚠️ {i.descartados} compra(s) com preço muito fora do padrão (provável embalagem/unidade trocada) foram desconsideradas nos indicadores, mas aparecem na lista de lançamentos.</div>}
+    <b style={{ fontSize: 13 }}>Por período (mês)</b>
+    <Tabela cab={['Mês', 'Compras', `Qtd (${i.un})`, 'Valor', 'Preço médio pond.', 'vs. melhor preço']}
+      linhas={[...meses.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([k, a]) => [`${MESES[Number(k.slice(5)) - 1]}/${k.slice(0, 4)}`, a.n, +a.q.toFixed(2), brl(a.v), brl(a.v / a.q), pv(a.v / a.q, melhorP)])} />
+    <b style={{ fontSize: 13, display: 'block', marginTop: 12 }}>Fornecedores</b>
+    <Tabela cab={['Fornecedor', 'Compras', `Qtd (${i.un})`, 'Preço médio', 'vs. mais barato', 'Desembolso']}
+      linhas={fornOrd.map(f => [tit(f.nome) + (f === fornOrd[0] && fornOrd.length > 1 ? ' 🏆' : ''), f.compras, +(f.valor / f.media).toFixed(2), brl(f.media), pv(f.media, fMin), brl(f.valor)])} />
+    <b style={{ fontSize: 13, display: 'block', marginTop: 12 }}>Lançamentos (todas as fontes)</b>
+    <Tabela cab={['Data', 'Loja', 'Fonte', 'Fornecedor', 'Qtd', 'Embalagem', `Preço/${i.un}`, 'Total', 'Documento']}
+      linhas={ord.map(l => [dBR(l.data), l.loja, <FonteTag f={l.fonte} />, tit(l.fornecedor_key), +l.qtd_base.toFixed(2), l.embalagem || '—', brl(l.preco_base), brl(l.valor), l.documento || '—'])} />
+  </>
+}
+
+function FichaModal({ item: i, linhas, fechar }: { item: Item; linhas: Linha[]; fechar: () => void }) {
   return (
     <div onClick={fechar} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
       <div onClick={e => e.stopPropagation()} style={{ ...card, width: 'min(980px,100%)', maxHeight: '90vh', overflow: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><h3 style={{ margin: 0, flex: 1 }}>{tit(i.nome)} <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 400 }}>preço por {i.un}</span></h3><button className="btn" onClick={fechar} style={btn}><X size={13} /></button></div>
-        <div style={{ ...grid(150), margin: '10px 0' }}>
-          <Kpi t="Melhor preço (NF)" v={i.melhor ? brl(i.melhor.preco) : '—'} s={i.melhor?.loja} c="#1D9E75" />
-          <Kpi t="Pior preço (NF)" v={i.pior ? brl(i.pior.preco) : '—'} s={i.pior?.loja} c="#DC2626" />
-          <Kpi t="Variação" v={pctF(i.variacaoPct)} s={`${i.compras} compra(s) confirmada(s)`} />
-          <Kpi t="Estimado / Pedido" v={`${i.estimado == null ? '—' : brl(i.estimado)} / ${i.pedido == null ? '—' : brl(i.pedido)}`} s="médias ponderadas" c="#D97706" />
-        </div>
-        {i.descartados > 0 && <div style={{ fontSize: 11.5, color: '#B45309', marginBottom: 6 }}>⚠️ {i.descartados} compra(s) com preço muito fora do padrão (provável embalagem/unidade trocada) foram desconsideradas nos indicadores, mas aparecem abaixo.</div>}
-        <Tabela cab={['Data', 'Loja', 'Fonte', 'Fornecedor', 'Qtd', 'Embalagem', `Preço/${i.un}`, 'Total', 'Documento']}
-          linhas={ord.map(l => [dBR(l.data), l.loja, <FonteTag f={l.fonte} />, tit(l.fornecedor_key), +l.qtd_base.toFixed(2), l.embalagem || '—', brl(l.preco_base), brl(l.valor), l.documento || '—'])} />
+        <ProdutoAnalise item={i} linhas={linhas} />
       </div>
     </div>
   )
