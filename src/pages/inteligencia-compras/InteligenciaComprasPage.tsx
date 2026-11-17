@@ -3,6 +3,7 @@ import { Brain, RefreshCw, X, FileText, FileSpreadsheet, AlertTriangle, Search }
 import CompradorTab from './CompradorTab'
 import SemanalTab from './SemanalTab'
 import ConsumoTab from './ConsumoTab'
+import VisaoGerencialTab from './VisaoGerencialTab'
 import { useAuth } from '../../contexts/AuthContext'
 import { isOwner } from '../../lib/permissions'
 import { useLoja } from '../../contexts/LojaContext'
@@ -20,8 +21,8 @@ const grid = (min: number): React.CSSProperties => ({ display: 'grid', gridTempl
 const th: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', fontSize: 11, color: 'var(--muted)', fontWeight: 700, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }
 const td: React.CSSProperties = { padding: '7px 10px', fontSize: 12.5, borderBottom: '1px solid var(--border)', verticalAlign: 'top' }
 
-type Aba = 'consumo' | 'semanal' | 'comprador' | 'dashboard' | 'produtos' | 'fornecedores' | 'variacoes' | 'frequencia' | 'relatorio' | 'config'
-const ABAS: [Aba, string][] = [['comprador', '🛒 Comprador'], ['semanal', '🗓️ Semanal por loja'], ['consumo', '🥣 Consumo'], ['dashboard', '📊 Dashboard'], ['produtos', '🧾 Produtos'], ['fornecedores', '🏪 Fornecedores'], ['variacoes', '📈 Variações'], ['frequencia', '🔁 Frequência'], ['relatorio', '📑 Relatório'], ['config', '⚙️ Configurações']]
+type Aba = 'gerencial' | 'consumo' | 'semanal' | 'comprador' | 'dashboard' | 'produtos' | 'fornecedores' | 'variacoes' | 'frequencia' | 'relatorio' | 'config'
+const ABAS: [Aba, string][] = [['gerencial', '🧠 Visão Gerencial (3 fontes)'], ['comprador', '🛒 Comprador'], ['semanal', '🗓️ Semanal por loja'], ['consumo', '🥣 Consumo'], ['dashboard', '📊 Dashboard'], ['produtos', '🧾 Produtos'], ['fornecedores', '🏪 Fornecedores'], ['variacoes', '📈 Variações'], ['frequencia', '🔁 Frequência'], ['relatorio', '📑 Relatório'], ['config', '⚙️ Configurações']]
 
 const Badge = ({ n }: { n: Nivel }) => <span style={{ background: NIVEL_INFO[n].c + '22', color: NIVEL_INFO[n].c, border: `1px solid ${NIVEL_INFO[n].c}55`, borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{NIVEL_INFO[n].e} {NIVEL_INFO[n].l}</span>
 const Kpi = ({ t, v, s, c }: { t: string; v: string; s?: string; c?: string }) => (
@@ -63,7 +64,7 @@ export default function InteligenciaComprasPage() {
   const [todas, setTodas] = useState<Compra[]>([])
   const [cfg, setCfg] = useState<Cfg>(CFG_PADRAO)
   const [loading, setLoading] = useState(true)
-  const [aba, setAba] = useState<Aba>('dashboard')
+  const [aba, setAba] = useState<Aba>('gerencial')
   const [ficha, setFicha] = useState<Produto | null>(null)
   // filtros
   const [fLoja, setFLoja] = useState(LOJAS.includes(lojaCtx) ? lojaCtx : '')
@@ -205,8 +206,10 @@ export default function InteligenciaComprasPage() {
         {ABAS.map(([k, l]) => <button key={k} className="btn" onClick={() => setAba(k)} style={{ background: aba === k ? 'var(--bordo)' : 'var(--card)', color: aba === k ? '#fff' : 'var(--text)', border: '1px solid var(--border)' }}>{l}</button>)}
       </div>
 
-      {aba !== 'config' && aba !== 'comprador' && aba !== 'semanal' && aba !== 'consumo' && filtroBox}
+      {aba !== 'config' && aba !== 'gerencial' && aba !== 'comprador' && aba !== 'semanal' && aba !== 'consumo' && filtroBox}
       {loading ? <div style={{ ...card, color: 'var(--muted)' }}>Carregando histórico de compras…</div> : <>
+
+      {aba === 'gerencial' && <VisaoGerencialTab lojaInicial={fLoja} />}
 
       {aba === 'comprador' && <CompradorTab comprador={cfg.comprador || 'Esdras Santana'} loja={fLoja} />}
 

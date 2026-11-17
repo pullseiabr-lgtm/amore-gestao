@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Inteligência de Compras — Amore Food</title>
+<style>
+:root{--vinho:#8B1212;--bg:#faf7f6;--card:#fff;--text:#1c1517;--muted:#6f656a;--border:#ece4e5;--ok:#15803D;--warn:#B45309;--bad:#B91C1C;--shadow:0 1px 2px rgba(80,20,25,.05),0 8px 24px -12px rgba(80,20,25,.12)}
+@media(prefers-color-scheme:dark){:root{--bg:#151011;--card:#1e1719;--text:#f3ecee;--muted:#a79ca0;--border:#342a2c;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6)}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5;font-variant-numeric:tabular-nums}
+.wrap{max-width:1120px;margin:0 auto;padding:24px 16px 60px}
+header.top{border-bottom:2px solid var(--vinho);padding-bottom:14px;margin-bottom:6px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--vinho);font-weight:700}
+h1{font-size:22px;margin:6px 0 4px}.sub{color:var(--muted);font-size:13.5px}
+.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
+.chip{border:1px solid var(--border);background:var(--card);color:var(--muted);border-radius:20px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer}
+.chip.on{background:var(--vinho);color:#fff;border-color:var(--vinho)}
+select,.btn{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:10px;padding:9px 13px;font-size:13px;font-weight:600;cursor:pointer}
+.btn{border-color:var(--vinho);background:var(--vinho);color:#fff}
+.btn.alt{background:#1D6F42;border-color:#1D6F42}
+h2{font-size:16.5px;margin:26px 0 10px;color:var(--vinho)}h2 small{font-size:12px;font-weight:500;color:var(--muted)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:11px;margin:14px 0}
+.kpi{background:var(--card);border:1px solid var(--border);border-left:4px solid var(--vinho);border-radius:13px;padding:12px 14px;box-shadow:var(--shadow)}
+.kpi.ok{border-left-color:var(--ok)}.kpi.bad{border-left-color:var(--bad)}
+.kpi .kn{font-size:21px;font-weight:800}.kpi .kl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:13px;box-shadow:var(--shadow);background:var(--card)}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:700px}
+thead th{text-align:left;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:9px 11px;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody td{padding:8px 11px;border-bottom:1px solid var(--border);vertical-align:top}
+.up{color:var(--bad);font-weight:700}.down{color:var(--ok);font-weight:700}.mut{color:var(--muted)}
+.msg{padding:50px 0;text-align:center;color:var(--muted)}
+.note{font-size:12px;color:var(--muted);margin:6px 0}
+@media print{.controls{display:none}body{background:#fff}.tw,.kpi{box-shadow:none}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="msg">Consolidando as compras…</div></div>
+<script>
+const SB='https://xdwnsqkzgopymufsuccr.supabase.co';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhkd25zcWt6Z29weW11ZnN1Y2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNjk5NjIsImV4cCI6MjA5Mzc0NTk2Mn0.WXT4cSJuTBMIYYinpfX76eTVPUeDT7qFtyLmhCh89zk';
+const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+const q=new URLSearchParams(location.search);
+let LOJA=(q.get('loja')||'').trim();
+let DIAS=parseInt(q.get('dias')||'90',10)||90;
+const LOJAS=['Amore Paiva','Amore CD','Flow CD'];
+const FATOR=5;
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const brl=v=>'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const dBR=s=>{if(!s)return '—';const p=String(s).slice(0,10).split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s};
+const pct=v=>v==null?'—':(v>0?'+':'')+Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';
+const tit=s=>String(s||'').toLowerCase().replace(/(^|\s)(\S)/g,(_,a,b)=>a+b.toUpperCase());
+const cls=v=>v>0?'up':v<0?'down':'';
+
+async function carregar(){
+  const out=[];
+  for(let from=0;;from+=1000){
+    const r=await fetch(SB+'/rest/v1/rpc/ic_fontes_publico',{method:'POST',headers:H,body:JSON.stringify({p_loja:LOJA||null,p_dias:DIAS,p_off:from,p_lim:1000})});
+    if(!r.ok) throw new Error(await r.text());
+    const a=await r.json(); out.push(...a); if(a.length<1000||out.length>=8000) break;
+  }
+  return out.map(x=>({...x,qtd_base:+x.qtd_base,valor:+x.valor,preco_base:+x.preco_base}));
+}
+const med=a=>{const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2};
+const rz=(a,b)=>Math.max(a,b)/Math.min(a,b);
+const pond=ev=>{const q=ev.reduce((s,e)=>s+e.qtd,0);return q>0?ev.reduce((s,e)=>s+e.valor,0)/q:0};
+function eventos(ls){
+  const m={};ls.forEach(l=>{const k=[l.data,l.loja,l.documento,l.fonte].join('|');(m[k]=m[k]||[]).push(l)});
+  return Object.values(m).map(g=>{const qtd=g.reduce((s,l)=>s+l.qtd_base,0),valor=g.reduce((s,l)=>s+l.valor,0);return{data:g[0].data,loja:g[0].loja,preco:valor/qtd,qtd,valor}}).sort((a,b)=>a.data.localeCompare(b.data));
+}
+const semOut=(ev,ref)=>{if(!ev.length)return[];const m=ref||med(ev.map(e=>e.preco));return ev.filter(e=>rz(e.preco,m)<=FATOR)};
+const dd=(a,b)=>Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/864e5);
+
+function analisar(rows){
+  const g={};rows.forEach(l=>{const k=l.produto_key+'|'+l.un_base;(g[k]=g[k]||[]).push(l)});
+  return Object.entries(g).map(([k,ls])=>{
+    const nome=ls[0].descricao;const un=ls[0].un_base;
+    const ev=semOut(eventos(ls.filter(l=>l.fonte==='nota')));
+    const ref=ev.length?pond(ev):undefined;
+    const est=semOut(eventos(ls.filter(l=>l.fonte==='estimativa')),ref);
+    const ped=semOut(eventos(ls.filter(l=>l.fonte==='pedido')),ref);
+    const media=pond(ev);
+    const melhor=ev.length?ev.reduce((a,b)=>b.preco<a.preco?b:a):null;
+    const pior=ev.length?ev.reduce((a,b)=>b.preco>a.preco?b:a):null;
+    const ultimo=ev[ev.length-1];
+    const lj={};ev.forEach(e=>(lj[e.loja]=lj[e.loja]||[]).push(e));
+    const lojas=Object.entries(lj).map(([loja,es])=>({loja,media:pond(es),qtd:es.reduce((s,e)=>s+e.qtd,0),valor:es.reduce((s,e)=>s+e.valor,0),n:es.length})).sort((a,b)=>a.media-b.media);
+    const dif=lojas.length>1?(lojas[lojas.length-1].media-lojas[0].media)/lojas[0].media*100:0;
+    const datas=[...new Set(ev.map(e=>e.data))].sort();const ints=[];for(let i=1;i<datas.length;i++)ints.push(dd(datas[i-1],datas[i]));
+    const intervalo=ints.length?ints.reduce((s,x)=>s+x,0)/ints.length:null;
+    const e=est.length?pond(est):null,p=ped.length?pond(ped):null;
+    const cmp=x=>x!=null&&media>0&&rz(x,media)<=FATOR?(x-media)/media*100:null;
+    let alta=null;if(ev.length>=2){const a=pond(ev.slice(0,-1));alta=(ultimo.preco-a)/a*100}
+    return{nome,un,ev,compras:ev.length,qtd:ev.reduce((s,x)=>s+x.qtd,0),desemb:ev.reduce((s,x)=>s+x.valor,0),melhor,pior,ultimo,media,
+      varp:melhor&&pior&&ev.length>1?(pior.preco-melhor.preco)/melhor.preco*100:null,lojas,dif,
+      economia:lojas.length>1&&dif>=3&&dif<=400?lojas.reduce((s,l)=>s+Math.max(0,l.media-lojas[0].media)*l.qtd,0):0,
+      intervalo,est:e,ped:p,dEst:cmp(e),dPed:cmp(p),alta};
+  }).filter(i=>i.compras>0).sort((a,b)=>b.desemb-a.desemb);
+}
+
+let DADOS=[],ITENS=[];
+function tabela(cab,linhas,vazio){
+  if(!linhas.length)return `<div class="note">${vazio||'Sem dados neste filtro.'}</div>`;
+  return `<div class="tw"><table><thead><tr>${cab.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${linhas.map(r=>`<tr>${r.map(v=>`<td>${v}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+function render(){
+  const it=ITENS,desemb=it.reduce((s,i)=>s+i.desemb,0),eco=it.reduce((s,i)=>s+i.economia,0);
+  const por={};it.forEach(i=>i.lojas.forEach(l=>{const a=por[l.loja]=por[l.loja]||{v:0,n:0,s:0,k:0,bar:0,car:0};a.v+=l.valor;a.n+=l.n;
+    if(i.lojas.length>1&&i.dif<=400){a.s+=l.media/i.lojas[0].media;a.k++;if(i.dif>=3){if(l===i.lojas[0])a.bar++;if(l===i.lojas[i.lojas.length-1])a.car++}}}));
+  const lojasR=Object.entries(por).map(([l,a])=>({l,...a,idx:a.k?a.s/a.k:1})).sort((a,b)=>a.idx-b.idx);
+  const alertas=[];
+  it.forEach(i=>{
+    if(i.alta!=null&&i.alta>=5)alertas.push(['🔴 Aumento',tit(i.nome),`${pct(i.alta)} — último ${brl(i.ultimo.preco)}/${i.un} em ${dBR(i.ultimo.data)} (${esc(i.ultimo.loja)}).`,i.alta]);
+    if(i.economia>0)alertas.push(['💰 Economia',tit(i.nome),`${esc(i.lojas[0].loja)} paga ${brl(i.lojas[0].media)}; ${esc(i.lojas[i.lojas.length-1].loja)} paga ${brl(i.lojas[i.lojas.length-1].media)} (${pct(i.dif)}). Potencial ${brl(i.economia)}.`,i.economia]);
+    if(i.dEst!=null&&Math.abs(i.dEst)>=10)alertas.push(['⚖️ Estimativa × pago',tit(i.nome),`Estimado ${brl(i.est)} · pago em nota ${brl(i.media)} (${pct(i.dEst)}).`,Math.abs(i.dEst)]);
+  });
+  alertas.sort((a,b)=>a[0].localeCompare(b[0])||b[3]-a[3]);
+  const chips=[7,30,90,180,365].map(d=>`<button class="chip ${DIAS===d?'on':''}" onclick="setDias(${d})">${d===365?'12 meses':d+' dias'}</button>`).join('');
+  document.getElementById('app').innerHTML=`
+  <header class="top"><div><div class="eyebrow">Painel Amore Food · Compras e Estoque</div><h1>Inteligência de Compras</h1>
+    <div class="sub">${LOJA||'Todas as lojas'} · últimos ${DIAS} dias · gerado em ${new Date().toLocaleString('pt-BR')}</div></div></header>
+  <div class="controls">${chips}
+    <select onchange="setLoja(this.value)"><option value="">Todas as lojas</option>${LOJAS.map(l=>`<option ${l===LOJA?'selected':''}>${l}</option>`).join('')}</select>
+    <button class="btn" onclick="window.print()">PDF / Imprimir</button><button class="btn alt" onclick="excel()">Excel</button></div>
+  <div class="kpis"><div class="kpi"><div class="kn">${brl(desemb)}</div><div class="kl">Desembolso confirmado (NF)</div></div>
+    <div class="kpi"><div class="kn">${it.length}</div><div class="kl">Produtos com nota</div></div>
+    <div class="kpi ok"><div class="kn">${brl(eco)}</div><div class="kl">Economia potencial</div></div>
+    <div class="kpi bad"><div class="kn">${alertas.length}</div><div class="kl">Alertas</div></div></div>
+  <div class="note">Melhor/pior/médio e frequência usam somente nota fiscal (preço efetivamente pago). Pedido e estimativa da requisição ficam separados.</div>
+  <h2>Histórico de preços por produto</h2>
+  ${tabela(['Produto','Un.','Melhor preço','Pior preço','Último','Médio pond.','Var.','Compras','Intervalo','Desembolso'],it.slice(0,150).map(i=>[`<b>${esc(tit(i.nome))}</b>`,i.un,`${brl(i.melhor.preco)}<br><span class="mut">${esc(i.melhor.loja)}</span>`,`${brl(i.pior.preco)}<br><span class="mut">${esc(i.pior.loja)}</span>`,brl(i.ultimo.preco),brl(i.media),`<span class="${cls(i.varp)}">${pct(i.varp)}</span>`,i.compras,i.intervalo==null?'—':Math.round(i.intervalo)+' dias',brl(i.desemb)]))}
+  <h2>Comparativo entre lojas <small>(1,00 = sempre o menor preço)</small></h2>
+  ${tabela(['Loja','Desembolso','Compras','Índice de preço','Mais barata em','Mais cara em'],lojasR.map(l=>[l.l,brl(l.v),l.n,l.idx.toFixed(3).replace('.',','),l.bar,l.car]))}
+  <h2>Mesmo produto, preços diferentes</h2>
+  ${tabela(['Produto','Mais barata','Mais cara','Diferença','Economia'],it.filter(i=>i.economia>0).sort((a,b)=>b.economia-a.economia).slice(0,40).map(i=>[esc(tit(i.nome)),`${esc(i.lojas[0].loja)} ${brl(i.lojas[0].media)}`,`${esc(i.lojas[i.lojas.length-1].loja)} ${brl(i.lojas[i.lojas.length-1].media)}`,`<span class="up">${pct(i.dif)}</span>`,`<b>${brl(i.economia)}</b>`]),'Nenhum produto comprado por 2+ lojas neste período.')}
+  <h2>Estimado × Pedido × Pago</h2>
+  ${tabela(['Produto','Estimado','Pedido','Pago (NF)','Estimado − pago','Pedido − pago'],it.filter(i=>i.dEst!=null||i.dPed!=null).slice(0,60).map(i=>[esc(tit(i.nome)),i.est==null?'—':brl(i.est),i.ped==null?'—':brl(i.ped),brl(i.media),i.dEst==null?'—':`<span class="${cls(i.dEst)}">${pct(i.dEst)}</span>`,i.dPed==null?'—':`<span class="${cls(i.dPed)}">${pct(i.dPed)}</span>`]),'Sem estimativa/pedido comparável a nota fiscal.')}
+  <h2>Alertas de gestão</h2>
+  ${tabela(['Tipo','Produto','Detalhe'],alertas.slice(0,60).map(a=>[a[0],a[1],a[2]]),'Nenhum alerta neste período.')}`;
+}
+function excel(){
+  const l=['Produto;Un;Melhor;Loja;Pior;Loja;Ultimo;Medio;Var%;Compras;Desembolso'].concat(ITENS.map(i=>[tit(i.nome),i.un,i.melhor.preco.toFixed(2),i.melhor.loja,i.pior.preco.toFixed(2),i.pior.loja,i.ultimo.preco.toFixed(2),i.media.toFixed(2),i.varp==null?'':i.varp.toFixed(1),i.compras,i.desemb.toFixed(2)].join(';').replace(/\./g,',')));
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+l.join('\n')],{type:'text/csv;charset=utf-8'}));a.download='inteligencia-compras.csv';a.click();
+}
+function setDias(d){DIAS=d;go()}function setLoja(l){LOJA=l;go()}
+async function go(){document.getElementById('app').innerHTML='<div class="msg">Consolidando as compras…</div>';
+  try{DADOS=await carregar();ITENS=analisar(DADOS);render()}catch(e){document.getElementById('app').innerHTML='<div class="msg">Não foi possível carregar o relatório.<br><small>'+esc(e.message)+'</small></div>'}}
+go();
+</script>
+</body>
+</html>
