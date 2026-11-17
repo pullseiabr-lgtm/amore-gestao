@@ -19,8 +19,8 @@ const LOJAS_FALLBACK = ['Amore CD', 'Amore Paiva', 'Flow CD']
 const DRAFT_KEY = 'pedido_rascunho_v1'
 
 interface PedidoItem { produto: string; qtd: number; un?: string; preco: number; subtotal?: number }
-interface Pedido { chave: string; fornecedor: string; loja: string; data?: string; total?: number; pagamento?: string; cliente?: string; recebimento_responsavel?: string; itens?: PedidoItem[]; cancelados?: string[]; recebimento?: { status: string; por?: string; obs?: string; em?: string }; numero_pedido?: string; requisicao_numero?: number; requisicao_id?: string }
-interface Linha { produto: string; qtd: string; un: string; preco: string; reqItemId?: string; qtdOrig?: number; produtoOrig?: string }
+interface Pedido { chave: string; fornecedor: string; loja: string; data?: string; total?: number; pagamento?: string; cliente?: string; recebimento_responsavel?: string; desconto_pct?: number | null; itens?: PedidoItem[]; cancelados?: string[]; recebimento?: { status: string; por?: string; obs?: string; em?: string }; numero_pedido?: string; requisicao_numero?: number; requisicao_id?: string }
+interface Linha { produto: string; qtd: string; un: string; preco: string; precoOrig?: number; reqItemId?: string; qtdOrig?: number; produtoOrig?: string }
 const linhaVazia = (): Linha => ({ produto: '', qtd: '1', un: 'Unidade(s)', preco: '' })
 // vínculo com a requisição de origem (o Pedido nasce da Requisição — cotação NÃO é obrigatória)
 interface ReqVinc { id: string; numero: number; loja: string; solicitante: string; centro_custo: string | null; observacoes: string | null; status: string }
@@ -47,6 +47,7 @@ export default function PedidosPage() {
   const [fCliente, setFCliente] = useState('')
   const [fReceb, setFReceb] = useState('')
   const [linhas, setLinhas] = useState<Linha[]>([linhaVazia()])
+  const [fDesc, setFDesc] = useState('')   // desconto (%) a diluir nos preços unitários dos itens
   const [produtosLoja, setProdutosLoja] = useState<Produto[]>([])
   // origem: requisição
   const [fReqNum, setFReqNum] = useState('')
@@ -177,8 +178,23 @@ export default function PedidosPage() {
   }
 
   const setLinha = (i: number, patch: Partial<Linha>) => setLinhas(ls => ls.map((l, j) => j === i ? { ...l, ...patch } : l))
+  // Desconto em %: reduz o valor unitário de TODOS os itens com preço. Guarda o preço original (precoOrig) para
+  // reaplicar/remover sem acumular (5% depois 10% = 10% sobre o original, não 5% + 10%).
+  const descAtivo = linhas.some(l => l.precoOrig != null)
+  const aplicarDesconto = () => {
+    const pct = Number(String(fDesc).replace(',', '.'))
+    if (!(pct > 0 && pct < 100)) { toast('Informe um desconto entre 0 e 100%.', 'error'); return }
+    setLinhas(ls => ls.map(l => {
+      const base = l.precoOrig != null ? l.precoOrig : Number(l.preco)
+      if (!(base > 0)) return l
+      return { ...l, precoOrig: base, preco: String(Math.round(base * (1 - pct / 100) * 100) / 100) }
+    }))
+    toast(`Desconto de ${pct.toString().replace('.', ',')}% aplicado a todos os itens com preço.`, 'success')
+  }
+  const removerDesconto = () => setLinhas(ls => ls.map(l => l.precoOrig != null ? { ...l, preco: String(l.precoOrig), precoOrig: undefined } : l))
+  const totalOrig = linhas.reduce((s, l) => s + (Number(l.qtd) || 0) * (l.precoOrig != null ? l.precoOrig : Number(l.preco) || 0), 0)
   const totalForm = linhas.reduce((s, l) => s + (Number(l.qtd) || 0) * (Number(l.preco) || 0), 0)
-  const resetForm = () => { setFForn(''); setFCliente(''); setFReceb(''); setFPagto('à vista'); setFData(new Date().toISOString().slice(0, 10)); setLinhas([linhaVazia()]); setFReqNum(''); setReqVinc(null); setFCentroCusto(''); setFObs(''); try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ } }
+  const resetForm = () => { setFForn(''); setFCliente(''); setFReceb(''); setFPagto('à vista'); setFData(new Date().toISOString().slice(0, 10)); setLinhas([linhaVazia()]); setFDesc(''); setFReqNum(''); setReqVinc(null); setFCentroCusto(''); setFObs(''); try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ } }
 
   // Origem = Requisição: digita/seleciona REQ-#### → carrega loja, solicitante, centro de custo, obs e TODOS os itens.
   // O usuário não redigita produtos. Os dados ficam editáveis, mas a requisição original NÃO é alterada (auditoria no salvar).
@@ -276,7 +292,7 @@ export default function PedidosPage() {
       } catch { numPed = 'PED-' + Date.now().toString().slice(-4) }
       const valor = {
         fornecedor: fForn.trim(), loja: fLoja, data: fData, pagamento: fPagto || null, cliente: fCliente || null,
-        recebimento_responsavel: fReceb || null, itens, total, cancelados: [], em: new Date().toISOString(), created_by: user?.name || 'Painel',
+        recebimento_responsavel: fReceb || null, desconto_pct: descAtivo ? Number(String(fDesc).replace(',', '.')) || null : null, itens, total, cancelados: [], em: new Date().toISOString(), created_by: user?.name || 'Painel',
         obs: fObs || null, numero_pedido: numPed,
         // rastreabilidade: pedido nasce da requisição (quando informada)
         ...(reqVinc ? { requisicao_id: reqVinc.id, requisicao_numero: reqVinc.numero, solicitante: reqVinc.solicitante, centro_custo: fCentroCusto || null, origem: 'requisicao' } : { origem: 'avulso' }),
@@ -449,6 +465,14 @@ export default function PedidosPage() {
               </label>
             </div>
 
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 10, padding: 10, border: '1px dashed var(--border)', borderRadius: 10, background: 'var(--bg)' }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>Desconto do pedido (%)
+                <input type="number" min={0} max={99.99} step="0.01" value={fDesc} onChange={e => setFDesc(e.target.value)} placeholder="Ex.: 5" style={{ ...inp, width: 110 }} />
+              </label>
+              <button className="btn" onClick={aplicarDesconto} style={{ padding: '9px 14px' }} title="Reduz o valor unitário de todos os produtos do pedido">🏷️ Aplicar em todos os itens</button>
+              {descAtivo && <button className="btn" onClick={removerDesconto} style={{ background: 'var(--card)', color: 'var(--text)', border: '1px solid var(--border)', padding: '9px 14px' }}>Remover desconto</button>}
+              {descAtivo && <span style={{ fontSize: 12, color: '#15803D', fontWeight: 700 }}>Economia: {fmtR$(totalOrig - totalForm)} (de {fmtR$(totalOrig)} para {fmtR$(totalForm)})</span>}
+            </div>
             <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>Itens</div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 520 }}>
@@ -473,7 +497,7 @@ export default function PedidosPage() {
                       </td>
                       <td style={{ padding: 6 }}><input type="number" min={0} step="0.001" value={l.qtd} onChange={e => setLinha(i, { qtd: e.target.value })} style={{ ...inp, width: 74 }} /></td>
                       <td style={{ padding: 6 }}><select value={l.un} onChange={e => setLinha(i, { un: e.target.value })} style={{ ...inp, width: 114 }}>{UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}</select></td>
-                      <td style={{ padding: 6 }}><input type="number" min={0} step="0.01" value={l.preco} onChange={e => setLinha(i, { preco: e.target.value })} placeholder="0,00" style={{ ...inp, width: 94 }} /></td>
+                      <td style={{ padding: 6 }}><input type="number" min={0} step="0.01" value={l.preco} onChange={e => setLinha(i, { preco: e.target.value, precoOrig: undefined })} placeholder="0,00" style={{ ...inp, width: 94 }} />{l.precoOrig != null && <div style={{ fontSize: 10.5, color: '#15803D', marginTop: 2 }}>de <s>{fmtR$(l.precoOrig)}</s></div>}</td>
                       <td style={{ padding: 6, fontWeight: 700, whiteSpace: 'nowrap' }}>{fmtR$(sub)}</td>
                       <td style={{ padding: 6 }}>{linhas.length > 1 && <button onClick={() => setLinhas(ls => ls.filter((_, j) => j !== i))} title="Remover" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#DC2626' }}><Trash2 size={16} /></button>}</td>
                     </tr>
