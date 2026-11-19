@@ -81,6 +81,30 @@ tr:nth-child(even) td{background:#fbf6f6}
 .dir b{color:var(--v)}
 .dir h4{font-size:clamp(11px,1.2vw,14px);color:#fff;background:var(--v);padding:4px 10px;border-radius:8px;letter-spacing:.06em}
 .vazio{color:#b5a9ad;font-style:italic;font-weight:400}
+.fig{border-radius:12px;overflow:hidden;border:2px solid var(--v);background:#000;display:flex;min-height:0}
+.fig img{width:100%;height:100%;object-fit:contain;display:block}
+.pic{position:relative;display:inline-block;height:100%;max-width:100%}
+.pic img{height:100%;width:auto;max-width:100%;display:block;border-radius:12px;border:2px solid var(--v)}
+.dot{position:absolute;transform:translate(-50%,-50%);background:var(--gold);color:#3a2300;font-weight:900;border-radius:99px;min-width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 0 0 3px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.5)}
+.sw{display:flex;gap:6px;flex-wrap:wrap}
+.sw i{display:inline-flex;align-items:center;gap:5px;font-style:normal;font-size:clamp(10px,1.05vw,12.5px);font-weight:700}
+.sw i:before{content:"";width:14px;height:14px;border-radius:4px;background:var(--c);border:1px solid rgba(0,0,0,.25)}
+.gt{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.gt div{border-radius:12px;padding:9px 12px;color:#fff}
+.gt small{display:block;font-size:10px;letter-spacing:.16em;font-weight:800;opacity:.85}
+.gt b{display:block;font-size:clamp(14px,1.9vw,22px);margin:1px 0 3px}
+.gt span{font-size:clamp(10.5px,1.12vw,13px);display:block;line-height:1.35}
+.gt .g1{background:#3a0d0d}.gt .g2{background:#9a6a00}.gt .g3{background:var(--v)}
+.imp{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;flex:1;min-height:0}
+@media(max-width:980px){.imp{grid-template-columns:1fr}}
+.imp .c{display:flex;flex-direction:column;gap:3px}
+.imp .c h3{font-size:clamp(13px,1.45vw,17px)}
+.imp .c small{font-size:9.5px;font-weight:800;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;margin-top:2px;display:block}
+.imp .c p{margin:0;font-size:clamp(11.5px,1.3vw,15.5px)}
+.imp .c small{font-size:clamp(9.5px,.95vw,11px)}
+.seg.txt small{font-size:clamp(12px,1.5vw,18px);letter-spacing:.08em}
+.gat{display:inline-block;background:var(--v);color:#fff;font-size:10px;font-weight:800;letter-spacing:.08em;padding:2px 9px;border-radius:99px;margin-right:4px}
+.gat.o{background:var(--gold);color:#3a2300}
 @page{size:A4 landscape;margin:0}
 @media print{body{background:#fff}.bar{display:none}.lam{width:297mm;height:210mm;aspect-ratio:auto;margin:0;border-radius:0;box-shadow:none;page-break-after:always;break-after:page}
  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
@@ -114,7 +138,7 @@ tr:nth-child(even) td{background:#fbf6f6}
     </div>
     <div class="key"><b>Princípio</b>O cliente não precisa ler um texto. Ele precisa bater o olho, entender e desejar.</div>
   </div>
-  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 2 de 9</span></div>
+  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 2 de 13</span></div>
 </section>
 
 <!-- 3 AS DUAS LÂMINAS -->
@@ -131,9 +155,9 @@ tr:nth-child(even) td{background:#fbf6f6}
         <div class="c"><h3><i>02</i> Transformar desejo em decisão</h3><ul><li>Oferta ou preço em destaque, benefício fácil de entender.</li><li>Combos, descontos, produtos para compartilhar.</li><li>Urgência legítima, quando aplicável. <b>O cliente sente que vale aproveitar.</b></li></ul></div>
       </div>
     </div>
-    <div class="note">Os mockups são esquemas de composição: foto, preço e produto definitivos entram quando o menu da campanha estiver fechado (lâmina 9).</div>
+    <div class="note">Os mockups são esquemas de composição: foto, preço e produto definitivos entram quando o menu da campanha estiver fechado (última lâmina).</div>
   </div>
-  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 3 de 9</span></div>
+  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 3 de 13</span></div>
 </section>
 
 <!-- 4 REGRA 4 SEGUNDOS -->
@@ -153,7 +177,7 @@ tr:nth-child(even) td{background:#fbf6f6}
     </div>
     <div class="key"><b>Teste prático</b>Mostre a peça por 4 segundos a alguém que não conhece a campanha. Se a pessoa não souber dizer o produto e o preço, a peça precisa ser simplificada.</div>
   </div>
-  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 4 de 9</span></div>
+  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 4 de 13</span></div>
 </section>
 
 <!-- 5 ONDE -->
@@ -176,7 +200,7 @@ tr:nth-child(even) td{background:#fbf6f6}
       <div class="c"><h3><i>2</i> Expandir para todos os espaços</h3><p>Depois dos 2 pontos prioritários, as mesmas lâminas (adaptadas às medidas) ocupam os demais espaços visíveis, mantendo a identidade da marca.</p></div>
     </div>
   </div>
-  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 5 de 9</span></div>
+  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 5 de 13</span></div>
 </section>
 
 <!-- 6 BLACK -->
@@ -199,12 +223,105 @@ tr:nth-child(even) td{background:#fbf6f6}
       <div class="c"><h3><i>✔</i> Condição</h3><p>Só entra na Black o que tem preço real, margem calculada e capacidade de entrega.</p></div>
     </div>
   </div>
-  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 6 de 9</span></div>
+  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 6 de 13</span></div>
+</section>
+
+<!-- NOVA: IDENTIDADE BLACK -->
+<section class="lam">
+  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">6 · Identidade visual e comunicação</div><h1>BLACK AMORE: a peça que mostra desejo, oportunidade e decisão</h1></div><div class="n">06</div></div>
+  <div class="body">
+    <div class="fig" style="flex:0 0 auto;max-height:46%"><img src="/plano-black/black-amore-banner.webp" alt="Peça BLACK AMORE: pizza em dobro, parmegiana de carne e strogonoff"></div>
+    <div class="gt">
+      <div class="g1"><small>GATILHO · DESEJO</small><b>O prato vende sozinho</b><span>Foto grande, vapor e queijo derretido sobre fundo preto: o produto salta aos olhos e dá fome em 1 segundo.</span></div>
+      <div class="g2"><small>GATILHO · OPORTUNIDADE</small><b>Preço que se lê de longe</b><span>Etiquetas amarelas com R$ 59,90, R$ 29,90 e R$ 31,90, e o benefício "PIZZA EM DOBRO" escrito sem rodeios.</span></div>
+      <div class="g3"><small>GATILHO · DECISÃO</small><b>BLACK AMORE, em neon</b><span>A marca da campanha, com sacola e coração, vira o sinal de "é agora": reconhecível a distância e fácil de repetir em todas as peças.</span></div>
+    </div>
+    <div class="c"><h3><i>🎨</i> Identidade da campanha</h3>
+      <div class="sw"><i style="--c:#0b0b0d">Preto (fundo)</i><i style="--c:#e11d1d">Vermelho neon (moldura e brilho)</i><i style="--c:#ffd400">Amarelo (preço e destaque)</i><i style="--c:#ffffff">Branco (nome do prato)</i></div>
+      <p style="margin-top:4px">Tipografia condensada em itálico, nome do prato no alto e preço em etiqueta amarela. Uma estrutura repetida em todas as peças para o cliente reconhecer a Black Amore de qualquer ponto da praça.</p></div>
+  </div>
+  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 7 de 13</span></div>
+</section>
+
+<!-- NOVA: NA LOJA -->
+<section class="lam">
+  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">7 · A comunicação aplicada na loja</div><h1>Vários pontos de impacto, uma só linguagem</h1></div><div class="n">07</div></div>
+  <div class="body" style="flex-direction:row;gap:16px">
+    <div style="flex:0 0 auto;height:100%;display:flex;align-items:stretch">
+      <div class="pic"><img src="/plano-black/black-amore-loja.webp" alt="Simulação da loja Amore com a comunicação Black Amore">
+        <div class="dot" style="left:50%;top:69%">1</div><div class="dot" style="left:58%;top:45%">2</div><div class="dot" style="left:33%;top:50%">3</div>
+      </div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;gap:9px;min-width:0;justify-content:center">
+      <div class="c"><h3><i>1</i> Frente do balcão: BLACK AMORE</h3><p>A peça dos 3 pratos ocupa toda a frente do balcão, na altura dos olhos de quem circula pela praça. <b>Desejo e oportunidade juntos</b>, já na aproximação.</p></div>
+      <div class="c"><h3><i>2</i> Painel de atendimento: oferta em destaque</h3><p>Prato com preço <b>R$ 29,90</b> e selo de destaque, visto por quem observa a loja e se prepara para pedir.</p></div>
+      <div class="c"><h3><i>3</i> Totem lateral: complementos</h3><p>Sucos naturais <b>a partir de R$ 8,90</b> e torre de chopp de 2,5 litros por <b>R$ 69,90</b>, para aumentar o ticket e a ocasião de consumo.</p></div>
+      <div class="key"><b>Resultado</b>Cada espaço mostra um motivo para comprar, e todos repetem a mesma linguagem: o cliente entende a campanha antes de chegar ao balcão.</div>
+      <div class="note">Preços e combos mostrados são os da arte apresentada; margem e capacidade operacional ainda precisam ser validadas antes de produzir (última lâmina).</div>
+    </div>
+  </div>
+  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 8 de 13</span></div>
+</section>
+
+<!-- NOVA: BLACK + NATAL -->
+<section class="lam">
+  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">8 · Black já no clima de Natal</div><h1>A Black continua embaixo; o Natal chega no alto</h1></div><div class="n">08</div></div>
+  <div class="body" style="flex-direction:row;gap:16px">
+    <div style="flex:0 0 auto;height:100%;display:flex;align-items:stretch">
+      <div class="pic"><img src="/plano-black/black-natal-loja.webp" alt="Simulação da loja Amore com a Black Amore e enfeites de Natal com preços">
+        <div class="dot" style="left:50%;top:34%">1</div><div class="dot" style="left:50%;top:69%">2</div><div class="dot" style="left:58%;top:50%">3</div>
+      </div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;gap:9px;min-width:0;justify-content:center">
+      <div class="c"><h3><i>1</i> Bolas de Natal no alto: celebração e desejo</h3><p>O espaço aéreo da loja vira vitrine: cada bola com laço dourado traz <b>um prato e o seu preço</b> (pizza em dobro R$ 59,90, parmegiana R$ 29,90, sushi R$ 34,90, feijoada R$ 32,90, esfirra R$ 3,40 a unidade, strogonoff R$ 31,90). A bola central, <b>"Coma bem neste Natal!"</b>, assina a campanha.</p></div>
+      <div class="c"><h3><i>2</i> Balcão BLACK AMORE: oportunidade</h3><p>A peça da Black permanece na frente do balcão, na altura dos olhos, <b>fechando a decisão de compra</b> com o preço em destaque.</p></div>
+      <div class="c"><h3><i>3</i> Painel e totem: complementos</h3><p>Parmê Amore a R$ 29,90, sucos a partir de R$ 8,90 e torre de chopp por R$ 69,90 continuam reforçando o ticket.</p></div>
+      <div class="key"><b>Duas camadas</b>Em cima, o Natal convida e celebra. Embaixo, a Black converte. A mesma loja conta a passagem da oportunidade (Black) para a ocasião (dezembro).</div>
+      <div class="note">Sushi, feijoada e esfirra aparecem só nesta arte: preço, margem e capacidade operacional desses itens precisam ser validados antes de produzir (última lâmina).</div>
+    </div>
+  </div>
+  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 9 de 13</span></div>
+</section>
+
+<!-- NOVA: IMPORTÂNCIA DE CADA COMUNICAÇÃO -->
+<section class="lam">
+  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">9 · Importância de cada comunicação</div><h1>Porta, passa-prato, balcão e bolas: cada ponto tem um papel</h1></div><div class="n">09</div></div>
+  <div class="body">
+    <div class="imp">
+      <div class="c"><h3><i>1</i> Porta / entrada</h3>
+        <div><span class="gat">DESEJO</span></div>
+        <small>Quando o cliente vê</small><p>De longe, ainda caminhando pela praça, antes de decidir se vai se aproximar.</p>
+        <small>Por que é importante</small><p>É a chance de interromper quem nem pensava em comer. Sem esse primeiro gatilho, o cliente passa direto.</p>
+        <small>O que comunicar</small><p>BLACK AMORE e um prato protagonista. Leitura imediata, em 1 a 2 segundos.</p></div>
+      <div class="c"><h3><i>2</i> Passa-prato</h3>
+        <div><span class="gat">DESEJO</span><span class="gat o">OPORTUNIDADE</span></div>
+        <small>Quando o cliente vê</small><p>Já perto da loja, observando o preparo e o lugar de onde o prato sai.</p>
+        <small>Por que é importante</small><p>É onde o olhar do cliente fica parado por mais tempo. Fome e preço juntos, no ponto em que ele acompanha a cozinha.</p>
+        <small>O que comunicar</small><p>Prato em destaque com preço e selo (Parmê Amore R$ 29,90), mais complementos: sucos e torre de chopp.</p></div>
+      <div class="c"><h3><i>3</i> Balcão (frente)</h3>
+        <div><span class="gat o">OPORTUNIDADE</span><span class="gat">DECISÃO</span></div>
+        <small>Quando o cliente vê</small><p>Na altura dos olhos, ao circular pelo corredor e na hora de pedir.</p>
+        <small>Por que é importante</small><p>É o maior campo visual voltado para a praça e o último contato antes da compra: converte quem já está interessado.</p>
+        <small>O que comunicar</small><p>BLACK AMORE com os três pratos e os preços em etiqueta amarela. Benefício claro: "pizza em dobro".</p></div>
+      <div class="c"><h3><i>4</i> As bolas de Natal</h3>
+        <div><span class="gat">DESEJO</span><span class="gat o">OCASIÃO</span></div>
+        <small>Quando o cliente vê</small><p>De longe e de vários ângulos, acima das cabeças e da fila, no espaço aéreo da loja.</p>
+        <small>Por que é importante</small><p>Ocupam um espaço que ninguém usa, são vistas à distância e mostram vários produtos com preço, sem competir com o balcão. Trazem o clima de Natal.</p>
+        <small>O que comunicar</small><p>Um prato e um preço por bola; na central, "Coma bem neste Natal!" com o coração da marca.</p></div>
+    </div>
+    <div class="seg txt">
+      <div><small>DE LONGE</small><b>Bolas</b><span>Chamam e celebram.</span></div>
+      <div><small>APROXIMAÇÃO</small><b>Porta</b><span>Primeiro gatilho de desejo.</span></div>
+      <div><small>PERTO</small><b>Passa-prato</b><span>Fome e preço.</span></div>
+      <div><small>NO BALCÃO</small><b>Balcão</b><span>Decisão de compra.</span></div>
+    </div>
+  </div>
+  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 10 de 13</span></div>
 </section>
 
 <!-- 7 DEZEMBRO -->
 <section class="lam">
-  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">6 · Estratégia Dezembro</div><h1>De oportunidade para experiência, celebração e conveniência</h1></div><div class="n">06</div></div>
+  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">10 · Estratégia Dezembro</div><h1>De oportunidade para experiência, celebração e conveniência</h1></div><div class="n">10</div></div>
   <div class="body">
     <table>
       <thead><tr><th style="width:50%">Black Friday</th><th>Dezembro</th></tr></thead>
@@ -224,12 +341,12 @@ tr:nth-child(even) td{background:#fbf6f6}
       </div></div>
     <div class="key"><b>Transição</b>As duas lâminas continuam: a de desejo mostra o prato da ocasião; a de oportunidade traz o combo ou benefício de compartilhar.</div>
   </div>
-  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 7 de 9</span></div>
+  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 11 de 13</span></div>
 </section>
 
 <!-- 8 DIRETRIZ -->
 <section class="lam">
-  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">7 · Diretriz para a agência e equipe de marketing</div><h1>Comunicação visual Black Friday e Dezembro</h1></div><div class="n">07</div></div>
+  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">11 · Diretriz para a agência e equipe de marketing</div><h1>Comunicação visual Black Friday e Dezembro</h1></div><div class="n">11</div></div>
   <div class="body">
     <div class="dir">
       <p>O primeiro ponto do plano de ação de marketing para Black Friday e dezembro é a construção de uma <b>comunicação visual estratégica dentro das lojas</b>, usando os espaços existentes de forma inteligente e respeitando o padrão do layout, a arquitetura e a identidade visual de cada operação.</p>
@@ -241,22 +358,23 @@ tr:nth-child(even) td{background:#fbf6f6}
       <p><b>A comunicação precisa vender antes mesmo de o cliente chegar ao balcão.</b> Cada espaço visual é uma oportunidade comercial: estimular o desejo, aumentar a percepção de valor e favorecer a conversão.</p>
     </div>
   </div>
-  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 8 de 9</span></div>
+  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 12 de 13</span></div>
 </section>
 
 <!-- 9 PRÓXIMO PASSO -->
 <section class="lam">
-  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">8 · Próximo passo</div><h1>Definir produtos, preços e combos reais da campanha</h1></div><div class="n">08</div></div>
+  <div class="top"><img src="/logo-amore-white.png" alt="" onerror="this.style.display='none'"><div class="t"><div class="k">12 · Próximo passo</div><h1>Definir produtos, preços e combos reais da campanha</h1></div><div class="n">12</div></div>
   <div class="body">
     <p class="lead">As duas lâminas só podem ser desenhadas com <b>ofertas reais, margem calculada e foco nos produtos que queremos acelerar</b>. Este é o quadro a ser preenchido com Compras, Operação e Marketing:</p>
     <table>
       <thead><tr><th style="width:18%">Campanha</th><th>Produto / combo</th><th style="width:13%">Preço</th><th style="width:13%">Margem</th><th style="width:15%">Capacidade operacional</th><th style="width:12%">Lâmina</th></tr></thead>
       <tbody>
-        <tr><td>Black Friday</td><td class="vazio">a definir</td><td class="vazio">R$ —</td><td class="vazio">— %</td><td class="vazio">a validar</td><td>01 + 02</td></tr>
-        <tr><td>Black Friday</td><td class="vazio">a definir</td><td class="vazio">R$ —</td><td class="vazio">— %</td><td class="vazio">a validar</td><td>01 + 02</td></tr>
-        <tr><td>Black Friday</td><td class="vazio">a definir</td><td class="vazio">R$ —</td><td class="vazio">— %</td><td class="vazio">a validar</td><td>01 + 02</td></tr>
-        <tr><td>Dezembro</td><td class="vazio">a definir</td><td class="vazio">R$ —</td><td class="vazio">— %</td><td class="vazio">a validar</td><td>01 + 02</td></tr>
-        <tr><td>Dezembro</td><td class="vazio">a definir</td><td class="vazio">R$ —</td><td class="vazio">— %</td><td class="vazio">a validar</td><td>01 + 02</td></tr>
+        <tr><td>Black Friday</td><td>Pizza em dobro</td><td>R$ 59,90</td><td class="vazio">validar</td><td class="vazio">a validar</td><td>01 + 02</td></tr>
+        <tr><td>Black Friday</td><td>Parmegiana de carne</td><td>R$ 29,90</td><td class="vazio">validar</td><td class="vazio">a validar</td><td>01 + 02</td></tr>
+        <tr><td>Black Friday</td><td>Strogonoff</td><td>R$ 31,90</td><td class="vazio">validar</td><td class="vazio">a validar</td><td>01 + 02</td></tr>
+        <tr><td>Dezembro</td><td>Sushi</td><td>R$ 34,90</td><td class="vazio">validar</td><td class="vazio">a validar</td><td>01 + 02</td></tr>
+        <tr><td>Dezembro</td><td>Feijoada</td><td>R$ 32,90</td><td class="vazio">validar</td><td class="vazio">a validar</td><td>01 + 02</td></tr>
+        <tr><td>Dezembro</td><td>Esfirra (unidade)</td><td>R$ 3,40</td><td class="vazio">validar</td><td class="vazio">a validar</td><td>01 + 02</td></tr>
       </tbody>
     </table>
     <div class="g g3">
@@ -265,7 +383,7 @@ tr:nth-child(even) td{background:#fbf6f6}
       <div class="c"><h3><i>3</i> Briefing à agência</h3><p>Com os itens fechados, a agência desenha as duas lâminas.</p></div>
     </div>
   </div>
-  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 9 de 9</span></div>
+  <div class="foot"><span>Amore Costa Dourada · Plano Black Friday + Dezembro</span><span>Lâmina 13 de 13</span></div>
 </section>
 </body>
 </html>
