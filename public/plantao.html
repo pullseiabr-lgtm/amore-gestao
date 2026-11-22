@@ -175,7 +175,7 @@ function topo(){
 }
 function telaChecklist(){
   const P=S.plantao;
-  if(P.status==='encerrado'){app.innerHTML=`<div class="card"><h1>✅ Plantão encerrado — ${esc(P.loja)}</h1><div class="sub">Chegada ${dh(P.chegada_em)} · saída ${dh(P.saida_em)}</div><p><a href="/plantao-relatorio.html?id=${P.id}">Abrir relatório final</a></p>${P.escala_id?`<a class="btn g" style="display:block;text-align:center;text-decoration:none" href="/plantao.html?e=${P.escala_id}">🏪 Visitar outra loja</a>`:''}</div>`;return}
+  if(P.status==='encerrado'){app.innerHTML=`<div class="card"><h1>✅ Plantão encerrado — ${esc(P.loja)}</h1><div class="sub">Chegada ${dh(P.chegada_em)} · saída ${dh(P.saida_em)}</div><p><a href="/plantao-relatorio.html?id=${P.id}">Abrir relatório final</a></p>${envioHtml()}${P.escala_id?`<a class="btn g" style="display:block;text-align:center;text-decoration:none" href="/plantao.html?e=${P.escala_id}">🏪 Visitar outra loja</a>`:''}</div>`;return}
   let h=topo();h+=retomarCard();h+=pendCard();
   const prox=proxId();
   P.estrutura.forEach((s,i)=>{
@@ -266,7 +266,9 @@ async function encerrar(){
     S.plantao=r[0];
     if(S.plantao.escala_id)await api('plt_escala?id=eq.'+S.plantao.escala_id,'PATCH',{status:'realizado',updated_at:saida});
     audit('plantao',S.plantao.id,'Plantão encerrado (link do plantonista)',{status:'em_andamento'},{status:'encerrado',conformidade:s.pct});
-    telaChecklist();
+    // ao encerrar, o relatório completo já segue para todos os gestores
+    S.envio={estado:'enviando',res:[]};telaChecklist();
+    await enviarRelatorio();telaChecklist();
   }catch(e){alert('Falha ao encerrar: '+e.message);b.disabled=false;b.textContent='🏁 Registrar o encerramento do plantão'}
 }
 
@@ -508,6 +510,36 @@ function pratoForm(id){
   };
 }
 
+// ───────── Relatório automático aos gestores ao encerrar ─────────
+function msgRelatorio(teste){
+  const P=S.plantao,s=stats(),ocs=S.ocs||[],man=ocs.filter(o=>o.setor_nome==='Manutenção'&&o.origem==='avulsa').length,oc=ocs.length-man;
+  const pr=(S.pratos||[]).filter(pratoCompleto),nota=pr.length?(pr.reduce((a,x)=>a+(Number(x.nota_geral)||0),0)/pr.length).toFixed(1):null;
+  return (teste?'🧪 *TESTE* — ':'')+`📋 *Plantão de Gestão — ${P.loja}* (${d0(P.data)})\n👥 Gestores: ${(P.integrantes||[]).join(' + ')}\n⏱ Chegada ${dh(P.chegada_em)} · Saída ${dh(P.saida_em)}\n\n✅ Conformidade: ${s.pct==null?'—':s.pct+'%'} (${s.c} conformes · ${s.n} não conformes)\n🚨 Ocorrências e demandas: ${oc}\n🔧 Manutenções sugeridas: ${man}\n`+(nota?`🍽 Avaliação do prato: nota ${nota}\n`:'')+(P.parecer?`\n📝 Parecer: ${P.parecer}\n`:'')+`\n📄 *Relatório completo:*\n${ORIGEM}/plantao-relatorio.html?id=${P.id}`;
+}
+async function enviarRelatorio(){
+  const P=S.plantao;if(P.relatorio_enviado_em&&!(S.envio&&S.envio.forcar))return;
+  let teste=false;
+  try{if(P.escala_id){const e=(await api('plt_escala?id=eq.'+P.escala_id+'&select=created_by'))[0];teste=/^TESTE/i.test((e&&e.created_by)||'')}}catch{}
+  const base=(S.equipe&&S.equipe.length)?S.equipe:['Aline','Aristela','Esdras','Wagner'];
+  const dest=teste?[S.quem||'Esdras']:[...new Set(base)];
+  try{await recarregarOcs()}catch{}
+  const msg=msgRelatorio(teste),res=[];let ok=0;
+  for(let i=0;i<dest.length;i++){
+    try{const r=await fetch(ORIGEM+'/api/evolution-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nome_destino:dest[i],message:msg,nome:dest[i]})});const j=await r.json().catch(()=>({}));const good=r.ok&&j.ok!==false;if(good)ok++;res.push((good?'✅ ':'⚠️ ')+dest[i]+(good?'':' — '+(j.error||'falha')))}catch(e){res.push('⚠️ '+dest[i]+' — '+e.message)}
+    if(i<dest.length-1)await new Promise(r=>setTimeout(r,4000+Math.random()*5000));
+  }
+  S.envio={estado:'fim',res,teste};
+  if(ok&&!teste){const t=new Date().toISOString();try{const r=await api('plt_plantoes?id=eq.'+P.id,'PATCH',{relatorio_enviado_em:t});S.plantao=r[0]||{...P,relatorio_enviado_em:t}}catch{S.plantao={...P,relatorio_enviado_em:t}}}
+  audit('plantao',P.id,'Relatório enviado aos gestores'+(teste?' (teste)':''),null,{para:dest,ok});
+}
+function envioHtml(){
+  const P=S.plantao,E=S.envio;
+  if(E&&E.estado==='enviando')return '<div class="card" style="background:#EEF6FF;border-color:#BBD9FA">⏳ Enviando o relatório completo aos gestores… mantenha esta página aberta.</div>';
+  const lista=E&&E.res&&E.res.length?'<div class="sub">'+E.res.map(esc).join('<br>')+'</div>':'';
+  if(P.relatorio_enviado_em)return `<div class="card" style="border-color:#9FE3C9;background:#F1FCF7"><b>📨 Relatório enviado aos gestores</b>${lista||'<div class="sub">Enviado em '+dh(P.relatorio_enviado_em)+'</div>'}</div>`;
+  return `<div class="card" style="border-color:#FFD08A;background:#FFF9EC"><b>${E&&E.teste?'🧪 Teste: relatório enviado só para você':'⚠️ Relatório ainda não enviado'}</b>${lista}<button class="btn" onclick="reenviarRelatorio()">📨 ${E&&E.teste?'Enviar de novo':'Enviar relatório aos gestores'}</button></div>`;
+}
+async function reenviarRelatorio(){S.envio={estado:'enviando',res:[],forcar:true};telaChecklist();await enviarRelatorio();telaChecklist()}
 // ───────── Tire sua dúvida (manual dentro do botão) ─────────
 const AJ_COMO='<h4>Como responder cada item</h4><p><b>✅ Conforme:</b> está dentro do padrão. <b>❌ Não conforme:</b> há desvio — descreva o que viu e anexe foto/vídeo; isso abre uma ocorrência automática. <b>➖ N/A:</b> não se aplica hoje — justifique.</p><h4>Foto e vídeo</h4><p>É opcional quando está tudo conforme, e obrigatória em desvios e nas etapas marcadas como obrigatórias (ex.: frente de loja). Itens informados pelo líder da loja não precisam de foto.</p><h4>Confirmar e salvar</h4><p>No fim de cada check toque em <b>Confirmar e salvar este check</b>. Se faltar algo, o sistema leva você direto ao campo. Se parar no meio, ao reabrir o link você continua de onde parou.</p>';
 function ajuda(t){
