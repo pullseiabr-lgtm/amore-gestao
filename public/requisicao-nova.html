@@ -149,6 +149,12 @@ carregarCatalogo();
   if(_u){ const f=el('solic'); if(f){ f.value=_u; f.readOnly=true; f.style.background='#f1ece9'; f.style.color='#6f656a'; f.style.cursor='not-allowed'; f.title='Preenchido automaticamente com o seu usuário'; } }
 })();
 
+// Loja pelo link (?loja=Amore Paiva | Amore CD | Flow CD): já vem selecionada e travada
+(function(){
+  const l=(new URLSearchParams(location.search).get('loja')||'').trim();
+  if(l&&[...el('loja').options].some(o=>o.value===l)){ el('loja').value=l; el('loja').disabled=true; brand(); }
+})();
+
 const busca=el('busca'), results=el('results');
 busca.addEventListener('input',()=>{
   const q=norm(busca.value); if(q.length<2){results.classList.remove('show');return;}
