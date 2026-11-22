@@ -154,8 +154,38 @@ async function iniciar(){
 async function abrirPlantao(id){
   S.plantao=(await api('plt_plantoes?id=eq.'+id))[0];
   if(!S.plantao){app.innerHTML='<div class="msg">Plantão não encontrado.</div>';return}
-  S.quem=q.get('u')||S.plantao.integrantes[0]||'';S.loja=S.plantao.loja;
+  S.quem=q.get('u')||S.plantao.integrantes[0]||'';S.loja=S.plantao.loja;S.pessoas=[...S.plantao.integrantes];
+  if(S.plantao.escala_id&&!S.esc){try{S.esc=(await api('plt_escala?id=eq.'+S.plantao.escala_id))[0]||null}catch{}}
   await carregarResp();carregarProg();telaChecklist();retomarAuto();
+}
+// ───────── Trocar de loja dentro do checklist (mesma escala) ─────────
+const lojasEsc=()=>S.esc?(S.esc.lojas&&S.esc.lojas.length?S.esc.lojas:['Amore CD','Amore Paiva','Flow CD']):[];
+async function trocarLoja(){
+  if(!S.esc)return;
+  await sincronizar();
+  let pls=[];try{pls=await api('plt_plantoes?escala_id=eq.'+S.esc.id+'&select=id,loja,status,numero&order=chegada_em.desc')}catch{}
+  const st=l=>{const p=pls.find(x=>x.loja===l);return p?(p.status==='encerrado'?'✅ Encerrado':'🟡 Em andamento'):'⚪ Ainda não iniciado'};
+  sheet(`<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">🏪 Escolha a loja</b><button onclick="closeSheet()" style="background:none;border:0;font-size:24px;color:var(--muted)">✕</button></div>`+
+    lojasEsc().map(l=>`<button class="btn${l===S.plantao.loja?'':' g'}" data-loja="${esc(l)}" style="text-align:left">🏪 ${esc(l)}<br><span style="font-size:13.5px;font-weight:600">${l===S.plantao.loja?'📍 Você está aqui · ':''}${st(l)}</span></button>`).join(''));
+  document.querySelectorAll('#sheet [data-loja]').forEach(b=>b.onclick=()=>abrirLoja(b.dataset.loja));
+}
+async function abrirLoja(loja){
+  if(loja===S.plantao.loja){closeSheet();return}
+  const b=document.querySelector('#sheet [data-loja="'+loja+'"]');if(b)b.textContent='Abrindo '+loja+'…';
+  try{
+    const E=S.esc,ex=await api(`plt_plantoes?escala_id=eq.${E.id}&loja=eq.${encodeURIComponent(loja)}&order=chegada_em.desc&limit=1`);
+    if(ex[0])S.plantao=ex[0];
+    else{
+      const v=(await api('plt_checklist_versoes?ativa=eq.true&order=versao.desc&limit=1'))[0];if(!v)throw new Error('Checklist não configurado.');
+      const hoje=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+      S.plantao=(await api('plt_plantoes','POST',{escala_id:E.id,loja,data:hoje,integrantes:S.pessoas&&S.pessoas.length?S.pessoas:[...E.dupla],versao_id:v.id,versao:v.versao,estrutura:v.estrutura,chegada_em:new Date().toISOString(),created_by:S.quem}))[0];
+      audit('plantao',S.plantao.id,'Plantão iniciado (troca de loja no checklist)',null,{loja,por:S.quem,integrantes:S.plantao.integrantes});
+    }
+    S.loja=loja;S.aberto=null;S.envio=null;S.pratos=[];
+    await carregarResp();carregarProg();closeSheet();telaChecklist();window.scrollTo(0,0);retomarAuto();
+    try{history.replaceState(null,'','?p='+S.plantao.id+'&u='+encodeURIComponent(S.quem))}catch{}
+    toast('🏪 Loja: '+loja);
+  }catch(e){alert('Não foi possível abrir a loja: '+e.message);closeSheet()}
 }
 async function carregarResp(){
   const [r,o,pr]=await Promise.all([api('plt_respostas?plantao_id=eq.'+S.plantao.id),api('plt_ocorrencias?plantao_id=eq.'+S.plantao.id+'&order=numero.asc'),api('plt_pratos?plantao_id=eq.'+S.plantao.id+'&order=created_at.asc')]);S.pratos=pr;
@@ -170,12 +200,12 @@ function stats(){
 }
 function topo(){
   const s=stats();
-  return `<div class="top"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="eyebrow">Plantão de Gestão</div><button class="hbtn" onclick="ajuda('geral')">❓ Tire sua dúvida</button></div><b>${esc(S.plantao.loja)} · nº ${S.plantao.numero}</b> <span class="sub">chegada ${dh(S.plantao.chegada_em)}</span>
+  return `<div class="top"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="eyebrow">Plantão de Gestão</div><button class="hbtn" onclick="ajuda('geral')">❓ Tire sua dúvida</button></div><b>🏪 ${esc(S.plantao.loja)} · nº ${S.plantao.numero}</b>${lojasEsc().length>1?' <button class="hbtn" onclick="trocarLoja()">🔄 Trocar loja</button>':''} <span class="sub">chegada ${dh(S.plantao.chegada_em)}</span>
   <div class="bar"><i style="width:${s.total?s.feitos/s.total*100:0}%"></i></div><div class="sub" style="display:flex;justify-content:space-between"><span>${s.feitos}/${s.total} tarefas · conformidade ${s.pct==null?'—':s.pct+'%'}</span><span id="fila">${statusFila()}</span></div></div>`;
 }
 function telaChecklist(){
   const P=S.plantao;
-  if(P.status==='encerrado'){app.innerHTML=`<div class="card"><h1>✅ Plantão encerrado — ${esc(P.loja)}</h1><div class="sub">Chegada ${dh(P.chegada_em)} · saída ${dh(P.saida_em)}</div><p><a href="/plantao-relatorio.html?id=${P.id}">Abrir relatório final</a></p>${envioHtml()}${P.escala_id?`<a class="btn g" style="display:block;text-align:center;text-decoration:none" href="/plantao.html?e=${P.escala_id}">🏪 Visitar outra loja</a>`:''}</div>`;return}
+  if(P.status==='encerrado'){app.innerHTML=`<div class="card"><h1>✅ Plantão encerrado — ${esc(P.loja)}</h1><div class="sub">Chegada ${dh(P.chegada_em)} · saída ${dh(P.saida_em)}</div><p><a href="/plantao-relatorio.html?id=${P.id}">Abrir relatório final</a></p>${envioHtml()}${P.escala_id?(lojasEsc().length>1?`<button class="btn g" onclick="trocarLoja()">🏪 Ir para a outra loja</button>`:`<a class="btn g" style="display:block;text-align:center;text-decoration:none" href="/plantao.html?e=${P.escala_id}">🏪 Visitar outra loja</a>`):''}</div>`;return}
   let h=topo();h+=retomarCard();h+=pendCard();
   const prox=proxId();
   P.estrutura.forEach((s,i)=>{
