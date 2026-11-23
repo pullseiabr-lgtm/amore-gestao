@@ -68,6 +68,9 @@ td:first-child{font-weight:800;color:var(--k)}
 .st{display:inline-block;background:var(--lime);color:#111;font-weight:900;font-size:10px;padding:1px 9px;border-radius:99px;white-space:nowrap}
 .pick{text-align:center;font-size:clamp(10px,1.05vw,12.5px);font-weight:800;color:var(--k)}
 @media screen and (max-width:980px){.v .im{min-height:240px}.g{grid-template-columns:1fr!important}}
+.big td{font-size:clamp(11.5px,1.3vw,15px);padding:10px 12px}
+.big th{font-size:clamp(11px,1.15vw,13.5px);padding:9px 12px}
+.big+.g .alerta{font-size:clamp(11.5px,1.25vw,14.5px);padding:11px 15px}
 /* ampliar imagens */
 img[data-zoom]{cursor:zoom-in}
 .zb{position:absolute;right:6px;bottom:6px;z-index:3;background:rgba(0,0,0,.78);color:var(--lime);border:1px solid var(--lime);border-radius:99px;padding:4px 11px;font:inherit;font-size:11.5px;font-weight:800;cursor:pointer;line-height:1.2}
@@ -90,7 +93,7 @@ img[data-zoom]{cursor:zoom-in}
 </style>
 </head>
 <body>
-<div class="bar"><b>Black Flow · Flow Costa Dourada · Comunicação para validação · 4 lâminas</b><button class="btn" onclick="window.print()">🖨️ Imprimir / salvar em PDF</button></div>
+<div class="bar"><b>Black Flow · Flow Costa Dourada · Comunicação para validação · 6 lâminas</b><button class="btn" onclick="window.print()">🖨️ Imprimir / salvar em PDF</button></div>
 
 <svg width="0" height="0" style="position:absolute"><defs>
   <symbol id="flowlogo" viewBox="0 0 300 60"><text x="0" y="48" font-family="Poppins, sans-serif" font-weight="800" font-size="52" letter-spacing="-2" fill="#fff">FLO</text><path d="M120 12 C144 12 136 48 160 48 C184 48 176 12 200 12 C224 12 216 48 240 48 C264 48 268 14 280 14" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -134,7 +137,7 @@ img[data-zoom]{cursor:zoom-in}
     </div>
   </div>
   <div class="val"><b>Validação</b><span>☐ Aprovado</span><span>☐ Aprovado com ajustes</span><span>☐ Refazer</span><span>Responsável: <i class="ln"></i></span><span>Data: <i class="ln" style="width:80px"></i></span></div>
-  <div class="foot"><span>Flow Costa Dourada · Black Flow</span><span>Lâmina 1 de 4</span></div>
+  <div class="foot"><span>Flow Costa Dourada · Black Flow</span><span>Lâmina 1 de 6</span></div>
 </section>
 
 <!-- LÂMINA 2 — PEÇAS DE APOIO -->
@@ -164,12 +167,54 @@ img[data-zoom]{cursor:zoom-in}
     </div>
   </div>
   <div class="val"><b>Validação</b><span>☐ Sanduíche aprovado</span><span>☐ Salada aprovada</span><span>☐ Ajustar</span><span>Responsável: <i class="ln"></i></span><span>Data: <i class="ln" style="width:80px"></i></span></div>
-  <div class="foot"><span>Flow Costa Dourada · Black Flow</span><span>Lâmina 2 de 4</span></div>
+  <div class="foot"><span>Flow Costa Dourada · Black Flow</span><span>Lâmina 2 de 6</span></div>
 </section>
 
-<!-- LÂMINA 3 — POKE / FLOW ESTÁ VOLTANDO -->
+<!-- LÂMINA 3 — SUGESTÕES DE OFERTAS BLACK FLOW (ARTES) -->
 <section class="lam">
-  <div class="top"><svg viewBox="0 0 300 60" width="150" role="img" aria-label="Flow"><use href="#flowlogo"/></svg><div class="t"><div class="k">Flow Costa Dourada · Poke · “Saudável do seu jeito”</div><h1>Escolha o fundo: vinho, preto ou laranja</h1></div><div class="n">03</div></div>
+  <div class="top"><svg viewBox="0 0 300 60" width="150" role="img" aria-label="Flow"><use href="#flowlogo"/></svg><div class="t"><div class="k">Flow Costa Dourada · Black Flow · Sugestões de ofertas</div><h1>6 sugestões de oferta para a Black Flow</h1></div><div class="n">03</div></div>
+  <div class="body">
+    <p class="lead">Seis artes verticais, uma oferta em cada: <b>pratos, lanche e bebidas</b>. Toque em <b>🔍 Ampliar</b> para ver cada arte em tamanho grande e marque a que aprova.</p>
+    <div class="vars" style="grid-template-columns:repeat(6,1fr)">
+      <div class="v"><div class="im"><img src="plano-black-flow/black-crepe-cone.webp" alt="Black Flow: Crepe no Cone em dobro, 2 crepes por R$ 31,90"></div><div class="cap"><b>Crepe no Cone em dobro</b><br>2 por R$ 31,90</div><div class="pick">☐ Aprovar</div></div>
+      <div class="v"><div class="im"><img src="plano-black-flow/black-strogonoff.webp" alt="Black Flow: Strogonoff de Frango por R$ 26,90, mais R$ 1,90 você ganha 1 suco de 300 ml"></div><div class="cap"><b>Strogonoff de Frango</b><br>R$ 26,90 + R$ 1,90 suco</div><div class="pick">☐ Aprovar</div></div>
+      <div class="v"><div class="im"><img src="plano-black-flow/black-file-frango.webp" alt="Black Flow: Filé de Frango por R$ 27,90, mais R$ 1,90 você ganha 1 suco de 300 ml"></div><div class="cap"><b>Filé de Frango</b><br>R$ 27,90 + R$ 1,90 suco</div><div class="pick">☐ Aprovar</div></div>
+      <div class="v"><div class="im"><img src="plano-black-flow/black-chopp.webp" alt="Black Flow: Clone de Chopp 300 ml por R$ 14,90"></div><div class="cap"><b>Clone de Chopp 300 ml</b><br>R$ 14,90</div><div class="pick">☐ Aprovar</div></div>
+      <div class="v"><div class="im"><img src="plano-black-flow/black-suco.webp" alt="Black Flow: Clone de Suco por R$ 11,90"></div><div class="cap"><b>Clone de Suco</b><br>R$ 11,90</div><div class="pick">☐ Aprovar</div></div>
+      <div class="v"><div class="im"><img src="plano-black-flow/black-salada-caesar.webp" alt="Black Flow: Clone de Salada Caesar de Frango por R$ 52,90"></div><div class="cap"><b>Clone de Salada Caesar</b><br>R$ 52,90</div><div class="pick">☐ Aprovar</div></div>
+    </div>
+  </div>
+  <div class="val"><b>Validação</b><span>☐ Aprovado</span><span>☐ Aprovado com ajustes</span><span>☐ Refazer</span><span>Responsável: <i class="ln"></i></span><span>Data: <i class="ln" style="width:80px"></i></span></div>
+  <div class="foot"><span>Flow Costa Dourada · Black Flow</span><span>Lâmina 3 de 6</span></div>
+</section>
+
+<!-- LÂMINA 4 — SUGESTÕES: DECISÕES E PONTOS DE ATENÇÃO -->
+<section class="lam">
+  <div class="top"><svg viewBox="0 0 300 60" width="150" role="img" aria-label="Flow"><use href="#flowlogo"/></svg><div class="t"><div class="k">Flow Costa Dourada · Black Flow · Sugestões de ofertas</div><h1>O que decidir em cada oferta</h1></div><div class="n">04</div></div>
+  <div class="body">
+    <table class="big">
+      <thead><tr><th>Oferta</th><th>Preço na arte</th><th>Mecânica mostrada</th><th>Ponto para validar</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>Crepe no Cone em dobro</td><td>2 crepes por R$ 31,90</td><td>2 crepes pelo preço da arte</td><td>Quais sabores entram. Soma ou não com o suco grátis da ação dos lanches?</td><td><span class="st">A validar</span></td></tr>
+        <tr><td>Strogonoff de Frango</td><td>R$ 26,90<br>+ R$ 1,90</td><td>Prato + 1 suco de 300 ml por mais R$ 1,90</td><td>Aqui o suco custa R$ 1,90; na ação dos lanches ele é grátis. Unificar a mensagem.</td><td><span class="st">A validar</span></td></tr>
+        <tr><td>Filé de Frango</td><td>R$ 27,90<br>+ R$ 1,90</td><td>Prato + 1 suco de 300 ml por mais R$ 1,90</td><td>Mesmo ponto do Strogonoff.</td><td><span class="st">A validar</span></td></tr>
+        <tr><td>Clone de Chopp 300 ml</td><td>R$ 14,90</td><td>2 copos na arte</td><td>Confirmar se o preço vale pelos 2 copos (regra do “clone”).</td><td><span class="st">A validar</span></td></tr>
+        <tr><td>Clone de Suco</td><td>R$ 11,90</td><td>2 sucos na arte (laranja e morango)</td><td>Confirmar se o preço vale pelos 2 e quais sabores entram.</td><td><span class="st">A validar</span></td></tr>
+        <tr><td>Clone de Salada Caesar de Frango</td><td>R$ 52,90</td><td>2 saladas</td><td>A Salada Caesar avulsa está em R$ 29,90 (lâmina 2). Duas saem por R$ 59,80, então a oferta dá R$ 6,90 de economia. Conferir a margem.</td><td><span class="st">A validar</span></td></tr>
+      </tbody>
+    </table>
+    <div class="g" style="grid-template-columns:1fr 1fr">
+      <div class="alerta"><b>Ajuste na arte da Salada Caesar:</b> sobraram textos de outra campanha atrás do título (“COMIDA QUE ABRAÇA” e “Comece a semana cuidando de você”). A foto também está repetida e com pouca nitidez. Refazer antes de usar.</div>
+      <div class="alerta"><b>Formato:</b> as 6 artes são verticais (9:16), boas para stories e totem. As TVs da loja são horizontais: para elas, pedir uma versão 16:9.</div>
+    </div>
+  </div>
+  <div class="val"><b>Validação</b><span>☐ Aprovado</span><span>☐ Aprovado com ajustes</span><span>☐ Refazer</span><span>Responsável: <i class="ln"></i></span><span>Data: <i class="ln" style="width:80px"></i></span></div>
+  <div class="foot"><span>Flow Costa Dourada · Black Flow</span><span>Lâmina 4 de 6</span></div>
+</section>
+
+<!-- LÂMINA 5 — POKE / FLOW ESTÁ VOLTANDO -->
+<section class="lam">
+  <div class="top"><svg viewBox="0 0 300 60" width="150" role="img" aria-label="Flow"><use href="#flowlogo"/></svg><div class="t"><div class="k">Flow Costa Dourada · Poke · “Saudável do seu jeito”</div><h1>Escolha o fundo: vinho, preto ou laranja</h1></div><div class="n">05</div></div>
   <div class="body">
     <p class="lead">A mesma arte em três fundos, para <b>validar qual funciona melhor</b> na praça de alimentação. O produto e a frase são os mesmos: só muda o clima da peça.</p>
     <div class="vars" style="grid-template-columns:repeat(3,1fr)">
@@ -180,12 +225,12 @@ img[data-zoom]{cursor:zoom-in}
     <div class="alerta"><b>Para decidir:</b> o fundo preto conversa com a Black Flow (preto e verde-limão). Vinho e laranja destacam mais o prato e a cor da tigela.</div>
   </div>
   <div class="val"><b>Validação</b><span>☐ Aprovado</span><span>☐ Aprovado com ajustes</span><span>☐ Refazer</span><span>Responsável: <i class="ln"></i></span><span>Data: <i class="ln" style="width:80px"></i></span></div>
-  <div class="foot"><span>Flow Costa Dourada · Black Flow</span><span>Lâmina 3 de 4</span></div>
+  <div class="foot"><span>Flow Costa Dourada · Black Flow</span><span>Lâmina 5 de 6</span></div>
 </section>
 
 <!-- LÂMINA 4 — NOVO NO FLOW / FLOW ESTÁ VOLTANDO -->
 <section class="lam">
-  <div class="top"><svg viewBox="0 0 300 60" width="150" role="img" aria-label="Flow"><use href="#flowlogo"/></svg><div class="t"><div class="k">Flow Costa Dourada · Poke e retorno da marca</div><h1>Novo no Flow e “Flow está voltando”</h1></div><div class="n">04</div></div>
+  <div class="top"><svg viewBox="0 0 300 60" width="150" role="img" aria-label="Flow"><use href="#flowlogo"/></svg><div class="t"><div class="k">Flow Costa Dourada · Poke e retorno da marca</div><h1>Novo no Flow e “Flow está voltando”</h1></div><div class="n">06</div></div>
   <div class="body">
     <div class="vars" style="grid-template-columns:1fr .66fr .66fr 1.5fr">
       <div class="v"><div class="im"><img src="plano-black-flow/poke-novo.webp" alt="Novo no Flow: Poke"></div><div class="cap"><b>Novo no Flow</b> · Poke</div><div class="pick">☐ Aprovar</div></div>
@@ -199,7 +244,7 @@ img[data-zoom]{cursor:zoom-in}
     </div>
   </div>
   <div class="val"><b>Validação</b><span>☐ Aprovado</span><span>☐ Aprovado com ajustes</span><span>☐ Refazer</span><span>Responsável: <i class="ln"></i></span><span>Data: <i class="ln" style="width:80px"></i></span></div>
-  <div class="foot"><span>Flow Costa Dourada · Black Flow</span><span>Lâmina 4 de 4</span></div>
+  <div class="foot"><span>Flow Costa Dourada · Black Flow</span><span>Lâmina 6 de 6</span></div>
 </section>
 <div id="lb" role="dialog" aria-modal="true" aria-label="Imagem ampliada">
   <div class="stage"><button class="nav p" id="lbp" aria-label="Anterior">‹</button><img id="lbi" alt=""><button class="nav n" id="lbn" aria-label="Próxima">›</button></div>
